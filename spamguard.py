@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.8"
+VERSION = "5.8.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1216,6 +1216,7 @@ class SpamGuard:
             # A dedupe rule that turns out to be a campaign is promoted (longer life).
             if source == "campaign" and b.get("source") == "dedupe":
                 b["source"] = "campaign"
+                b["sender"] = None  # a campaign has no "original sender" to let through
         return False
 
     def describe(self, b: dict) -> str:

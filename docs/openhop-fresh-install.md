@@ -207,3 +207,7 @@ To check how busy openHop is: `top -b -n1 | head -12` (the openHop `python` proc
 | Lost admin password | Reset it in `config.yaml`, or rerun setup (see the openHop docs) |
 
 If you installed with Docker, the paths and commands are different. This guide covers the native install only.
+
+---
+
+This guide describes one way of setting up openHop and is not official openHop documentation; check the [openHop docs](https://docs.openhop.dev/) for the current instructions. Radio settings and power limits are the operator's responsibility. Provided "as is", without warranty. See the [Disclaimer](../README.md#disclaimer).
