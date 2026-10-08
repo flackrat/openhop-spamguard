@@ -135,6 +135,8 @@ body.advanced .basic-only{display:none}
 body.dirty .savebar{display:flex}
 #toast.bad{background:var(--stop);color:#fff}
 .foot{color:var(--soft);font-size:12.5px;text-align:center;margin-top:24px}
+.foot.legal{margin-top:10px;font-size:11.5px;line-height:1.5;max-width:640px;margin-left:auto;margin-right:auto}
+.foot.legal a{color:inherit}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
 .health-head h2{margin:0}
@@ -348,6 +350,8 @@ body.advanced .stats.adv{display:grid}
 </section>
 
 <p class="foot" id="foot"></p>
+<p class="foot legal">SpamGuard <span id="footVer"></span> · <a id="repoLink" href="https://github.com/flackrat/openhop-spamguard" target="_blank" rel="noopener noreferrer">github.com/flackrat/openhop-spamguard</a> · MIT licence<br>
+Provided "as is", without warranty of any kind. You decide what your repeater forwards, and you are responsible for using it within your local radio and data-protection rules. An independent project, not affiliated with or endorsed by openHop or MeshCore.</p>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -361,7 +365,7 @@ const TTLS = [["1800","for 30 minutes"],["3600","for 1 hour"],["21600","for 6 ho
 
 function ago(ts){ if(!ts) return "never"; const s=Math.max(0,Date.now()/1000-ts);
   if(s<90) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" days ago"; }
-function left(sec, perm){ if(perm) return "until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
+function left(sec, perm){ if(perm) return "Stays until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
 function toast(t,bad){ const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
 
 async function post(path, body){
@@ -623,7 +627,8 @@ function render(d, editing){
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   if(!editing){ renderBlocks(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
-  $("#ver").textContent="v"+d.version;
+  $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
+  if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
   $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
     + (editing?" (some sections wait while you edit)":"");
 }
