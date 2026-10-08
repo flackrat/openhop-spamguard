@@ -228,6 +228,12 @@ body.advanced .stats.adv{display:grid}
   </section>
 </div>
 
+<section id="lockSec">
+  <div class="health-head"><h2>Lockdown</h2><span id="lPill"></span></div>
+  <p class="explain" id="lLine"></p>
+  <div class="inline-form" id="lBtns"></div>
+</section>
+
 <section id="healthSec">
   <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
   <p class="explain" id="hLine"></p>
@@ -257,7 +263,7 @@ body.advanced .stats.adv{display:grid}
   <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
-    <select id="hopMatch"><option value="">routes starting there (default)</option><option value="contains">anything passing through it</option></select>
+    <select id="hopMatch"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
     <select id="hopTtl"></select>
     <button class="go" id="hopBtn">Block repeater</button>
   </div>
@@ -455,11 +461,13 @@ function renderHealth(d){
 function renderBlocks(d){
   const adv=document.body.classList.contains("advanced");
   const list=d.blocks.filter(b=>adv||b.source!=="dedupe");
-  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",rotation:"<span class='tag plain'>changing identity</span>",hop:""}[b.source]||"");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   $("#blocks").innerHTML=list.map(b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
-    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:`Messages starting at repeater ${esc(b.value)}`)
+    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)
+      :b.kind==="links"?"Links from names SpamGuard doesn't know"
+      :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
       :b.kind==="suffix"?(b.value.length?`Unknown repeaters sending via <span class="route">${esc(b.value.join(">"))}</span>`:"Unknown repeaters right next to yours")
@@ -475,6 +483,7 @@ function renderBlocks(d){
           <option value="log_only" ${b.action==="log_only"?"selected":""}>Watch only</option></select>
         ${b.kind==="hop"?`<select data-k="${esc(b.key)}" onchange="post('/hop_mode',{key:this.dataset.k,match:this.value})" aria-label="Matching">
           <option value="" ${!b.match?"selected":""}>Default matching</option>
+          <option value="contains_known" ${b.match==="contains_known"?"selected":""}>Passing through, except known people</option>
           <option value="exact_paths" ${b.match==="exact_paths"?"selected":""}>Routes starting there</option>
           <option value="contains" ${b.match==="contains"?"selected":""}>Anything passing through</option></select>`:""}
         ${btn("+1 hour","/extend",{key:b.key,seconds:3600},"quiet")}${btn("+1 day","/extend",{key:b.key,seconds:86400},"quiet")}</div>
@@ -622,10 +631,24 @@ function renderUpdate(d){
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }
+function renderLockdown(d){
+  const k=d.known||{count:0}, lk=d.lockdown;
+  $("#lPill").innerHTML=lk?"<span class='tag would'>On</span>":"";
+  const knows=`SpamGuard knows ${k.count} name${k.count===1?"":"s"}`+(k.learning?` (and is getting to know ${k.learning} more)`:"")+".";
+  if(lk){
+    $("#lLine").textContent=`On for another ${dur(lk.left)}. Only names SpamGuard knows get through on the channels it reads; everyone else is held. ${knows}`
+      +(d.mode!=="protect"||d.paused?" Monitor mode or paused: nothing is actually blocked.":"");
+    $("#lBtns").innerHTML=btn("End lockdown","/lockdown",{minutes:0},"danger")+btn("+30 min","/lockdown",{minutes:Math.round(lk.left/60)+30},"quiet");
+  } else {
+    $("#lLine").textContent=`For a heavy attack: for a set time, only let through names SpamGuard has already seen sending genuine messages. New people are held too, so use it only while the spam is bad. ${knows}`;
+    const warn=k.count<20?` data-confirm="SpamGuard only knows ${k.count} names so far, so most genuine people would be held too. Start the lockdown anyway?"`:"";
+    $("#lBtns").innerHTML=[30,60,120].map(m=>`<button class="quiet"${warn} data-p="/lockdown" data-b="${esc(JSON.stringify({minutes:m}))}" onclick="act(this)">${m<60?m+" min":m/60+" hour"+(m>60?"s":"")}</button>`).join("");
+  }
+}
 function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderTop(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderTop(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   if(!editing){ renderBlocks(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
