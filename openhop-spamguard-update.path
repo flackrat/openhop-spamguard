@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for an "Update" request from SpamGuard's web page
+
+[Path]
+# SpamGuard (running as an ordinary user) asks for an update by creating this file.
+# Only root can install software, so the request is carried out by the service below.
+PathExists=/var/lib/openhop_spamguard/update-request
+Unit=openhop-spamguard-update.service
+
+[Install]
+WantedBy=multi-user.target

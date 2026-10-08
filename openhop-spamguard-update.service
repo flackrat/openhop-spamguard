@@ -1,0 +1,9 @@
+[Unit]
+Description=Update SpamGuard from GitHub (only when asked)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/openhop_spamguard/update.sh --from-request
+TimeoutStartSec=600
