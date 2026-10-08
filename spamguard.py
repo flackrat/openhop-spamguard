@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.8.3"
+VERSION = "5.9"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -68,13 +68,15 @@ SETTINGS_META: list[dict] = [
     {"key": "enable_hop_rules", "risk": "Turning this off means a spammer who keeps changing names and wording can only be caught by text rules, so more spam gets through. While on, everyone whose channel messages start at a blocked repeater is blocked too, including genuine users who rely on that repeater.", "group": "Blocking by source repeater", "type": "bool",
      "label": "Block spam at its source repeater",
      "help": "When a lot of spam enters the mesh through one repeater, block channel messages that start at that repeater."},
-    {"key": "hop_match_mode", "risk": "'Anything passing through' can block innocent traffic: any route that happens to pass through the spam repeater, and any other repeater (anywhere in the country) sharing the same 1-byte hash. 'Routes starting there' lets the first message on each new route through before it is learnt.", "group": "Blocking by source repeater", "type": "choice",
-     "choices": [["exact_paths", "Routes starting there (recommended)"],
+    {"key": "hop_match_mode", "risk": "'Anything passing through, except people it knows' still blocks a genuine person on that route until they have sent a couple of messages SpamGuard has seen, and a spammer who copies a known person's exact name gets through. 'Anything passing through' also blocks known people on any route through the spam repeater, and any other repeater sharing the same short hash. 'Routes starting there' only blocks routes it has already seen, so a spammer whose messages take a new route each time is never stopped by it.", "group": "Blocking by source repeater", "type": "choice",
+     "choices": [["contains_known", "Anything passing through, except people it knows (recommended)"],
+                 ["exact_paths", "Routes starting there"],
                  ["contains", "Anything passing through"]],
      "label": "How to block a repeater",
-     "help": "'Routes starting there' only blocks messages that STARTED at the spam repeater, learning each route as it appears. "
-             "'Anything passing through' is broader and catches new routes instantly, but also blocks innocent traffic "
-             "and other repeaters that happen to share the same short hash."},
+     "help": "'Except people it knows' blocks every channel message passing through the spam repeater, but lets through names SpamGuard "
+             "has already seen sending genuine messages on other routes (see Known people). "
+             "'Routes starting there' blocks only messages that started at the spam repeater, one learnt route at a time. "
+             "'Anything passing through' blocks everything through it, including people it knows."},
     {"key": "hop_random_senders", "risk": "Lower = blocks a spam repeater sooner, but a repeater used by a couple of people with code-like names (e.g. M0ABC123) could get blocked. Higher = more spam gets out before the block starts.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 100,
      "preset": True, "label": "Random-looking names before blocking",
      "help": "Block a repeater after this many different made-up looking names (like UD6DWREK) arrive through it in the detection window."},
@@ -139,6 +141,20 @@ SETTINGS_META: list[dict] = [
     {"key": "text_rule_chars", "risk": "Shorter = harder for the spammer to dodge by editing the message, but more chance of matching a genuine message that shares that wording. Longer = more precise, but small edits can dodge it.", "group": "Duplicate suppression", "type": "int", "min": 10, "max": 150,
      "label": "Characters matched by a duplicate rule",
      "help": "A duplicate rule matches this many characters from the middle of the message, so extra words added at the start or end do not get round it."},
+    # -- Known people
+    {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
+     "risk": "1 = anyone who has sent one genuine-looking message on another route counts, so a spammer could get a name known by first posting something harmless. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
+     "label": "Genuine messages before a name counts as known",
+     "help": "A name counts as known after this many genuine messages that didn't come through a blocked repeater. Names that look made-up never count. Trusted names always count."},
+    {"key": "known_days", "group": "Known people", "type": "int", "min": 1, "max": 365, "unit": "days",
+     "risk": "Shorter = occasional users are forgotten and treated as unknown again. Longer = a longer list kept on the Pi and in openHop.",
+     "label": "Remember known names for",
+     "help": "A name is forgotten if it hasn't sent anything for this long."},
+    {"key": "hold_links", "group": "Known people", "type": "choice",
+     "choices": [["campaign", "While a spam campaign is under way (recommended)"], ["always", "Always"], ["off", "Never"]],
+     "risk": "While on, a genuine first-time poster sharing a link is held too. 'Always' does this all the time; 'while a campaign is under way' only for an hour after spam campaign activity.",
+     "label": "Hold links from names it doesn't know",
+     "help": "Spammers often post links. When on, channel messages containing a link (http or www.) are blocked unless the sender is a known name."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but genuine names such as callsign-plus-numbers, 'RptHill3'-style node names or 'Dave1985' may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
@@ -194,7 +210,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "channels": {"Public": PUBLIC_CHANNEL_KEY},
     "hashtag_channels": [],               # e.g. ["#test", "#chat"] - keys are worked out from the name
     "enable_hop_rules": True,
-    "hop_match_mode": "exact_paths",
+    "hop_match_mode": "contains_known",
+    "known_min_msgs": 1,
+    "known_days": 30,
+    "hold_links": "campaign",
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
     "route_memory_days": 7,
@@ -769,9 +788,19 @@ class SpamGuard:
         # Learnt network shape: route -> [first_seen, last_seen, good, bad]; hash -> last time it relayed
         self.routes: dict[str, list] = {}
         self.relays: dict[str, float] = {}
+        # Names seen sending genuine messages: name -> [first_seen, last_seen, genuine messages]
+        self.known: dict[str, list] = {}
+        self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
         self.rebuild_cfg()
+        if not self.known and self.sender_history:
+            # First start of a version with known people: begin with the names heard in the
+            # last day that don't look made-up, so people aren't all strangers after an update.
+            for name, h in self.sender_history.items():
+                if name and name != "?" and not is_obfuscated(name) \
+                        and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
+                    self.known[name] = [h["first"], h["first"], h["count"]]
 
     # ---- configuration layering: defaults < sensitivity preset < config file < web page
     def rebuild_cfg(self):
@@ -827,7 +856,7 @@ class SpamGuard:
             self.ev({"type": "msg", "ts": round(e.ts, 2), "packet": e.packet, "channel": e.channel,
                      "sender": e.sender, "shape": name_shape(e.sender), "text": e.text,
                      "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random,
-                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "exempt": e.exempt,
+                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender), "exempt": e.exempt,
                      "sender_count_24h": h.get("count"), "sender_first_seen": round(h.get("first", e.ts), 2),
                      "campaign_senders": len(cc["senders"]) if cc else 0,
                      "origin_known": bool(e.path) and self.known_origin(e.first_hop),
@@ -878,6 +907,8 @@ class SpamGuard:
         self.relays = dict(st.get("relays") or {})
         self.logged_packets = collections.OrderedDict((p, None) for p in (st.get("logged_packets") or [])[-3000:])
         self.counted_packets = collections.OrderedDict((p, None) for p in (st.get("counted_packets") or [])[-3000:])
+        self.known = {k: v for k, v in (st.get("known_senders") or {}).items() if isinstance(v, list) and len(v) == 3}
+        self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
                 self.sender_history[name] = {"first": v[0], "count": int(v[1]), "hops": set()}
@@ -915,6 +946,8 @@ class SpamGuard:
                     "relays": self.relays,
                     "logged_packets": list(self.logged_packets),
                     "counted_packets": list(self.counted_packets),
+                    "known_senders": self.known,
+                    "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                 }, f)
@@ -928,6 +961,8 @@ class SpamGuard:
             used.add(b.get("id"))
             used.update((b.get("paths") or {}).values())
             used.update((b.get("allow_ids") or {}).values())
+            used.update((b.get("ids") or {}).values())
+        used.update(self.rule_ids.values())
         while self.next_rule_id in used:
             self.next_rule_id += 1
         rid = self.next_rule_id
@@ -964,11 +999,57 @@ class SpamGuard:
 
     # ---- matching (mirrors the openHop rules SpamGuard writes) ----
     def hop_mode(self, b: dict) -> str:
-        return b.get("match") or self.cfg.get("hop_match_mode", "exact_paths")
+        return b.get("match") or self.cfg.get("hop_match_mode", "contains_known")
+
+    # ---- known people ----
+    def is_known(self, name: str) -> bool:
+        if name in self.allow_senders:
+            return True
+        v = self.known.get(name)
+        return bool(v) and v[2] >= int(self.cfg.get("known_min_msgs", 1))
+
+    def known_list(self) -> list[str]:
+        """The names written to openHop for 'let known people through' (most recently heard kept)."""
+        names = [k for k in self.known if self.is_known(k)]
+        names = sorted(names, key=lambda k: -self.known[k][1])[:2000]
+        return sorted(set(names) | {n for n in self.allow_senders if n})
+
+    def learn_sender(self, e: Event, spam: bool):
+        """Count a genuine message towards its sender becoming known."""
+        if spam or e.matched or e.random or e.obfuscated or not e.sender or e.sender == "?":
+            return
+        for b in self.blocks.values():  # never learn from traffic through a blocked repeater
+            if b["kind"] == "hop" and b["value"] in e.path:
+                return
+        v = self.known.get(e.sender)
+        if v is None:
+            self.known[e.sender] = [e.ts, e.ts, 1]
+        elif e.ts > v[1]:  # messages read again after a restart are older: don't count twice
+            v[1] = e.ts
+            v[2] += 1
+
+    def _spammy(self, e: Event) -> bool:
+        cc = self.clusters.get(e.campaign) if e.campaign is not None else None
+        return e.random or e.obfuscated or bool(e.matched) or bool(cc and cc.get("suspect"))
+
+    def forget_old_names(self):
+        horizon = time.time() - int(self.cfg.get("known_days", 30)) * 86400
+        for k in [k for k, v in self.known.items() if v[1] < horizon]:
+            del self.known[k]
+
+    def gated(self, b: dict) -> bool:
+        """Blocks that let known people through (written after the 'known people' rule)."""
+        return b["kind"] in ("links", "lockdown") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known")
 
     def block_matches(self, b: dict, e: Event) -> bool:
+        if self.gated(b) and self.is_known(e.sender):
+            return False
+        if b["kind"] == "lockdown":
+            return True
+        if b["kind"] == "links":
+            return any(w in e.text for w in b["value"])
         if b["kind"] == "hop":
-            if self.hop_mode(b) == "contains":
+            if self.hop_mode(b) in ("contains", "contains_known"):
                 return b["value"] in e.path
             return ">".join(e.path) in (b.get("paths") or {})
         if b.get("sender") and e.sender == b["sender"]:
@@ -984,7 +1065,8 @@ class SpamGuard:
     def _match_event(self, e: Event, count: bool = True):
         # Same order openHop checks the rules in (see build_rules).
         rank = {"manual": 0, "hop": 1, "campaign": 2, "dedupe": 3, "rotation": 9}
-        for key, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1]["created"])):
+        for key, b in sorted(self.blocks.items(), key=lambda kv: (10 if self.gated(kv[1]) else rank.get(kv[1].get("source"), 2),
+                                                                   -kv[1]["created"])):
             if e.ts >= b["created"] - 1 and self.block_matches(b, e):
                 e.matched = key
                 if count:
@@ -1221,8 +1303,15 @@ class SpamGuard:
 
     def describe(self, b: dict) -> str:
         if b["kind"] == "hop":
-            how = "messages starting at" if self.hop_mode(b) == "exact_paths" else "anything via"
+            m = self.hop_mode(b)
+            if m == "contains_known":
+                return f"anything via repeater {b['value']}, except people it knows"
+            how = "messages starting at" if m == "exact_paths" else "anything via"
             return f"{how} repeater {b['value']}"
+        if b["kind"] == "links":
+            return "links from names SpamGuard doesn't know"
+        if b["kind"] == "lockdown":
+            return "lockdown: channel messages from names SpamGuard doesn't know"
         if b["kind"] == "suffix":
             route = ">".join(b["value"])
             return (f"new repeaters sending via {route}" if route
@@ -1255,16 +1344,21 @@ class SpamGuard:
         """Remember which repeaters normally start routes (good traffic) and which ones relay."""
         now = time.time()
         for e in events:
-            if e.recorded or not e.path or now - e.ts < 120:  # wait until campaigns are known
+            if e.recorded or now - e.ts < 120:  # wait until campaigns are known
                 continue
             e.recorded = True
+            if not e.path:  # heard directly: no route to learn, but the sender still counts
+                self.learn_sender(e, self._spammy(e))
+                continue
             for h in e.path[1:]:
                 self.relays[h] = max(self.relays.get(h, 0), e.ts)
             spam = e.random or e.obfuscated or e.campaign is not None or (
                 e.matched in self.blocks and self.blocks[e.matched].get("source") != "dedupe")
+            self.learn_sender(e, self._spammy(e))
             r = self.routes.setdefault(">".join(e.path), [e.ts, e.ts, 0, 0])
             r[1] = max(r[1], e.ts)
             r[3 if spam else 2] += 1
+        self.forget_old_names()
         horizon = now - self.cfg["route_memory_days"] * 86400
         if len(self.routes) > 5000 or any(v[1] < horizon for v in list(self.routes.values())[:50]):
             self.routes = {k: v for k, v in self.routes.items() if v[1] >= horizon}
@@ -1430,6 +1524,26 @@ class SpamGuard:
                                   f"because trusted '{e.sender}' uses it")
                         changed = True
 
+        # 5. Links from names SpamGuard doesn't know.
+        hl = c.get("hold_links", "campaign")
+        cur = self.blocks.get("links:new")
+        if cur and cur.get("source") == "links" and cur.get("links_mode") != hl:
+            self.blocks.pop("links:new")  # setting changed: start again under the new setting
+            changed = True
+        if hl == "always":
+            want("links:new", "links", ["http", "www."], "Links are always held unless the sender is known", "links",
+                 ttl=PERMANENT_SECONDS)
+        elif hl == "campaign":
+            busy = [max(b["created"], b.get("last_hit") or 0) for b in self.blocks.values()
+                    if b.get("source") == "campaign" and b["kind"] in ("text", "words")]
+            latest = max(busy, default=0)
+            if latest > now - 3600:
+                want("links:new", "links", ["http", "www."],
+                     "A spam campaign is under way, so links are held unless the sender is known", "links",
+                     ttl=3600, from_ts=latest)
+        if "links:new" in self.blocks:
+            self.blocks["links:new"].setdefault("links_mode", hl)
+
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
@@ -1475,11 +1589,52 @@ class SpamGuard:
                              {"field": "hop_count", "op": "equals", "value": len(suf) + 1}]
                              + [{"field": "path_hashes", "op": "contains", "value": h} for h in suf]},
                          "then": {"action": self.rule_action(b)}})
-        return self._build_main(), tail
+        return self._build_main(), tail + self._build_gated()
+
+    def _rid(self, key: str) -> int:
+        if key not in self.rule_ids:
+            self.rule_ids[key] = self._new_id()
+        return self.rule_ids[key]
+
+    def _build_gated(self) -> list[dict]:
+        """Blocks that let known people through: first one 'allow' rule per channel for names on
+        SpamGuard's known list (an openHop object), then the blocks themselves. openHop stops at the
+        first rule that matches, so a known name never reaches the blocks below it."""
+        gated = sorted(((k, b) for k, b in self.blocks.items() if self.gated(b)), key=lambda kv: kv[1]["id"])
+        if not gated:
+            return []
+        rules: list[dict] = []
+        chans = sorted(self.cfg["channels"].items())
+        for name, secret in chans:
+            rules.append({"id": self._rid(f"known:{name}"), "name": f"{RULE_PREFIX}known-people:{name}", "enabled": True,
+                          "if": {"all": [
+                              {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                              {"field": "channel_hash", "op": "equals", "value": secret},
+                              {"field": "channel_sender", "op": "in", "value": "@spamguard.known_senders"}]},
+                          "then": {"action": "allow"}})
+        for key, b in gated:
+            ids = b.setdefault("ids", {})
+            for name, secret in chans:
+                base = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                        {"field": "channel_hash", "op": "equals", "value": secret}]
+                if b["kind"] == "links":
+                    conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
+                elif b["kind"] == "hop":
+                    conds = [("", [{"field": "path_hashes", "op": "contains", "value": b["value"]}])]
+                else:  # lockdown
+                    conds = [("", [])]
+                for sub, extra in conds:
+                    rk = f"{name}|{sub}"
+                    if rk not in ids:
+                        ids[rk] = self._new_id()
+                    rules.append({"id": ids[rk], "name": f"{RULE_PREFIX}{key}:{name}" + (f":{sub}" if sub else ""),
+                                  "enabled": True, "if": {"all": base + extra},
+                                  "then": {"action": self.rule_action(b)}})
+        return rules
 
     def _build_main(self) -> list[dict]:
         rank = {"manual": 0, "hop": 1, "campaign": 2, "dedupe": 3}
-        order = sorted(((k, b) for k, b in self.blocks.items() if b["kind"] != "suffix"),
+        order = sorted(((k, b) for k, b in self.blocks.items() if b["kind"] != "suffix" and not self.gated(b)),
                        key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1]["created"]))
         rules: list[dict] = []
         limit = int(self.cfg["max_total_rules"])
@@ -1530,7 +1685,18 @@ class SpamGuard:
         main, tail = self.build_rule_sets()
         ours_new = main + tail
         needs_enable = bool(ours_new) and not pe.get("enabled")
-        if not force and not needs_enable and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
+        # The known-people list lives in openHop as an object (@spamguard.known_senders).
+        objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
+        obj_now = objects.get("spamguard")
+        obj_new = {"known_senders": self.known_list()} if any(
+            r.get("then", {}).get("action") == "allow" and "known-people" in str(r.get("name")) for r in tail) else None
+        if obj_new is None:
+            objects.pop("spamguard", None)
+        else:
+            objects["spamguard"] = obj_new
+        pe["objects"] = objects
+        if not force and not needs_enable and obj_now == obj_new \
+                and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
             self.sync_pending = False
             return False
         if not force and self.rules_expected is not None and len(ours_now) != self.rules_expected:
@@ -1903,7 +2069,7 @@ class SpamGuard:
                                "matched": e.matched, "packet": e.packet,
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"manual": 0, "hop": 1, "rotation": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "links": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),
@@ -1946,6 +2112,9 @@ class SpamGuard:
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
+                "known": {"count": len(self.known_list()), "min_msgs": int(c.get("known_min_msgs", 1)),
+                          "learning": sum(1 for k in self.known if not self.is_known(k))},
+                "lockdown": ({"left": round(self.blocks["lockdown"]["expires"] - now)} if "lockdown" in self.blocks else None),
                 "learnt": {"routes": len(self.routes), "relays": len(self.relays),
                            "origins": len({k.split(">", 1)[0] for k, v in self.routes.items() if v[2] > 0})},
                 "allow": {"hops": sorted(self.allow_hops), "senders": sorted(self.allow_senders),
@@ -2021,6 +2190,24 @@ class SpamGuard:
                     self.note(f"Removed by hand: {self.describe(b)}")
                 self.suppressed[key] = now + int(body.get("suppress_seconds", 86400))
                 msg = "Block removed. SpamGuard won't re-create it for 24 hours."
+            elif op == "lockdown":
+                minutes = int(body.get("minutes") or 0)
+                if minutes <= 0:
+                    b = self.blocks.pop("lockdown", None)
+                    if b:
+                        self.note("Lockdown ended by you")
+                    msg = "Lockdown ended."
+                else:
+                    if minutes > 24 * 60:
+                        raise ValueError("A lockdown can last at most 24 hours")
+                    self.blocks.pop("lockdown", None)
+                    self.suppressed.pop("lockdown", None)
+                    self._add_block("lockdown", "lockdown", None, f"Lockdown for {minutes} min, started by you",
+                                    "lockdown", ttl=minutes * 60)
+                    n = len(self.known_list())
+                    msg = (f"Lockdown on for {minutes} min. Only the {n} name{'' if n == 1 else 's'} SpamGuard knows {'gets' if n == 1 else 'get'} through on the channels it reads."
+                           + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else "")
+                           + (" SpamGuard doesn't know many people yet, so most genuine users will be held too." if n < 20 else ""))
             elif op == "block_hop":
                 hop = str(body.get("hop", "")).upper().strip()
                 hop = hop[2:] if hop.startswith("0X") else hop
@@ -2032,7 +2219,7 @@ class SpamGuard:
                 self.blocks.pop(key, None)
                 self._add_block(key, "hop", hop, "Added by you", "manual",
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]),
-                                match=body.get("match") or None)
+                                match=(body.get("match") if body.get("match") in ("exact_paths", "contains", "contains_known") else None))
                 self.learn_paths(list(self.events))
                 if self.hop_mode(self.blocks[key]) == "exact_paths" and not self.blocks[key]["paths"]:
                     msg = f"Blocking repeater {hop}. Routes will be learnt as its messages arrive."
@@ -2066,6 +2253,8 @@ class SpamGuard:
                     self.blocks.pop(key)
                     self.suppressed[key] = now + 86400
                     msg += " The text rule that caught it was removed."
+                elif b and b["kind"] == "hop" and self.gated(b):
+                    msg += f" Their messages now get through the block on repeater {b['value']}."
                 elif b and b["kind"] == "hop":
                     msg += (f" It came via blocked repeater {b['value']}; remove that block if this "
                             "repeater's traffic is genuine.")
@@ -2095,7 +2284,7 @@ class SpamGuard:
                 if not b or b["kind"] != "hop":
                     raise ValueError("That block no longer exists")
                 m = body.get("match") or None
-                if m not in (None, "exact_paths", "contains"):
+                if m not in (None, "exact_paths", "contains", "contains_known"):
                     raise ValueError("Unknown matching mode")
                 b["match"] = m
                 self.learn_paths(list(self.events))
@@ -2177,7 +2366,7 @@ def load_page() -> str:
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
            "unallow_text", "add_channel", "remove_channel", "clear_auto", "clear_suppressed",
-           "allow_origin", "unallow_origin"}
+           "allow_origin", "unallow_origin", "lockdown"}
 
 
 class QuietServer(ThreadingHTTPServer):

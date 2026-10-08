@@ -1,5 +1,14 @@
 # Changelog
 
+## v5.9
+- Known people: SpamGuard learns names that send genuine messages and writes them into openHop as a policy object (`@spamguard.known_senders`), with a "let known people through" rule placed after your own rules.
+- Repeater blocks now default to "Anything passing through, except people it knows". On real logs the spammer used a new full route for every message, so "Routes starting there" never matched; the new mode caught every one while letting regulars through. Existing choices remain in Advanced.
+- Links from names SpamGuard doesn't know are held while a spam campaign is under way (Advanced > Known people: always / during campaigns / never).
+- Lockdown button: for 30 min to 2 hours, only known names get through on the channels SpamGuard reads. Ends by itself.
+- After updating, the known list starts from the names heard in the last day.
+- The evidence log records whether each sender was known.
+- `uninstall.sh` also removes the known-people list from openHop.
+
 ## v5.8.3
 - `uninstall.sh`: removes SpamGuard cleanly, including taking its rules back out of openHop. Your own openHop rules and settings are left alone. Options `--keep-evidence` and `--undo-speed-fix`.
 - README and guide: an Uninstall section.

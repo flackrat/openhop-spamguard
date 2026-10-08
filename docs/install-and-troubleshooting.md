@@ -137,6 +137,15 @@ curl -s http://127.0.0.1:8091/health
 
 **Emergency stop:** Pause on the page removes every SpamGuard rule from openHop at once. If the page is unreachable, `sudo systemctl stop openhop-spamguard` stops it, but its existing blocks stay in openHop. Remove them in openHop's Policies page (their names start with `spamguard:`), or start SpamGuard again and press Pause.
 
+## Known people and Lockdown
+
+| Symptom | Check / fix |
+|---|---|
+| A regular's messages are held by a repeater block | They aren't known yet (they need one genuine message on another route). Press **Not spam** on their message: that trusts them and lets them through at once. |
+| A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Not spam**, or set Advanced > Known people > Hold links to Never. |
+| Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
+| openHop shows a policy object called `spamguard` | That's the known-people list. SpamGuard keeps it up to date and the uninstaller removes it. |
+
 ## If openHop falls behind
 
 On a small Pi (a Pi 3, say) with a large packet database, openHop can fall minutes behind saving the packets it hears. SpamGuard reads that saved list, so it then sees spam minutes late and a whole wave gets through before a block starts. The Health panel shows this as **openHop delay**. A few seconds is normal; minutes means openHop is struggling.
@@ -242,7 +251,7 @@ If the uninstaller says it couldn't update openHop's rules (for example because 
 | Blocks, learnt routes, page settings | `/var/lib/openhop_spamguard/state.json` |
 | Evidence log (one file per day) | `/var/lib/openhop_spamguard/evidence/` |
 | Services | `/etc/systemd/system/openhop-spamguard.service`, `openhop-spamguard-update.path`, `openhop-spamguard-update.service` |
-| SpamGuard's rules (inside openHop) | `/etc/openhop_repeater/policy.yaml`, names starting `spamguard:` |
+| SpamGuard's rules (inside openHop) | `/etc/openhop_repeater/policy.yaml`, names starting `spamguard:`, plus the `spamguard` object (known people) |
 | Log | `sudo journalctl -u openhop-spamguard` |
 
 ---
