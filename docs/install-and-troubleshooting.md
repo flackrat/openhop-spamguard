@@ -220,14 +220,19 @@ Useful Pi checks: `vcgencmd measure_temp` (temperature), `df -h /` (disk), `free
 
 ## Removing SpamGuard and file locations
 
-Press **Pause** on the page first, so its rules are taken out of openHop, then remove it:
+```
+sudo bash /opt/openhop_spamguard/uninstall.sh
+```
+
+It stops SpamGuard, takes its rules back out of openHop, and removes everything listed below. Your own openHop rules and settings are left alone. Add `--keep-evidence` to keep the evidence log, or `--undo-speed-fix` to put openHop's original packet-count setting back as well.
+
+If your version doesn't have `uninstall.sh` (before 5.8.3), run it from a fresh download:
 
 ```
-sudo systemctl disable --now openhop-spamguard
-sudo rm -r /opt/openhop_spamguard /etc/openhop_spamguard /var/lib/openhop_spamguard
-sudo rm /etc/systemd/system/openhop-spamguard.service
-sudo systemctl daemon-reload
+git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash /tmp/sg/uninstall.sh
 ```
+
+If the uninstaller says it couldn't update openHop's rules (for example because the API token was already deleted), remove any rule whose name starts with `spamguard:` in the openHop dashboard, then restart openHop.
 
 | What | Where |
 |---|---|
@@ -236,7 +241,7 @@ sudo systemctl daemon-reload
 | Old config kept by an upgrade | `/etc/openhop_spamguard/config.yaml.old` |
 | Blocks, learnt routes, page settings | `/var/lib/openhop_spamguard/state.json` |
 | Evidence log (one file per day) | `/var/lib/openhop_spamguard/evidence/` |
-| Service definition | `/etc/systemd/system/openhop-spamguard.service` |
+| Services | `/etc/systemd/system/openhop-spamguard.service`, `openhop-spamguard-update.path`, `openhop-spamguard-update.service` |
 | SpamGuard's rules (inside openHop) | `/etc/openhop_repeater/policy.yaml`, names starting `spamguard:` |
 | Log | `sudo journalctl -u openhop-spamguard` |
 
