@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.8.1
+- Web page footer: link to this repository and a short disclaimer.
+- Disclaimer and privacy notes in the README and guides.
+- Fix: when a duplicate-message block turned into a spam-campaign block, the first sender stayed allowed to re-send it. Campaign blocks now apply to every sender.
+- Wording: blocks that last until removed now say "Stays until removed".
+
 ## v5.8
 - Updates from GitHub, only when you choose: a new **Updates** section on the page shows when a new release is out and what's new, with an **Update** button. Nothing installs by itself. Settings, blocks and learnt routes are kept, and the previous version is put back automatically if the new one doesn't start.
 - `update.sh` for updating (or going back to a particular release) from the command line.

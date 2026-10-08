@@ -239,3 +239,7 @@ sudo systemctl daemon-reload
 | Service definition | `/etc/systemd/system/openhop-spamguard.service` |
 | SpamGuard's rules (inside openHop) | `/etc/openhop_repeater/policy.yaml`, names starting `spamguard:` |
 | Log | `sudo journalctl -u openhop-spamguard` |
+
+---
+
+SpamGuard is provided "as is", without warranty, under the MIT licence. You are responsible for how you operate your repeater and for any message logs you keep. It is an independent project, not affiliated with openHop or MeshCore. See the [Disclaimer](../README.md#disclaimer).

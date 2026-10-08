@@ -11,6 +11,10 @@ Spam protection for an [openHop](https://docs.openhop.dev/) MeshCore repeater. S
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 
+![SpamGuard's web page (example data)](docs/screenshot.png)
+
+_Example data: names and numbers are made up._
+
 ## Requirements
 
 - openHop Repeater installed **natively** on a Raspberry Pi or other Debian-style Linux (not the Docker install). New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
@@ -144,4 +148,14 @@ SpamGuard only controls what **your** repeater forwards. People within range of 
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). SpamGuard is an independent project and isn't part of openHop or MeshCore.
+MIT, see [LICENSE](LICENSE).
+
+## Disclaimer
+
+- **No warranty.** SpamGuard is provided "as is", without warranty of any kind, express or implied. To the extent permitted by law, the author and contributors accept no liability for any loss or damage arising from its use, including missed spam, genuine messages being blocked, repeater downtime or data loss. See the MIT licence for the full terms. Nothing in this disclaimer limits any liability that cannot be limited by law.
+- **You run it, you decide.** SpamGuard changes what your own repeater forwards. You choose its mode and settings and you are responsible for how you operate your repeater. Start in Monitor mode and check what it would block.
+- **Radio rules.** SpamGuard doesn't transmit or change radio settings, but the repeater it runs alongside must be operated within the rules for your country and band (in the UK, Ofcom's licence-exempt short-range device rules). That is the operator's responsibility.
+- **Personal data.** SpamGuard reads Public and hashtag channel messages your repeater receives, which anyone with a MeshCore device can read. It keeps recent messages, sender names and routes in memory and, only if you switch the evidence log on, in files on your own Pi (7 days by default). Nothing is sent anywhere except the optional once-a-day version check to GitHub. If you keep or share logs, you are responsible for complying with data-protection law where you are (for example the UK GDPR); use the "names scrambled" export when sharing.
+- **Changes to openHop.** The optional `tune-openhop.sh` edits one setting inside your openHop installation, with your consent and a backup. Use it at your own risk; it can be undone with `--undo`.
+- **Independent project.** SpamGuard is not affiliated with, endorsed by or supported by openHop, MeshCore or their developers. Product names are used only to describe compatibility and belong to their respective owners.
+- **Not professional advice.** The documentation describes how the author set things up; it isn't legal, regulatory or professional advice.
