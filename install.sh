@@ -35,6 +35,7 @@ install -m 0644 ui.html /opt/openhop_spamguard/ui.html
 install -m 0755 replay.py /opt/openhop_spamguard/replay.py
 install -m 0755 tune-openhop.sh /opt/openhop_spamguard/tune-openhop.sh
 install -m 0755 update.sh /opt/openhop_spamguard/update.sh
+install -m 0755 uninstall.sh /opt/openhop_spamguard/uninstall.sh
 
 if [ ! -f /etc/openhop_spamguard/config.yaml ]; then
   install -m 0640 -o root -g repeater config.yaml /etc/openhop_spamguard/config.yaml
