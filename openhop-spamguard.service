@@ -1,0 +1,27 @@
+[Unit]
+Description=openHop SpamGuard (offline channel spam blocker)
+After=network.target openhop-repeater.service
+Wants=openhop-repeater.service
+# Never give up restarting, however many times it fails in a row.
+StartLimitIntervalSec=0
+
+[Service]
+# SpamGuard tells systemd when it is ready, then checks in after every pass of its
+# checking loop. If it stops checking in for 90 seconds (a hang), systemd restarts it.
+Type=notify
+NotifyAccess=main
+WatchdogSec=90
+User=repeater
+ExecStart=/opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/spamguard.py --config /etc/openhop_spamguard/config.yaml
+Restart=always
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=20
+StateDirectory=openhop_spamguard
+# Keep the repeater itself first in line for CPU and memory.
+Nice=5
+MemoryHigh=250M
+MemoryMax=400M
+
+[Install]
+WantedBy=multi-user.target
