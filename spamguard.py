@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.8.1"
+VERSION = "5.8.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1760,11 +1760,28 @@ class SpamGuard:
                 except Exception:
                     info["error"] = "No versions published yet."
             else:
-                info["error"] = f"GitHub answered HTTP {e.code}."
+                # 403/429: GitHub allows 60 API calls an hour per internet address (shared by everyone
+                # behind the same router or mobile network). The ordinary release page has no such limit.
+                info.update(self._latest_from_web(repo, f"GitHub answered HTTP {e.code}."))
         except Exception:
-            info["error"] = "Couldn't reach GitHub (is the Pi online?)."
+            info.update(self._latest_from_web(repo, "Couldn't reach GitHub (is the Pi online?)."))
         self.update_info = info
         return info
+
+    @staticmethod
+    def _latest_from_web(repo: str, error: str) -> dict:
+        """github.com/<repo>/releases/latest redirects to the newest release's page."""
+        try:
+            req = urllib.request.Request(f"https://github.com/{repo}/releases/latest", method="HEAD",
+                                         headers={"User-Agent": f"openhop-spamguard/{VERSION}"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                final = r.geturl()
+            m = re.search(r"/releases/tag/v?(\d+(?:\.\d+){1,3})$", final)
+            if m:
+                return {"latest": m.group(1), "notes": "", "url": final, "error": None}
+        except Exception:
+            pass
+        return {"error": error}
 
     def _maybe_check_update(self):
         if self.cfg.get("update_check", "daily") != "daily" or self._update_checking:

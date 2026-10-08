@@ -19,6 +19,9 @@ _Example data: names and numbers are made up._
 
 - openHop Repeater installed **natively** on a Raspberry Pi or other Debian-style Linux (not the Docker install). New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
 - An openHop API token: openHop dashboard > System > Configuration > Access > API Tokens.
+- systemd, and `curl` for updates (both standard on Raspberry Pi OS).
+
+Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, and with a full openHop + SpamGuard install on Ubuntu 24.04 (x86_64). Python 3.10 to 3.13.
 
 ## Install
 
