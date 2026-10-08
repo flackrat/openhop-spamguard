@@ -1,0 +1,47 @@
+# ============================================================================
+#  openHop SpamGuard - settings file
+#  /etc/openhop_spamguard/config.yaml
+#
+#  You only need to fill in STEP 1. Everything else can be changed from the
+#  SpamGuard web page (http://<your-pi>:8091/), which explains every option.
+#
+#  After editing this file:   sudo systemctl restart openhop-spamguard
+# ============================================================================
+
+# ---- STEP 1 (required): your openHop API token -----------------------------
+# In the openHop dashboard go to System > Configuration > Access > API Tokens,
+# create a token, and paste it between the quotes below.
+api_key: "PASTE_OPENHOP_API_TOKEN_HERE"
+
+
+# ---- STEP 2 (optional): how SpamGuard starts --------------------------------
+# mode:
+#   monitor  = SpamGuard spots spam and shows it on the web page, but nothing
+#              is blocked. Start here for a day to check it is getting it right.
+#   protect  = spam is actually blocked by your repeater.
+# You can switch at any time on the web page.
+mode: monitor
+
+# sensitivity:
+#   relaxed  = only blocks obvious, heavy spam. Fewest false alarms.
+#   balanced = recommended.
+#   strict   = blocks quickly. Best during a heavy attack, but more likely to
+#              catch genuine people (e.g. a busy event, people repeating a message).
+sensitivity: balanced
+
+
+# ---- STEP 3 (optional): extra channels to protect ---------------------------
+# SpamGuard always reads the Public channel. To also protect hashtag channels,
+# list them here (their keys are worked out from the name), e.g.:
+#   hashtag_channels: ["#test", "#chat"]
+hashtag_channels: []
+
+
+# ---- Rarely needed ------------------------------------------------------------
+# Where openHop's API is. Leave as-is when SpamGuard runs on the same Pi.
+openhop_url: "http://127.0.0.1:8000"
+
+# The SpamGuard web page. Anyone on your network can open it. To require a
+# password for making changes, set one here (the page will ask for it once).
+listen_port: 8091
+listen_api_key: ""

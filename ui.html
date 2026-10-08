@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SpamGuard</title>
+<style>
+:root{
+  --paper:#eef2f5; --panel:#ffffff; --ink:#18232e; --soft:#56636f; --line:#d6dde3;
+  --signal:#0e7a7e; --signal-ink:#ffffff; --signal-tint:#e0f1f1;
+  --amber:#a8650a; --amber-tint:#fbf0de; --stop:#b0322b; --stop-tint:#f9e5e3;
+  --bar:#0e7a7e; --focus:#2b6cb0;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#111a22; --panel:#18232e; --ink:#e3e9ee; --soft:#97a5b1; --line:#2a3946;
+    --signal:#3bb3b6; --signal-ink:#0d1a1f; --signal-tint:#173335;
+    --amber:#e3a548; --amber-tint:#33281a; --stop:#ef7a70; --stop-tint:#3a2224;
+    --bar:#3bb3b6; --focus:#7fb3ff;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:17px;letter-spacing:-.01em}
+.brand svg{flex:none}
+.brand small{font-weight:400;color:var(--soft);font-size:13px}
+.switch{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--soft);cursor:pointer;user-select:none}
+.switch input{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;margin:0;cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--panel);transition:left .15s}
+.switch input:checked{background:var(--signal)}
+.switch input:checked::after{left:19px}
+
+/* hero: the status sentence is the page's one bold element */
+.hero{padding:6px 0 18px}
+.hero h1{font-size:clamp(24px,4.4vw,34px);line-height:1.18;font-weight:600;letter-spacing:-.02em;margin:0 0 6px;max-width:26em}
+.hero p{margin:0;color:var(--soft);max-width:60ch}
+.meter{display:flex;align-items:flex-end;gap:3px;height:46px;margin:16px 0 4px;max-width:520px}
+.meter i{flex:1;background:var(--bar);border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
+.meter i.zero{background:var(--line)}
+.meter-scale{display:flex;justify-content:space-between;max-width:520px;font-size:12px;color:var(--soft)}
+
+.banner{border-radius:8px;padding:12px 14px;margin:0 0 14px;border:1px solid}
+.banner b{display:block;margin-bottom:2px}
+.banner.warn{background:var(--amber-tint);border-color:var(--amber);color:var(--ink)}
+.banner.bad{background:var(--stop-tint);border-color:var(--stop)}
+.banner.info{background:var(--signal-tint);border-color:var(--signal)}
+
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+section > h2{font-size:16px;font-weight:650;margin:0 0 4px}
+section > .lead{color:var(--soft);margin:0 0 12px;font-size:14px;max-width:70ch}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:720px){.controls{grid-template-columns:1fr}}
+.controls section{margin:0}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:6px 0 8px}
+.seg button{flex:1;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;padding:8px 6px;font-weight:550}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--signal);color:var(--signal-ink)}
+.seg.mode button[data-v=pause][aria-pressed=true]{background:var(--amber);color:#fff}
+.explain{font-size:14px;color:var(--soft);margin:0}
+.explain strong{color:var(--ink);font-weight:600}
+
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:14px}
+button:hover{border-color:var(--soft)}
+button.go{background:var(--signal);border-color:var(--signal);color:var(--signal-ink);font-weight:600}
+button.quiet{border-color:transparent;color:var(--soft);padding:5px 8px}
+button.quiet:hover{color:var(--ink);border-color:var(--line)}
+button.danger{color:var(--stop)}
+select,input,textarea{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:14px}
+textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* lists of blocks and messages */
+.rows{list-style:none;margin:0;padding:0}
+.rows li{display:grid;grid-template-columns:1fr auto;gap:4px 14px;padding:11px 0;border-top:1px solid var(--line)}
+.rows li:first-child{border-top:0}
+.rows .what{font-weight:600}
+.rows .why{color:var(--soft);font-size:13.5px}
+.rows .acts{display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}
+.rows .extra{grid-column:1/-1;font-size:13.5px}
+@media (max-width:600px){.rows li{grid-template-columns:1fr}.rows .acts{justify-content:flex-start}}
+.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:10px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+.tag.stop{background:var(--stop-tint);color:var(--stop)}
+.tag.would{background:var(--amber-tint);color:var(--amber)}
+.tag.sus{background:var(--amber-tint);color:var(--amber)}
+.tag.ok{background:var(--signal-tint);color:var(--signal)}
+.tag.plain{background:var(--paper);color:var(--soft)}
+.msg-text{word-break:break-word}
+.msg-meta{color:var(--soft);font-size:13px}
+.route{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.empty{color:var(--soft);padding:6px 0;margin:0}
+.more{color:var(--soft);font-size:13.5px;margin:8px 0 0}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--soft);font-size:13px;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.scroll{overflow-x:auto}
+.num{text-align:right}
+
+/* settings */
+.set-group{margin:14px 0 4px}
+.notes{white-space:pre-wrap;font-size:13.5px;margin-top:6px;max-height:320px;overflow:auto}
+.set-group h3{font-size:14.5px;margin:0 0 4px}
+.setting{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:4px 18px;padding:12px 0;border-top:1px solid var(--line)}
+.setting label{font-weight:600}
+.setting .help{color:var(--soft);font-size:13.5px;margin:2px 0 0}
+.setting .risk{font-size:13.5px;margin:6px 0 0;padding-left:10px;border-left:3px solid var(--amber)}
+.setting .risk b{color:var(--amber)}
+.setting .ctl{display:flex;align-items:flex-start;gap:6px;justify-content:flex-end}
+.setting .ctl input[type=number]{width:100px}
+.setting .ctl select{max-width:270px}
+.setting .def{font-size:12.5px;color:var(--soft)}
+.setting.changed label::after{content:" (changed)";font-weight:400;color:var(--amber);font-size:13px}
+@media (max-width:640px){.setting{grid-template-columns:1fr}.setting .ctl{justify-content:flex-start}}
+.savebar{position:sticky;bottom:10px;display:none;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
+
+.inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:2px 4px 2px 10px;font-size:13.5px}
+.chip button{border:0;background:transparent;padding:0 6px;color:var(--soft)}
+details > summary{cursor:pointer;color:var(--soft);font-size:13.5px}
+.adv{display:none}
+body.advanced .adv{display:block}
+body.advanced .basic-only{display:none}
+.howto p{margin:6px 0;max-width:72ch}
+.howto h3{font-size:14.5px;margin:14px 0 2px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:14px;max-width:90vw;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}
+body.dirty .savebar{display:flex}
+#toast.bad{background:var(--stop);color:#fff}
+.foot{color:var(--soft);font-size:12.5px;text-align:center;margin-top:24px}
+.route{overflow-wrap:anywhere}
+.health-head{display:flex;align-items:center;gap:10px}
+.health-head h2{margin:0}
+.hlist{margin:8px 0 0;padding-left:18px}
+.hlist li{margin:3px 0}
+.hlist li.bad{color:var(--stop)}
+.hlist li.warn{color:var(--amber)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 18px;margin:12px 0 0}
+.stats div{min-width:0}
+.stats dt{font-size:12.5px;color:var(--soft)}
+.stats dd{margin:1px 0 0;font-weight:600;font-variant-numeric:tabular-nums}
+.stats.adv{display:none}
+body.advanced .stats.adv{display:grid}
+@media (max-width:640px){.stats{grid-template-columns:1fr 1fr;gap:8px 12px}}
+.blk-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 2px}
+.msg-meta.when{white-space:nowrap}
+
+/* ---------- phones ---------- */
+@media (max-width:640px){
+  .wrap{padding:12px 12px 48px}
+  header{position:sticky;top:0;z-index:5;background:var(--paper);margin:-12px -12px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .brand{font-size:16px}
+  .hero{padding:0 0 12px}
+  .meter{height:38px}
+  section{padding:14px;margin:10px 0;border-radius:9px}
+  section > .lead{font-size:13.5px}
+  .seg button{padding:11px 4px;font-size:15px}
+  .rows .acts button{min-height:40px}
+  /* tables become one block per row */
+  table, tbody, tr, td{display:block;width:100%}
+  table tr:first-child:has(th){display:none}
+  tr{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 8px}
+  td{border:0;padding:3px 0;text-align:left}
+  td.num{display:inline-block;width:auto;margin:0 14px 0 0;text-align:left;font-weight:600}
+  td[data-label]::before{content:attr(data-label) " ";font-weight:400;color:var(--soft);font-size:12.5px}
+  td.lead-cell{font-weight:600;padding-bottom:4px}
+  td.act-cell{padding-top:6px}
+  td.act-cell button{min-height:40px}
+  td.msg-meta.when{white-space:normal;color:var(--soft)}
+  .scroll{overflow:visible}
+  .inline-form{flex-direction:column;align-items:stretch}
+  .inline-form input,.inline-form select,.inline-form button{width:100%;min-height:44px}
+  .inline-form label{font-weight:600}
+  .blk-ctl select{flex:1 1 100%;min-height:44px}
+  .blk-ctl button{flex:1;min-height:40px;border-color:var(--line)}
+  .setting .ctl{justify-content:flex-start}
+  .setting .ctl input[type=number]{width:120px;min-height:44px}
+  .setting .ctl select{width:100%;max-width:none;min-height:44px}
+  .savebar{bottom:8px;flex-wrap:wrap}
+  .savebar button{flex:1;min-height:44px}
+  .chip{padding:4px 4px 4px 10px}
+  .chip button{min-height:32px;min-width:32px}
+  #toast{bottom:12px;width:calc(100% - 24px);text-align:center}
+}
+@media (pointer:coarse){
+  button{min-height:38px}
+  select,input{font-size:16px}  /* stops phones zooming in on focus */
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg>
+    <span>SpamGuard <small id="ver"></small></span>
+  </div>
+  <label class="switch"><input type="checkbox" id="advToggle"> Advanced</label>
+</header>
+
+<div id="banners"></div>
+<div class="hero" id="hero"><h1>Loading…</h1></div>
+
+<div class="controls">
+  <section>
+    <h2>Mode</h2>
+    <div class="seg mode" role="group" aria-label="Mode" id="modeSeg">
+      <button data-v="monitor">Monitor</button><button data-v="protect">Protect</button><button data-v="pause">Pause</button>
+    </div>
+    <p class="explain" id="modeExplain"></p>
+  </section>
+  <section>
+    <h2>Sensitivity</h2>
+    <div class="seg" role="group" aria-label="Sensitivity" id="sensSeg">
+      <button data-v="relaxed">Relaxed</button><button data-v="balanced">Balanced</button><button data-v="strict">Strict</button>
+    </div>
+    <p class="explain" id="sensExplain"></p>
+  </section>
+</div>
+
+<section id="healthSec">
+  <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
+  <p class="explain" id="hLine"></p>
+  <ul class="hlist" id="hIssues"></ul>
+  <dl class="stats" id="hStats"></dl>
+  <dl class="stats adv" id="hStatsAdv"></dl>
+</section>
+
+<section id="updSec">
+  <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
+  <p class="explain" id="uLine"></p>
+  <ul class="hlist" id="uIssues"></ul>
+  <div class="inline-form" id="uBtns"></div>
+  <details id="uNotesBox" hidden><summary>What's new</summary><div class="notes" id="uNotes"></div></details>
+</section>
+
+<section>
+  <h2>Blocked right now</h2>
+  <p class="lead basic-only">What your repeater is refusing to pass on. Blocks end by themselves once the spam stops. Remove one if it is catching genuine people.</p>
+  <p class="lead adv">Every block, including short-lived duplicate blocks. Change how each one acts, how long it lasts, or which routes it covers.</p>
+  <ul class="rows" id="blocks"></ul>
+  <p class="more" id="blocksMore"></p>
+</section>
+
+<section class="adv">
+  <h2>Block something yourself</h2>
+  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
+  <div class="inline-form">
+    <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
+    <select id="hopMatch"><option value="">routes starting there (default)</option><option value="contains">anything passing through it</option></select>
+    <select id="hopTtl"></select>
+    <button class="go" id="hopBtn">Block repeater</button>
+  </div>
+  <div class="inline-form">
+    <label for="textIn">Text</label><input id="textIn" size="34" placeholder="part of the spam message" autocomplete="off">
+    <select id="textTtl"></select>
+    <button class="go" id="textBtn">Block text</button>
+  </div>
+</section>
+
+<section>
+  <h2>Recent channel messages</h2>
+  <p class="lead">Mark anything SpamGuard missed as spam, or tell it when it got something wrong. Routes read left to right from where the message entered the mesh.</p>
+  <ul class="rows" id="recent"></ul>
+  <p class="more" id="recentMore"></p>
+</section>
+
+<section class="adv">
+  <h2>Repeaters messages arrived from</h2>
+  <p class="lead">Grouped by the first repeater on each route, over the detection window. “Never block” stops SpamGuard ever blocking that repeater automatically (useful for your own neighbours).</p>
+  <div class="scroll"><table id="hops"></table></div>
+  <p class="more" id="learnt"></p>
+</section>
+
+<section class="adv">
+  <h2>Spam campaigns</h2>
+  <p class="lead">Groups of near-identical messages sent under different names. SpamGuard groups them even when words are added, capitals change or look-alike letters are swapped in.</p>
+  <div class="scroll"><table id="campaigns"></table></div>
+</section>
+
+<section class="adv" id="settingsSec">
+  <h2>Detection settings</h2>
+  <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
+  <div id="settings"></div>
+  <div class="savebar"><button class="go" id="saveSet">Save settings</button><button id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
+  <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset all to defaults</button></p>
+</section>
+
+<section class="adv">
+  <h2>Exceptions</h2>
+  <p class="lead">Things SpamGuard should leave alone.</p>
+  <h3 style="font-size:14.5px;margin:6px 0 0">Trusted senders</h3>
+  <p class="explain">Never counted as spam names and never de-duplicated. Channel names are not verified, so a spammer can copy a trusted name. SpamGuard still blocks a campaign even if one of its names is trusted, and logs a warning when a trusted name turns up somewhere new.</p>
+  <div class="chips" id="trustSenders"></div>
+  <div class="inline-form"><input id="trustIn" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
+  <h3 style="font-size:14.5px;margin:6px 0 0">Repeaters never blocked automatically</h3>
+  <p class="explain">Covers every hash width, so 27 also covers 27AB. You can still block these by hand.</p>
+  <div class="chips" id="trustHops"></div>
+  <div class="inline-form"><input id="trustHopIn" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
+  <h3 style="font-size:14.5px;margin:6px 0 0">Text never blocked</h3>
+  <p class="explain">Messages containing any of these (capitals ignored) are never de-duplicated or treated as campaigns. Use for bots, net check-ins or regular announcements.</p>
+  <div class="chips" id="trustTexts"></div>
+  <div class="inline-form"><input id="trustTextIn" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
+  <h3 style="font-size:14.5px;margin:6px 0 0">Channels SpamGuard can read</h3>
+  <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name.</p>
+  <div class="chips" id="channels"></div>
+  <div class="inline-form"><input id="chName" size="14" placeholder="#chat"><input id="chKey" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
+  <h3 style="font-size:14.5px;margin:6px 0 0">Not re-blocked</h3>
+  <p class="explain">Blocks you removed by hand. SpamGuard won't re-create these for 24 hours.</p>
+  <div class="chips" id="suppressed"></div>
+</section>
+
+<section class="adv" id="evSec">
+  <h2>Evidence log</h2>
+  <p class="lead">A day-by-day record of every channel message SpamGuard reads, its spam signals, whether it was caught, and your “This is spam” / “Not spam” answers. Download it to review what happened, or to have SpamGuard's detection tuned against real traffic with the replay tool.</p>
+  <div id="evStatus"></div>
+  <div class="blk-ctl" id="evCtl">
+    <select id="evDays" aria-label="How many days"><option value="1">Today</option><option value="3">Last 3 days</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select>
+    <button class="go" id="evScr">Download, names scrambled</button>
+    <button id="evPlain">Download with real names</button>
+  </div>
+  <p class="explain">Scrambled downloads replace every sender name (and @mentions of them) with a code, keeping each name's spam score and shape (e.g. AA9AAAAA), so the file can be shared without revealing who said what. Message text is kept.</p>
+</section>
+
+<section class="adv">
+  <h2>Activity</h2>
+  <div class="scroll"><table id="activity"></table></div>
+</section>
+
+<section class="basic-only howto">
+  <h2>How SpamGuard works</h2>
+  <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, and the same message sent under different names.</p>
+  <p>When it finds spam it adds a rule to openHop so your repeater stops passing it on. It never changes your own openHop rules, and every automatic block ends by itself once the spam stops.</p>
+  <h3>Getting started</h3>
+  <p>Leave SpamGuard on <strong>Monitor</strong> for a day. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>.</p>
+  <h3>If it blocks someone genuine</h3>
+  <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same long message are the usual causes. <strong>Relaxed</strong> sensitivity makes both less likely.</p>
+  <h3>Limits</h3>
+  <p>SpamGuard only controls what <em>your</em> repeater forwards. People in direct range of the spammer will still hear him, so the more repeaters near the source run a filter, the better. It cannot read private channels or direct messages unless you give it the channel key.</p>
+</section>
+
+<p class="foot" id="foot"></p>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+let S = null, dirty = {}, lastKey = "";
+const $ = s => document.querySelector(s);
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = {get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const TTLS = [["1800","for 30 minutes"],["3600","for 1 hour"],["21600","for 6 hours"],["86400","for 1 day"],["604800","for 1 week"],["315360000","until I remove it"]];
+
+function ago(ts){ if(!ts) return "never"; const s=Math.max(0,Date.now()/1000-ts);
+  if(s<90) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" days ago"; }
+function left(sec, perm){ if(perm) return "until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
+function toast(t,bad){ const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
+
+async function post(path, body){
+  const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body||{})});
+  if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return post(path,body); }
+  let d={}; try{ d=await r.json(); }catch(e){}
+  if(d.error){ toast(d.error,true); } else { toast(d.message || "Saved"); }
+  await load(true);
+}
+function act(el){ post(el.dataset.p, JSON.parse(el.dataset.b)); }
+function btn(label, path, body, cls){ return `<button class="${cls||""}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`; }
+document.addEventListener("click", e => { const b=e.target.closest("[data-confirm]"); if(b && !confirm(b.dataset.confirm)) e.stopImmediatePropagation(); }, true);
+
+/* ---------- top: hero, banners, mode, sensitivity ---------- */
+function renderTop(d){
+  const sm=d.summary, n=sm.caught_24h, plural=n===1?"":"s";
+  let h1, sub;
+  if(!d.health.ok && d.health.error){ h1="SpamGuard can't talk to your repeater."; sub=d.health.error+". SpamGuard keeps trying every few seconds."; }
+  else if(d.paused){ h1="Paused. Nothing is being blocked."; sub="SpamGuard is still watching. Press Monitor or Protect to carry on."; }
+  else if(d.mode==="monitor"){ h1=n?`Watching only. ${n} message${plural} would have been stopped today.`:"Watching only. No spam spotted in the last 24 hours."; sub="Nothing is blocked in Monitor mode. Check the messages below, then switch to Protect."; }
+  else { h1=n?`Protecting your repeater. ${n} spam message${plural} stopped in the last 24 hours.`:"Protecting your repeater. No spam in the last 24 hours."; sub=`Last spam ${ago(sm.last_catch)}. ${sm.active_blocks} active block${sm.active_blocks===1?"":"s"}.`; }
+  const max=Math.max(1,...sm.by_hour);
+  const bars=sm.by_hour.map((v,i)=>`<i class="${v?"":"zero"}" style="height:${v?Math.max(8,v/max*100):4}%" title="${v} caught, ${23-i} h ago"></i>`).join("");
+  $("#hero").innerHTML=`<h1>${esc(h1)}</h1><p>${esc(sub)}</p><div class="meter" aria-label="Spam caught per hour, last 24 hours">${bars}</div><div class="meter-scale"><span>24 h ago</span><span>now</span></div>`;
+
+  let b="";
+  if(d.service&&d.service.state==="bad") b+=`<div class="banner bad"><b>SpamGuard needs attention.</b>${esc(d.service.problems[0])}</div>`;
+  if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
+  if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
+  if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10) b+=`<div class="banner info"><b>Most channel messages are on channels SpamGuard can't read.</b>Add them under Advanced, Exceptions, Channels.</div>`;
+  $("#banners").innerHTML=b;
+
+  const m=d.paused?"pause":d.mode;
+  document.querySelectorAll("#modeSeg button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===m)));
+  $("#modeExplain").innerHTML={
+    monitor:"<strong>Monitor</strong> spots spam and shows it here, but nothing is blocked. Start here.",
+    protect:"<strong>Protect</strong> stops your repeater passing spam on. Genuine messages are forwarded as normal.",
+    pause:"<strong>Paused.</strong> All SpamGuard blocks are lifted. Detection carries on so you can resume instantly."}[m];
+  document.querySelectorAll("#sensSeg button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===d.sensitivity)));
+  const custom=d.overridden.some(k=>(d.meta.find(m=>m.key===k)||{}).preset);
+  $("#sensExplain").innerHTML={
+    relaxed:"<strong>Relaxed</strong> only acts on obvious, heavy spam. Fewest false alarms, but some spam gets through before it reacts.",
+    balanced:"<strong>Balanced</strong> is recommended. Reacts after a few spam messages and rarely affects genuine users.",
+    strict:"<strong>Strict</strong> reacts after one or two messages. Use during a heavy attack. Busy events, people repeating a message, or code-like names (M0ABC123) may get caught."}[d.sensitivity]
+    +(custom?" <span class='tag would'>adjusted in Advanced</span>":"");
+}
+$("#modeSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
+  if(v==="pause") post("/settings",{paused:true}); else post("/settings",{paused:false,mode:v}); });
+$("#sensSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
+  if(S && S.overridden.some(k=>(S.meta.find(m=>m.key===k)||{}).preset) && !confirm("Choosing a sensitivity replaces the values you adjusted in Advanced settings. Continue?")) return;
+  post("/settings",{sensitivity:v}); });
+
+/* ---------- health ---------- */
+function dur(sec){ if(sec==null) return "–"; sec=Math.max(0,Math.round(sec)); const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60);
+  if(d) return `${d} d ${h} h`; if(h) return `${h} h ${m} min`; if(m) return `${m} min`; return `${sec} s`; }
+function renderHealth(d){
+  const h=d.service||{}; const now=Date.now()/1000;
+  const pill={ok:"<span class='tag ok'>Healthy</span>",warn:"<span class='tag would'>Needs a look</span>",bad:"<span class='tag stop'>Problem</span>"}[h.state]||"";
+  $("#hPill").innerHTML=pill;
+  $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
+    +(h.watchdog?" If it ever stops responding it restarts itself automatically.":"");
+  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map(x=>`<li class="warn">${esc(x)}</li>`).join("");
+  const st=(k,v)=>`<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  const rules=h.rules_expected==null?"–":(h.rules_seen===h.rules_expected?`${h.rules_expected}, all in place`:`${h.rules_seen} of ${h.rules_expected}`);
+  $("#hStats").innerHTML=
+    st("openHop", h.openhop_ok?`answering${h.openhop_ms!=null?" ("+h.openhop_ms+" ms)":""}`:"not answering")+
+    st("openHop delay", h.openhop_lag_s==null?"–":(h.openhop_lag_s<90?h.openhop_lag_s+" s":Math.round(h.openhop_lag_s/60)+" min"))+
+    st("Rules in openHop", rules)+
+    st("Restarts since boot", h.restarts==null?"–":h.restarts)+
+    st("Restart if it hangs", h.watchdog?"on":"off");
+  $("#hStatsAdv").innerHTML=
+    st("Checks done", (h.checks||0).toLocaleString())+
+    st("Time per check", h.check_ms!=null?h.check_ms+" ms":"–")+
+    st("Errors (last hour)", h.errors_hour??"–")+
+    st("Rules put back", h.self_heals??0)+
+    st("openHop service", h.openhop_service||"–")+
+    st("openHop speed fix", h.openhop_speed_fix==null?"not needed":(h.openhop_speed_fix?"on":"off"))+
+    st("Pi temperature", h.temp_c!=null?h.temp_c+" °C":"–")+
+    st("Pi load", h.load!=null?`${h.load} (${h.cpus} cores)`:"–")+
+    st("Pi memory free", h.mem_avail_pct!=null?h.mem_avail_pct+"%":"–")+
+    st("SpamGuard memory", h.rss_mb!=null?h.rss_mb+" MB":"–")+
+    st("Disk free", h.disk_free_mb!=null?(h.disk_free_mb>2048?(h.disk_free_mb/1024).toFixed(1)+" GB":h.disk_free_mb+" MB"):"–")+
+    st("Pi up for", dur(h.pi_uptime));
+}
+
+/* ---------- blocks ---------- */
+function renderBlocks(d){
+  const adv=document.body.classList.contains("advanced");
+  const list=d.blocks.filter(b=>adv||b.source!=="dedupe");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",rotation:"<span class='tag plain'>changing identity</span>",hop:""}[b.source]||"");
+  const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
+  $("#blocks").innerHTML=list.map(b=>{
+    const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
+    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:`Messages starting at repeater ${esc(b.value)}`)
+      :b.kind==="text"?`Messages containing “${esc(b.value)}”`
+      :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
+      :b.kind==="suffix"?(b.value.length?`Unknown repeaters sending via <span class="route">${esc(b.value.join(">"))}</span>`:"Unknown repeaters right next to yours")
+      :esc(cap(b.describe));
+    const routes=b.kind==="hop"&&b.mode==="exact_paths"?(b.paths.length?`${b.paths.length} route${b.paths.length===1?"":"s"} blocked`:"waiting to learn its routes")
+      :b.kind==="suffix"?`${b.allowed.length} known repeater${b.allowed.length===1?"":"s"} still let through`:"";
+    let extra="";
+    if(adv){
+      extra=`<div class="extra"><div class="blk-ctl">
+        <select data-k="${esc(b.key)}" onchange="post('/rule_action',{key:this.dataset.k,action:this.value})" aria-label="Action">
+          <option value="" ${!b.action?"selected":""}>Follow mode (${d.mode==="protect"?"block":"watch"})</option>
+          <option value="drop" ${b.action==="drop"?"selected":""}>Always block</option>
+          <option value="log_only" ${b.action==="log_only"?"selected":""}>Watch only</option></select>
+        ${b.kind==="hop"?`<select data-k="${esc(b.key)}" onchange="post('/hop_mode',{key:this.dataset.k,match:this.value})" aria-label="Matching">
+          <option value="" ${!b.match?"selected":""}>Default matching</option>
+          <option value="exact_paths" ${b.match==="exact_paths"?"selected":""}>Routes starting there</option>
+          <option value="contains" ${b.match==="contains"?"selected":""}>Anything passing through</option></select>`:""}
+        ${btn("+1 hour","/extend",{key:b.key,seconds:3600},"quiet")}${btn("+1 day","/extend",{key:b.key,seconds:86400},"quiet")}</div>
+        ${b.kind==="suffix"?`<details><summary>Repeaters on this route</summary>
+          <p class="explain" style="margin:6px 0">Let through (known, or allowed by you):</p><div class="chips">${b.allowed.map(o=>`<span class="chip route">${esc(o)}${(b.user_allowed||[]).includes(o)?btn("✕","/unallow_origin",{key:b.key,hop:o}):""}</span>`).join("")||'<span class="explain">none yet</span>'}</div>
+          <p class="explain" style="margin:6px 0">Blocked unknown repeaters seen recently. Allow one if you know it is genuine:</p><div class="chips">${(b.unknown_seen||[]).map(o=>`<span class="chip route">${esc(o)}${btn("Allow","/allow_origin",{key:b.key,hop:o})}</span>`).join("")||'<span class="explain">none in the detection window</span>'}</div></details>`:""}
+        ${b.kind==="hop"&&b.paths&&b.paths.length?`<details><summary>Show routes</summary>${b.paths.map(p=>`<div><span class="route">${esc(p)}</span> ${btn("Unblock route","/forget_path",{key:b.key,path:p},"quiet")}</div>`).join("")}</details>`:""}</div>`;
+    }
+    const except=b.sender?` <span class="why">except from ${esc(b.sender)}, who can re-send it</span>`:"";
+    return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
+      <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.</div></div>
+      <div class="acts">${b.permanent?"":btn("Keep","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
+  }).join("") || `<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`;
+  const ded=d.summary.dedupe_rules;
+  $("#blocksMore").textContent=!adv&&ded?`Plus ${ded} short-lived duplicate block${ded===1?"":"s"}, each stopping a repeat of a message seen in the last few minutes.`:"";
+}
+
+/* ---------- recent messages ---------- */
+function renderRecent(d){
+  const adv=document.body.classList.contains("advanced");
+  const msgs=d.recent.slice(0, adv?80:25);
+  $("#recent").innerHTML=msgs.map(m=>{
+    let tag="";
+    if(m.matched) tag=d.mode==="protect"&&!d.paused?"<span class='tag stop'>Stopped</span>":"<span class='tag would'>Would be stopped</span>";
+    else if(m.random||m.obfuscated||m.campaign) tag="<span class='tag sus'>Suspicious</span>";
+    if(m.trusted) tag+="<span class='tag ok'>Trusted</span>";
+    const why=[]; if(m.random) why.push("made-up looking name"); if(m.obfuscated) why.push("hidden or look-alike characters"); if(m.campaign) why.push("same message as other names");
+    const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
+      ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"quiet")+(m.matched?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"))
+      : (m.trusted?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"));
+    return `<li><div><div><strong>${esc(m.sender)}</strong>${tag}</div><div class="msg-text">${esc(m.text)}</div>
+      <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div></div>
+      <div class="acts">${acts}</div></li>`;
+  }).join("") || `<li><p class="empty">No channel messages heard in the last ${Math.round(d.settings.long_window_seconds/3600)} hours.</p></li>`;
+  $("#recentMore").textContent=d.recent.length>msgs.length?`Showing the latest ${msgs.length} of ${d.recent.length}.`:"";
+}
+
+/* ---------- advanced tables ---------- */
+function renderAdvanced(d){
+  $("#hops").innerHTML=`<tr><th>Repeater</th><th class="num">Messages</th><th class="num">Names</th><th class="num">Made-up names</th><th class="num">New names</th><th class="num">Campaign names</th><th class="num">Caught</th><th></th></tr>`+
+    (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
+      <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
+      <td class="act-cell">${h.hop==="DIRECT"?"":(h.blocked?"":btn("Block","/block_hop",{hop:h.hop},"quiet"))+(h.allowed?btn("Allow blocking","/unallow_hop",{hop:h.hop},"quiet"):btn("Never block","/allow_hop",{hop:h.hop},"quiet"))}</td></tr>`).join("")
+     || `<tr><td colspan="8" class="empty">No messages in the detection window.</td></tr>`);
+  $("#campaigns").innerHTML=`<tr><th>Example</th><th class="num">Names</th><th class="num">Messages</th><th class="num">Versions</th><th>Entered via</th><th></th></tr>`+
+    (d.campaigns.map(c=>`<tr><td class="msg-text lead-cell">${esc(c.example)}</td><td class="num" data-label="Names">${c.senders}</td><td class="num" data-label="Messages">${c.count}</td><td class="num" data-label="Versions">${c.variants}</td>
+      <td class="route" data-label="Entered via">${esc(Object.entries(c.hops).map(([k,v])=>k+" ("+v+")").join(", "))}</td><td class="act-cell">${btn("Block text","/mark_spam",{text:c.example},"quiet")}</td></tr>`).join("")
+     || `<tr><td colspan="6" class="empty">No groups of repeated messages right now.</td></tr>`);
+  const chips=(arr,path,field)=>arr.map(x=>`<span class="chip">${esc(x)}${btn("✕",path,{[field]:x})}</span>`).join("")||`<span class="explain">None</span>`;
+  $("#trustSenders").innerHTML=chips(d.allow.senders,"/unallow_sender","sender");
+  $("#trustHops").innerHTML=chips(d.allow.hops,"/unallow_hop","hop");
+  $("#trustTexts").innerHTML=chips(d.allow.texts,"/unallow_text","text");
+  $("#channels").innerHTML=d.channels.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("");
+  const sup=Object.entries(d.suppressed);
+  $("#suppressed").innerHTML=sup.length?sup.map(([k,s])=>`<span class="chip">${esc(k)} <span class="explain">${left(s)}</span></span>`).join("")+btn("Clear","/clear_suppressed",{},"quiet"):`<span class="explain">None</span>`;
+  $("#activity").innerHTML=d.activity.map(a=>`<tr><td class="msg-meta when">${new Date(a.ts*1000).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(a.msg)}</td></tr>`).join("")||`<tr><td class="empty">Nothing yet.</td></tr>`;
+  const ev=d.evidence||{};
+  $("#evStatus").innerHTML=ev.enabled
+    ? `<p><span class="tag ok">recording</span> ${ev.days} day${ev.days===1?"":"s"} kept (${(ev.bytes/1048576).toFixed(ev.bytes<1048576?2:1)} MB)${ev.first?", since "+esc(ev.first):""}. Days older than ${d.settings.evidence_days} are deleted automatically.</p>`
+    : `<p><span class="tag plain">off</span> ${ev.days?`Not recording. ${ev.days} older day${ev.days===1?"":"s"} still available to download.`:"Not recording."} ${btn("Start recording","/settings",{evidence_log:true},"go")}</p>`;
+  $("#evCtl").style.display=ev.days?"flex":"none";
+  $("#learnt").textContent=`Learnt so far: ${d.learnt.origins} repeaters that send genuine traffic, ${d.learnt.relays} that relay, ${d.learnt.routes} routes. This is used to spot a spammer whose repeater keeps changing identity.`;
+  if(!Object.keys(dirty).length) renderSettings(d);
+}
+
+function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit||""); }
+function renderSettings(d){
+  const groups={};
+  d.meta.forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
+  $("#settings").innerHTML=Object.entries(groups).map(([g,ms])=>`<div class="set-group"><h3>${esc(g)}</h3>`+ms.map(m=>{
+    const v=d.settings[m.key], id="set_"+m.key; let ctl;
+    if(m.type==="bool") ctl=`<label class="switch"><input type="checkbox" id="${id}" data-k="${m.key}" ${v?"checked":""}> ${v?"On":"Off"}</label>`;
+    else if(m.type==="choice") ctl=`<select id="${id}" data-k="${m.key}">${m.choices.map(c=>`<option value="${c[0]}" ${c[0]===v?"selected":""}>${esc(c[1])}</option>`).join("")}</select>`;
+    else if(m.type==="list") ctl=`<textarea id="${id}" data-k="${m.key}" rows="2">${esc((v||[]).join("\n"))}</textarea>`;
+    else ctl=`<input type="number" id="${id}" data-k="${m.key}" value="${v}" min="${m.min}" max="${m.max}"> <span class="def">${m.unit==="s"?"seconds":(m.unit||"")}</span>`;
+    const changed=d.overridden.includes(m.key);
+    return `<div class="setting ${changed?"changed":""}" ${m.type==="list"?'style="grid-template-columns:1fr"':""}><div><label for="${id}">${esc(m.label)}${m.preset?" *":""}</label>
+      <p class="help">${esc(m.help)}</p><p class="risk"><b>Watch out:</b> ${esc(m.risk)}</p>
+      ${m.unit==="s"?`<p class="def">Currently ${esc(fmtDefault(m,v))}</p>`:""}</div><div class="ctl">${ctl}</div></div>`;
+  }).join("")+`</div>`).join("");
+  document.querySelectorAll("#settings [data-k]").forEach(el=>el.addEventListener(el.type==="checkbox"?"change":"input",()=>{
+    const m=d.meta.find(x=>x.key===el.dataset.k);
+    dirty[m.key]=el.type==="checkbox"?el.checked:m.type==="int"?Number(el.value):el.value;
+    if(el.type==="checkbox") el.parentElement.lastChild.textContent=el.checked?" On":" Off";
+    document.body.classList.add("dirty");
+  }));
+}
+function clean(){ dirty={}; document.body.classList.remove("dirty"); }
+$("#saveSet").onclick=()=>{ const b=dirty; clean(); post("/settings",b); };
+$("#cancelSet").onclick=()=>{ clean(); renderSettings(S); toast("Changes discarded"); };
+$("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the defaults for the current sensitivity?")){ clean(); post("/settings",{reset:true}); } };
+
+/* ---------- forms ---------- */
+function ttlOptions(sel){ sel.innerHTML=TTLS.map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
+ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"));
+$("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
+$("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
+$("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim()}).then(()=>$("#trustIn").value="");
+$("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
+$("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
+$("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});
+
+async function download(scramble){
+  const days=$("#evDays").value;
+  const r=await fetch(`/evidence?days=${days}&scramble=${scramble?1:0}`,{headers:{"X-API-Key":store.get("sgkey")||""}});
+  if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return download(scramble); }
+  if(!r.ok){ toast("Download failed",true); return; }
+  const blob=await r.blob();
+  if(!blob.size){ toast("Nothing recorded for that period yet"); return; }
+  const cd=r.headers.get("Content-Disposition")||""; const name=(cd.match(/filename="([^"]+)"/)||[,"spamguard-evidence.jsonl"])[1];
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
+}
+$("#evScr").onclick=()=>download(true);
+$("#evPlain").onclick=()=>{ if(confirm("This file contains people's names and messages. Download with real names?")) download(false); };
+
+/* ---------- view toggle and refresh ---------- */
+const adv=$("#advToggle");
+adv.checked=store.get("sgadv")==="1"; document.body.classList.toggle("advanced",adv.checked);
+adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); if(S) render(S); };
+
+function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
+function renderUpdate(d){
+  const u=d.update||{}; const st=u.status||{};
+  let pill="", line="", issues="", btns="";
+  const running = st.requested || st.state==="running";
+  if(running){
+    pill="<span class='tag would'>Updating</span>";
+    line=`${esc(st.message||"Update requested...")} SpamGuard restarts during the update; this page reconnects by itself.`;
+  } else if(u.available){
+    pill="<span class='tag would'>Update available</span>";
+    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}. Nothing changes until you press Update.`;
+    btns=`<button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update to ${esc(u.latest)}</button>`
+        +btn("Check again","/check_update",{},"quiet");
+  } else {
+    pill=u.latest?"<span class='tag ok'>Up to date</span>":"";
+    line=`You have version ${esc(u.current)}. `+(u.checked?`Last checked ${ago(u.checked)}.`:"Not checked yet.")
+      +(u.auto_check?" SpamGuard looks once a day and tells you here; it never installs by itself.":"");
+    btns=btn("Check now","/check_update",{},"quiet");
+  }
+  if(u.error && !running) issues+=`<li class="warn">${esc(u.error)}</li>`;
+  if(st.state==="failed" && !running) issues+=`<li class="bad">Last update: ${esc(st.message)}</li>`;
+  else if(st.state==="done" && st.ts && Date.now()/1000-st.ts<86400 && !running) issues+=`<li class="ok">${esc(st.message)}</li>`;
+  if(!u.installer_ready) issues+=`<li class="warn">The Update button needs the updater, which the installer sets up. Run the installer once by hand (sudo bash install.sh).</li>`;
+  $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
+  const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
+}
+function render(d, editing){
+  // While a box or list is being edited, the sections holding form controls are left alone
+  // (so typing isn't wiped), but the status, health and messages keep updating.
+  renderTop(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  if(!editing){ renderBlocks(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
+  $("#ver").textContent="v"+d.version;
+  $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
+    + (editing?" (some sections wait while you edit)":"");
+}
+async function load(force){
+  const editing=!force && busy();
+  try{ const d=await (await fetch("/status",{cache:"no-store"})).json(); S=d; render(d, editing); }
+  catch(e){ $("#hero").innerHTML="<h1>Can't reach SpamGuard.</h1><p>The service may be restarting (this page retries every few seconds). If this stays, check it on the Pi with: sudo systemctl status openhop-spamguard</p>";
+    $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; }
+}
+document.addEventListener("change",ev=>{ if(ev.target.tagName==="SELECT") ev.target.blur(); });
+load(true); setInterval(load,8000);
+</script>
+</body>
+</html>
