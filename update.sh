@@ -75,6 +75,10 @@ tags = [t.get('name', '') for t in json.load(sys.stdin)]
 tags = [t for t in tags if re.fullmatch(r'v?\d+(\.\d+){1,3}', t)]
 print(max(tags, key=lambda t: tuple(int(x) for x in re.findall(r'\d+', t))) if tags else '')" 2>/dev/null)
 fi
+if [ -z "$LATEST" ]; then  # API limit reached (60 an hour per internet address): ask the web page instead
+  LATEST=$(curl -fsSI --max-time 20 "$GH_WEB/$REPO/releases/latest" 2>/dev/null \
+             | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}' | tail -1 | sed -nE 's#.*/releases/tag/(v?[0-9]+(\.[0-9]+){1,3})$#\1#p')
+fi
 
 if [ "$MODE" = check ]; then
   echo "Installed: v${CURRENT:-?}"

@@ -3,9 +3,27 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [ ! -x /opt/openhop_repeater/venv/bin/python ]; then
-  echo "openHop's venv not found at /opt/openhop_repeater/venv - is this a native openHop install?" >&2
+if [ "$(id -u)" != 0 ]; then
+  echo "Run the installer with sudo:  sudo bash install.sh" >&2
   exit 1
+fi
+if [ "$(ps -p 1 -o comm= 2>/dev/null)" != "systemd" ] || ! command -v systemctl >/dev/null; then
+  echo "SpamGuard needs systemd to run as a service (Raspberry Pi OS, Debian and Ubuntu all have it)." >&2
+  echo "It can't be installed inside a Docker container or on a system without systemd." >&2
+  exit 1
+fi
+if [ ! -x /opt/openhop_repeater/venv/bin/python ]; then
+  echo "openHop wasn't found at /opt/openhop_repeater." >&2
+  echo "SpamGuard needs openHop installed natively with its own installer (manage.sh install), not with Docker." >&2
+  echo "See docs/openhop-fresh-install.md" >&2
+  exit 1
+fi
+if ! id repeater >/dev/null 2>&1; then
+  echo "openHop's service user 'repeater' doesn't exist - is openHop installed with its own installer?" >&2
+  exit 1
+fi
+if ! command -v curl >/dev/null; then
+  echo "Note: curl isn't installed, so the Update button won't work. Install it with: sudo apt install curl"
 fi
 
 /opt/openhop_repeater/venv/bin/python -c "import Crypto, yaml" \
