@@ -60,6 +60,24 @@ Or, from your clone: `git pull && sudo bash install.sh`.
 
 How the button works: SpamGuard runs as an ordinary user, so it can't install software. Pressing Update leaves a request file that a small root-owned systemd service (`openhop-spamguard-update`) carries out. It only ever downloads tagged releases of this repository over HTTPS. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
+## Uninstall
+
+```
+sudo bash /opt/openhop_spamguard/uninstall.sh
+```
+
+This stops SpamGuard, takes its blocking rules (names starting `spamguard:`) back out of openHop, and removes its program, config, data and services. openHop, its settings and any rules you made yourself are left alone.
+
+- `--keep-evidence` keeps the evidence log in `/var/lib/openhop_spamguard/evidence`.
+- `--undo-speed-fix` also puts openHop's original packet-count setting back. Otherwise the speed fix stays, as it only makes openHop faster.
+- If you chose 7 days of packet history at install, openHop keeps that. To go back to its default, set `sqlite_cleanup_days: 31` in `/etc/openhop_repeater/config.yaml` and restart openHop.
+
+On versions before 5.8.3, which don't have `uninstall.sh`, run it from a fresh download:
+
+```
+git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash /tmp/sg/uninstall.sh
+```
+
 ## The web page
 
 - **Simple view**: what's happening, the mode (Monitor / Protect / Pause), the sensitivity (Relaxed / Balanced / Strict), what's blocked, and recent messages with "This is spam" and "Not spam" buttons.

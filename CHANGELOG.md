@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.8.3
+- `uninstall.sh`: removes SpamGuard cleanly, including taking its rules back out of openHop. Your own openHop rules and settings are left alone. Options `--keep-evidence` and `--undo-speed-fix`.
+- README and guide: an Uninstall section.
+
 ## v5.8.2
 - Update check no longer fails when GitHub's hourly limit for your internet address is used up (60 checks an hour, shared by everyone behind the same router or mobile network): it falls back to the release page, which has no limit.
 - Installer: clear messages when it isn't run with sudo, when there's no systemd (for example inside Docker), when openHop isn't a native install, and when curl (needed by the Update button) is missing.
