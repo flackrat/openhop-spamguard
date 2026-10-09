@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.10.2"
+VERSION = "5.10.3"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -173,6 +173,9 @@ SETTINGS_META: list[dict] = [
     {"key": "block_ttl_seconds", "risk": "Longer = a spammer who pauses and returns is still blocked, but genuine users behind a wrongly blocked repeater stay blocked longer. Shorter = mistakes clear faster, but spam may return between blocks.", "group": "Timing", "type": "int", "min": 300, "max": PERMANENT_SECONDS, "unit": "s",
      "label": "Automatic blocks last for",
      "help": "Automatic blocks are removed this long after the spam stops. They are renewed while spam keeps arriving."},
+    {"key": "hop_block_ttl_seconds", "risk": "Longer = a spam repeater that goes quiet for a while is still blocked when the spammer returns, but new people whose messages pass through it stay held longer. Shorter = mistakes clear sooner; a returning spammer gets a few copies through before the block starts again.", "group": "Timing", "type": "int", "min": 600, "max": PERMANENT_SECONDS, "unit": "s",
+     "label": "Repeater blocks last for",
+     "help": "Automatic repeater blocks end this long after the spam through that repeater stops. They're renewed while spam keeps arriving."},
     {"key": "spam_text_days", "risk": "Longer = a spam text the spammer brings back days later is stopped from its very first copy, even when openHop is running behind. Anyone quoting that exact text is also blocked until it ends (you can remove it on the page).", "group": "Timing", "type": "int", "min": 0, "max": 60, "unit": "days",
      "label": "Remember spam texts for",
      "help": "Text blocks for campaigns sent under made-up or disguised names stay in place this many days (0 = use the normal block time)."},
@@ -230,6 +233,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "long_window_seconds": 7200,
     "block_ttl_seconds": 6 * 3600,
     "spam_text_days": 7,
+    "hop_block_ttl_seconds": 2 * 3600,
     "update_check": "daily",
     "update_repo": UPDATE_REPO,
     "poll_seconds": 3,
@@ -792,6 +796,8 @@ class SpamGuard:
         self.known: dict[str, list] = {}
         self._important = False  # something worth saving to the SD card straight away
         self.removed_sender_blocks: list = []
+        # Messages held from normal-looking names: the likely mistakes, shown on the page
+        self.held: collections.deque[dict] = collections.deque(maxlen=60)
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
@@ -919,6 +925,7 @@ class SpamGuard:
         self.counted_packets = collections.OrderedDict((p, None) for p in (st.get("counted_packets") or [])[-3000:])
         self.known = {k: v for k, v in (st.get("known_senders") or {}).items() if isinstance(v, list) and len(v) == 3}
         self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
+        self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
                 self.sender_history[name] = {"first": v[0], "count": int(v[1]), "hops": set()}
@@ -961,6 +968,7 @@ class SpamGuard:
                     "logged_packets": list(self.logged_packets),
                     "counted_packets": list(self.counted_packets),
                     "known_senders": self.known,
+                    "held": list(self.held),
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
@@ -1148,6 +1156,13 @@ class SpamGuard:
                     self.counted_packets.popitem(last=False)
             h["hops"].add(e.first_hop)
             self._match_event(e, count=not again)
+            b = self.blocks.get(e.matched) if e.matched else None
+            # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
+            if b and not again and b["kind"] in ("hop", "suffix", "links", "lockdown") \
+                    and not e.random and not e.obfuscated:
+                self.held.append({"ts": e.ts, "sender": e.sender, "text": e.text[:160], "channel": e.channel,
+                                  "path": ">".join(e.path) or "direct", "matched": e.matched,
+                                  "packet": e.packet, "why": self.describe(b)})
             self.events.append(e)
             new += 1
         while len(self.seen_packets) > 5000:
@@ -1523,7 +1538,7 @@ class SpamGuard:
                 why = self.hop_signals(h)
                 if why:
                     reason = why[0][0].upper() + why[0][1:] + (f" (and {len(why) - 1} other sign{'s' if len(why) > 2 else ''})" if len(why) > 1 else "")
-                    want(f"hop:{hop}", "hop", hop, reason, "hop")
+                    want(f"hop:{hop}", "hop", hop, reason, "hop", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
 
         if self.learn_paths(a["long"]):
             changed = True
@@ -2148,6 +2163,9 @@ class SpamGuard:
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "known": {"count": len(self.known_list()), "min_msgs": int(c.get("known_min_msgs", 1)),
                           "learning": sum(1 for k in self.known if not self.is_known(k))},
+                "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
+                         for h in reversed(self.held)
+                         if h["ts"] > now - 86400 and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
                 "lockdown": ({"left": round(self.blocks["lockdown"]["expires"] - now)} if "lockdown" in self.blocks else None),
                 "learnt": {"routes": len(self.routes), "relays": len(self.relays),
                            "origins": len({k.split(">", 1)[0] for k, v in self.routes.items() if v[2] > 0})},
