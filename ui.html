@@ -260,7 +260,7 @@ body.advanced .stats.adv{display:grid}
 
 <section class="adv">
   <h2>Block something yourself</h2>
-  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
+  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals. A sender block stops every message under that exact name (emoji included); names can be changed, so it works best on a regular troublemaker.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
     <select id="hopMatch"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
@@ -271,6 +271,11 @@ body.advanced .stats.adv{display:grid}
     <label for="textIn">Text</label><input id="textIn" size="34" placeholder="part of the spam message" autocomplete="off">
     <select id="textTtl"></select>
     <button class="go" id="textBtn">Block text</button>
+  </div>
+  <div class="inline-form">
+    <label for="senderIn">Sender</label><input id="senderIn" size="24" placeholder="name exactly as shown" autocomplete="off">
+    <select id="senderTtl"></select>
+    <button class="go" id="senderBtn">Block sender</button>
   </div>
 </section>
 
@@ -514,9 +519,10 @@ function renderRecent(d){
     const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
       ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"quiet")+(m.matched?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"))
       : (m.trusted?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"));
+    const blockName=adv&&!m.trusted?`<button class="quiet danger" data-confirm="Block everything sent under the name '${esc(m.sender)}'?" data-p="/block_sender" data-b="${esc(JSON.stringify({sender:m.sender}))}" onclick="act(this)">Block sender</button>`:"";
     return `<li><div><div><strong>${esc(m.sender)}</strong>${tag}</div><div class="msg-text">${esc(m.text)}</div>
       <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div></div>
-      <div class="acts">${acts}</div></li>`;
+      <div class="acts">${acts}${blockName}</div></li>`;
   }).join("") || `<li><p class="empty">No channel messages heard in the last ${Math.round(d.settings.long_window_seconds/3600)} hours.</p></li>`;
   $("#recentMore").textContent=d.recent.length>msgs.length?`Showing the latest ${msgs.length} of ${d.recent.length}.`:"";
 }
@@ -578,8 +584,9 @@ $("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the de
 
 /* ---------- forms ---------- */
 function ttlOptions(sel){ sel.innerHTML=TTLS.map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
-ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"));
+ttlOptions($("#hopTtl")); ttlOptions($("#textTtl")); ttlOptions($("#senderTtl"));
 $("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
+$("#senderBtn").onclick=()=>post("/block_sender",{sender:$("#senderIn").value,ttl_seconds:+$("#senderTtl").value}).then(()=>$("#senderIn").value="");
 $("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
 $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim()}).then(()=>$("#trustIn").value="");
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
