@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.11.1
+- Phones: the map no longer shows on top of the menu and the top bar.
+- Phones: the **Advanced** switch is now at the top of the menu, so it can't end up hidden behind the browser's toolbar. The top bar shows "Advanced" while it's on, and switching it leaves the menu open so you can see the extra pages appear.
+- Phones: the page behind the open menu no longer scrolls; tapping the page you're already on, or pressing Escape, closes the menu.
+- Spam sources map: it no longer jumps back to its starting view or closes an open label every time the page refreshes.
+
 ## v5.11
 - New menu, laid out like openHop's own: Overview, Protection, Monitoring and System, with a slide-out menu on phones. Each area has its own page instead of one long page.
 - Long lists (messages, blocks, activity, possibly genuine) show 10 at a time with **Show more / Show all**.
