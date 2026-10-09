@@ -28,6 +28,7 @@ import difflib
 import hashlib
 import hmac
 import json
+import math
 import logging
 import os
 import re
@@ -49,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.10.3"
+VERSION = "5.11"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -362,7 +363,7 @@ def shingles(norm: str, n: int = 4) -> frozenset:
     return frozenset(s[i:i + n] for i in range(len(s) - n + 1))
 
 
-def is_obfuscated(text: str) -> bool:
+def is_obfuscated(text: str, name: bool = False) -> bool:
     """Tricks used to make copies of a message look different:
     hidden characters or emoji placed inside words, invisible tag letters,
     or Latin words mixed with look-alike Cyrillic/Greek letters.
@@ -372,8 +373,9 @@ def is_obfuscated(text: str) -> bool:
     hidden = "\u200b\u200c\u200d\u2060\ufeff\u00ad\u180e"
     if re.search(f"[A-Za-z0-9][{hidden}]+[A-Za-z0-9]", text) or re.search(f"[\u200b\u2060\ufeff\u00ad\u180e]", text):
         return True
-    # An emoji wedged between letters of one word: "Bu🔥ilt"
-    if re.search("[A-Za-z]" + EMOJI_ANY.pattern + "+[A-Za-z]", text):
+    # An emoji wedged between letters of one word: "Bu🔥ilt". Not for display names, where a
+    # symbol inside the name is just styling ("HDZ✝rt").
+    if not name and re.search("[A-Za-z]" + EMOJI_ANY.pattern + "+[A-Za-z]", text):
         return True
     for word in re.findall(r"\w+", text):
         if LATIN.search(word) and NON_LATIN_LETTER.search(word):
@@ -718,7 +720,8 @@ class EvidenceLog:
 
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles",
-                 "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at")
+                 "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
+                 "length")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -731,7 +734,8 @@ class Event:
         self.shingles = shingles(self.norm)
         self.name_score = 0
         self.random = False
-        self.obfuscated = is_obfuscated(text) or is_obfuscated(sender)
+        # @[name] mentions are someone else's name, not this message's text
+        self.obfuscated = is_obfuscated(MENTION.sub(" ", text)) or is_obfuscated(sender, name=True)
         self.matched: Optional[str] = None
         self.campaign: Optional[int] = None
         self.exempt = False
@@ -739,6 +743,7 @@ class Event:
         self.logged = False
         self.packet = ""
         self.seen_at = ts
+        self.length = 0
 
 
 # --------------------------------------------------------------------------- core
@@ -798,6 +803,13 @@ class SpamGuard:
         self.removed_sender_blocks: list = []
         # Messages held from normal-looking names: the likely mistakes, shown on the page
         self.held: collections.deque[dict] = collections.deque(maxlen=60)
+        # Hourly history for the overview: hour -> {m: messages, c: spam stopped, x: spam let through,
+        # g: genuine-looking held, a: airtime saved (ms), h: {first repeater: spam}}
+        self.hist: dict[str, dict] = {}
+        self.hist_mark = 0.0          # newest message already counted (so restarts don't count twice)
+        self.radio: dict = {}         # openHop's radio settings, for airtime
+        self.me: dict = {}            # this repeater: name, hash, location
+        self.repeaters: dict = {"ts": 0, "list": []}   # repeaters openHop has heard adverts from
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
@@ -810,7 +822,7 @@ class SpamGuard:
             # First start of a version with known people: begin with the names heard in the
             # last day that don't look made-up, so people aren't all strangers after an update.
             for name, h in self.sender_history.items():
-                if name and name != "?" and not is_obfuscated(name) \
+                if name and name != "?" and not is_obfuscated(name, name=True) \
                         and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
                     self.known[name] = [h["first"], h["first"], h["count"]]
 
@@ -925,6 +937,8 @@ class SpamGuard:
         self.counted_packets = collections.OrderedDict((p, None) for p in (st.get("counted_packets") or [])[-3000:])
         self.known = {k: v for k, v in (st.get("known_senders") or {}).items() if isinstance(v, list) and len(v) == 3}
         self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
+        self.hist = {k: v for k, v in (st.get("hist") or {}).items() if isinstance(v, dict) and int(k) > now - 8 * 86400}
+        self.hist_mark = float(st.get("hist_mark") or 0)
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
@@ -969,6 +983,8 @@ class SpamGuard:
                     "counted_packets": list(self.counted_packets),
                     "known_senders": self.known,
                     "held": list(self.held),
+                    "hist": self.hist,
+                    "hist_mark": self.hist_mark,
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
@@ -1061,6 +1077,145 @@ class SpamGuard:
         if not was and self.is_known(e.sender):
             self._important = True
 
+    # ---- history for the overview ----
+    def airtime_ms(self, length: int) -> float:
+        """LoRa time on air for one packet with openHop's radio settings (0 if unknown)."""
+        r = self.radio
+        try:
+            sf, bw, cr = int(r["spreading_factor"]), float(r["bandwidth"]), int(r["coding_rate"])
+        except (KeyError, TypeError, ValueError):
+            return 0.0
+        if not (5 <= sf <= 12 and bw > 0 and length > 0):
+            return 0.0
+        cr = cr - 4 if cr > 4 else cr          # 5..8 means 4/5..4/8
+        tsym = (2 ** sf) / bw * 1000
+        de = 1 if tsym > 16 else 0
+        pre = int(r.get("preamble_length") or 8)
+        n = 8 + max(math.ceil((8 * length - 4 * sf + 28 + 16) / (4 * (sf - 2 * de))) * (cr + 4), 0)
+        return (pre + 4.25 + n) * tsym
+
+    def _people_block(self, b: Optional[dict]) -> bool:
+        return bool(b) and b["kind"] in ("hop", "suffix", "links", "lockdown")
+
+    def _count(self, e: Event):
+        if e.ts <= self.hist_mark:
+            return  # already counted before a restart
+        self.hist_mark = e.ts
+        hour = str(int(e.ts // 3600 * 3600))
+        h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
+        h["m"] += 1
+        b = self.blocks.get(e.matched) if e.matched else None
+        cc = self.clusters.get(e.campaign) if e.campaign is not None else None
+        spammy = e.random or e.obfuscated or bool(cc and cc.get("strong"))
+        if e.matched:
+            if self._people_block(b) and not spammy:
+                h["g"] += 1
+                return
+            h["c"] += 1
+            if self.cfg["mode"] == "protect" and not self.cfg.get("paused"):
+                h["a"] = round(h["a"] + self.airtime_ms(e.length), 1)
+        elif spammy:
+            h["x"] += 1
+        else:
+            return
+        hop = e.first_hop
+        h["h"][hop] = h["h"].get(hop, 0) + 1
+        if len(self.hist) > 200:
+            for k in sorted(self.hist)[:-192]:
+                del self.hist[k]
+
+    def metrics(self) -> dict:
+        now = time.time()
+        cut24, cut7 = now - 86400, now - 7 * 86400
+        def tot(cut):
+            t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0}
+            for k, v in self.hist.items():
+                if int(k) >= cut - 3600:
+                    for f in t:
+                        t[f] += v.get(f, 0)
+            spam = t["c"] + t["x"]
+            t["spam"] = spam
+            t["stop_rate"] = round(100 * t["c"] / spam) if spam else None
+            t["spam_share"] = round(100 * spam / t["m"]) if t["m"] else None
+            return t
+        this_hour = int(now // 3600 * 3600)
+        hourly = []
+        for i in range(23, -1, -1):
+            v = self.hist.get(str(this_hour - i * 3600), {})
+            hourly.append({"t": this_hour - i * 3600, "c": v.get("c", 0), "x": v.get("x", 0), "m": v.get("m", 0)})
+        daily = []
+        for i in range(6, -1, -1):
+            day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - i * 86400
+            c = x = m = 0
+            for k, v in self.hist.items():
+                if day0 <= int(k) < day0 + 86400:
+                    c += v.get("c", 0); x += v.get("x", 0); m += v.get("m", 0)
+            daily.append({"t": day0, "c": c, "x": x, "m": m})
+        by_hour = [0] * 24  # spam by hour of day, last 7 days
+        sources: dict[str, dict] = {}
+        for k, v in self.hist.items():
+            t = int(k)
+            if t < cut7:
+                continue
+            by_hour[time.localtime(t).tm_hour] += v.get("c", 0) + v.get("x", 0)
+            for hop, n in (v.get("h") or {}).items():
+                s7 = sources.setdefault(hop, {"hop": hop, "d7": 0, "d1": 0, "last": 0})
+                s7["d7"] += n
+                if t >= cut24 - 3600:
+                    s7["d1"] += n
+                s7["last"] = max(s7["last"], t)
+        top = sorted(sources.values(), key=lambda s: (-s["d7"], -s["d1"]))[:15]
+        for s7 in top:
+            s7["blocked"] = f"hop:{s7['hop']}" in self.blocks
+            s7["allowed"] = self.hop_allowed(s7["hop"]) if s7["hop"] != "DIRECT" else False
+            s7["candidates"] = self.repeaters_for(s7["hop"])
+        return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
+                "sources": top, "me": self.me, "radio_known": bool(self.airtime_ms(40)),
+                "since": min((int(k) for k in self.hist), default=None)}
+
+    def repeaters_for(self, hop: str) -> list:
+        """Repeaters openHop has heard adverts from whose key starts with this route code.
+        Short codes are shared by many repeaters, so this can be several."""
+        if not hop or hop == "DIRECT":
+            return []
+        out = [r for r in self.repeaters["list"] if r["key"].startswith(hop)]
+        return sorted(out, key=lambda r: -r["seen"])[:6]
+
+    def refresh_openhop_info(self, force: bool = False):
+        """Radio settings (for airtime) and the repeater directory (for the map), at most every 30 min."""
+        now = time.time()
+        if not force and now - self.repeaters["ts"] < 1800:
+            return
+        self.repeaters["ts"] = now
+        try:
+            st = self._api("GET", "/api/stats")
+            st = st.get("data", st) if isinstance(st, dict) else {}
+            conf = st.get("config") or {}
+            self.radio = dict(conf.get("radio") or {})
+            rp = conf.get("repeater") or {}
+            self.me = {"name": rp.get("node_name") or st.get("site_name") or "", "hash": str(st.get("local_hash") or "").upper(),
+                       "lat": rp.get("latitude"), "lon": rp.get("longitude")}
+        except Exception as e:
+            log.debug("openHop stats not available: %s", e)
+        try:
+            res = self._api("GET", "/api/adverts_by_contact_type?contact_type=Repeater&hours=336&limit=3000")
+            rows = res.get("data", []) if isinstance(res, dict) else []
+            seen: dict[str, dict] = {}
+            for r in rows:
+                key = str(r.get("pubkey") or "").upper()
+                if not key:
+                    continue
+                prev = seen.get(key)
+                ts = float(r.get("last_seen") or r.get("timestamp") or 0)
+                lat, lon = r.get("latitude"), r.get("longitude")
+                ok = isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and (lat or lon)
+                if prev is None or ts > prev["seen"]:
+                    seen[key] = {"key": key, "name": r.get("node_name") or "", "seen": ts,
+                                 "lat": lat if ok else (prev or {}).get("lat"), "lon": lon if ok else (prev or {}).get("lon")}
+            self.repeaters["list"] = list(seen.values())
+        except Exception as e:
+            log.debug("openHop repeater list not available: %s", e)
+
     def _spammy(self, e: Event) -> bool:
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
         matched = bool(e.matched) and not self._held_in_passing(e)
@@ -1138,6 +1293,10 @@ class SpamGuard:
             ts = float(p.get("timestamp") or now)
             e = Event(ts, parse_path(p.get("original_path")), dec["sender"] or "?", dec["text"], dec["channel"])
             e.packet = str(p.get("packet_hash") or "")
+            try:
+                e.length = int(p.get("length") or 0) or len(payload) + 2 + len(e.path) * max(1, len((e.path or ["00"])[0]) // 2)
+            except (TypeError, ValueError):
+                e.length = len(payload)
             e.seen_at = now
             e.exempt = self.text_allowed(e.text)
             trusted = e.sender in self.allow_senders
@@ -1394,6 +1553,7 @@ class SpamGuard:
             if e.recorded or now - e.ts < 120:  # wait until campaigns are known
                 continue
             e.recorded = True
+            self._count(e)
             if not e.path:  # heard directly: no route to learn, but the sender still counts
                 self.learn_sender(e, self._spammy(e))
                 continue
@@ -1807,6 +1967,10 @@ class SpamGuard:
         return packets or []
 
     def poll_once(self):
+        try:
+            self.refresh_openhop_info()
+        except Exception:
+            pass
         packets = self.fetch_packets()
         with self.lock:
             self.ingest(packets)
@@ -2163,6 +2327,7 @@ class SpamGuard:
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "known": {"count": len(self.known_list()), "min_msgs": int(c.get("known_min_msgs", 1)),
                           "learning": sum(1 for k in self.known if not self.is_known(k))},
+                "metrics": self.metrics(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
                          if h["ts"] > now - 86400 and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
