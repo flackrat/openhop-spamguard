@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.10.3
+- Repeater blocks now end 2 hours after the spam through that repeater stops, instead of 6 (new setting Advanced > Timing > Repeater blocks last for). On 38 hours of real traffic this caught the same spam and held fewer genuine people. Text blocks keep their times.
+- New **Possibly genuine, held** panel on the main page: messages held in the last 24 hours by a repeater, link or lockdown block from names that don't look made-up, each with a **Let through** button that trusts the name. It only appears when there's something in it.
+
 ## v5.10.2
 - Removed blocking a sender by name (added in 5.10). A repeater is shared, so a block on a person silences them for everyone downstream, invisibly, and is easy to forget; names can also be copied, so it can hit the wrong person. SpamGuard now sticks to spam behaviour; muting a person belongs in each user's own MeshCore app. Any sender blocks already set are removed on update, with a note on the page.
 - README: new section "What SpamGuard blocks, and what it doesn't".

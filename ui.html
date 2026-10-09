@@ -228,6 +228,12 @@ body.advanced .stats.adv{display:grid}
   </section>
 </div>
 
+<section id="heldSec" hidden>
+  <div class="health-head"><h2>Possibly genuine, held</h2><span id="heldPill"></span></div>
+  <p class="explain">Messages SpamGuard held in the last 24 hours from names that don't look made-up. If someone here is genuine, press <strong>Let through</strong>: they're trusted from then on.</p>
+  <ul class="rows" id="heldList"></ul>
+</section>
+
 <section id="lockSec">
   <div class="health-head"><h2>Lockdown</h2><span id="lPill"></span></div>
   <p class="explain" id="lLine"></p>
@@ -632,6 +638,14 @@ function renderUpdate(d){
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }
+function renderHeld(d){
+  const h=d.held||[];
+  $("#heldSec").hidden=!h.length;
+  $("#heldPill").innerHTML=h.length?`<span class='tag would'>${h.length}</span>`:"";
+  $("#heldList").innerHTML=h.map(m=>`<li><div><div><strong>${esc(m.sender)}</strong></div><div class="msg-text">${esc(m.text)}</div>
+    <div class="msg-meta">${esc(m.time)}, via <span class="route">${esc(m.path)}</span>. Held by ${esc(m.why)}</div></div>
+    <div class="acts">${btn("Let through","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"go")}</div></li>`).join("");
+}
 function renderLockdown(d){
   const k=d.known||{count:0}, lk=d.lockdown;
   $("#lPill").innerHTML=lk?"<span class='tag would'>On</span>":"";
@@ -649,7 +663,7 @@ function renderLockdown(d){
 function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderTop(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   if(!editing){ renderBlocks(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }

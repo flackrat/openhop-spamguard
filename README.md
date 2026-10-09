@@ -52,7 +52,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 
 | You want to... | Do this |
 |---|---|
-| Let a genuine person through | Press **Not spam** on their message |
+| Let a genuine person through | Press **Let through** under "Possibly genuine, held", or **Not spam** on their message |
 | Stop something it missed | Press **This is spam** on the message |
 | Ride out a heavy attack | Press **Lockdown** (30 min to 2 hours, ends by itself) |
 | Pause all blocking | Press **Pause** at the top of the page |
@@ -84,7 +84,7 @@ Click a heading to expand it.
 
 SpamGuard keeps a list of names it has seen sending genuine messages (not made-up looking, not part of a spam campaign, and not arriving through a blocked repeater). It writes the list into openHop as a policy object, `@spamguard.known_senders`, with one "let known people through" rule per channel, placed after your own rules. Three kinds of block sit below that rule, so they never stop a known name:
 
-- **Repeater blocks** now block *anything passing through* the spam repeater, except known people. In testing on real logs the spammer's messages took a different full route every time, so blocking learnt routes one by one never caught them; this catches every one. The older "Routes starting there" and "Anything passing through" choices are still in Advanced.
+- **Repeater blocks** block *anything passing through* the spam repeater, except known people, and end 2 hours after the spam through it stops (Advanced > Timing). People held this way who don't look like spammers are listed under **Possibly genuine, held** on the main page, with a **Let through** button. In testing on real logs the spammer's messages took a different full route every time, so blocking learnt routes one by one never caught them; this catches every one. The older "Routes starting there" and "Anything passing through" choices are still in Advanced.
 - **Links from names it doesn't know** (http or www.) are held while a spam campaign is under way, by default for an hour after the last campaign activity. Advanced > Known people can make this always or never.
 - **Lockdown** (button on the page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. It ends by itself.
 
