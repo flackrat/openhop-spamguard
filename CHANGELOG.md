@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.10.2
+- Removed blocking a sender by name (added in 5.10). A repeater is shared, so a block on a person silences them for everyone downstream, invisibly, and is easy to forget; names can also be copied, so it can hit the wrong person. SpamGuard now sticks to spam behaviour; muting a person belongs in each user's own MeshCore app. Any sender blocks already set are removed on update, with a note on the page.
+- README: new section "What SpamGuard blocks, and what it doesn't".
+
 ## v5.10.1
 - Kinder to SD cards: SpamGuard's working file is now saved straight away only for important changes (a real block, a newly known person, anything you do on the page), otherwise at most every 5 minutes. On a day of real traffic that's 14 writes an hour instead of 72, about 33 MB a day instead of 170 MB. A clean restart or update still saves everything; a power cut loses at most 5 minutes of learning.
 - Routine "copies under other names" notes no longer go to the system log (they still show on the page and in the evidence log).
