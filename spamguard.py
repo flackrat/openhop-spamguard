@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.9"
+VERSION = "5.9.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1014,12 +1014,20 @@ class SpamGuard:
         names = sorted(names, key=lambda k: -self.known[k][1])[:2000]
         return sorted(set(names) | {n for n in self.allow_senders if n})
 
+    def _held_in_passing(self, e: Event) -> bool:
+        """Held only because it passed THROUGH a blocked repeater partway along its route
+        (spam starts at the blocked repeater itself)."""
+        b = self.blocks.get(e.matched) if e.matched else None
+        return bool(b and b["kind"] == "hop" and self.gated(b) and e.path and e.path[0] != b["value"])
+
     def learn_sender(self, e: Event, spam: bool):
         """Count a genuine message towards its sender becoming known."""
-        if spam or e.matched or e.random or e.obfuscated or not e.sender or e.sender == "?":
+        if spam or e.random or e.obfuscated or not e.sender or e.sender == "?":
             return
-        for b in self.blocks.values():  # never learn from traffic through a blocked repeater
-            if b["kind"] == "hop" and b["value"] in e.path:
+        if e.matched and not self._held_in_passing(e):
+            return
+        for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
+            if b["kind"] == "hop" and e.path and e.path[0] == b["value"]:
                 return
         v = self.known.get(e.sender)
         if v is None:
@@ -1030,7 +1038,8 @@ class SpamGuard:
 
     def _spammy(self, e: Event) -> bool:
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
-        return e.random or e.obfuscated or bool(e.matched) or bool(cc and cc.get("suspect"))
+        matched = bool(e.matched) and not self._held_in_passing(e)
+        return e.random or e.obfuscated or matched or bool(cc and cc.get("suspect"))
 
     def forget_old_names(self):
         horizon = time.time() - int(self.cfg.get("known_days", 30)) * 86400
