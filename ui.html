@@ -256,6 +256,7 @@ main{min-width:0}
 /* map */
 .map{height:420px;border-radius:8px;border:1px solid var(--line);margin:6px 0 8px;background:var(--paper)}
 @media (max-width:640px){.map{height:300px}}
+.map{position:relative;z-index:0;isolation:isolate}
 .leaflet-container{font:inherit}
 /* folding lists */
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13.5px;color:var(--soft)}
@@ -265,6 +266,13 @@ main{min-width:0}
 @media (max-width:900px){
   .app{grid-template-columns:1fr}
   .side{position:fixed;left:0;top:0;z-index:20;width:260px;transform:translateX(-105%);transition:transform .18s;box-shadow:0 0 30px rgba(0,0,0,.25)}
+  .side{height:100vh;height:100dvh;padding-bottom:calc(16px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+  .side .brand{order:-2}
+  .side-adv{order:-1;margin:0 0 6px;border-bottom:1px solid var(--line);padding:2px 10px 12px}
+  .callout .quietlink,.kpis a{display:inline-block;padding:8px 4px;margin:-8px -4px}
+  .topbar .adv-pill{margin-left:auto;font-size:12px;font-weight:650;padding:2px 8px;border-radius:9px;background:var(--signal-tint);color:var(--signal);display:none}
+  body.advanced .topbar .adv-pill{display:inline-block}
+  body.menu-open{overflow:hidden}
   body.menu-open .side{transform:none}
   body.menu-open::after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:15}
   .topbar{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line);padding:8px 12px}
@@ -289,7 +297,7 @@ main{min-width:0}
   <label class="switch side-adv"><input type="checkbox" id="advToggle"> Advanced</label>
 </nav>
 <main>
-<div class="topbar"><button id="menuBtn" aria-label="Open menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span></div>
+<div class="topbar"><button id="menuBtn" aria-label="Open menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span><span class="adv-pill">Advanced</span></div>
 <div class="wrap">
 <div id="banners"></div>
 <div class="page" data-page="overview">
@@ -317,7 +325,7 @@ main{min-width:0}
 </section>
 <section>
   <h2>Spam, last 24 hours</h2>
-  <p class="lead">Per hour. Hover a column for the numbers.</p>
+  <p class="lead">Per hour. Tap or hover a column for the numbers.</p>
   <div class="legend"><span><i class="sw sw-c"></i>Stopped</span><span><i class="sw sw-x"></i>Let through (before a block started, or in Monitor mode)</span></div>
   <div class="chart" id="chart24" role="img"></div>
 </section>
@@ -724,7 +732,7 @@ $("#evPlain").onclick=()=>{ if(confirm("This file contains people's names and me
 /* ---------- view toggle and refresh ---------- */
 const adv=$("#advToggle");
 adv.checked=store.get("sgadv")==="1"; document.body.classList.toggle("advanced",adv.checked);
-adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); route(); if(S) render(S); };
+adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); route(true); if(S) render(S); };
 
 function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
 function renderUpdate(d){
@@ -791,23 +799,25 @@ const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",lockdo
   campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help"};
 const ADV_PAGES=["campaigns","activity","settings","exceptions","evidence"];
 let PAGE="overview";
-function route(){
+function route(keepMenu){
   let p=(location.hash.match(/^#\/([a-z]+)/)||[])[1]||"overview";
   if(!TITLES[p]||(ADV_PAGES.includes(p)&&!document.body.classList.contains("advanced"))) p="overview";
   const changed=p!==PAGE; PAGE=p;
   document.querySelectorAll(".page").forEach(el=>el.classList.toggle("on",el.dataset.page===p));
   document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===p));
   $("#topTitle").textContent=TITLES[p]; document.title="SpamGuard · "+TITLES[p];
-  document.body.classList.remove("menu-open");
+  if(keepMenu!==true) document.body.classList.remove("menu-open");
   if(changed) window.scrollTo(0,0);
   if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); }
 }
-window.addEventListener("hashchange",route);
+window.addEventListener("hashchange",()=>route());
 document.querySelectorAll(".grp-h").forEach((b,i)=>{
   if(store.get("sggrp"+i)==="0") b.setAttribute("aria-expanded","false");
   b.onclick=()=>{ const o=b.getAttribute("aria-expanded")!=="false"; b.setAttribute("aria-expanded",String(!o)); store.set("sggrp"+i,o?"0":"1"); };
 });
-$("#menuBtn").onclick=e=>{ e.stopPropagation(); document.body.classList.toggle("menu-open"); };
+$("#menuBtn").onclick=e=>{ e.stopPropagation(); const o=document.body.classList.toggle("menu-open"); $("#menuBtn").setAttribute("aria-expanded",String(o)); };
+document.querySelectorAll("[data-nav]").forEach(a=>a.addEventListener("click",()=>document.body.classList.remove("menu-open")));
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.body.classList.remove("menu-open"); });
 document.addEventListener("click",e=>{ if(document.body.classList.contains("menu-open") && !e.target.closest("#side")) document.body.classList.remove("menu-open"); });
 function badge(id,text,cls){ const b=$("#nb-"+id); if(!b) return; b.textContent=text||""; b.className="badge"+(text?" on "+(cls||"plain"):""); }
 function renderNav(d){
@@ -901,7 +911,7 @@ document.addEventListener("mousemove",e=>{
 let rsz; window.addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S&&PAGE==="overview") renderOverview(S); },200); });
 
 /* ---------- spam sources page and map ---------- */
-let MAP=null, MAPLAYER=null, LEAFLET=null;
+let MAP=null, MAPLAYER=null, LEAFLET=null, MAPSIG="", MAPFIT="";
 function loadLeaflet(){
   if(LEAFLET) return LEAFLET;
   LEAFLET=new Promise((ok,bad)=>{
@@ -924,6 +934,9 @@ function renderSources(d){
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
+    const sig=JSON.stringify([pts.map(({s,c})=>[c.lat,c.lon,s.d1,s.d7,s.blocked]),meOk?[me.lat,me.lon]:0]);
+    setTimeout(()=>MAP.invalidateSize(),50);
+    if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
     MAPLAYER=L.layerGroup().addTo(MAP);
     const dark=matchMedia("(prefers-color-scheme: dark)").matches, red=dark?"#ef7a70":"#b0322b", org=dark?"#cf7a32":"#c2610c", teal=dark?"#2ba3a6":"#009096";
@@ -935,8 +948,7 @@ function renderSources(d){
       bounds.push([c.lat,c.lon]);
     });
     if(meOk){ L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); bounds.push([me.lat,me.lon]); }
-    if(bounds.length===1) MAP.setView(bounds[0],11); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:12});
-    setTimeout(()=>MAP.invalidateSize(),50);
+    const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],11); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:12}); }
   }).catch(()=>{ $("#mapBox").style.display="none"; $("#mapNote").textContent="The map needs an internet connection to load. The table below has the same information."; });
 }
 
