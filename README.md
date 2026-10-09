@@ -193,6 +193,10 @@ The more messages you label with the two buttons, the more useful the replay rep
 - Its rules are placed after your own openHop rules, so its "let through" exceptions never override anything you set up.
 - openHop can't match "exactly this route after an unknown first repeater", so the block matches any route of the same length containing those repeaters. Routes with the same repeaters in a different order are rare, but would also be held back.
 
+## SD card and storage
+
+Everything SpamGuard keeps has a limit: learnt routes (5,000, forgotten after 7 days), known names (5,000, forgotten after 30 days of silence), the activity list (300), and the evidence log (deleted after 7 days by default, about 1-3 MB a day; off unless you turn it on). Its working file (about 150 KB) is saved at most every 5 minutes unless something important changes, about 33 MB of writes a day. openHop's own packet database writes far more, which is why the installer offers to keep 7 days of packet history. A "High Endurance" or A2 SD card is a good idea for any always-on Pi.
+
 ## Limits
 
 SpamGuard only controls what **your** repeater forwards. People within range of the spammer will still hear him, so the more repeaters near the source that filter, the better. It can't read private channels or direct messages unless you add the channel key.

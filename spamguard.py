@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.10"
+VERSION = "5.10.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -790,6 +790,7 @@ class SpamGuard:
         self.relays: dict[str, float] = {}
         # Names seen sending genuine messages: name -> [first_seen, last_seen, genuine messages]
         self.known: dict[str, list] = {}
+        self._important = False  # something worth saving to the SD card straight away
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
@@ -870,8 +871,9 @@ class SpamGuard:
                  "sensitivity": self.cfg["sensitivity"], "mode": self.cfg["mode"], "paused": bool(self.cfg.get("paused")),
                  "settings": {m["key"]: self.cfg.get(m["key"]) for m in SETTINGS_META}})
 
-    def note(self, msg: str):
-        log.warning(msg)
+    def note(self, msg: str, journal: bool = True):
+        if journal:  # routine duplicate notes stay off the system log (fewer SD card writes)
+            log.warning(msg)
         self.activity.appendleft({"ts": time.time(), "msg": msg})
         self.ev({"type": "note", "msg": msg})
 
@@ -921,10 +923,14 @@ class SpamGuard:
                 b["id"] = self._new_id()
 
     def _save_state(self, force=False):
+        """Written straight away for important changes, otherwise at most every 5 minutes, to spare
+        the SD card. Short-lived duplicate rules don't count: losing them in a power cut is harmless.
+        A clean stop (restart, update) always saves."""
         now = time.time()
-        if not force and now - self._last_save < 60:
+        if not force and now - self._last_save < 300:
             return
         self._last_save = now
+        self._important = False
         path = self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1031,12 +1037,15 @@ class SpamGuard:
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
             if b["kind"] == "hop" and e.path and e.path[0] == b["value"]:
                 return
+        was = self.is_known(e.sender)
         v = self.known.get(e.sender)
         if v is None:
             self.known[e.sender] = [e.ts, e.ts, 1]
         elif e.ts > v[1]:  # messages read again after a restart are older: don't count twice
             v[1] = e.ts
             v[2] += 1
+        if not was and self.is_known(e.sender):
+            self._important = True
 
     def _spammy(self, e: Event) -> bool:
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
@@ -1047,6 +1056,8 @@ class SpamGuard:
         horizon = time.time() - int(self.cfg.get("known_days", 30)) * 86400
         for k in [k for k, v in self.known.items() if v[1] < horizon]:
             del self.known[k]
+        if len(self.known) > 5000:  # keep the 5,000 most recently heard
+            self.known = dict(sorted(self.known.items(), key=lambda kv: -kv[1][1])[:5000])
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
@@ -1299,7 +1310,10 @@ class SpamGuard:
             if kind == "suffix":
                 self.blocks[key]["user_allowed"] = []
                 self.blocks[key]["allow_ids"] = {}
-            self.note(f"Started blocking {self.describe(self.blocks[key])}: {reason[0].lower() + reason[1:]}")
+            self.note(f"Started blocking {self.describe(self.blocks[key])}: {reason[0].lower() + reason[1:]}",
+                      journal=source != "dedupe")
+            if source != "dedupe":
+                self._important = True
             nb = self.blocks[key]
             self.ev({"type": "block", "event": "start", "key": key, "kind": kind, "value": value,
                      "source": source, "reason": reason, "exempt_sender": sender})
@@ -1350,6 +1364,7 @@ class SpamGuard:
             if ps in paths or ps in b.get("ignored_paths", []) or len(paths) >= cap:
                 continue
             paths[ps] = self._new_id()
+            self._important = True
             self.note(f"Repeater {e.first_hop}: learnt spam route {ps}")
             added = True
         return added
@@ -1535,6 +1550,7 @@ class SpamGuard:
                     b = self.blocks.get("suffix:" + ">".join(e.path[1:]))
                     if b and e.first_hop not in b.setdefault("user_allowed", []):
                         b["user_allowed"].append(e.first_hop)
+                        self._important = True
                         self.note(f"Let repeater {e.first_hop} through on route {'>'.join(e.path[1:]) or '(direct)'} "
                                   f"because trusted '{e.sender}' uses it")
                         changed = True
@@ -1562,11 +1578,12 @@ class SpamGuard:
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
+                self._important = True
                 self.note(f"Stopped blocking {self.describe(b)} (expired after {b.get('hits', 0)} catches)")
             changed = True
         for k in [k for k, v in self.suppressed.items() if v <= now]:
             del self.suppressed[k]
-        self._save_state(force=changed)
+        self._save_state(force=self._important)
         return changed
 
     # ---- policy sync ----

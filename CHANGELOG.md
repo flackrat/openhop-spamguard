@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.10.1
+- Kinder to SD cards: SpamGuard's working file is now saved straight away only for important changes (a real block, a newly known person, anything you do on the page), otherwise at most every 5 minutes. On a day of real traffic that's 14 writes an hour instead of 72, about 33 MB a day instead of 170 MB. A clean restart or update still saves everything; a power cut loses at most 5 minutes of learning.
+- Routine "copies under other names" notes no longer go to the system log (they still show on the page and in the evidence log).
+- The known-names list is capped at the 5,000 most recently heard.
+
 ## v5.10
 - Block a sender by name: Advanced > Block something yourself > Sender, or **Block sender** on any message (Advanced view). Stops every channel message sent under that exact name, on every channel SpamGuard reads. A blocked name is never trusted or known. Names can be changed, so this suits a regular troublemaker rather than random-name spam.
 - Includes v5.9.1.
