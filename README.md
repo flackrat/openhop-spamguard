@@ -45,6 +45,17 @@ Open `http://<your-pi>:8091/`. Start in **Monitor** for a day: messages it would
 
 The full step-by-step guide, with everyday commands and troubleshooting, is in [docs/install-and-troubleshooting.md](docs/install-and-troubleshooting.md).
 
+## What to expect: it gets better the longer it runs
+
+SpamGuard learns from your mesh, so it's at its weakest on day one.
+
+- **A few copies of each new spam wave get through.** SpamGuard needs to see the same text from about 3 names before it can tell a campaign from a conversation. After that the wave is blocked everywhere, and the text is remembered for 7 days, so if it comes back it's stopped from the first copy.
+- **The first message from a new spam repeater may get through.** Once SpamGuard spots where spam enters the mesh, it blocks that repeater and catches new waves from it on their first copy.
+- **It gets to know your regulars.** Each person who posts normally is added to SpamGuard's list of known names. Known people get through repeater blocks, link holds and Lockdown. On a fresh install the list is nearly empty, so for the first day or two a genuine newcomer is more likely to be held. Press **Not spam** on their message and they're let through straight away.
+- **It learns your network's normal routes** over the first week, which helps against a spammer whose repeater keeps changing its ID.
+
+Leave it running: restarts and updates keep everything it has learnt. Starting in Monitor mode for the first day lets it learn without blocking anything.
+
 ## Updating
 
 SpamGuard looks for a new release once a day (you can turn that off in Advanced > Updates) and shows it in the **Updates** section of its page, with what's new. It only installs when you press **Update**. Your settings, blocks and learnt routes are kept, and if the new version doesn't start, the previous one is put back automatically.
