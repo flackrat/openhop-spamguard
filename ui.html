@@ -424,7 +424,13 @@ main{min-width:0}
   <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div id="settings"></div>
   <div class="savebar"><button class="go" id="saveSet">Save settings</button><button id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
-  <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset all to defaults</button></p>
+  <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset settings to defaults</button> <span class="explain">Settings only; blocks and exceptions stay.</span></p>
+</section>
+<section>
+  <h2>Start again from scratch</h2>
+  <p class="lead">Puts SpamGuard back as if it had just been installed and starts filtering spam afresh. It removes every block (including ones you added or removed by hand, with no 24-hour wait), resets every setting and the sensitivity, and clears trusted senders, repeaters and texts, learnt routes and the people it knows. It then relearns regulars from the last day's normal-looking names.</p>
+  <p class="explain">Kept: Monitor or Protect, channels you added, the charts and the evidence log. Your own openHop rules are never touched.</p>
+  <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
 </section></div>
 <div class="page" data-page="exceptions"><section>
   <h2>Exceptions</h2>
@@ -706,6 +712,7 @@ function renderSettings(d){
 function clean(){ dirty={}; document.body.classList.remove("dirty"); }
 $("#saveSet").onclick=()=>{ const b=dirty; clean(); post("/settings",b); };
 $("#cancelSet").onclick=()=>{ clean(); renderSettings(S); toast("Changes discarded"); };
+$("#resetAll").onclick=()=>{ if(confirm("Start SpamGuard again from scratch?\n\nEvery block, setting and exception is cleared and it begins detecting spam afresh. Monitor/Protect, your channels, the charts and the evidence log are kept. This can't be undone.")){ clean(); post("/reset_all",{}); } };
 $("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the defaults for the current sensitivity?")){ clean(); post("/settings",{reset:true}); } };
 
 /* ---------- forms ---------- */
