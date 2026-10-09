@@ -1,0 +1,27 @@
+# Publishes a GitHub release whenever the version number in spamguard.py changes on main.
+# The release notes are that version's section of CHANGELOG.md. Uses GitHub's built-in
+# token for this repository only; no personal token is stored anywhere.
+name: Release
+on:
+  push:
+    branches: [main]
+    paths: [spamguard.py]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish release for a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)
+          [ -n "$v" ] || { echo "No VERSION found in spamguard.py"; exit 1; }
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released"; exit 0; fi
+          awk -v h="## v$v" '$0==h{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "SpamGuard $v" > notes.md
+          gh release create "v$v" --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --latest
