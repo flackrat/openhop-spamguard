@@ -49,7 +49,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.10.1"
+VERSION = "5.10.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -791,10 +791,15 @@ class SpamGuard:
         # Names seen sending genuine messages: name -> [first_seen, last_seen, genuine messages]
         self.known: dict[str, list] = {}
         self._important = False  # something worth saving to the SD card straight away
+        self.removed_sender_blocks: list = []
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
         self.rebuild_cfg()
+        for name in self.removed_sender_blocks:
+            self.note(f"Removed the block on the name \"{name}\": SpamGuard now only blocks spam behaviour, "
+                      "not named people. Muting someone is best done in your own MeshCore app.")
+            self._important = True
         if not self.known and self.sender_history:
             # First start of a version with known people: begin with the names heard in the
             # last day that don't look made-up, so people aren't all strangers after an update.
@@ -889,6 +894,9 @@ class SpamGuard:
             return
         now = time.time()
         self.blocks = {k: v for k, v in st.get("blocks", {}).items() if v.get("expires", 0) > now}
+        # 5.10 briefly had blocks on a sender's name; SpamGuard judges behaviour, not people, so they go.
+        self.removed_sender_blocks = [v.get("value") for k, v in self.blocks.items() if v.get("kind") == "sender"]
+        self.blocks = {k: v for k, v in self.blocks.items() if v.get("kind") != "sender"}
         self.suppressed = {k: v for k, v in st.get("suppressed", {}).items() if v > now}
         self.allow_hops = set(st.get("allow_hops", []))
         self.allow_senders = set(st.get("allow_senders", []))
@@ -1009,8 +1017,6 @@ class SpamGuard:
 
     # ---- known people ----
     def is_known(self, name: str) -> bool:
-        if f"sender:{name}" in self.blocks:
-            return False
         if name in self.allow_senders:
             return True
         v = self.known.get(name)
@@ -1068,8 +1074,6 @@ class SpamGuard:
             return False
         if b["kind"] == "lockdown":
             return True
-        if b["kind"] == "sender":
-            return e.sender == b["value"]
         if b["kind"] == "links":
             return any(w in e.text for w in b["value"])
         if b["kind"] == "hop":
@@ -1337,8 +1341,6 @@ class SpamGuard:
             return f"{how} repeater {b['value']}"
         if b["kind"] == "links":
             return "links from names SpamGuard doesn't know"
-        if b["kind"] == "sender":
-            return f"everything sent under the name \"{b['value']}\""
         if b["kind"] == "lockdown":
             return "lockdown: channel messages from names SpamGuard doesn't know"
         if b["kind"] == "suffix":
@@ -1673,18 +1675,6 @@ class SpamGuard:
         for key, b in order:
             if len(rules) >= limit:
                 break
-            if b["kind"] == "sender":
-                ids = b.setdefault("ids", {})
-                for name, secret in sorted(self.cfg["channels"].items()):
-                    if name not in ids:
-                        ids[name] = self._new_id()
-                    rules.append({"id": ids[name], "name": f"{RULE_PREFIX}{key}:{name}", "enabled": True,
-                                  "if": {"all": [
-                                      {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                                      {"field": "channel_hash", "op": "equals", "value": secret},
-                                      {"field": "channel_sender", "op": "equals", "value": b["value"]}]},
-                                  "then": {"action": self.rule_action(b)}})
-                continue
             if b["kind"] == "hop" and self.hop_mode(b) == "exact_paths":
                 for ps, pid in sorted((b.get("paths") or {}).items(), key=lambda kv: kv[1]):
                     rules.append({"id": pid, "name": f"{RULE_PREFIX}{key}:{ps}", "enabled": True,
@@ -2252,20 +2242,6 @@ class SpamGuard:
                     msg = (f"Lockdown on for {minutes} min. Only the {n} name{'' if n == 1 else 's'} SpamGuard knows {'gets' if n == 1 else 'get'} through on the channels it reads."
                            + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else "")
                            + (" SpamGuard doesn't know many people yet, so most genuine users will be held too." if n < 20 else ""))
-            elif op == "block_sender":
-                name = str(body.get("sender", ""))
-                if not name.strip():
-                    raise ValueError("Enter the sender's name exactly as it appears in messages")
-                key = f"sender:{name}"
-                self.suppressed.pop(key, None)
-                self.blocks.pop(key, None)
-                was_trusted = name in self.allow_senders
-                self.allow_senders.discard(name)
-                self.known.pop(name, None)
-                self._add_block(key, "sender", name, "Added by you", "manual",
-                                ttl=int(body.get("ttl_seconds") or PERMANENT_SECONDS))
-                msg = (f"Blocking everything sent as \"{name}\"." + (" It was trusted; it isn't any more." if was_trusted else "")
-                       + " Names can be changed, so a determined spammer may simply pick another.")
             elif op == "block_hop":
                 hop = str(body.get("hop", "")).upper().strip()
                 hop = hop[2:] if hop.startswith("0X") else hop
@@ -2424,7 +2400,7 @@ def load_page() -> str:
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
            "unallow_text", "add_channel", "remove_channel", "clear_auto", "clear_suppressed",
-           "allow_origin", "unallow_origin", "lockdown", "block_sender"}
+           "allow_origin", "unallow_origin", "lockdown"}
 
 
 class QuietServer(ThreadingHTTPServer):
