@@ -848,7 +848,7 @@ function renderOverview(d){
     tile("Spam let through, 24 h",fmtN(a.x),a.stop_rate==null?"no spam yet":`${a.stop_rate}% of spam stopped`)+
     tile("Spam share of channel traffic",a.spam_share==null?"–":a.spam_share+"%",`${fmtN(a.spam)} of ${fmtN(a.m)} messages, 24 h`)+
     tile("Airtime saved, 24 h",m.radio_known?fmtAir(a.a):"–",m.radio_known?`${fmtAir(w.a)} in 7 days`:"needs openHop's radio settings")+
-    tile("Possibly genuine held, 24 h",fmtN(a.g),a.g?`<a href="#/held">review</a>`:"none")+
+    tile("Possibly genuine held, 24 h",fmtN((d.held||[]).length),(d.held||[]).length?`<a href="#/held">review</a>`:"none")+
     tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks")+
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`);
   $("#kpiSince").textContent=m.since&&Date.now()/1000-m.since<7*86400?"Counting since "+new Date(m.since*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
