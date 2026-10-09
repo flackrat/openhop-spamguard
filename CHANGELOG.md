@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.11.2
+- The Overview now shows when an update is ready to install, with **What's new** and **Update now**, instead of only in the Updates page. It also says when an update is under way, or if the last one didn't finish.
+- Releases are now published automatically when a new version is pushed.
+
 ## v5.11.1
 - Phones: the map no longer shows on top of the menu and the top bar.
 - Phones: the **Advanced** switch is now at the top of the menu, so it can't end up hidden behind the browser's toolbar. The top bar shows "Advanced" while it's on, and switching it leaves the menu open so you can see the extra pages appear.
