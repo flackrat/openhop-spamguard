@@ -13,7 +13,7 @@
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
 - **Speeds up openHop on small Pis** with an optional one-line fix the installer offers.
 
-![SpamGuard's web page (example data)](docs/screenshot.png)
+![SpamGuard's web page (example data)](docs/screenshot-overview.png)
 
 _Example data: names and numbers are made up._
 
