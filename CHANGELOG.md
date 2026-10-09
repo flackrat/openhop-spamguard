@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.10
+- Block a sender by name: Advanced > Block something yourself > Sender, or **Block sender** on any message (Advanced view). Stops every channel message sent under that exact name, on every channel SpamGuard reads. A blocked name is never trusted or known. Names can be changed, so this suits a regular troublemaker rather than random-name spam.
+- Includes v5.9.1.
+
 ## v5.9.1
 - Known people: a genuine message that only passes *through* a blocked repeater partway along its route now counts towards its sender becoming known. Spam starts at the blocked repeater itself, so messages starting there still never count. Before, a newcomer whose only route went through the blocked repeater stayed held for as long as the block lasted; now only their first message is held.
 

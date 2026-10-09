@@ -144,6 +144,7 @@ curl -s http://127.0.0.1:8091/health
 | A regular's messages are held by a repeater block | They aren't known yet (they need one genuine message on another route). Press **Not spam** on their message: that trusts them and lets them through at once. |
 | A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Not spam**, or set Advanced > Known people > Hold links to Never. |
 | Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
+| One named account keeps posting abuse | In Advanced, press **Block sender** on one of its messages (or type the name under Block something yourself). It matches the exact name, emoji included. |
 | openHop shows a policy object called `spamguard` | That's the known-people list. SpamGuard keeps it up to date and the uninstaller removes it. |
 
 ## If openHop falls behind
