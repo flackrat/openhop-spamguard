@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.11.5"
+VERSION = "5.11.6"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -252,6 +252,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
+# Housekeeping choices, not detection: both resets leave these as you set them.
+KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check"}
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
 
@@ -1003,7 +1005,8 @@ class SpamGuard:
         self.allow_hops.clear()
         self.allow_senders.clear()
         self.allow_texts.clear()
-        self.settings = {"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}
+        kept = {k: v for k, v in self.settings.items() if k in KEEP_ON_RESET}
+        self.settings = dict(kept, **({"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}))
         self.routes.clear()
         self.relays.clear()
         self.clusters.clear()
@@ -2376,7 +2379,7 @@ class SpamGuard:
     def apply_settings(self, body: dict) -> dict:
         with self.lock:
             if body.get("reset"):
-                self.settings = {k: v for k, v in self.settings.items() if k in EXTRA_TUNABLES}
+                self.settings = {k: v for k, v in self.settings.items() if k in EXTRA_TUNABLES or k in KEEP_ON_RESET}
                 self.note("Advanced settings reset to defaults")
             else:
                 new = {}
