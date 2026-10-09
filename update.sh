@@ -95,7 +95,10 @@ fi
 
 status running "Downloading $TAG..." "$CURRENT" "${TAG#v}"
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-if ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/archive/refs/tags/$TAG.tar.gz"; then
+# The release's own download file first (GitHub counts these, so the author can see roughly
+# how many updates are installed; nothing else is sent), then GitHub's automatic archive.
+if ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/releases/download/$TAG/spamguard-$TAG.tar.gz" \
+   && ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/archive/refs/tags/$TAG.tar.gz"; then
   status failed "Download of $TAG failed." "$CURRENT" "${TAG#v}"; exit 1
 fi
 mkdir "$WORK/src" && tar xzf "$WORK/release.tar.gz" -C "$WORK/src" --strip-components=1 || {
