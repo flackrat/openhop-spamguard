@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.11.3"
+VERSION = "5.11.4"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -992,6 +992,36 @@ class SpamGuard:
             os.replace(tmp, path)
         except Exception as e:
             log.warning("Could not save state: %s", e)
+
+    def reset_all(self):
+        """Back to a fresh install, keeping only Monitor/Protect, channels you added, the charts and the
+        evidence log. Removed blocks don't wait 24 hours: detection starts again straight away."""
+        mode = self.cfg.get("mode", "monitor")
+        n = len(self.blocks)
+        self.blocks.clear()
+        self.suppressed.clear()
+        self.allow_hops.clear()
+        self.allow_senders.clear()
+        self.allow_texts.clear()
+        self.settings = {"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}
+        self.routes.clear()
+        self.relays.clear()
+        self.clusters.clear()
+        self.held.clear()
+        self.rule_ids.clear()
+        for e in self.events:            # recent messages are judged again under the fresh rules
+            e.matched = None
+        self.rebuild_cfg()
+        # Same starting point as a new install reading openHop's recent traffic: names heard in the
+        # last day that don't look made-up count as known, so regulars aren't all held at first.
+        self.known = {}
+        for name, h in self.sender_history.items():
+            if name and name != "?" and not is_obfuscated(name, name=True) \
+                    and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
+                self.known[name] = [h["first"], h["first"], h["count"]]
+        self.note(f"Started again from scratch: {n} block{'' if n == 1 else 's'}, all settings and exceptions "
+                  f"cleared ({'Protect' if mode == 'protect' else 'Monitor'} mode kept)")
+        self._important = True
 
     def _new_id(self) -> int:
         used = set()
@@ -2406,7 +2436,7 @@ class SpamGuard:
                 if b:
                     self.note(f"Removed by hand: {self.describe(b)}")
                 self.suppressed[key] = now + int(body.get("suppress_seconds", 86400))
-                msg = "Block removed. SpamGuard won't re-create it for 24 hours."
+                msg = "Block removed. SpamGuard won't re-create it for 24 hours (Exceptions > Not re-blocked > Clear undoes that)."
             elif op == "lockdown":
                 minutes = int(body.get("minutes") or 0)
                 if minutes <= 0:
@@ -2564,6 +2594,10 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
             elif op == "clear_suppressed":
                 self.suppressed.clear()
+            elif op == "reset_all":
+                self.reset_all()
+                msg = ("SpamGuard is starting again from scratch: every block, setting and exception has been "
+                       "cleared, and it's watching for spam afresh.")
             else:
                 raise ValueError("Unknown action")
             self._save_state(force=True)
@@ -2583,7 +2617,7 @@ def load_page() -> str:
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
            "unallow_text", "add_channel", "remove_channel", "clear_auto", "clear_suppressed",
-           "allow_origin", "unallow_origin", "lockdown"}
+           "allow_origin", "unallow_origin", "lockdown", "reset_all"}
 
 
 class QuietServer(ThreadingHTTPServer):

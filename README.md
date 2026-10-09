@@ -57,6 +57,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 | Ride out a heavy attack | Press **Lockdown** (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
+| Start over with a clean slate | Advanced > Settings > **Start again from scratch** |
 | Update | Press **Update** when the page says a new version is out |
 | Remove it | `sudo bash /opt/openhop_spamguard/uninstall.sh` |
 

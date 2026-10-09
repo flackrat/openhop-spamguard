@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.11.4
+- New **Start again from scratch** button (Advanced > Settings, at the bottom). It removes every block, including ones removed by hand, so there's no 24-hour wait, resets all settings and the sensitivity, clears trusted senders, repeaters and texts, learnt routes and known people, then starts detecting spam afresh. It keeps Monitor or Protect, channels you added, the charts and the evidence log, and relearns regulars from the last day's normal-looking names.
+- The old "Reset all to defaults" button is now **Reset settings to defaults**, as it only ever reset settings.
+- Removing a block now says how to undo the 24-hour wait (Exceptions > Not re-blocked > Clear).
+
 ## v5.11.3
 - Each release now includes its own download file, and the Update button fetches that (falling back to GitHub's automatic archive as before). GitHub counts downloads of release files, which gives a rough idea of how many repeaters install each update. SpamGuard sends nothing extra: the Pi already fetches the update from GitHub when you press Update, and no identifying information is added.
 
