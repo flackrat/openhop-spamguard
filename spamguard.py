@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.11.4"
+VERSION = "5.11.5"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -2595,6 +2595,8 @@ class SpamGuard:
             elif op == "clear_suppressed":
                 self.suppressed.clear()
             elif op == "reset_all":
+                if str(body.get("confirm", "")).strip().upper() != "RESET":
+                    raise ValueError("Type RESET to confirm starting again from scratch")
                 self.reset_all()
                 msg = ("SpamGuard is starting again from scratch: every block, setting and exception has been "
                        "cleared, and it's watching for spam afresh.")
