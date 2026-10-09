@@ -96,6 +96,7 @@ git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash
 | Posting slowly to stay under limits | A 2-hour long window catches slow spam |
 | Replies to the same person (@[name]) looking alike | Mentions are ignored when comparing messages, so ordinary replies are never treated as a campaign; a campaign also needs at least two made-up, disguised or brand-new names |
 | Bringing the same spam back hours or days later | Text blocks for campaigns sent under made-up names stay in openHop for 7 days (Advanced > Timing), so a returning text is stopped from its first copy |
+| A troll posting abuse under the same name each time | Block the sender by name (Advanced, or **Block sender** on the message); that name is then never trusted or known |
 | Copying a trusted or known person's name | Gets past repeater, link and lockdown blocks (they let known names through), but never campaign or text blocks; a trusted name from a new place is logged |
 | Moving location / new routes | Repeater blocks match anything passing through, so a new route from the same repeater is caught at once; known people are let through. Text rules work from anywhere |
 | Posting links from a fresh name each time | While a campaign is under way, links from names SpamGuard doesn't know are held |
