@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.11.6
+- Fix: **Reset settings to defaults** and **Start again from scratch** no longer switch the evidence log off (or change how long it's kept, or the update check). Before, a reset quietly stopped the evidence log.
+
 ## v5.11.5
 - **Start again from scratch** now asks twice: after the first "are you sure", you type RESET to confirm. Nothing happens without it, even if the page is sent the request some other way.
 
