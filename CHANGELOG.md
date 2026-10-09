@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.11.3
+- Each release now includes its own download file, and the Update button fetches that (falling back to GitHub's automatic archive as before). GitHub counts downloads of release files, which gives a rough idea of how many repeaters install each update. SpamGuard sends nothing extra: the Pi already fetches the update from GitHub when you press Update, and no identifying information is added.
+
 ## v5.11.2
 - The Overview now shows when an update is ready to install, with **What's new** and **Update now**, instead of only in the Updates page. It also says when an update is under way, or if the last one didn't finish.
 - Releases are now published automatically when a new version is pushed.
