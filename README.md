@@ -107,7 +107,6 @@ git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash
 | Posting slowly to stay under limits | A 2-hour long window catches slow spam |
 | Replies to the same person (@[name]) looking alike | Mentions are ignored when comparing messages, so ordinary replies are never treated as a campaign; a campaign also needs at least two made-up, disguised or brand-new names |
 | Bringing the same spam back hours or days later | Text blocks for campaigns sent under made-up names stay in openHop for 7 days (Advanced > Timing), so a returning text is stopped from its first copy |
-| A troll posting abuse under the same name each time | Block the sender by name (Advanced, or **Block sender** on the message); that name is then never trusted or known |
 | Copying a trusted or known person's name | Gets past repeater, link and lockdown blocks (they let known names through), but never campaign or text blocks; a trusted name from a new place is logged |
 | Moving location / new routes | Repeater blocks match anything passing through, so a new route from the same repeater is caught at once; known people are let through. Text rules work from anywhere |
 | Posting links from a fresh name each time | While a campaign is under way, links from names SpamGuard doesn't know are held |
@@ -121,6 +120,15 @@ git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash
 | Emoji inside words (Bu🔥ilt), invisible tag letters | Flagged as disguised text, which counts as a spam sign; normal emoji use (👍, family emoji, flags) isn't |
 | Emoji-only spam, with skin-tone or colour variants | Compared by base emoji, so 💩 and 💩🏽 count as the same message |
 | Repeater firmware that changes its ID, so the first hop changes every time | SpamGuard learns which repeaters normally start routes and which relay. When several never-seen first repeaters send spam through the same onward route (e.g. >B1>7E), unknown ones on that route are blocked while known ones are let through. A trusted sender arriving via a new repeater gets it let through automatically, and you can allow any repeater from the page |
+
+## What SpamGuard blocks, and what it doesn't
+
+A repeater is shared: anything it refuses to pass on disappears for everyone downstream, and they can't see why. So SpamGuard judges **behaviour, never opinions or people**:
+
+- **It blocks:** the same or near-identical text sent under several names, made-up or disguised names, floods of repeats, and repeaters that keep injecting spam campaigns.
+- **It doesn't block:** what someone says, or a named person for their views, however rude. There's deliberately no "block this person" button. Muting someone is each user's choice, made in their own MeshCore app, where it affects only them.
+- **"This is spam" and text blocks are for spam content.** Please don't use them to silence a point of view.
+- **Every automatic block expires** once the spam stops, so nothing lingers forgotten in your repeater.
 
 ## Known people, links and Lockdown
 
