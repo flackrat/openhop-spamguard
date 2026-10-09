@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.11
+- New menu, laid out like openHop's own: Overview, Protection, Monitoring and System, with a slide-out menu on phones. Each area has its own page instead of one long page.
+- Long lists (messages, blocks, activity, possibly genuine) show 10 at a time with **Show more / Show all**.
+- Overview numbers and charts: spam stopped, let through, spam's share of channel traffic, airtime saved (from your radio settings), genuine messages held and known people; last 24 hours, last 7 days and spam by hour of day.
+- **Spam sources** page: which repeaters spam arrives through, on a map using the locations repeaters advertise in openHop, plus a table with Block / Never block. The map needs internet on the viewing device; the table doesn't.
+- Fix: names with a decorative symbol inside them (for example a cross or emoji between letters) are no longer treated as disguised spam names.
+
 ## v5.10.3
 - Repeater blocks now end 2 hours after the spam through that repeater stops, instead of 6 (new setting Advanced > Timing > Repeater blocks last for). On 38 hours of real traffic this caught the same spam and held fewer genuine people. Text blocks keep their times.
 - New **Possibly genuine, held** panel on the main page: messages held in the last 24 hours by a repeater, link or lockdown block from names that don't look made-up, each with a **Let through** button that trusts the name. It only appears when there's something in it.

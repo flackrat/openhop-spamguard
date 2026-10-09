@@ -196,21 +196,105 @@ body.advanced .stats.adv{display:grid}
   select,input{font-size:16px}  /* stops phones zooming in on focus */
 }
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+/* ---------- app layout: openHop-style side menu ---------- */
+:root{--c-stop:#009096;--c-let:#c2610c;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
+@media (prefers-color-scheme: dark){:root{--c-stop:#2ba3a6;--c-let:#cf7a32;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
+.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--nav);color:var(--nav-ink);border-right:1px solid var(--line);padding:14px 10px 20px;display:flex;flex-direction:column;gap:2px}
+.side .brand{padding:4px 8px 14px;font-size:16.5px}
+.side a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:14.5px}
+.side a:hover{background:var(--panel)}
+.side a.active{background:var(--nav-active);font-weight:600}
+.side a svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.side a span{flex:1}
+.badge{font-size:11.5px;font-weight:650;padding:0 7px;border-radius:9px;line-height:18px;display:none}
+.badge.on{display:inline-block}
+.badge.warn{background:var(--amber-tint);color:var(--amber)}
+.badge.bad{background:var(--stop-tint);color:var(--stop)}
+.badge.ok{background:var(--signal-tint);color:var(--signal)}
+.badge.plain{background:var(--panel);color:var(--soft)}
+.grp{margin-top:10px}
+.grp-h{all:unset;cursor:pointer;display:flex;justify-content:space-between;width:calc(100% - 20px);padding:4px 10px;font-size:11.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+.grp-h::after{content:"▾";font-size:11px}
+.grp-h[aria-expanded=false]::after{content:"▸"}
+.grp-h[aria-expanded=false]+.grp-b{display:none}
+.adv-nav{display:none!important}
+body.advanced .adv-nav{display:flex!important}
+.side-adv{margin-top:auto;padding:14px 10px 0}
+main{min-width:0}
+.wrap{max-width:1080px;margin:0 auto;padding:22px 22px 60px}
+.page{display:none}
+.page.on{display:block}
+.topbar{display:none}
+.quietlink{margin-left:auto;font-size:13.5px;color:var(--signal)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.two section{margin:0}
+@media (max-width:820px){.two{grid-template-columns:1fr}.two section{margin:14px 0 0}}
+/* KPI tiles */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:10px;margin:10px 0 0}
+.kpis a,.callout a,.quietlink{color:var(--signal)}
+.kpis div{background:var(--paper);border-radius:8px;padding:10px 12px;min-width:0}
+.kpis dt{font-size:12.5px;color:var(--soft)}
+.kpis dd{margin:2px 0 0;font-size:24px;font-weight:650;letter-spacing:-.01em;line-height:1.15}
+.kpis small{display:block;font-size:12px;color:var(--soft);font-weight:400;margin-top:2px}
+/* charts */
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--soft);margin:2px 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)}
+.chart{position:relative;height:150px}
+.chart.short{height:120px}
+.chart svg{width:100%;height:100%;overflow:visible}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .ax{fill:var(--soft);font-size:11px}
+.chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)}
+.chart .hit{fill:transparent}
+.chart .hit:hover{fill:var(--line);opacity:.35}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12.5px;padding:6px 9px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);opacity:0;transition:opacity .1s}
+.tip.show{opacity:1}
+/* map */
+.map{height:420px;border-radius:8px;border:1px solid var(--line);margin:6px 0 8px;background:var(--paper)}
+@media (max-width:640px){.map{height:300px}}
+.leaflet-container{font:inherit}
+/* folding lists */
+.foldbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13.5px;color:var(--soft)}
+.foldbar:empty{display:none}
+.callout{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--amber-tint);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin:0 0 14px}
+/* phones: menu becomes a drawer */
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;z-index:20;width:260px;transform:translateX(-105%);transition:transform .18s;box-shadow:0 0 30px rgba(0,0,0,.25)}
+  body.menu-open .side{transform:none}
+  body.menu-open::after{content:"";position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:15}
+  .topbar{display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line);padding:8px 12px}
+  .topbar button{border:0;background:transparent;padding:6px;min-height:40px}
+  .topbar svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+  .topbar .t{font-weight:650}
+  .wrap{padding:12px 12px 48px}
+}
 </style>
 </head>
 <body>
+<div class="app">
+<nav class="side" id="side" aria-label="SpamGuard menu">
+  <div class="brand"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg><span>SpamGuard <small id="ver"></small></span></div>
+  <a href="#/overview" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/></svg><span>Overview</span><b class="badge" id="nb-overview"></b></a>
+  <div class="grp"><button class="grp-h" aria-expanded="true">Protection</button><div class="grp-b">
+    <a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/held" data-nav="held"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16v.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></svg><span>Possibly genuine</span><b class="badge" id="nb-held"></b></a><a href="#/lockdown" data-nav="lockdown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Lockdown</span><b class="badge" id="nb-lockdown"></b></a></div></div>
+  <div class="grp"><button class="grp-h" aria-expanded="true">Monitoring</button><div class="grp-b">
+    <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a href="#/campaigns" data-nav="campaigns" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span>Campaigns</span><b class="badge" id="nb-campaigns"></b></a><a href="#/activity" data-nav="activity" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Activity</span><b class="badge" id="nb-activity"></b></a></div></div>
+  <div class="grp"><button class="grp-h" aria-expanded="true">System</button><div class="grp-b">
+    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/exceptions" data-nav="exceptions" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg><span>Exceptions</span><b class="badge" id="nb-exceptions"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
+  <label class="switch side-adv"><input type="checkbox" id="advToggle"> Advanced</label>
+</nav>
+<main>
+<div class="topbar"><button id="menuBtn" aria-label="Open menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span></div>
 <div class="wrap">
-<header>
-  <div class="brand">
-    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg>
-    <span>SpamGuard <small id="ver"></small></span>
-  </div>
-  <label class="switch"><input type="checkbox" id="advToggle"> Advanced</label>
-</header>
-
 <div id="banners"></div>
+<div class="page" data-page="overview">
 <div class="hero" id="hero"><h1>Loading…</h1></div>
-
+<div id="heldCallout"></div>
 <div class="controls">
   <section>
     <h2>Mode</h2>
@@ -227,43 +311,42 @@ body.advanced .stats.adv{display:grid}
     <p class="explain" id="sensExplain"></p>
   </section>
 </div>
-
-<section id="heldSec" hidden>
-  <div class="health-head"><h2>Possibly genuine, held</h2><span id="heldPill"></span></div>
-  <p class="explain">Messages SpamGuard held in the last 24 hours from names that don't look made-up. If someone here is genuine, press <strong>Let through</strong>: they're trusted from then on.</p>
-  <ul class="rows" id="heldList"></ul>
-</section>
-
-<section id="lockSec">
-  <div class="health-head"><h2>Lockdown</h2><span id="lPill"></span></div>
-  <p class="explain" id="lLine"></p>
-  <div class="inline-form" id="lBtns"></div>
-</section>
-
-<section id="healthSec">
-  <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
-  <p class="explain" id="hLine"></p>
-  <ul class="hlist" id="hIssues"></ul>
-  <dl class="stats" id="hStats"></dl>
-  <dl class="stats adv" id="hStatsAdv"></dl>
-</section>
-
-<section id="updSec">
-  <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
-  <p class="explain" id="uLine"></p>
-  <ul class="hlist" id="uIssues"></ul>
-  <div class="inline-form" id="uBtns"></div>
-  <details id="uNotesBox" hidden><summary>What's new</summary><div class="notes" id="uNotes"></div></details>
-</section>
-
 <section>
+  <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
+  <dl class="kpis" id="kpis"></dl>
+</section>
+<section>
+  <h2>Spam, last 24 hours</h2>
+  <p class="lead">Per hour. Hover a column for the numbers.</p>
+  <div class="legend"><span><i class="sw sw-c"></i>Stopped</span><span><i class="sw sw-x"></i>Let through (before a block started, or in Monitor mode)</span></div>
+  <div class="chart" id="chart24" role="img"></div>
+</section>
+<div class="two">
+<section>
+  <h2>Last 7 days</h2>
+  <div class="legend"><span><i class="sw sw-c"></i>Stopped</span><span><i class="sw sw-x"></i>Let through</span></div>
+  <div class="chart short" id="chart7" role="img"></div>
+</section>
+<section>
+  <h2>When the spam comes</h2>
+  <p class="lead">Spam by time of day, last 7 days.</p>
+  <div class="chart short" id="chartHour" role="img"></div>
+</section>
+</div>
+<section>
+  <div class="health-head"><h2>Where the spam enters the mesh</h2><a href="#/sources" class="quietlink">Map and details</a></div>
+  <p class="lead">The first repeater on each spam message's route, last 7 days.</p>
+  <div class="scroll"><table id="topSources"></table></div>
+</section>
+</div>
+<div class="page" data-page="blocks"><section>
   <h2>Blocked right now</h2>
   <p class="lead basic-only">What your repeater is refusing to pass on. Blocks end by themselves once the spam stops. Remove one if it is catching genuine people.</p>
   <p class="lead adv">Every block, including short-lived duplicate blocks. Change how each one acts, how long it lasts, or which routes it covers.</p>
   <ul class="rows" id="blocks"></ul>
   <p class="more" id="blocksMore"></p>
+  <div class="foldbar" id="blocksFold"></div>
 </section>
-
 <section class="adv">
   <h2>Block something yourself</h2>
   <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
@@ -279,37 +362,60 @@ body.advanced .stats.adv{display:grid}
     <button class="go" id="textBtn">Block text</button>
   </div>
 
-</section>
-
-<section>
+</section></div>
+<div class="page" data-page="held"><section id="heldSec">
+  <div class="health-head"><h2>Possibly genuine, held</h2><span id="heldPill"></span></div>
+  <p class="explain">Messages SpamGuard held in the last 24 hours from names that don't look made-up. If someone here is genuine, press <strong>Let through</strong>: they're trusted from then on.</p>
+  <ul class="rows" id="heldList"></ul>
+  <div class="foldbar" id="heldMore"></div>
+</section></div>
+<div class="page" data-page="lockdown"><section id="lockSec">
+  <div class="health-head"><h2>Lockdown</h2><span id="lPill"></span></div>
+  <p class="explain" id="lLine"></p>
+  <div class="inline-form" id="lBtns"></div>
+</section></div>
+<div class="page" data-page="messages"><section>
   <h2>Recent channel messages</h2>
   <p class="lead">Mark anything SpamGuard missed as spam, or tell it when it got something wrong. Routes read left to right from where the message entered the mesh.</p>
   <ul class="rows" id="recent"></ul>
-  <p class="more" id="recentMore"></p>
+  <div class="foldbar" id="recentMore"></div>
+</section></div>
+<div class="page" data-page="sources">
+<section>
+  <h2>Spam sources</h2>
+  <p class="lead">Where spam enters the mesh: the first repeater on each spam message's route, from SpamGuard's last 7 days. Locations come from the repeater adverts your openHop has heard. Route codes are short, so one code can belong to several repeaters; all of them are shown.</p>
+  <div id="mapBox" class="map"></div>
+  <p class="explain" id="mapNote"></p>
 </section>
-
+<section>
+  <h2>All spam sources</h2>
+  <div class="scroll"><table id="srcTable"></table></div>
+</section>
 <section class="adv">
   <h2>Repeaters messages arrived from</h2>
   <p class="lead">Grouped by the first repeater on each route, over the detection window. “Never block” stops SpamGuard ever blocking that repeater automatically (useful for your own neighbours).</p>
   <div class="scroll"><table id="hops"></table></div>
   <p class="more" id="learnt"></p>
 </section>
-
-<section class="adv">
+</div>
+<div class="page" data-page="campaigns"><section>
   <h2>Spam campaigns</h2>
   <p class="lead">Groups of near-identical messages sent under different names. SpamGuard groups them even when words are added, capitals change or look-alike letters are swapped in.</p>
   <div class="scroll"><table id="campaigns"></table></div>
-</section>
-
-<section class="adv" id="settingsSec">
+</section></div>
+<div class="page" data-page="activity"><section>
+  <h2>Activity</h2>
+  <div class="scroll"><table id="activity"></table></div>
+  <div class="foldbar" id="activityMore"></div>
+</section></div>
+<div class="page" data-page="settings"><section id="settingsSec">
   <h2>Detection settings</h2>
   <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div id="settings"></div>
   <div class="savebar"><button class="go" id="saveSet">Save settings</button><button id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
   <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset all to defaults</button></p>
-</section>
-
-<section class="adv">
+</section></div>
+<div class="page" data-page="exceptions"><section>
   <h2>Exceptions</h2>
   <p class="lead">Things SpamGuard should leave alone.</p>
   <h3 style="font-size:14.5px;margin:6px 0 0">Trusted senders</h3>
@@ -331,9 +437,8 @@ body.advanced .stats.adv{display:grid}
   <h3 style="font-size:14.5px;margin:6px 0 0">Not re-blocked</h3>
   <p class="explain">Blocks you removed by hand. SpamGuard won't re-create these for 24 hours.</p>
   <div class="chips" id="suppressed"></div>
-</section>
-
-<section class="adv" id="evSec">
+</section></div>
+<div class="page" data-page="evidence"><section id="evSec">
   <h2>Evidence log</h2>
   <p class="lead">A day-by-day record of every channel message SpamGuard reads, its spam signals, whether it was caught, and your “This is spam” / “Not spam” answers. Download it to review what happened, or to have SpamGuard's detection tuned against real traffic with the replay tool.</p>
   <div id="evStatus"></div>
@@ -343,14 +448,22 @@ body.advanced .stats.adv{display:grid}
     <button id="evPlain">Download with real names</button>
   </div>
   <p class="explain">Scrambled downloads replace every sender name (and @mentions of them) with a code, keeping each name's spam score and shape (e.g. AA9AAAAA), so the file can be shared without revealing who said what. Message text is kept.</p>
-</section>
-
-<section class="adv">
-  <h2>Activity</h2>
-  <div class="scroll"><table id="activity"></table></div>
-</section>
-
-<section class="basic-only howto">
+</section></div>
+<div class="page" data-page="health"><section id="healthSec">
+  <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
+  <p class="explain" id="hLine"></p>
+  <ul class="hlist" id="hIssues"></ul>
+  <dl class="stats" id="hStats"></dl>
+  <dl class="stats adv" id="hStatsAdv"></dl>
+</section></div>
+<div class="page" data-page="updates"><section id="updSec">
+  <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
+  <p class="explain" id="uLine"></p>
+  <ul class="hlist" id="uIssues"></ul>
+  <div class="inline-form" id="uBtns"></div>
+  <details id="uNotesBox" hidden><summary>What's new</summary><div class="notes" id="uNotes"></div></details>
+</section></div>
+<div class="page" data-page="help"><section class="howto">
   <h2>How SpamGuard works</h2>
   <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, and the same message sent under different names.</p>
   <p>When it finds spam it adds a rule to openHop so your repeater stops passing it on. It never changes your own openHop rules, and every automatic block ends by itself once the spam stops.</p>
@@ -360,14 +473,15 @@ body.advanced .stats.adv{display:grid}
   <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same long message are the usual causes. <strong>Relaxed</strong> sensitivity makes both less likely.</p>
   <h3>Limits</h3>
   <p>SpamGuard only controls what <em>your</em> repeater forwards. People in direct range of the spammer will still hear him, so the more repeaters near the source run a filter, the better. It cannot read private channels or direct messages unless you give it the channel key.</p>
-</section>
-
+</section></div>
 <p class="foot" id="foot"></p>
 <p class="foot legal">SpamGuard <span id="footVer"></span> · <a id="repoLink" href="https://github.com/flackrat/openhop-spamguard" target="_blank" rel="noopener noreferrer">github.com/flackrat/openhop-spamguard</a> · MIT licence<br>
 Provided "as is", without warranty of any kind. You decide what your repeater forwards, and you are responsible for using it within your local radio and data-protection rules. An independent project, not affiliated with or endorsed by openHop or MeshCore.</p>
 </div>
+</main>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
-
+<div class="tip" id="tip"></div>
 <script>
 "use strict";
 let S = null, dirty = {}, lastKey = "";
@@ -402,7 +516,7 @@ function renderTop(d){
   else { h1=n?`Protecting your repeater. ${n} spam message${plural} stopped in the last 24 hours.`:"Protecting your repeater. No spam in the last 24 hours."; sub=`Last spam ${ago(sm.last_catch)}. ${sm.active_blocks} active block${sm.active_blocks===1?"":"s"}.`; }
   const max=Math.max(1,...sm.by_hour);
   const bars=sm.by_hour.map((v,i)=>`<i class="${v?"":"zero"}" style="height:${v?Math.max(8,v/max*100):4}%" title="${v} caught, ${23-i} h ago"></i>`).join("");
-  $("#hero").innerHTML=`<h1>${esc(h1)}</h1><p>${esc(sub)}</p><div class="meter" aria-label="Spam caught per hour, last 24 hours">${bars}</div><div class="meter-scale"><span>24 h ago</span><span>now</span></div>`;
+  $("#hero").innerHTML=`<h1>${esc(h1)}</h1><p>${esc(sub)}</p>`;
 
   let b="";
   if(d.service&&d.service.state==="bad") b+=`<div class="banner bad"><b>SpamGuard needs attention.</b>${esc(d.service.problems[0])}</div>`;
@@ -470,7 +584,7 @@ function renderBlocks(d){
   const list=d.blocks.filter(b=>adv||b.source!=="dedupe");
   const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
-  $("#blocks").innerHTML=list.map(b=>{
+  const items=list.map(b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
     const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)
       :b.kind==="links"?"Links from names SpamGuard doesn't know"
@@ -503,7 +617,8 @@ function renderBlocks(d){
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
       <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.</div></div>
       <div class="acts">${b.permanent?"":btn("Keep","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
-  }).join("") || `<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`;
+  });
+  fold("blocks","blocksFold",items,`<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`);
   const ded=d.summary.dedupe_rules;
   $("#blocksMore").textContent=!adv&&ded?`Plus ${ded} short-lived duplicate block${ded===1?"":"s"}, each stopping a repeat of a message seen in the last few minutes.`:"";
 }
@@ -511,8 +626,7 @@ function renderBlocks(d){
 /* ---------- recent messages ---------- */
 function renderRecent(d){
   const adv=document.body.classList.contains("advanced");
-  const msgs=d.recent.slice(0, adv?80:25);
-  $("#recent").innerHTML=msgs.map(m=>{
+  const items=d.recent.map(m=>{
     let tag="";
     if(m.matched) tag=d.mode==="protect"&&!d.paused?"<span class='tag stop'>Stopped</span>":"<span class='tag would'>Would be stopped</span>";
     else if(m.random||m.obfuscated||m.campaign) tag="<span class='tag sus'>Suspicious</span>";
@@ -524,8 +638,8 @@ function renderRecent(d){
     return `<li><div><div><strong>${esc(m.sender)}</strong>${tag}</div><div class="msg-text">${esc(m.text)}</div>
       <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div></div>
       <div class="acts">${acts}</div></li>`;
-  }).join("") || `<li><p class="empty">No channel messages heard in the last ${Math.round(d.settings.long_window_seconds/3600)} hours.</p></li>`;
-  $("#recentMore").textContent=d.recent.length>msgs.length?`Showing the latest ${msgs.length} of ${d.recent.length}.`:"";
+  });
+  fold("recent","recentMore",items,`<li><p class="empty">No channel messages heard in the last ${Math.round(d.settings.long_window_seconds/3600)} hours.</p></li>`);
 }
 
 /* ---------- advanced tables ---------- */
@@ -546,7 +660,7 @@ function renderAdvanced(d){
   $("#channels").innerHTML=d.channels.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("");
   const sup=Object.entries(d.suppressed);
   $("#suppressed").innerHTML=sup.length?sup.map(([k,s])=>`<span class="chip">${esc(k)} <span class="explain">${left(s)}</span></span>`).join("")+btn("Clear","/clear_suppressed",{},"quiet"):`<span class="explain">None</span>`;
-  $("#activity").innerHTML=d.activity.map(a=>`<tr><td class="msg-meta when">${new Date(a.ts*1000).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(a.msg)}</td></tr>`).join("")||`<tr><td class="empty">Nothing yet.</td></tr>`;
+  fold("activity","activityMore",d.activity.map(a=>`<tr><td class="msg-meta when">${new Date(a.ts*1000).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(a.msg)}</td></tr>`),`<tr><td class="empty">Nothing yet.</td></tr>`);
   const ev=d.evidence||{};
   $("#evStatus").innerHTML=ev.enabled
     ? `<p><span class="tag ok">recording</span> ${ev.days} day${ev.days===1?"":"s"} kept (${(ev.bytes/1048576).toFixed(ev.bytes<1048576?2:1)} MB)${ev.first?", since "+esc(ev.first):""}. Days older than ${d.settings.evidence_days} are deleted automatically.</p>`
@@ -610,7 +724,7 @@ $("#evPlain").onclick=()=>{ if(confirm("This file contains people's names and me
 /* ---------- view toggle and refresh ---------- */
 const adv=$("#advToggle");
 adv.checked=store.get("sgadv")==="1"; document.body.classList.toggle("advanced",adv.checked);
-adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); if(S) render(S); };
+adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); route(); if(S) render(S); };
 
 function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
 function renderUpdate(d){
@@ -640,11 +754,12 @@ function renderUpdate(d){
 }
 function renderHeld(d){
   const h=d.held||[];
-  $("#heldSec").hidden=!h.length;
   $("#heldPill").innerHTML=h.length?`<span class='tag would'>${h.length}</span>`:"";
-  $("#heldList").innerHTML=h.map(m=>`<li><div><div><strong>${esc(m.sender)}</strong></div><div class="msg-text">${esc(m.text)}</div>
+  $("#heldCallout").innerHTML=h.length?`<div class="callout"><span><strong>${h.length} message${h.length===1?"":"s"} from normal-looking names ${h.length===1?"was":"were"} held</strong> in the last 24 hours. Check they weren't genuine.</span><a href="#/held" class="quietlink">Review</a></div>`:"";
+  fold("heldList","heldMore",h.map(m=>`<li><div><div><strong>${esc(m.sender)}</strong></div><div class="msg-text">${esc(m.text)}</div>
     <div class="msg-meta">${esc(m.time)}, via <span class="route">${esc(m.path)}</span>. Held by ${esc(m.why)}</div></div>
-    <div class="acts">${btn("Let through","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"go")}</div></li>`).join("");
+    <div class="acts">${btn("Let through","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"go")}</div></li>`),
+    `<li><p class="empty">Nothing held from normal-looking names in the last 24 hours.</p></li>`);
 }
 function renderLockdown(d){
   const k=d.known||{count:0}, lk=d.lockdown;
@@ -664,12 +779,167 @@ function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderNav(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   if(!editing){ renderBlocks(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
   $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
     + (editing?" (some sections wait while you edit)":"");
 }
+/* ---------- menu and pages ---------- */
+const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",lockdown:"Lockdown",messages:"Messages",sources:"Spam sources",
+  campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help"};
+const ADV_PAGES=["campaigns","activity","settings","exceptions","evidence"];
+let PAGE="overview";
+function route(){
+  let p=(location.hash.match(/^#\/([a-z]+)/)||[])[1]||"overview";
+  if(!TITLES[p]||(ADV_PAGES.includes(p)&&!document.body.classList.contains("advanced"))) p="overview";
+  const changed=p!==PAGE; PAGE=p;
+  document.querySelectorAll(".page").forEach(el=>el.classList.toggle("on",el.dataset.page===p));
+  document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===p));
+  $("#topTitle").textContent=TITLES[p]; document.title="SpamGuard · "+TITLES[p];
+  document.body.classList.remove("menu-open");
+  if(changed) window.scrollTo(0,0);
+  if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); }
+}
+window.addEventListener("hashchange",route);
+document.querySelectorAll(".grp-h").forEach((b,i)=>{
+  if(store.get("sggrp"+i)==="0") b.setAttribute("aria-expanded","false");
+  b.onclick=()=>{ const o=b.getAttribute("aria-expanded")!=="false"; b.setAttribute("aria-expanded",String(!o)); store.set("sggrp"+i,o?"0":"1"); };
+});
+$("#menuBtn").onclick=e=>{ e.stopPropagation(); document.body.classList.toggle("menu-open"); };
+document.addEventListener("click",e=>{ if(document.body.classList.contains("menu-open") && !e.target.closest("#side")) document.body.classList.remove("menu-open"); });
+function badge(id,text,cls){ const b=$("#nb-"+id); if(!b) return; b.textContent=text||""; b.className="badge"+(text?" on "+(cls||"plain"):""); }
+function renderNav(d){
+  badge("blocks",d.summary.active_blocks||"","plain");
+  badge("held",(d.held||[]).length||"","warn");
+  badge("lockdown",d.lockdown?"On":"","warn");
+  const st=(d.service||{}).state; badge("health",st==="bad"?"!":st==="warn"?"!":"",st==="bad"?"bad":"warn");
+  const u=d.update||{}; badge("updates",u.available?"New":"","ok");
+}
+
+/* ---------- lists that show 10 and fold out ---------- */
+const FOLD={};
+function fold(id,barId,items,empty,step){
+  step=step||10;
+  const f=FOLD[id]||(FOLD[id]={n:step,step});
+  f.items=items; f.empty=empty; f.bar=barId;
+  drawFold(id);
+}
+function drawFold(id){
+  const f=FOLD[id], n=Math.min(f.n,f.items.length);
+  $("#"+id).innerHTML=f.items.slice(0,f.n).join("")||f.empty;
+  let bar="";
+  if(f.items.length>f.n) bar=`<span>Showing ${n} of ${f.items.length}.</span><button class="quiet" onclick="foldBy('${id}',${f.step})">Show ${Math.min(f.step,f.items.length-f.n)} more</button><button class="quiet" onclick="foldBy('${id}',1e9)">Show all</button>`;
+  if(f.n>f.step && f.items.length>f.step) bar+=`<button class="quiet" onclick="foldBy('${id}',0)">Show fewer</button>`;
+  $("#"+f.bar).innerHTML=bar;
+}
+function foldBy(id,k){ const f=FOLD[id]; f.n=k===0?f.step:Math.min(f.items.length,f.n+k); drawFold(id); }
+
+/* ---------- overview ---------- */
+const fmtN=n=>(n||0).toLocaleString();
+function fmtAir(ms){ const s=(ms||0)/1000; if(s<90) return s.toFixed(s<10?1:0)+" s"; if(s<5400) return (s/60).toFixed(s<600?1:0)+" min"; return (s/3600).toFixed(1)+" h"; }
+function renderOverview(d){
+  const m=d.metrics; if(!m) return;
+  const a=m.d1, w=m.d7;
+  const tile=(t,v,sub)=>`<div><dt>${t}</dt><dd>${v}<small>${sub||""}</small></dd></div>`;
+  $("#kpis").innerHTML=
+    tile("Spam stopped, 24 h",fmtN(a.c),`${fmtN(w.c)} in 7 days`)+
+    tile("Spam let through, 24 h",fmtN(a.x),a.stop_rate==null?"no spam yet":`${a.stop_rate}% of spam stopped`)+
+    tile("Spam share of channel traffic",a.spam_share==null?"–":a.spam_share+"%",`${fmtN(a.spam)} of ${fmtN(a.m)} messages, 24 h`)+
+    tile("Airtime saved, 24 h",m.radio_known?fmtAir(a.a):"–",m.radio_known?`${fmtAir(w.a)} in 7 days`:"needs openHop's radio settings")+
+    tile("Possibly genuine held, 24 h",fmtN(a.g),a.g?`<a href="#/held">review</a>`:"none")+
+    tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks")+
+    tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`);
+  $("#kpiSince").textContent=m.since&&Date.now()/1000-m.since<7*86400?"Counting since "+new Date(m.since*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
+  const hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  columns($("#chart24"),m.hourly.map(r=>({c:r.c,x:r.x,label:hh(r.t),tip:`${hh(r.t)}: ${r.c} stopped, ${r.x} let through, ${r.m} messages`})),{every:6});
+  columns($("#chart7"),m.daily.map(r=>({c:r.c,x:r.x,label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),tip:`${new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"})}: ${r.c} stopped, ${r.x} let through`})),{every:1});
+  columns($("#chartHour"),m.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6});
+  $("#chart24").setAttribute("aria-label",`Spam per hour, last 24 hours: ${a.c} stopped, ${a.x} let through`);
+  $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
+}
+function srcName(s){
+  const c=s.candidates||[];
+  if(s.hop==="DIRECT") return "<span class='explain'>heard directly (no repeater)</span>";
+  if(!c.length) return "<span class='explain'>not in openHop's repeater list</span>";
+  return esc(c[0].name||"(no name)")+(c.length>1?` <span class="explain">+${c.length-1} more share this code</span>`:"");
+}
+function srcRows(list,actions){
+  const head=`<tr><th>Repeater code</th><th>Likely repeater</th><th class="num">24 h</th><th class="num">7 days</th><th>Last spam</th><th>Status</th>${actions?"<th></th>":""}</tr>`;
+  if(!list.length) return head+`<tr><td colspan="7" class="empty">No spam recorded yet.</td></tr>`;
+  return head+list.map(s=>`<tr><td class="lead-cell"><span class="route">${esc(s.hop==="DIRECT"?"direct":s.hop)}</span></td><td data-label="Likely repeater">${srcName(s)}</td>
+    <td class="num" data-label="24 h">${s.d1}</td><td class="num" data-label="7 days">${s.d7}</td><td data-label="Last spam">${ago(s.last+3599)}</td>
+    <td data-label="Status">${s.blocked?"<span class='tag stop'>blocked</span>":s.allowed?"<span class='tag ok'>never block</span>":"<span class='tag plain'>not blocked</span>"}</td>
+    ${actions?`<td class="act-cell">${s.hop==="DIRECT"?"":(s.blocked?"":btn("Block","/block_hop",{hop:s.hop},"quiet"))+(s.allowed?btn("Allow blocking","/unallow_hop",{hop:s.hop},"quiet"):btn("Never block","/allow_hop",{hop:s.hop},"quiet"))}</td>`:""}</tr>`).join("");
+}
+
+/* ---------- column charts (stacked: stopped + let through) ---------- */
+function niceMax(v){ if(v<=4) return 4; const p=Math.pow(10,Math.floor(Math.log10(v))); for(const k of [1,2,2.5,5,10]) if(k*p>=v) return k*p; return 10*p; }
+function barPath(x,y,w,h,r){ if(h<=0) return ""; r=Math.min(r,h,w/2); return `M${x},${y+h}V${y+r}Q${x},${y} ${x+r},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h}Z`; }
+function columns(el,rows,opt){
+  const W=el.clientWidth||600, H=el.clientHeight||140, L=30, B=18, T=8, base=H-B;
+  const top=niceMax(Math.max(1,...rows.map(r=>r.c+(r.x||0))));
+  const band=(W-L)/rows.length, w=Math.max(2,Math.min(24,band*0.66));
+  const y=v=>base-(v/top)*(base-T);
+  let g="";
+  [0,top/2,top].forEach(v=>{ g+=`<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L-6}" y="${y(v)+4}" text-anchor="end">${Number.isInteger(v)?v:v.toFixed(1)}</text>`; });
+  rows.forEach((r,i)=>{
+    const x0=L+i*band+(band-w)/2, hc=base-y(r.c), hx=base-y(r.x||0), gap=hc&&hx?2:0;
+    if(hc) g+=`<path class="c" d="${barPath(x0,base-hc,w,hc,hx?0:4)}"/>`;
+    if(hx) g+=`<path class="x" d="${barPath(x0,base-hc-gap-hx,w,hx,4)}"/>`;
+    g+=`<rect class="hit" x="${L+i*band}" y="${T}" width="${band}" height="${base-T}" data-tip="${esc(r.tip)}"/>`;
+    if(i%opt.every===0) g+=`<text class="ax" x="${x0+w/2}" y="${H-3}" text-anchor="middle">${esc(r.label)}</text>`;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
+}
+document.addEventListener("mousemove",e=>{
+  const t=$("#tip"), h=e.target.closest&&e.target.closest(".hit");
+  if(!h){ t.classList.remove("show"); return; }
+  t.textContent=h.dataset.tip; t.style.left=e.clientX+"px"; t.style.top=(e.clientY-10)+"px"; t.style.position="fixed"; t.classList.add("show");
+});
+let rsz; window.addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S&&PAGE==="overview") renderOverview(S); },200); });
+
+/* ---------- spam sources page and map ---------- */
+let MAP=null, MAPLAYER=null, LEAFLET=null;
+function loadLeaflet(){
+  if(LEAFLET) return LEAFLET;
+  LEAFLET=new Promise((ok,bad)=>{
+    const l=document.createElement("link"); l.rel="stylesheet"; l.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l);
+    const s=document.createElement("script"); s.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload=()=>ok(window.L); s.onerror=bad; document.head.appendChild(s);
+  });
+  return LEAFLET;
+}
+function renderSources(d){
+  const m=d.metrics; if(!m) return;
+  $("#srcTable").innerHTML=srcRows(m.sources,true);
+  const pts=[]; let placed=0, shared=0;
+  m.sources.forEach(s=>{ (s.candidates||[]).forEach(c=>{ if(c.lat!=null&&c.lon!=null&&(c.lat||c.lon)){ pts.push({s,c}); placed++; } }); if((s.candidates||[]).length>1) shared++; });
+  const me=m.me||{};
+  const meOk=me.lat!=null&&me.lon!=null&&(me.lat||me.lon);
+  $("#mapNote").textContent=!m.sources.length?"No spam recorded yet, so there's nothing to map."
+    :!placed?"None of the spam sources have a location in openHop's repeater adverts yet, so they're listed below instead."
+    :`Circle size shows spam in the last 7 days; red means currently blocked.${shared?" Codes shared by several repeaters show every repeater with that code.":""}${meOk?" The teal dot is your repeater.":""}`;
+  if(!placed&&!meOk){ $("#mapBox").style.display="none"; return; }
+  $("#mapBox").style.display="";
+  loadLeaflet().then(L=>{
+    if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
+    if(MAPLAYER) MAPLAYER.remove();
+    MAPLAYER=L.layerGroup().addTo(MAP);
+    const dark=matchMedia("(prefers-color-scheme: dark)").matches, red=dark?"#ef7a70":"#b0322b", org=dark?"#cf7a32":"#c2610c", teal=dark?"#2ba3a6":"#009096";
+    const bounds=[];
+    pts.forEach(({s,c})=>{
+      const r=Math.min(26,6+Math.sqrt(s.d7)*2.2), n=(s.candidates||[]).length;
+      L.circleMarker([c.lat,c.lon],{radius:r,color:"#fff",weight:2,fillColor:s.blocked?red:org,fillOpacity:n>1?.55:.85})
+       .bindPopup(`<b>${esc(c.name||"(no name)")}</b><br>Route code <b>${esc(s.hop)}</b>${n>1?` (one of ${n} repeaters using it)`:""}<br>Spam: ${s.d1} in 24 h, ${s.d7} in 7 days<br>${s.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
+      bounds.push([c.lat,c.lon]);
+    });
+    if(meOk){ L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); bounds.push([me.lat,me.lon]); }
+    if(bounds.length===1) MAP.setView(bounds[0],11); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:12});
+    setTimeout(()=>MAP.invalidateSize(),50);
+  }).catch(()=>{ $("#mapBox").style.display="none"; $("#mapNote").textContent="The map needs an internet connection to load. The table below has the same information."; });
+}
+
 async function load(force){
   const editing=!force && busy();
   try{ const d=await (await fetch("/status",{cache:"no-store"})).json(); S=d; render(d, editing); }
@@ -677,7 +947,7 @@ async function load(force){
     $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; }
 }
 document.addEventListener("change",ev=>{ if(ev.target.tagName==="SELECT") ev.target.blur(); });
-load(true); setInterval(load,8000);
+route(); load(true); setInterval(load,8000);
 </script>
 </body>
 </html>

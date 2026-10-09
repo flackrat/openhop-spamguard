@@ -55,7 +55,8 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 | Let a genuine person through | Press **Let through** under "Possibly genuine, held", or **Not spam** on their message |
 | Stop something it missed | Press **This is spam** on the message |
 | Ride out a heavy attack | Press **Lockdown** (30 min to 2 hours, ends by itself) |
-| Pause all blocking | Press **Pause** at the top of the page |
+| See where spam comes from | Open **Spam sources** in the menu |
+| Pause all blocking | Press **Pause** on the Overview |
 | Update | Press **Update** when the page says a new version is out |
 | Remove it | `sudo bash /opt/openhop_spamguard/uninstall.sh` |
 
@@ -74,8 +75,11 @@ Click a heading to expand it.
 <details>
 <summary><b>The web page</b></summary>
 
-- **Simple view**: what's happening, the mode (Monitor / Protect / Pause), the sensitivity (Relaxed / Balanced / Strict), the **Lockdown** button, **Health**, **Updates**, what's blocked, and recent messages with "This is spam" and "Not spam" buttons.
-- **Advanced** (switch at the top right): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, repeaters, texts, channels), Known people settings, the evidence log and an activity log.
+- **Menu**: a side menu like openHop's own (a slide-out menu on phones). **Overview**, **Protection** (blocks, possibly genuine, Lockdown), **Monitoring** (messages, spam sources) and **System** (health, updates, help). Advanced adds campaigns, activity, settings, exceptions and the evidence log.
+- **Overview**: mode, sensitivity, and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives.
+- **Spam sources**: which repeaters spam arrives through, on a map (repeaters that advertise a location) and in a table with Block / Never block buttons. The map needs internet access on the device viewing the page; the table works without it.
+- **Long lists** (messages, blocks, activity) show 10 at a time with **Show more**.
+- **Advanced** (switch at the bottom of the menu): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, repeaters, texts, channels), Known people settings, the evidence log and an activity log.
 
 </details>
 
