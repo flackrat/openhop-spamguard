@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.12
+- **Spam sources map now shows where spam really enters the mesh.** Route codes are short and shared by many repeaters around the country, so plotting every repeater with the first code scattered spam across the map. SpamGuard now follows each spam message's whole route back from your repeater, one radio hop at a time, and places each code at the repeater that fits the chain. A spammer who fakes a new first-repeater code each time is placed at the real repeaters that first heard them. On a test mesh with realistic code clashes, 76% of spam was placed within 40 km of its real source, against 6% before.
+- Circles with a dashed outline mean the very first repeater couldn't be identified, so the circle marks the nearest one that could. The table's "Likely repeater" column says the same.
+- A notice explains when spam is arriving under many different first-repeater codes from one area (one sender changing identity).
+- New optional setting, **Use the public MeshCore map for repeater locations** (Advanced > Settings, off by default): once a day the Pi downloads the public MeshCore map's repeater list, so repeaters too far away for your openHop to hear can be placed too. Nothing is sent.
+- Needs your repeater's location set in openHop. Spam recorded before this version has no route stored, so the map fills in as new spam arrives.
+
 ## v5.11.6
 - Fix: **Reset settings to defaults** and **Start again from scratch** no longer switch the evidence log off (or change how long it's kept, or the update check). Before, a reset quietly stopped the evidence log.
 

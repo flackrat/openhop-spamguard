@@ -395,12 +395,13 @@ main{min-width:0}
 <div class="page" data-page="sources">
 <section>
   <h2>Spam sources</h2>
-  <p class="lead">Where spam enters the mesh: the first repeater on each spam message's route, from SpamGuard's last 7 days. Locations come from the repeater adverts your openHop has heard. Route codes are short, so one code can belong to several repeaters; all of them are shown.</p>
+  <p class="lead">Where spam entered the mesh over the last 7 days. Route codes are short and shared by many repeaters across the country, so SpamGuard follows each spam message's whole route back from your repeater, one radio hop at a time, and places each code at the repeater that fits the chain. Locations come from the repeater adverts your openHop has heard, and from the public MeshCore map if you turn that on.</p>
   <div id="mapBox" class="map"></div>
   <p class="explain" id="mapNote"></p>
 </section>
 <section>
   <h2>All spam sources</h2>
+  <div id="rotNote"></div>
   <div class="scroll"><table id="srcTable"></table></div>
 </section>
 <section class="adv">
@@ -894,8 +895,9 @@ function renderOverview(d){
   $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
 }
 function srcName(s){
-  const c=s.candidates||[];
+  const c=s.candidates||[], l=s.likely;
   if(s.hop==="DIRECT") return "<span class='explain'>heard directly (no repeater)</span>";
+  if(l) return l.exact?esc(l.name||"(no name)"):`<span class='explain'>unknown repeater, entering near</span> ${esc(l.name||"(no name)")}`;
   if(!c.length) return "<span class='explain'>not in openHop's repeater list</span>";
   return esc(c[0].name||"(no name)")+(c.length>1?` <span class="explain">+${c.length-1} more share this code</span>`:"");
 }
@@ -947,32 +949,40 @@ function loadLeaflet(){
 function renderSources(d){
   const m=d.metrics; if(!m) return;
   $("#srcTable").innerHTML=srcRows(m.sources,true);
-  const pts=[]; let placed=0, shared=0;
-  m.sources.forEach(s=>{ (s.candidates||[]).forEach(c=>{ if(c.lat!=null&&c.lon!=null&&(c.lat||c.lon)){ pts.push({s,c}); placed++; } }); if((s.candidates||[]).length>1) shared++; });
-  const me=m.me||{};
-  const meOk=me.lat!=null&&me.lon!=null&&(me.lat||me.lon);
-  $("#mapNote").textContent=!m.sources.length?"No spam recorded yet, so there's nothing to map."
-    :!placed?"None of the spam sources have a location in openHop's repeater adverts yet, so they're listed below instead."
-    :`Circle size shows spam in the last 7 days; red means currently blocked.${shared?" Codes shared by several repeaters show every repeater with that code.":""}${meOk?" The teal dot is your repeater.":""}`;
-  if(!placed&&!meOk){ $("#mapBox").style.display="none"; return; }
+  const rot=(m.entries||[]).filter(e=>e.codes&&e.codes.length>=3), rotN=rot.reduce((a,e)=>a+e.d7,0), allN=(m.entries||[]).reduce((a,e)=>a+e.d7,0)+((m.unplaced||{}).d7||0);
+  $("#rotNote").innerHTML=rot.length&&rotN>=allN*0.3?`<div class="callout"><span><strong>${rotN} of ${allN} spam messages came from the same area under at least ${new Set(rot.flatMap(e=>e.codes)).size} different first-repeater codes</strong>, entering near ${rot.slice(0,3).map(e=>esc(e.name||"(no name)")).join(", ")}. That usually means one sender changing its repeater identity, so blocking codes one by one won't keep up. SpamGuard's rotation protection and campaign blocks deal with this automatically.</span></div>`:"";
+  const me=m.me||{}, meOk=me.lat!=null&&me.lon!=null&&(me.lat||me.lon);
+  const ents=(m.entries||[]).filter(e=>e.lat!=null&&e.lon!=null);
+  const un=(m.unplaced||{}).d7||0, tot=ents.reduce((a,e)=>a+e.d7,0)+un;
+  let note;
+  if(!m.sources.length) note="No spam recorded yet, so there's nothing to map.";
+  else if(!meOk) note="Your repeater has no location set in openHop, so routes can't be traced back. Set its latitude and longitude in openHop's settings.";
+  else if(!ents.length) note="Spam routes recorded before this version, or routes through repeaters that haven't advertised a location, can't be placed yet. New spam will appear here.";
+  else note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red means it is currently blocked. A dashed outline means the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
+  if(m.sources.length&&meOk&&!m.map_directory) note+=" For repeaters too far away for your openHop to hear, turn on “Use the public MeshCore map for repeater locations” under Advanced > Settings.";
+  else if(m.map_directory&&m.public_error&&!m.public_repeaters) note+=" The public MeshCore map couldn't be downloaded yet; SpamGuard will try again.";
+  $("#mapNote").textContent=note;
+  if(!ents.length&&!meOk){ $("#mapBox").style.display="none"; return; }
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
-    const sig=JSON.stringify([pts.map(({s,c})=>[c.lat,c.lon,s.d1,s.d7,s.blocked]),meOk?[me.lat,me.lon]:0]);
+    const sig=JSON.stringify([ents.map(e=>[e.key,e.d1,e.d7,e.blocked]),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
     MAPLAYER=L.layerGroup().addTo(MAP);
     const dark=matchMedia("(prefers-color-scheme: dark)").matches, red=dark?"#ef7a70":"#b0322b", org=dark?"#cf7a32":"#c2610c", teal=dark?"#2ba3a6":"#009096";
     const bounds=[];
-    pts.forEach(({s,c})=>{
-      const r=Math.min(26,6+Math.sqrt(s.d7)*2.2), n=(s.candidates||[]).length;
-      L.circleMarker([c.lat,c.lon],{radius:r,color:"#fff",weight:2,fillColor:s.blocked?red:org,fillOpacity:n>1?.55:.85})
-       .bindPopup(`<b>${esc(c.name||"(no name)")}</b><br>Route code <b>${esc(s.hop)}</b>${n>1?` (one of ${n} repeaters using it)`:""}<br>Spam: ${s.d1} in 24 h, ${s.d7} in 7 days<br>${s.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
-      bounds.push([c.lat,c.lon]);
+    ents.forEach(e=>{
+      const r=Math.min(26,6+Math.sqrt(e.d7)*2.2), exact=e.exact>=e.d7/2;
+      const where=exact?"Spam entered the mesh at this repeater":`Spam entered the mesh about ${e.typical_before} hop${e.typical_before===1?"":"s"} before this repeater (that first repeater isn't in openHop's list)`;
+      const rot=e.codes.length>=3?`<br><i>The first repeater's code keeps changing (${e.codes.map(esc).join(", ")}): probably one sender changing identity.</i>`:`<br>First repeater code${e.codes.length>1?"s":""}: ${e.codes.map(esc).join(", ")}`;
+      L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":(e.blocked?red:org),weight:2,dashArray:exact?null:"4 4",fillColor:e.blocked?red:org,fillOpacity:exact?.85:.45})
+       .bindPopup(`<b>${esc(e.name||"(no name)")}</b><br>${where}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${rot}<br>${e.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
+      bounds.push([e.lat,e.lon]);
     });
     if(meOk){ L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); bounds.push([me.lat,me.lon]); }
-    const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],11); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:12}); }
+    const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],10); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:11}); }
   }).catch(()=>{ $("#mapBox").style.display="none"; $("#mapNote").textContent="The map needs an internet connection to load. The table below has the same information."; });
 }
 
