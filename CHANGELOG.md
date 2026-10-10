@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.13.2
+- New **Clear spam history** button (Advanced > Settings, near the bottom). It empties the Overview charts, the Spam sources map and table, and the Possibly genuine list so they count again from now. Blocks, settings, known people and the evidence log are kept. Like Start again, it asks twice and needs RESET typed.
+
 ## v5.13.1
 - The openHop rule-check fix is now applied automatically when SpamGuard updates or installs, with a backup of openHop's file. No command to run.
 - If an openHop update removes the fix, SpamGuard notices within minutes and puts it back (openHop restarts for a few seconds). Turn this off under Advanced > Settings > Updates, "Keep openHop's rule-check fix in place".
