@@ -262,6 +262,7 @@ main{min-width:0}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13.5px;color:var(--soft)}
 .foldbar:empty{display:none}
 [hidden]{display:none!important}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-all}
 .callout.info{background:var(--signal-tint);border-color:var(--signal)}
 .callout .cbtns{display:flex;gap:8px;align-items:center;margin-left:auto}
 .callout{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--amber-tint);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin:0 0 14px}
@@ -306,6 +307,7 @@ main{min-width:0}
 <div class="page" data-page="overview">
 <div class="hero" id="hero"><h1>Loading…</h1></div>
 <div id="updCallout"></div>
+<div id="leakCallout"></div>
 <div id="heldCallout"></div>
 <div class="controls">
   <section>
@@ -531,7 +533,7 @@ document.addEventListener("click", e => { const b=e.target.closest("[data-confir
 
 /* ---------- top: hero, banners, mode, sensitivity ---------- */
 function renderTop(d){
-  const sm=d.summary, n=sm.caught_24h, plural=n===1?"":"s";
+  const sm=d.summary, n=Math.max(0,sm.caught_24h-((d.metrics&&d.metrics.d1&&d.metrics.d1.l)||0)), plural=n===1?"":"s";
   let h1, sub;
   if(!d.health.ok && d.health.error){ h1="SpamGuard can't talk to your repeater."; sub=d.health.error+". SpamGuard keeps trying every few seconds."; }
   else if(d.paused){ h1="Paused. Nothing is being blocked."; sub="SpamGuard is still watching. Press Monitor or Protect to carry on."; }
@@ -593,6 +595,7 @@ function renderHealth(d){
     st("Rules put back", h.self_heals??0)+
     st("openHop service", h.openhop_service||"–")+
     st("openHop speed fix", h.openhop_speed_fix==null?"not needed":(h.openhop_speed_fix?"on":"off"))+
+    st("openHop rule-check fix", h.openhop_rulecheck_fix==null?"unknown":(h.openhop_rulecheck_fix?"on or not needed":"off"))+
     st("Pi temperature", h.temp_c!=null?h.temp_c+" °C":"–")+
     st("Pi load", h.load!=null?`${h.load} (${h.cpus} cores)`:"–")+
     st("Pi memory free", h.mem_avail_pct!=null?h.mem_avail_pct+"%":"–")+
@@ -874,8 +877,12 @@ function foldBy(id,k){ const f=FOLD[id]; f.n=k===0?f.step:Math.min(f.items.lengt
 /* ---------- overview ---------- */
 const fmtN=n=>(n||0).toLocaleString();
 function fmtAir(ms){ const s=(ms||0)/1000; if(s<90) return s.toFixed(s<10?1:0)+" s"; if(s<5400) return (s/60).toFixed(s<600?1:0)+" min"; return (s/3600).toFixed(1)+" h"; }
+function renderLeaks(m){
+  const l=(m&&m.d1&&m.d1.l)||0;
+  $("#leakCallout").innerHTML=l?`<div class="callout"><span><strong>openHop passed on ${l} spam message${l===1?"":"s"} in the last 24 hours that SpamGuard had a block for.</strong> ${m.rulecheck_fix===false?"This is a known openHop bug; SpamGuard includes a one-line fix. Run <code>sudo bash /opt/openhop_spamguard/tune-openhop.sh</code> on the Pi.":"Check the Health page for details."}</span><a href="#/health" class="quietlink">Health</a></div>`:"";
+}
 function renderOverview(d){
-  const m=d.metrics; if(!m) return;
+  const m=d.metrics; if(!m) return; renderLeaks(m);
   const a=m.d1, w=m.d7;
   const tile=(t,v,sub)=>`<div><dt>${t}</dt><dd>${v}<small>${sub||""}</small></dd></div>`;
   $("#kpis").innerHTML=
