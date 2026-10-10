@@ -5,6 +5,8 @@
 #   sudo bash tune-openhop.sh --yes      apply without asking
 #   sudo bash tune-openhop.sh --check    only report
 #   sudo bash tune-openhop.sh --undo     put openHop's original value back
+#   sudo bash tune-openhop.sh --rulefix  only the rule-check fix (3 below), without asking;
+#                                        used by SpamGuard's updates and by its Health panel
 #
 # 1. openHop recounts every stored packet each time it saves one, keeping the answer for only
 #    3 seconds. The answer is only used for the graphs, which are written once a minute, so
@@ -27,6 +29,7 @@ for a in "$@"; do
     --yes|-y) YES=1 ;;
     --check) MODE=check ;;
     --undo) MODE=undo ;;
+    --rulefix) MODE=rulefix; YES=1 ;;
     *) echo "Unknown option: $a" >&2; exit 2 ;;
   esac
 done
@@ -74,6 +77,21 @@ PYFIX
 }
 
 case "$MODE" in
+  rulefix)
+    case "$(rulefix_state)" in
+      needed)
+        if rulefix_apply && [ "$(rulefix_state)" = applied ]; then
+          echo "Rule-check fix applied (original saved as $PE.spamguard-orig)."
+          systemctl restart openhop-repeater && echo "openHop restarted."
+        else
+          [ -f "$PE.spamguard-orig" ] && cp "$PE.spamguard-orig" "$PE"
+          echo "Could not apply the rule-check fix - openHop left unchanged." >&2; exit 1
+        fi ;;
+      applied) echo "Rule-check fix already applied." ;;
+      not-needed) echo "This openHop version doesn't need the rule-check fix." ;;
+      *) echo "openHop's policy_engine.py was not found." ;;
+    esac
+    exit 0 ;;
   check)
     if [ -z "$current" ]; then echo "Speed fix: not applicable to this openHop version."
     elif [ "$current" = "3.0" ]; then echo "Speed fix: NOT applied (openHop keeps its packet count for 3 s)."

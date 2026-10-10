@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.13.1
+- The openHop rule-check fix is now applied automatically when SpamGuard updates or installs, with a backup of openHop's file. No command to run.
+- If an openHop update removes the fix, SpamGuard notices within minutes and puts it back (openHop restarts for a few seconds). Turn this off under Advanced > Settings > Updates, "Keep openHop's rule-check fix in place".
+- Health page: an **Apply openHop fix** button whenever the fix is missing.
+- Once openHop releases its own fix, SpamGuard sees the fix isn't needed and leaves openHop alone; the Health page will then recommend updating openHop.
+
 ## v5.13
 - **Found and fixed (optionally) an openHop bug that let blocked spam through.** openHop's rule checker remembers each channel message's sender and text under Python's internal ID for the packet, and Python reuses those IDs, so a new message can be checked with an older message's sender. Spam was then let through as a "known person", or a genuine message dropped. `tune-openhop.sh` now offers a one-line fix (with backup and `--undo`); the Health panel warns when it's missing. Reported to openHop.
 - **Counts now come from what openHop actually did.** SpamGuard reads openHop's record for every copy of each message (forwarded, or dropped by a rule). Spam it had a block for but openHop passed on anyway is counted as let through, and the Overview shows a notice. Before, those were counted as stopped. The evidence log records `openhop_forwarded` and `openhop_policy_dropped` for each message.
