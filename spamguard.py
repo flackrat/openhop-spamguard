@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.11.6"
+VERSION = "5.12"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -184,6 +184,10 @@ SETTINGS_META: list[dict] = [
      "choices": [["daily", "Once a day"], ["off", "Only when I press Check"]],
      "label": "Look for new versions",
      "help": "SpamGuard can tell you when a new version is out. It only installs one when you press Update."},
+    {"key": "map_directory", "group": "Spam sources map", "type": "bool",
+     "risk": "Once a day the Pi downloads the public MeshCore map's repeater list from map.meshcore.dev (a few MB, nothing is sent). Turned off, the map only knows repeaters whose adverts your openHop has heard, so spam entering far away is placed less precisely.",
+     "label": "Use the public MeshCore map for repeater locations",
+     "help": "Adds the locations of repeaters too far away for your openHop to hear their adverts, so spam routes can be traced back closer to where they started."},
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
@@ -236,6 +240,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "spam_text_days": 7,
     "hop_block_ttl_seconds": 2 * 3600,
     "update_check": "daily",
+    "map_directory": False,
     "update_repo": UPDATE_REPO,
     "poll_seconds": 3,
     "fetch_limit": 500,
@@ -253,7 +258,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check"}
+KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory"}
+PUBLIC_MAP_URL = "https://map.meshcore.dev/api/v1/nodes"
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
 
@@ -812,10 +818,13 @@ class SpamGuard:
         self.radio: dict = {}         # openHop's radio settings, for airtime
         self.me: dict = {}            # this repeater: name, hash, location
         self.repeaters: dict = {"ts": 0, "list": []}   # repeaters openHop has heard adverts from
+        self.public_reps: dict = {"ts": 0, "list": [], "error": None}  # from the public MeshCore map (optional)
+        self._public_busy = False
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
         self.cfg: dict[str, Any] = {}
         self._load_state()
         self.rebuild_cfg()
+        self._load_public_reps()
         for name in self.removed_sender_blocks:
             self.note(f"Removed the block on the name \"{name}\": SpamGuard now only blocks spam behaviour, "
                       "not named people. Muting someone is best done in your own MeshCore app.")
@@ -1153,6 +1162,11 @@ class SpamGuard:
             return
         hop = e.first_hop
         h["h"][hop] = h["h"].get(hop, 0) + 1
+        if e.path:  # whole routes, so the map can work out where the spam really entered the mesh
+            ps = h.setdefault("p", {})
+            k = ">".join(e.path)
+            if k in ps or len(ps) < 100:
+                ps[k] = ps.get(k, 0) + 1
         if len(self.hist) > 200:
             for k in sorted(self.hist)[:-192]:
                 del self.hist[k]
@@ -1198,13 +1212,140 @@ class SpamGuard:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
         top = sorted(sources.values(), key=lambda s: (-s["d7"], -s["d1"]))[:15]
+        try:
+            ent = self.spam_entries(cut24, cut7)
+        except Exception as ex:  # never let the map break the page
+            log.debug("spam entry points failed: %s", ex)
+            ent = {"entries": [], "unplaced": {"d1": 0, "d7": 0}, "likely": {}}
         for s7 in top:
             s7["blocked"] = f"hop:{s7['hop']}" in self.blocks
             s7["allowed"] = self.hop_allowed(s7["hop"]) if s7["hop"] != "DIRECT" else False
             s7["candidates"] = self.repeaters_for(s7["hop"])
+            s7["likely"] = ent["likely"].get(s7["hop"])
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
-                "sources": top, "me": self.me, "radio_known": bool(self.airtime_ms(40)),
+                "sources": top, "entries": ent["entries"], "unplaced": ent["unplaced"],
+                "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
+                "public_error": self.public_reps.get("error"),
+                "me": self.me, "radio_known": bool(self.airtime_ms(40)),
                 "since": min((int(k) for k in self.hist), default=None)}
+
+    LINK_KM = 130        # longest plausible single LoRa link between repeaters
+    UNKNOWN_COST = 60    # cost of leaving a hop unplaced (no repeater with that code nearby)
+
+    def _rep_index(self) -> dict:
+        idx = getattr(self, "_rep_idx", None)
+        stamp = (self.repeaters["ts"], self.public_reps["ts"] if self.cfg.get("map_directory") else 0)
+        if idx is None or idx[0] != stamp:
+            located = [r for r in self.repeaters["list"] if r.get("lat") is not None and r.get("lon") is not None]
+            if self.cfg.get("map_directory"):
+                have = {r["key"] for r in self.repeaters["list"]}
+                located += [r for r in self.public_reps["list"] if r["key"] not in have]
+            idx = (stamp, located, {})
+            self._rep_idx = idx
+        return idx
+
+    @staticmethod
+    def _km(a, b) -> float:
+        la1, lo1, la2, lo2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+        h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+        return 6371 * 2 * math.asin(min(1.0, math.sqrt(h)))
+
+    def resolve_path(self, path: list) -> Optional[dict]:
+        """Work out which repeater each route code most likely is, starting from this repeater and
+        walking back towards the sender: each hop has to be within radio range of the next one.
+        Route codes are short and shared by many repeaters, so looking a code up on its own puts
+        it anywhere in the country; the chain of neighbours narrows it to the one that fits.
+        Returns the earliest hop that could be placed (ideally the first one), or None."""
+        me = self.me or {}
+        if me.get("lat") is None or me.get("lon") is None or not path:
+            return None
+        _, located, cache = self._rep_index()
+        key = ">".join(path)
+        if key in cache:
+            return cache[key]
+        cands = []
+        for code in path:
+            cs = [r for r in located if r["key"].startswith(code)]
+            cands.append(sorted(cs, key=lambda r: -r["seen"])[:40])
+        # Dynamic programme from our end. State: the last placed repeater (or us) and how many
+        # unplaced hops since; value: total "distance" cost and the placements so far.
+        states = {("me", 0): (0.0, (float(me["lat"]), float(me["lon"])), [])}
+        for i in range(len(path) - 1, -1, -1):
+            nxt = {}
+            for (sid, gap), (cost, pos, placed) in states.items():
+                # leave this hop unplaced
+                k2 = (sid, gap + 1)
+                c2 = cost + self.UNKNOWN_COST
+                if k2 not in nxt or c2 < nxt[k2][0]:
+                    nxt[k2] = (c2, pos, placed)
+                for r in cands[i]:
+                    d = self._km(pos, (r["lat"], r["lon"]))
+                    if d > self.LINK_KM * (gap + 1):
+                        continue
+                    k2 = (r["key"], 0)
+                    c2 = cost + d
+                    if k2 not in nxt or c2 < nxt[k2][0]:
+                        nxt[k2] = (c2, (r["lat"], r["lon"]), placed + [(i, r)])
+            # keep the search small on long routes
+            states = dict(sorted(nxt.items(), key=lambda kv: kv[1][0])[:60])
+        best = min(states.values(), key=lambda v: v[0])
+        placed = best[2]
+        res = None
+        if placed:
+            i, r = min(placed, key=lambda x: x[0])
+            res = {"key": r["key"], "name": r.get("name") or "", "lat": r["lat"], "lon": r["lon"],
+                   "index": i, "code": path[i]}
+        if len(cache) > 5000:
+            cache.clear()
+        cache[key] = res
+        return res
+
+    def spam_entries(self, cut24: float, cut7: float) -> dict:
+        """Where spam entered the mesh, from whole routes. Groups by the earliest repeater that could
+        be placed; 'before' says how many unplaced hops came before it (0 = the first repeater)."""
+        entries: dict[str, dict] = {}
+        unplaced = {"d1": 0, "d7": 0}
+        by_code: dict[str, collections.Counter] = {}
+        for k, v in self.hist.items():
+            t = int(k)
+            if t < cut7:
+                continue
+            recent = t >= cut24 - 3600
+            for ps, n in (v.get("p") or {}).items():
+                path = ps.split(">")
+                r = self.resolve_path(path)
+                if not r:
+                    unplaced["d7"] += n
+                    if recent:
+                        unplaced["d1"] += n
+                    continue
+                e = entries.setdefault(r["key"], {"key": r["key"], "name": r["name"], "lat": r["lat"], "lon": r["lon"],
+                                                  "code": r["code"], "d1": 0, "d7": 0, "exact": 0, "before": collections.Counter(),
+                                                  "codes": collections.Counter(), "last": 0})
+                e["d7"] += n
+                if recent:
+                    e["d1"] += n
+                if r["index"] == 0:
+                    e["exact"] += n
+                else:
+                    e["before"][r["index"]] += n
+                e["codes"][path[0]] += n
+                e["last"] = max(e["last"], t)
+                by_code.setdefault(path[0], collections.Counter())[r["key"]] += n
+        out = []
+        for e in sorted(entries.values(), key=lambda e: -e["d7"])[:25]:
+            e["codes"] = [c for c, _ in e["codes"].most_common(8)]
+            e["blocked"] = any(f"hop:{c}" in self.blocks for c in e["codes"] + [e["code"]])
+            e["typical_before"] = e["before"].most_common(1)[0][0] if e["before"] else 0
+            del e["before"]
+            out.append(e)
+        names = {e["key"]: e for e in out}
+        likely = {}
+        for code, cnt in by_code.items():
+            k, n = cnt.most_common(1)[0]
+            if k in names:
+                likely[code] = {"name": names[k]["name"], "key": k, "exact": names[k]["code"] == code}
+        return {"entries": out, "unplaced": unplaced, "likely": likely}
 
     def repeaters_for(self, hop: str) -> list:
         """Repeaters openHop has heard adverts from whose key starts with this route code.
@@ -1213,6 +1354,77 @@ class SpamGuard:
             return []
         out = [r for r in self.repeaters["list"] if r["key"].startswith(hop)]
         return sorted(out, key=lambda r: -r["seen"])[:6]
+
+    def _public_reps_path(self) -> str:
+        st = self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
+        return os.path.join(os.path.dirname(st), "public-repeaters.json")
+
+    def _load_public_reps(self):
+        try:
+            with open(self._public_reps_path()) as f:
+                d = json.load(f)
+            if isinstance(d, dict) and isinstance(d.get("list"), list):
+                self.public_reps = {"ts": float(d.get("ts") or 0), "list": d["list"], "error": None}
+        except Exception:
+            pass
+
+    @staticmethod
+    def parse_public_map(nodes, me: Optional[dict] = None, radius_km: float = 600) -> list:
+        """Repeaters (type 2) with a location from the public MeshCore map's node list, near us."""
+        if isinstance(nodes, dict):
+            nodes = nodes.get("nodes") or nodes.get("data") or []
+        out = []
+        here = (float(me["lat"]), float(me["lon"])) if me and me.get("lat") is not None and me.get("lon") is not None else None
+        for n in nodes if isinstance(nodes, list) else []:
+            if not isinstance(n, dict) or str(n.get("type")) != "2":
+                continue
+            key = str(n.get("public_key") or "").upper()
+            lat, lon = n.get("lat", n.get("adv_lat")), n.get("lon", n.get("adv_lon"))
+            if not re.fullmatch(r"[0-9A-F]{8,64}", key) or not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                continue
+            if not (lat or lon) or abs(lat) > 90 or abs(lon) > 180:
+                continue
+            if here and SpamGuard._km(here, (lat, lon)) > radius_km:
+                continue
+            seen = n.get("last_advert") or n.get("updated_date") or 0
+            if isinstance(seen, str):
+                try:
+                    seen = time.mktime(time.strptime(seen[:19], "%Y-%m-%dT%H:%M:%S"))
+                except ValueError:
+                    seen = 0
+            out.append({"key": key, "name": str(n.get("adv_name") or "")[:40], "lat": float(lat), "lon": float(lon),
+                        "seen": float(seen or 0), "src": "map"})
+        return out
+
+    def refresh_public_map(self, force: bool = False):
+        """Once a day, in the background, if switched on."""
+        if not self.cfg.get("map_directory") or self._public_busy:
+            return
+        if not force and time.time() - self.public_reps["ts"] < 86400:
+            return
+        self._public_busy = True
+
+        def work():
+            try:
+                req = urllib.request.Request(PUBLIC_MAP_URL, headers={"Accept": "application/json",
+                                                                       "User-Agent": f"SpamGuard/{VERSION}"})
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    nodes = json.loads(r.read().decode("utf-8", "replace"))
+                reps = self.parse_public_map(nodes, self.me)
+                self.public_reps = {"ts": time.time(), "list": reps, "error": None}
+                tmp = self._public_reps_path() + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump({"ts": self.public_reps["ts"], "list": reps}, f)
+                os.replace(tmp, self._public_reps_path())
+                log.info("Public MeshCore map: %d repeaters with a location nearby", len(reps))
+            except Exception as e:
+                self.public_reps["error"] = str(e)[:200]
+                self.public_reps["ts"] = time.time() - 86400 + 3600  # try again in an hour
+                log.info("Public MeshCore map not available: %s", e)
+            finally:
+                self._public_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
 
     def refresh_openhop_info(self, force: bool = False):
         """Radio settings (for airtime) and the repeater directory (for the map), at most every 30 min."""
@@ -2002,6 +2214,7 @@ class SpamGuard:
     def poll_once(self):
         try:
             self.refresh_openhop_info()
+            self.refresh_public_map()
         except Exception:
             pass
         packets = self.fetch_packets()
