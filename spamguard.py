@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.13.1"
+VERSION = "5.13.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -2907,6 +2907,17 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
             elif op == "clear_suppressed":
                 self.suppressed.clear()
+            elif op == "clear_history":
+                if str(body.get("confirm", "")).strip().upper() != "RESET":
+                    raise ValueError("Type RESET to confirm clearing the spam history")
+                n = sum(v.get("c", 0) + v.get("x", 0) for v in self.hist.values())
+                self.hist.clear()
+                self.catches.clear()
+                self.held.clear()
+                self.note(f"Spam history cleared ({n} spam message{'' if n == 1 else 's'} over the last 8 days); "
+                          "blocks, settings and the evidence log are unchanged")
+                self._important = True
+                msg = "Spam history cleared. The charts and Spam sources start again from now."
             elif op == "reset_all":
                 if str(body.get("confirm", "")).strip().upper() != "RESET":
                     raise ValueError("Type RESET to confirm starting again from scratch")
@@ -2932,7 +2943,7 @@ def load_page() -> str:
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
            "unallow_text", "add_channel", "remove_channel", "clear_auto", "clear_suppressed",
-           "allow_origin", "unallow_origin", "lockdown", "reset_all"}
+           "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history"}
 
 
 class QuietServer(ThreadingHTTPServer):

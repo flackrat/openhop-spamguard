@@ -439,6 +439,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
     <span><strong>Are you sure?</strong> This can't be undone. Type <b>RESET</b> below to confirm.</span>
     <div class="inline-form"><input id="resetWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="resetGo" disabled>Yes, start again</button><button class="quiet" id="resetNo">Cancel</button></div>
   </div>
+</section>
+<section>
+  <h2>Clear spam history</h2>
+  <p class="lead">Empties the Overview charts, the Spam sources map and table, and the "Possibly genuine" list, so they start counting again from now. Blocks, settings, known people and the evidence log are not touched, and SpamGuard keeps protecting as normal.</p>
+  <p style="margin:10px 0 0"><button class="danger" id="histBtn">Clear spam history</button></p>
+  <div id="histBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
+    <span><strong>Are you sure?</strong> The history can't be brought back. Type <b>RESET</b> below to confirm.</span>
+    <div class="inline-form"><input id="histWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="histGo" disabled>Yes, clear it</button><button class="quiet" id="histNo">Cancel</button></div>
+  </div>
 </section></div>
 <div class="page" data-page="exceptions"><section>
   <h2>Exceptions</h2>
@@ -722,6 +731,11 @@ function renderSettings(d){
 function clean(){ dirty={}; document.body.classList.remove("dirty"); }
 $("#saveSet").onclick=()=>{ const b=dirty; clean(); post("/settings",b); };
 $("#cancelSet").onclick=()=>{ clean(); renderSettings(S); toast("Changes discarded"); };
+$("#histBtn").onclick=()=>{ if(!confirm("Clear the spam history?\n\nThe charts, Spam sources and Possibly genuine list start again from now. Blocks and settings are kept.")) return;
+  $("#histBox").hidden=false; $("#histBtn").hidden=true; $("#histWord").value=""; $("#histGo").disabled=true; $("#histWord").focus(); };
+$("#histWord").oninput=()=>{ $("#histGo").disabled=$("#histWord").value.trim().toUpperCase()!=="RESET"; };
+$("#histNo").onclick=()=>{ $("#histBox").hidden=true; $("#histBtn").hidden=false; };
+$("#histGo").onclick=()=>{ if($("#histWord").value.trim().toUpperCase()!=="RESET") return; $("#histBox").hidden=true; $("#histBtn").hidden=false; MAPSIG=""; post("/clear_history",{confirm:"RESET"}); };
 $("#resetAll").onclick=()=>{ if(!confirm("Start SpamGuard again from scratch?\n\nEvery block, setting and exception is cleared and it begins detecting spam afresh. Monitor/Protect, your channels, the charts and the evidence log are kept.")) return;
   $("#resetBox").hidden=false; $("#resetAll").hidden=true; $("#resetWord").value=""; $("#resetGo").disabled=true; $("#resetWord").focus(); };
 $("#resetWord").oninput=()=>{ $("#resetGo").disabled=$("#resetWord").value.trim().toUpperCase()!=="RESET"; };

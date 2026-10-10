@@ -58,6 +58,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
 | Start over with a clean slate | Advanced > Settings > **Start again from scratch** |
+| Clear the charts and spam map | Advanced > Settings > **Clear spam history** |
 | Update | Press **Update** when the page says a new version is out |
 | Remove it | `sudo bash /opt/openhop_spamguard/uninstall.sh` |
 
