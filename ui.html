@@ -579,7 +579,8 @@ function renderHealth(d){
   $("#hPill").innerHTML=pill;
   $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
     +(h.watchdog?" If it ever stops responding it restarts itself automatically.":"");
-  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map(x=>`<li class="warn">${esc(x)}</li>`).join("");
+  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map(x=>`<li class="warn">${esc(x)}</li>`).join("")
+    +(h.openhop_rulecheck_fix===false?`<li class="warn">${btn("Apply openHop fix","/openhop_fix",{},"go")}</li>`:"");
   const st=(k,v)=>`<div><dt>${k}</dt><dd>${v}</dd></div>`;
   const rules=h.rules_expected==null?"–":(h.rules_seen===h.rules_expected?`${h.rules_expected}, all in place`:`${h.rules_seen} of ${h.rules_expected}`);
   $("#hStats").innerHTML=

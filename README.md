@@ -178,7 +178,7 @@ An openHop upgrade puts the old value back. The Health panel then says "openHop'
 
 openHop's rule checker remembers each channel message's decoded sender and text, filed under Python's internal ID for the packet, and only forgets them when the rules are reloaded. Python reuses those IDs, so a new message can be checked using an older message's sender and text. Spam can then be passed on as if it came from a known person, or a genuine message dropped. In a test with openHop's own code, spam from a blocked repeater was let through 192 times out of 200.
 
-The same `tune-openhop.sh` script offers a one-line fix that clears that memory at the start of every check. It keeps a copy of the original file, `--undo` removes it, and the Health panel says if an openHop update takes it out again. The bug has been reported to openHop; once their own fix is released, the script says the fix isn't needed.
+SpamGuard applies a one-line fix that clears that memory at the start of every check. It does this automatically when it installs or updates, keeps a copy of openHop's original file, and puts the fix back if an openHop update removes it (turn that off under Advanced > Settings > Updates). `sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo` removes it. The bug has been reported to openHop ([#520](https://github.com/openhop-dev/openhop_repeater/issues/520)); once their own fix is released, SpamGuard sees it isn't needed and the Health page recommends updating openHop instead.
 
 SpamGuard also reads openHop's own record of what happened to each message, so any spam openHop passes on despite a block is counted as let through, and the Overview says so.
 
