@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.13"
+VERSION = "5.13.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -188,6 +188,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Once a day the Pi downloads the public MeshCore map's repeater list from map.meshcore.dev (a few MB, nothing is sent). Turned off, the map only knows repeaters whose adverts your openHop has heard, so spam entering far away is placed less precisely.",
      "label": "Use the public MeshCore map for repeater locations",
      "help": "Adds the locations of repeaters too far away for your openHop to hear their adverts, so spam routes can be traced back closer to where they started."},
+    {"key": "openhop_autofix", "group": "Updates", "type": "bool",
+     "risk": "When on, SpamGuard edits one line of openHop (with a backup) and restarts openHop for a few seconds whenever an openHop update removes the fix. Turned off, blocked spam can sometimes be let through until you apply the fix by hand.",
+     "label": "Keep openHop's rule-check fix in place",
+     "help": "openHop has a bug that can let blocked spam through as if it came from a known person. SpamGuard applies a one-line fix when it updates, and puts it back if an openHop update removes it, until openHop releases its own fix."},
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
@@ -241,6 +245,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hop_block_ttl_seconds": 2 * 3600,
     "update_check": "daily",
     "map_directory": False,
+    "openhop_autofix": True,
     "update_repo": UPDATE_REPO,
     "poll_seconds": 3,
     "fetch_limit": 500,
@@ -258,7 +263,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory"}
+KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix"}
+# openHop release that includes its own rule-check fix (openhop_repeater #520/#521); None until released.
+OPENHOP_FIXED_IN: Optional[str] = None
 PUBLIC_MAP_URL = "https://map.meshcore.dev/api/v1/nodes"
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
@@ -2267,6 +2274,7 @@ class SpamGuard:
             t0 = time.time()
             try:
                 self._maybe_check_update()
+                self._maybe_fix_openhop()
             except Exception:
                 pass
             try:
@@ -2330,8 +2338,10 @@ class SpamGuard:
         rfix = self.openhop_rulecheck_fix()
         if rfix is False:
             warnings.append("openHop has a bug that can let blocked spam through: its rule checker sometimes uses an "
-                            "earlier message's sender, so spam can be passed on as if from a known person. SpamGuard "
-                            "includes a one-line fix (reported to openHop). To apply it: "
+                            "earlier message's sender, so spam can be passed on as if from a known person. "
+                            + (f"openHop {OPENHOP_FIXED_IN} and later fix this, so updating openHop is the best cure. "
+                               if OPENHOP_FIXED_IN else "")
+                            + "SpamGuard can apply a one-line fix: press Apply openHop fix on the Health page, or run "
                             "sudo bash /opt/openhop_spamguard/tune-openhop.sh")
         fix = self.openhop_speed_fix()
         if fix is False:
@@ -2370,7 +2380,7 @@ class SpamGuard:
                 "rules_expected": self.rules_expected, "rules_seen": self.rules_seen, "self_heals": self.self_heals,
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
-                "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, **sysr}
+                "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN, **sysr}
 
     # ---- updates from GitHub (only installed when asked) ----
     @staticmethod
@@ -2497,6 +2507,36 @@ class SpamGuard:
         os.replace(tmp, os.path.join(folder, "update-request"))
         self.note(f"Update to v{want} requested from the web page")
         return {"ok": True, "message": f"Updating to v{want}. SpamGuard restarts in a minute or two; this page reconnects by itself."}
+
+    def request_openhop_fix(self, why: str = "") -> dict:
+        """Ask the root-owned updater to (re-)apply the openHop rule-check fix."""
+        if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
+            raise ValueError("The updater isn't set up on this Pi yet. Run: sudo bash /opt/openhop_spamguard/tune-openhop.sh")
+        folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
+        req = os.path.join(folder, "update-request")
+        if os.path.exists(req):
+            return {"ok": True, "message": "Already in progress."}
+        tmp = req + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"action": "openhop-fix", "asked": time.time()}, f)
+        os.replace(tmp, req)
+        self._fix_requested = time.time()
+        self._rfix_cache = None
+        self.note("Applying the openHop rule-check fix" + (f" ({why})" if why else "") + "; openHop restarts for a few seconds")
+        return {"ok": True, "message": "Applying the openHop fix. openHop restarts for a few seconds."}
+
+    def _maybe_fix_openhop(self):
+        """If an openHop update has removed the rule-check fix, put it back (once an hour at most)."""
+        if not self.cfg.get("openhop_autofix", True):
+            return
+        if time.time() - getattr(self, "_fix_requested", 0) < 3600 or time.time() - self.started < 120:
+            return
+        if self.openhop_rulecheck_fix() is False and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
+            try:
+                self.request_openhop_fix("openHop no longer had it, probably after an openHop update")
+            except Exception as e:
+                log.info("Could not request the openHop fix: %s", e)
+                self._fix_requested = time.time()
 
     def openhop_rulecheck_fix(self) -> Optional[bool]:
         """True if openHop's rule checker is safe (patched by tune-openhop.sh, or fixed upstream),
@@ -2971,6 +3011,8 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.apply_settings(body))
                 if path in ("check_update", "install_update"):
                     return self._send(200, guard.update_action(path, body))
+                if path == "openhop_fix":
+                    return self._send(200, guard.request_openhop_fix("asked for on the page"))
                 if path in ACTIONS:
                     return self._send(200, guard.action(path, body))
                 return self._send(404, {"error": "not found"})

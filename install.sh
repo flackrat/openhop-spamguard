@@ -69,8 +69,11 @@ else
   echo "Keeping existing /etc/openhop_spamguard/config.yaml"
 fi
 
-# Offer the openHop speed fix (asks first; skipped when not run from a terminal).
+# openHop rule-check fix: a bug fix for openHop's rule checker (see README), applied
+# automatically, with a backup; undo with: sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo
 echo
+bash /opt/openhop_spamguard/tune-openhop.sh --rulefix || true
+# Offer the openHop speed fix (asks first; skipped when not run from a terminal).
 bash /opt/openhop_spamguard/tune-openhop.sh || true
 echo
 

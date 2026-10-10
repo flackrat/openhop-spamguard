@@ -50,8 +50,18 @@ PY
 if [ "$FROM_REQUEST" = 1 ]; then
   # Asked for from SpamGuard's page. Take the request away first so it can't repeat.
   [ -f "$REQUEST" ] || exit 0
+  ACTION=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1])).get('action','update'))" "$REQUEST" 2>/dev/null)
   WANT=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$REQUEST" 2>/dev/null)
   rm -f "$REQUEST"
+  if [ "$ACTION" = "openhop-fix" ]; then
+    # Re-apply the openHop rule-check fix (an openHop update removes it). Nothing else changes.
+    if out=$(bash "$APP/tune-openhop.sh" --rulefix 2>&1); then
+      status done "openHop rule-check fix: $(echo "$out" | head -1)"
+    else
+      status failed "openHop rule-check fix couldn't be applied: $(echo "$out" | tail -1)"
+    fi
+    exit 0
+  fi
 fi
 if [ -n "$WANT" ] && ! [[ "$WANT" =~ ^v?[0-9]+(\.[0-9]+){1,3}$ ]]; then
   status failed "Not a version number: $WANT"; exit 1
