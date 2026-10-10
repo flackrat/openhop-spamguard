@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.13
+- **Found and fixed (optionally) an openHop bug that let blocked spam through.** openHop's rule checker remembers each channel message's sender and text under Python's internal ID for the packet, and Python reuses those IDs, so a new message can be checked with an older message's sender. Spam was then let through as a "known person", or a genuine message dropped. `tune-openhop.sh` now offers a one-line fix (with backup and `--undo`); the Health panel warns when it's missing. Reported to openHop.
+- **Counts now come from what openHop actually did.** SpamGuard reads openHop's record for every copy of each message (forwarded, or dropped by a rule). Spam it had a block for but openHop passed on anyway is counted as let through, and the Overview shows a notice. Before, those were counted as stopped. The evidence log records `openhop_forwarded` and `openhop_policy_dropped` for each message.
+
 ## v5.12
 - **Spam sources map now shows where spam really enters the mesh.** Route codes are short and shared by many repeaters around the country, so plotting every repeater with the first code scattered spam across the map. SpamGuard now follows each spam message's whole route back from your repeater, one radio hop at a time, and places each code at the repeater that fits the chain. A spammer who fakes a new first-repeater code each time is placed at the real repeaters that first heard them. On a test mesh with realistic code clashes, 76% of spam was placed within 40 km of its real source, against 6% before.
 - Circles with a dashed outline mean the very first repeater couldn't be identified, so the circle marks the nearest one that could. The table's "Likely repeater" column says the same.

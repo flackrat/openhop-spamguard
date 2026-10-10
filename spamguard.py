@@ -50,7 +50,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.12"
+VERSION = "5.13"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -729,7 +729,7 @@ class EvidenceLog:
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length")
+                 "length", "leaked")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -752,6 +752,7 @@ class Event:
         self.packet = ""
         self.seen_at = ts
         self.length = 0
+        self.leaked = False
 
 
 # --------------------------------------------------------------------------- core
@@ -821,6 +822,9 @@ class SpamGuard:
         self.public_reps: dict = {"ts": 0, "list": [], "error": None}  # from the public MeshCore map (optional)
         self._public_busy = False
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
+        # What openHop actually did with each channel message, from its packet records (every copy):
+        # packet hash -> [any copy transmitted, any copy dropped by a policy rule]
+        self.verdict: collections.OrderedDict[str, list] = collections.OrderedDict()
         self.cfg: dict[str, Any] = {}
         self._load_state()
         self.rebuild_cfg()
@@ -897,6 +901,8 @@ class SpamGuard:
                      "origin_known": bool(e.path) and self.known_origin(e.first_hop),
                      "seen_after_s": round(e.seen_at - e.ts, 1),
                      "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
+                     "openhop_forwarded": (self.verdict.get(e.packet) or [None, None])[0],
+                     "openhop_policy_dropped": (self.verdict.get(e.packet) or [None, None])[1],
                      "caught_source": b.get("source") if b else None,
                      "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]})
 
@@ -1149,6 +1155,19 @@ class SpamGuard:
         b = self.blocks.get(e.matched) if e.matched else None
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
         spammy = e.random or e.obfuscated or bool(cc and cc.get("strong"))
+        v = self.verdict.get(e.packet) if e.packet else None
+        protecting = self.cfg["mode"] == "protect" and not self.cfg.get("paused")
+        if v is not None and protecting and e.matched and v[0] and self.rule_action(b or {}) == "drop":
+            # SpamGuard had a block for it, but openHop passed a copy on anyway
+            e.leaked = True
+            if self._people_block(b) and not spammy:
+                return  # a genuine-looking message that wasn't actually held
+            h["x"] += 1
+            if b and b.get("created", e.ts) + 15 < e.ts:  # the block was already in openHop: a real leak
+                h["l"] = h.get("l", 0) + 1
+            hop = e.first_hop
+            h["h"][hop] = h["h"].get(hop, 0) + 1
+            return
         if e.matched:
             if self._people_block(b) and not spammy:
                 h["g"] += 1
@@ -1175,7 +1194,7 @@ class SpamGuard:
         now = time.time()
         cut24, cut7 = now - 86400, now - 7 * 86400
         def tot(cut):
-            t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0}
+            t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "l": 0}
             for k, v in self.hist.items():
                 if int(k) >= cut - 3600:
                     for f in t:
@@ -1224,6 +1243,7 @@ class SpamGuard:
             s7["likely"] = ent["likely"].get(s7["hop"])
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
                 "sources": top, "entries": ent["entries"], "unplaced": ent["unplaced"],
+                "rulecheck_fix": self.openhop_rulecheck_fix(),
                 "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
                 "public_error": self.public_reps.get("error"),
                 "me": self.me, "radio_known": bool(self.airtime_ms(40)),
@@ -1523,6 +1543,12 @@ class SpamGuard:
             except (TypeError, ValueError):
                 continue
             key = str(p.get("packet_hash") or p.get("id"))
+            if "transmitted" in p or "drop_reason" in p:
+                v = self.verdict.setdefault(key, [False, False])
+                v[0] = v[0] or bool(p.get("transmitted"))
+                v[1] = v[1] or str(p.get("drop_reason") or "").startswith("Policy blocked")
+                while len(self.verdict) > 5000:
+                    self.verdict.popitem(last=False)
             if key in self.seen_packets:
                 continue
             self.seen_packets[key] = now
@@ -2301,6 +2327,12 @@ class SpamGuard:
                             "sees new spam that much later and a few copies get through before a block starts. "
                             "SpamGuard's own checks are quick; the delay is in openHop saving packets. "
                             "Restarting openHop clears it for a while.")
+        rfix = self.openhop_rulecheck_fix()
+        if rfix is False:
+            warnings.append("openHop has a bug that can let blocked spam through: its rule checker sometimes uses an "
+                            "earlier message's sender, so spam can be passed on as if from a known person. SpamGuard "
+                            "includes a one-line fix (reported to openHop). To apply it: "
+                            "sudo bash /opt/openhop_spamguard/tune-openhop.sh")
         fix = self.openhop_speed_fix()
         if fix is False:
             warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back). "
@@ -2338,7 +2370,7 @@ class SpamGuard:
                 "rules_expected": self.rules_expected, "rules_seen": self.rules_seen, "self_heals": self.self_heals,
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
-                "openhop_speed_fix": fix, **sysr}
+                "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, **sysr}
 
     # ---- updates from GitHub (only installed when asked) ----
     @staticmethod
@@ -2465,6 +2497,31 @@ class SpamGuard:
         os.replace(tmp, os.path.join(folder, "update-request"))
         self.note(f"Update to v{want} requested from the web page")
         return {"ok": True, "message": f"Updating to v{want}. SpamGuard restarts in a minute or two; this page reconnects by itself."}
+
+    def openhop_rulecheck_fix(self) -> Optional[bool]:
+        """True if openHop's rule checker is safe (patched by tune-openhop.sh, or fixed upstream),
+        False if it has the id()-keyed decrypt cache that can let blocked spam through, None if unknown."""
+        now = time.time()
+        cached = getattr(self, "_rfix_cache", None)
+        if cached and now - cached[0] < 300:
+            return cached[1]
+        result = None
+        try:
+            for path in glob.glob(self.cfg.get("openhop_dir", "/opt/openhop_repeater") + "/**/repeater/policy_engine.py",
+                                  recursive=True)[:1]:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    src = f.read()
+                if "spamguard-fix: clear decrypt cache" in src:
+                    result = True
+                elif "packet_key = id(packet)" in src and "_channel_decrypt_cache[packet_key]" in src:
+                    m = re.search(r"def evaluate\(.*?for rule in self\.rules", src, re.S)
+                    result = bool(m and "_channel_decrypt_cache.clear()" in m.group(0))
+                else:
+                    result = True
+        except Exception:
+            result = None
+        self._rfix_cache = (now, result)
+        return result
 
     def openhop_speed_fix(self) -> Optional[bool]:
         """True/False if openHop's packet-count speed fix is in place, None if not applicable.
