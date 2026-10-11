@@ -1,5 +1,7 @@
 # Changelog
 
+## v5.14.3
+- The spam map no longer pins a spammer's route code on a real repeater elsewhere that happens to share it. A short code can belong both to a genuine advertised repeater and to the spammer's unlisted one. SpamGuard now looks at every known repeater that code's spam is handed to, and if they agree on an area, a learnt repeater for that code far from it is not believed. On one live repeater this moved 38 messages from a repeater near Farnborough back to the Salisbury area their other neighbours point to.
 ## v5.14.2
 - Fixed SpamGuard hanging after v5.14, worst on phones. Learning route codes from a week of adverts takes minutes on a Pi, and v5.14 did it while answering the web page, which also held up spam checking until the service watchdog restarted SpamGuard. Learning and the spam map are now worked out on a background thread that rests between batches, and the page shows the latest result straight away.
 - Just after SpamGuard starts, the Spam sources page says it is working out the map. On a Pi the first full map takes about 10 to 15 minutes after a start.
