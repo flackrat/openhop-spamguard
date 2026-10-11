@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.14.2"
+VERSION = "5.14.3"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1538,10 +1538,24 @@ class SpamGuard:
         if res is not None:
             res["far"] = far
             res["x_key"] = x["key"] if x else None
+            res["y"] = (y["lat"], y["lon"], y["key"]) if y else None
         if len(cache) > 5000:
             cache.clear()
         cache[key] = (stamp, res)
         return res
+
+    def _area_groups(self, pts: list) -> list:
+        """Group (lat, lon, weight, ...) points by area: each joins the first group whose centre is
+        within AREA_KM, heaviest first."""
+        groups: list[list] = []
+        for p in sorted(pts, key=lambda p: -p[2]):
+            for g in groups:
+                if self._km(self._geomedian(g), p) <= self.AREA_KM:
+                    g.append(p)
+                    break
+            else:
+                groups.append([p])
+        return groups
 
     @staticmethod
     def _geomedian(pts: list) -> tuple:
@@ -1558,6 +1572,7 @@ class SpamGuard:
             c = (sx / sw, sy / sw)
         return c
 
+    ID_AREA_KM = 45      # a learnt first repeater further than this from where its code's spam is handed on isn't believed
     AREA_KM = 40         # neighbours of one source further apart than this are treated as separate sources
     SURE_SPREAD_KM = 35  # an area is sure when 2+ known neighbours sit within this of its centre
 
@@ -1576,19 +1591,48 @@ class SpamGuard:
         by_code: dict[str, collections.Counter] = {}
         nexts: dict[str, dict] = {}     # first code -> neighbour key -> [lat, lon, d7, d1, last, name, claims]
 
-        # A repeater can advertise any location. One whose spam is regularly handed to repeaters far
-        # from where it says it is, and never to ones nearby, isn't believed.
+        # Check each learnt first repeater against everything else its code's spam tells us. A repeater
+        # can advertise any location, and a short code can belong to a real repeater elsewhere as well as
+        # to the spammer's unlisted one. So for each first code, the known repeaters its spam is handed
+        # to are grouped by area; when the main group is sure (2+ different repeaters agreeing), a
+        # learnt repeater for that code more than ID_AREA_KM from its centre isn't believed. Failing
+        # that, one whose spam is mostly handed to repeaters out of its range isn't believed either.
         check: dict[str, list] = {}
+        ys: dict[str, dict] = {}
+        xs: dict[str, set] = {}
         for k, v in hist.items():
             if int(k) < cut7:
                 continue
             for ps, n in (v.get("p") or {}).items():
                 r = self.resolve_path(ps.split(">"))
-                if r and r.get("far"):
+                if not r:
+                    continue
+                code = ps.split(">")[0]
+                if r.get("x_key"):
+                    xs.setdefault(code, set()).add(r["x_key"])
+                if r.get("y"):
+                    yl = ys.setdefault(code, {}).setdefault(r["y"][2], [r["y"][0], r["y"][1], 0])
+                    yl[2] += n
+                if r.get("far"):
                     check.setdefault(r["x_key"], [0, 0])[1] += n
-                elif r and r["kind"] == "id" and r.get("checked"):
+                elif r["kind"] == "id" and r.get("checked"):
                     check.setdefault(r["key"], [0, 0])[0] += n
-        distrust = frozenset(k for k, (ok, bad) in check.items() if bad > ok)
+        distrust = set(k for k, (ok, bad) in check.items() if bad > ok)
+        reps_by_key = {r["key"]: r for r in self._learned().values()}
+        for code, pts in ys.items():
+            groups = self._area_groups([(p[0], p[1], p[2], kk) for kk, p in pts.items()])
+            if not groups:
+                continue
+            main = max(groups, key=lambda g: sum(p[2] for p in g))
+            c = self._geomedian(main)
+            ds = sorted(self._km(c, p) for p in main)
+            if len(main) < 2 or ds[len(ds) // 2] > self.SURE_SPREAD_KM:
+                continue
+            for xk in xs.get(code, ()):
+                x = reps_by_key.get(xk)
+                if x and self._km(c, (x["lat"], x["lon"])) > self.ID_AREA_KM:
+                    distrust.add(xk)
+        distrust = frozenset(distrust)
 
         def entry(k, r, sure):
             return entries.setdefault(k, {"key": k, "name": r["name"], "lat": r["lat"], "lon": r["lon"], "code": r["code"],
