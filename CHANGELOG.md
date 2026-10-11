@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.14.1
+- Fixed the Spam sources map disappearing after updating. If openHop was busy when SpamGuard started, your repeater's location didn't load and SpamGuard waited 30 minutes to try again; it now retries every minute until it has it.
+- Reading the last week of adverts at start-up now works on a Pi. Asking openHop for the whole week at once took over 30 seconds and timed out, so it is now read in 12-hour slices in the background, newest first, without holding up spam checks.
 ## v5.14
 - **Spam sources map rebuilt around what repeater adverts teach.** Route codes are only one byte, so each one is shared by roughly 17 repeaters within 600 km. The old map picked the combination with the shortest total distance, which pulled entry points towards your own repeater and could call a wrong repeater "sure".
 - SpamGuard now reads the routes that repeater adverts take to reach you (the last week from openHop when it starts, then as they arrive). An advert says exactly where it started, so each route teaches which repeater a code really is next to which other code. On a week of real adverts, codes learnt this way matched the advertising repeater 87% of the time.

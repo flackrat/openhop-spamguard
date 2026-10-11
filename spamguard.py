@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.14"
+VERSION = "5.14.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1078,7 +1078,7 @@ class SpamGuard:
         return rid
 
     # ---- openHop API ----
-    def _api(self, method: str, path: str, body: Optional[dict] = None) -> Any:
+    def _api(self, method: str, path: str, body: Optional[dict] = None, timeout: float = 15) -> Any:
         url = self.cfg["openhop_url"].rstrip("/") + path
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method)
@@ -1088,7 +1088,7 @@ class SpamGuard:
         if self.cfg.get("api_key"):
             req.add_header("X-API-Key", self.cfg["api_key"])
         t0 = time.time()
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             res = json.loads(r.read().decode() or "{}")
         self.openhop_ms = round((time.time() - t0) * 1000)
         if isinstance(res, dict) and res.get("success") is False:
@@ -1769,6 +1769,8 @@ class SpamGuard:
                        "lat": rp.get("latitude"), "lon": rp.get("longitude")}
         except Exception as e:
             log.debug("openHop stats not available: %s", e)
+        if (self.me or {}).get("lat") is None:
+            self.repeaters["ts"] = now - 1800 + 60     # no location yet (openHop busy?): try again in a minute
         try:
             res = self._api("GET", "/api/adverts_by_contact_type?contact_type=Repeater&hours=336&limit=3000")
             rows = res.get("data", []) if isinstance(res, dict) else []
@@ -2550,22 +2552,47 @@ class SpamGuard:
 
     def backfill_adverts(self):
         """Once after starting, read the last week of adverts from openHop so the map can place spam
-        straight away instead of waiting for adverts to arrive. Retries hourly if it fails."""
+        straight away instead of waiting for adverts to arrive. Asking openHop for a whole week of one
+        packet type takes it over 30 seconds on a Pi, so this runs in the background, 12 hours at a
+        time, newest first. If a slice fails, the whole read is tried again an hour later."""
         if self._adv_backfill and (self._adv_backfill > 1 or time.time() + self._adv_backfill < 3600):
             return
-        try:
-            since = time.time() - 7 * 86400
-            res = self._api("GET", f"/api/filtered_packets?type={PAYLOAD_TYPE_ADVERT}&start_timestamp={since:.0f}&limit=20000")
-            rows = res.get("data", []) if isinstance(res, dict) else (res or [])
-            with self.lock:
-                for p in rows:
-                    if int(p.get("type", -1)) == PAYLOAD_TYPE_ADVERT:
-                        self.learn_advert(p)
-            self._adv_backfill = 2.0
-            log.info("Read %d recent adverts from openHop to learn route codes", len(rows))
-        except Exception as e:
-            self._adv_backfill = -time.time()           # negative: failed at this time
-            log.info("Could not read recent adverts from openHop yet: %s", e)
+        if getattr(self, "_adv_backfill_busy", False):
+            return
+        self._adv_backfill_busy = True
+
+        def work():
+            ok, total, end = True, 0, time.time()
+            try:
+                for _ in range(14):
+                    start = end - 43200
+                    rows = None
+                    for attempt in range(2):
+                        try:
+                            res = self._api("GET", f"/api/filtered_packets?type={PAYLOAD_TYPE_ADVERT}"
+                                                   f"&start_timestamp={start:.0f}&end_timestamp={end:.0f}&limit=5000",
+                                            timeout=60)
+                            rows = res.get("data", []) if isinstance(res, dict) else (res or [])
+                            break
+                        except Exception as e:
+                            log.debug("advert backfill slice failed: %s", e)
+                            time.sleep(5)
+                    if rows is None:
+                        ok = False
+                    else:
+                        with self.lock:
+                            for p in rows:
+                                if int(p.get("type", -1)) == PAYLOAD_TYPE_ADVERT:
+                                    self.learn_advert(p)
+                        total += len(rows)
+                    end = start
+                    time.sleep(1)
+                log.info("Read %d recent adverts from openHop to learn route codes", total)
+            finally:
+                self._adv_backfill = 2.0 if ok else -time.time()
+                self._adv_backfill_busy = False
+
+        threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self):
         try:
