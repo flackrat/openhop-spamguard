@@ -15,6 +15,8 @@
 
 ![SpamGuard's web page (example data)](docs/screenshot-overview.png)
 
+![The Spam sources map, showing where spam entered the mesh (example data)](docs/screenshot-sources.png)
+
 _Example data: names and numbers are made up._
 
 ## Install
