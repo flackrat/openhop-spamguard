@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.14.2
+- Fixed SpamGuard hanging after v5.14, worst on phones. Learning route codes from a week of adverts takes minutes on a Pi, and v5.14 did it while answering the web page, which also held up spam checking until the service watchdog restarted SpamGuard. Learning and the spam map are now worked out on a background thread that rests between batches, and the page shows the latest result straight away.
+- Just after SpamGuard starts, the Spam sources page says it is working out the map. On a Pi the first full map takes about 10 to 15 minutes after a start.
 ## v5.14.1
 - Fixed the Spam sources map disappearing after updating. If openHop was busy when SpamGuard started, your repeater's location didn't load and SpamGuard waited 30 minutes to try again; it now retries every minute until it has it.
 - Reading the last week of adverts at start-up now works on a Pi. Asking openHop for the whole week at once took over 30 seconds and timed out, so it is now read in 12-hour slices in the background, newest first, without holding up spam checks.
