@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.14.1"
+VERSION = "5.14.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1251,11 +1251,11 @@ class SpamGuard:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
         top = sorted(sources.values(), key=lambda s: (-s["d7"], -s["d1"]))[:15]
-        try:
-            ent = self.spam_entries(cut24, cut7)
-        except Exception as ex:  # never let the map break the page
-            log.debug("spam entry points failed: %s", ex)
-            ent = {"entries": [], "unplaced": {"d1": 0, "d7": 0}, "likely": {}}
+        # Worked out on the background map thread (map_refresh); never computed here, under the lock.
+        ent = (getattr(self, "_geo", None) or {}).get("ent") or {"entries": [], "unplaced": {"d1": 0, "d7": 0},
+                                                                  "likely": {}, "working": True}
+        for e in ent["entries"]:
+            e["blocked"] = any(f"hop:{c}" in self.blocks for c in e["codes"] + [e["code"]])
         for s7 in top:
             s7["blocked"] = f"hop:{s7['hop']}" in self.blocks
             s7["allowed"] = self.hop_allowed(s7["hop"]) if s7["hop"] != "DIRECT" else False
@@ -1264,6 +1264,7 @@ class SpamGuard:
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
                 "sources": top, "entries": ent["entries"], "unplaced": ent["unplaced"],
                 "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
+                "map_working": bool(ent.get("working")),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
                 "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
                 "public_error": self.public_reps.get("error"),
@@ -1399,29 +1400,32 @@ class SpamGuard:
         cost, _, placed = min(states.values(), key=lambda v: v[0])
         return cost, placed
 
-    LEARN_BUDGET = 400   # advert routes fitted per call, so a big backlog never stalls polling
-
     def _learned(self) -> dict:
         """(route code, the code after it, or 'ME') -> the repeater it is, learnt from advert routes.
-        Each advert route is fitted once, anchored at the advert's own location (so the chain can't be
-        squeezed towards us), and votes for the repeater at each hop; the advert's own repeater votes
+        Built in the background by learn_step(); this only hands back the latest table."""
+        return getattr(self, "_learned_table", {})
+
+    def learn_step(self, work_s: float = 0.3, rest_s: float = 0.3, until: float = 0.0) -> bool:
+        """Fit advert routes not yet fitted (or last fitted on an earlier day), a little at a time,
+        resting between batches so polling and the web page never wait; then rebuild the table.
+        Each advert route is fitted anchored at the advert's own location (so the chain can't be
+        squeezed towards us) and votes for the repeater at each hop; the advert's own repeater votes
         twice for its code next to the first hop. A code counts as learnt in a context only when one
         repeater has at least 3 votes and 80% of them. Tested on a week of real adverts: a code learnt
-        this way matched the repeater the advert itself named 87% of the time."""
+        this way matched the repeater the advert itself named 87% of the time.
+        Runs on the background map thread, never under self.lock. Returns True if anything changed."""
         me = self.me or {}
         if me.get("lat") is None or me.get("lon") is None:
-            return {}
-        fits = getattr(self, "_adv_fits", None)
+            return False
+        fits = self.__dict__.setdefault("_adv_fits", {})      # route -> (day fitted, votes)
         day = int(time.time() // 86400)
-        if fits is None or fits[0] != day:            # refit once a day as the repeater lists change
-            fits = self._adv_fits = (day, {})
-        cached = getattr(self, "_learn_cache", None)
-        pending = [rk for rk in self.adv_routes if rk not in fits[1]]
-        if cached and not pending and (cached[0] == (self._adv_stamp, day)
-                                       or (cached[0][1] == day and time.time() - cached[2] < 300)):
-            return cached[1]       # new advert routes are folded in at most every 5 minutes
-        for rk in pending[:self.LEARN_BUDGET]:
-            cnt, last, lat, lon, name = self.adv_routes[rk]
+        with self.lock:
+            routes = dict(self.adv_routes)
+        pending = [rk for rk in routes if rk not in fits] + [rk for rk in routes if rk in fits and fits[rk][0] != day]
+        t0 = time.time()
+        done = 0
+        for rk in pending:
+            cnt, last, lat, lon, name = routes[rk]
             path = rk.partition("|")[2]
             path = path.split(">") if path else []
             out = []
@@ -1429,11 +1433,22 @@ class SpamGuard:
                 _, placed = self._fit_chain(path, anchor=(lat, lon))
                 out = [((path[i], path[i + 1] if i + 1 < len(path) else "ME"),
                         {"key": r["key"], "name": r.get("name") or "", "lat": r["lat"], "lon": r["lon"]}) for i, r in placed]
-            fits[1][rk] = out
+            fits[rk] = (day, out)
+            done += 1
+            if time.time() - t0 > work_s:
+                if until and time.time() > until:
+                    break
+                time.sleep(rest_s)
+                t0 = time.time()
+        for rk in [rk for rk in fits if rk not in routes]:
+            del fits[rk]
+        built = getattr(self, "_learned_built", 0.0)
+        if not done and time.time() - built < 300 and getattr(self, "_learned_stamp", None) == self._adv_stamp:
+            return False
         votes: dict[tuple, collections.Counter] = {}
         reps: dict[str, dict] = {}
         horizon = time.time() - 14 * 86400
-        for rk, (cnt, last, lat, lon, name) in self.adv_routes.items():
+        for rk, (cnt, last, lat, lon, name) in routes.items():
             if last < horizon:
                 continue
             key, _, ps = rk.partition("|")
@@ -1441,7 +1456,7 @@ class SpamGuard:
             reps[key] = {"key": key, "name": name, "lat": lat, "lon": lon}
             code = key[:len(path[0])] if path else key[:2]
             votes.setdefault((code, path[0] if path else "ME"), collections.Counter())[key] += 2 * cnt
-            for ctx, r in fits[1].get(rk, []):
+            for ctx, r in fits.get(rk, (0, []))[1]:
                 reps.setdefault(r["key"], r)
                 votes.setdefault(ctx, collections.Counter())[r["key"]] += cnt
         learned = {}
@@ -1449,9 +1464,33 @@ class SpamGuard:
             (k, top), total = c.most_common(1)[0], sum(c.values())
             if top >= 3 and top >= 0.8 * total:
                 learned[ctx] = reps[k]
-        if not pending[self.LEARN_BUDGET:]:
-            self._learn_cache = ((self._adv_stamp, day), learned, time.time())
-        return learned
+        self._learned_table = learned
+        self._learned_built = time.time()
+        self._learned_stamp = self._adv_stamp
+        return True
+
+    def map_refresh(self, rest_s: float = 0.3):
+        """Learn from new adverts, then work out the spam entry points for the map. Both are slow on a
+        Pi, so they run here, on the background map thread, outside self.lock; the web page shows the
+        latest result (self._geo) instead of computing it on every request."""
+        changed = self.learn_step(rest_s=rest_s)
+        geo = self.__dict__.setdefault("_geo", {"ts": 0.0, "ent": None})
+        if not changed and geo["ent"] is not None and time.time() - geo["ts"] < 60:
+            return
+        now = time.time()
+        with self.lock:
+            hist = {k: {"p": dict(v.get("p") or {})} for k, v in self.hist.items()}
+        cut24, cut7 = now - 86400, now - 7 * 86400
+        geo["ent"] = self.spam_entries(cut24, cut7, hist)
+        geo["ts"] = time.time()
+
+    def map_loop(self, stop: threading.Event):
+        while not stop.is_set():
+            try:
+                self.map_refresh()
+            except Exception as e:
+                log.debug("map refresh failed: %s", e)
+            stop.wait(5)
 
     def resolve_path(self, path: list, distrust: frozenset = frozenset()) -> Optional[dict]:
         """Work out where a message entered the mesh. Route codes are short and shared by many
@@ -1522,7 +1561,7 @@ class SpamGuard:
     AREA_KM = 40         # neighbours of one source further apart than this are treated as separate sources
     SURE_SPREAD_KM = 35  # an area is sure when 2+ known neighbours sit within this of its centre
 
-    def spam_entries(self, cut24: float, cut7: float) -> dict:
+    def spam_entries(self, cut24: float, cut7: float, hist: Optional[dict] = None) -> dict:
         """Where spam entered the mesh over the last 7 days.
         Learnt repeaters are entries of their own. Spam whose first repeater is unknown (often the
         spammer's own node, never advertised) is placed from the known repeaters it was handed to:
@@ -1530,6 +1569,8 @@ class SpamGuard:
         A group is 'sure' when at least two different known repeaters agree (median distance from
         the centre within SURE_SPREAD_KM). In a test on real adverts with the first repeater hidden,
         sure groups were within 30 km of the true spot 91% of the time. 'exact' counts sure messages."""
+        if hist is None:
+            hist = self.hist
         entries: dict[str, dict] = {}
         unplaced = {"d1": 0, "d7": 0}
         by_code: dict[str, collections.Counter] = {}
@@ -1538,7 +1579,7 @@ class SpamGuard:
         # A repeater can advertise any location. One whose spam is regularly handed to repeaters far
         # from where it says it is, and never to ones nearby, isn't believed.
         check: dict[str, list] = {}
-        for k, v in self.hist.items():
+        for k, v in hist.items():
             if int(k) < cut7:
                 continue
             for ps, n in (v.get("p") or {}).items():
@@ -1554,7 +1595,7 @@ class SpamGuard:
                                           "d1": 0, "d7": 0, "exact": 0, "before": collections.Counter(), "codes": collections.Counter(),
                                           "last": 0, "kind": r.get("kind", "guess"), "near": [], "claims": [], "spread_km": None})
 
-        for k, v in self.hist.items():
+        for k, v in hist.items():
             t = int(k)
             if t < cut7:
                 continue
@@ -2621,6 +2662,7 @@ class SpamGuard:
             self.last_verify = time.time()
 
     def run(self, stop: threading.Event):
+        threading.Thread(target=self.map_loop, args=(stop,), daemon=True, name="map").start()
         while not stop.is_set():
             t0 = time.time()
             try:
