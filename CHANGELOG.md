@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.14
+- **Spam sources map rebuilt around what repeater adverts teach.** Route codes are only one byte, so each one is shared by roughly 17 repeaters within 600 km. The old map picked the combination with the shortest total distance, which pulled entry points towards your own repeater and could call a wrong repeater "sure".
+- SpamGuard now reads the routes that repeater adverts take to reach you (the last week from openHop when it starts, then as they arrive). An advert says exactly where it started, so each route teaches which repeater a code really is next to which other code. On a week of real adverts, codes learnt this way matched the advertising repeater 87% of the time.
+- Spam from a repeater that never advertises (often the spammer's own node) is placed from the known repeaters it hands the spam to, grouped by area. An area is only shown as sure when at least two different known repeaters agree; in testing on real adverts with the first repeater hidden, those were within 30 km of the true spot 91% of the time. If one code turns up in two separate areas, both are shown.
+- A repeater can advertise any location. One whose spam keeps being handed to repeaters far from where it claims to be is no longer believed, and the map notes the name it advertises.
+- The map popups say which kind each circle is, and the note under the map shows how many route codes have been learnt so far.
 ## v5.13.3
 - The Spam sources map now shows only the repeaters SpamGuard is sure spam came in through. The best guesses (dashed circles) are hidden unless you turn on **Show best guesses too** above the map, and the note under the map says how many spam messages that leaves out.
 - Fixed the public MeshCore map download never finishing. A handful of nodes on the public map report dates from 1970 (no clock set), and one of those stopped the whole list loading. Odd entries are now skipped one at a time.

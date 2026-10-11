@@ -34,6 +34,7 @@ import logging
 import os
 import re
 import threading
+import struct
 import time
 import unicodedata
 import urllib.error
@@ -51,11 +52,12 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.13.3"
+VERSION = "5.14"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
 PAYLOAD_TYPE_GRP_TXT = 5
+PAYLOAD_TYPE_ADVERT = 4
 RULE_PREFIX = "spamguard:"
 RULE_ID_BASE = 9000
 PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
@@ -827,6 +829,14 @@ class SpamGuard:
         self.radio: dict = {}         # openHop's radio settings, for airtime
         self.me: dict = {}            # this repeater: name, hash, location
         self.repeaters: dict = {"ts": 0, "list": []}   # repeaters openHop has heard adverts from
+        # Routes that repeater adverts took to reach us: "PUBKEY|A>B>C" -> [count, last seen, lat, lon, name].
+        # An advert says exactly where it started, so these teach SpamGuard which repeater each route
+        # code really is in each part of the mesh. Not saved: openHop keeps a week of packets, which
+        # are read back after each start (backfill_adverts).
+        self.adv_routes: dict[str, list] = {}
+        self._adv_seen: collections.OrderedDict = collections.OrderedDict()
+        self._adv_stamp = 0
+        self._adv_backfill = 0.0   # when the last week of adverts was last read from openHop (0 = not yet)
         self.public_reps: dict = {"ts": 0, "list": [], "error": None}  # from the public MeshCore map (optional)
         self._public_busy = False
         self.rule_ids: dict[str, int] = {}   # ids of shared rules (e.g. "let known people through")
@@ -1032,6 +1042,8 @@ class SpamGuard:
         self.settings = dict(kept, **({"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}))
         self.routes.clear()
         self.relays.clear()
+        self.adv_routes.clear()
+        self._adv_stamp += 1
         self.clusters.clear()
         self.held.clear()
         self.rule_ids.clear()
@@ -1251,6 +1263,7 @@ class SpamGuard:
             s7["likely"] = ent["likely"].get(s7["hop"])
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
                 "sources": top, "entries": ent["entries"], "unplaced": ent["unplaced"],
+                "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
                 "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
                 "public_error": self.public_reps.get("error"),
@@ -1259,6 +1272,62 @@ class SpamGuard:
 
     LINK_KM = 130        # longest plausible single LoRa link between repeaters
     UNKNOWN_COST = 60    # cost of leaving a hop unplaced (no repeater with that code nearby)
+    NEAR_KM = 30         # a repeater this close to a known one could be its neighbour by that code
+
+    @staticmethod
+    def parse_advert(payload: bytes) -> Optional[dict]:
+        """MeshCore advert: public key (32), time (4), signature (64), then flags, and the location
+        (two signed 32-bit millionths of a degree) when flag 0x10 is set, then the name."""
+        if len(payload) < 101:
+            return None
+        key = payload[:32].hex().upper()
+        flags = payload[100]
+        node_type = flags & 0x0F
+        lat = lon = None
+        i = 101
+        if flags & 0x10:
+            if len(payload) < i + 8:
+                return None
+            lat, lon = struct.unpack_from("<ii", payload, i)
+            lat, lon = lat / 1e6, lon / 1e6
+            i += 8
+        if flags & 0x20:
+            i += 2
+        if flags & 0x40:
+            i += 2
+        name = payload[i:].split(b"\0")[0].decode("utf-8", "replace")[:40] if flags & 0x80 else ""
+        return {"key": key, "type": node_type, "lat": lat, "lon": lon, "name": name}
+
+    def learn_advert(self, p: dict):
+        """Remember the route a fixed node's advert (repeater or room server, with a location) took."""
+        try:
+            adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
+        except ValueError:
+            return
+        if not adv or adv["type"] not in (2, 3) or adv["lat"] is None:
+            return
+        if not (adv["lat"] or adv["lon"]) or abs(adv["lat"]) > 90 or abs(adv["lon"]) > 180:
+            return
+        path = parse_path(p.get("original_path"))
+        rk = adv["key"] + "|" + ">".join(path)
+        seen = str(p.get("packet_hash") or p.get("id")) + "|" + rk
+        if seen in self._adv_seen:
+            return
+        self._adv_seen[seen] = None
+        while len(self._adv_seen) > 20000:
+            self._adv_seen.popitem(last=False)
+        ts = float(p.get("timestamp") or time.time())
+        v = self.adv_routes.get(rk)
+        if v:
+            v[0] += 1
+            v[1] = max(v[1], ts)
+            v[2], v[3], v[4] = adv["lat"], adv["lon"], adv["name"]
+        else:
+            self.adv_routes[rk] = [1, ts, adv["lat"], adv["lon"], adv["name"]]
+            self._adv_stamp += 1
+            if len(self.adv_routes) > 15000:
+                for k, _ in sorted(self.adv_routes.items(), key=lambda kv: kv[1][1])[:2000]:
+                    del self.adv_routes[k]
 
     def _rep_index(self) -> dict:
         idx = getattr(self, "_rep_idx", None)
@@ -1268,9 +1337,18 @@ class SpamGuard:
             if self.cfg.get("map_directory"):
                 have = {r["key"] for r in self.repeaters["list"]}
                 located += [r for r in self.public_reps["list"] if r["key"] not in have]
-            idx = (stamp, located, {})
+            by: dict[str, list] = {}
+            for r in located:
+                for n in (2, 4, 6):
+                    by.setdefault(r["key"][:n], []).append(r)
+            for v in by.values():
+                v.sort(key=lambda r: -r["seen"])
+            idx = (stamp, located, {}, by)
             self._rep_idx = idx
         return idx
+
+    def _cands(self, code: str) -> list:
+        return self._rep_index()[3].get(code, [])
 
     @staticmethod
     def _km(a, b) -> float:
@@ -1278,62 +1356,204 @@ class SpamGuard:
         h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
         return 6371 * 2 * math.asin(min(1.0, math.sqrt(h)))
 
-    def resolve_path(self, path: list) -> Optional[dict]:
-        """Work out which repeater each route code most likely is, starting from this repeater and
-        walking back towards the sender: each hop has to be within radio range of the next one.
-        Route codes are short and shared by many repeaters, so looking a code up on its own puts
-        it anywhere in the country; the chain of neighbours narrows it to the one that fits.
-        Returns the earliest hop that could be placed (ideally the first one), or None."""
-        me = self.me or {}
-        if me.get("lat") is None or me.get("lon") is None or not path:
-            return None
-        _, located, cache = self._rep_index()
-        key = ">".join(path)
-        if key in cache:
-            return cache[key]
-        cands = []
-        for code in path:
-            cs = [r for r in located if r["key"].startswith(code)]
-            cands.append(sorted(cs, key=lambda r: -r["seen"])[:40])
-        # Dynamic programme from our end. State: the last placed repeater (or us) and how many
-        # unplaced hops since; value: total "distance" cost and the placements so far.
-        states = {("me", 0): (0.0, (float(me["lat"]), float(me["lon"])), [])}
-        for i in range(len(path) - 1, -1, -1):
+    def _fit_chain(self, path: list, fixed: Optional[dict] = None, anchor: Optional[tuple] = None):
+        """Place each route code at a repeater so that every hop is within radio range of the next,
+        walking back from this repeater. 'fixed' hops are already known; 'anchor' is where the
+        message started (known for adverts), which stops the chain being squeezed towards us.
+        Returns (cost, [(index, repeater), ...])."""
+        me = (float(self.me["lat"]), float(self.me["lon"]))
+        fixed = fixed or {}
+        n = len(path)
+        states = {("me", 0): (0.0, me, [])}
+        for i in range(n - 1, -1, -1):
+            if i in fixed:
+                cs = [fixed[i]]
+            else:
+                cs = self._cands(path[i])[:40]
+                if anchor:
+                    cs = [r for r in cs if self._km(anchor, (r["lat"], r["lon"])) <= self.LINK_KM * (i + 1)
+                          and self._km(me, (r["lat"], r["lon"])) <= self.LINK_KM * (n - i)]
+            skip = self.UNKNOWN_COST * (3 if i in fixed else 1)
             nxt = {}
             for (sid, gap), (cost, pos, placed) in states.items():
-                # leave this hop unplaced
-                k2 = (sid, gap + 1)
-                c2 = cost + self.UNKNOWN_COST
+                k2, c2 = (sid, gap + 1), cost + skip
                 if k2 not in nxt or c2 < nxt[k2][0]:
                     nxt[k2] = (c2, pos, placed)
-                for r in cands[i]:
+                for r in cs:
                     d = self._km(pos, (r["lat"], r["lon"]))
                     if d > self.LINK_KM * (gap + 1):
                         continue
-                    k2 = (r["key"], 0)
-                    c2 = cost + d
+                    k2, c2 = (r["key"], 0), cost + d
                     if k2 not in nxt or c2 < nxt[k2][0]:
                         nxt[k2] = (c2, (r["lat"], r["lon"]), placed + [(i, r)])
-            # keep the search small on long routes
             states = dict(sorted(nxt.items(), key=lambda kv: kv[1][0])[:60])
-        best = min(states.values(), key=lambda v: v[0])
-        placed = best[2]
+        if anchor:
+            best = None
+            for (sid, gap), (cost, pos, placed) in states.items():
+                d = self._km(pos, anchor)
+                if d > self.LINK_KM * (gap + 1):
+                    continue
+                if best is None or cost + d < best[0]:
+                    best = (cost + d, placed)
+            return best or (float("inf"), [])
+        cost, _, placed = min(states.values(), key=lambda v: v[0])
+        return cost, placed
+
+    LEARN_BUDGET = 400   # advert routes fitted per call, so a big backlog never stalls polling
+
+    def _learned(self) -> dict:
+        """(route code, the code after it, or 'ME') -> the repeater it is, learnt from advert routes.
+        Each advert route is fitted once, anchored at the advert's own location (so the chain can't be
+        squeezed towards us), and votes for the repeater at each hop; the advert's own repeater votes
+        twice for its code next to the first hop. A code counts as learnt in a context only when one
+        repeater has at least 3 votes and 80% of them. Tested on a week of real adverts: a code learnt
+        this way matched the repeater the advert itself named 87% of the time."""
+        me = self.me or {}
+        if me.get("lat") is None or me.get("lon") is None:
+            return {}
+        fits = getattr(self, "_adv_fits", None)
+        day = int(time.time() // 86400)
+        if fits is None or fits[0] != day:            # refit once a day as the repeater lists change
+            fits = self._adv_fits = (day, {})
+        cached = getattr(self, "_learn_cache", None)
+        pending = [rk for rk in self.adv_routes if rk not in fits[1]]
+        if cached and not pending and (cached[0] == (self._adv_stamp, day)
+                                       or (cached[0][1] == day and time.time() - cached[2] < 300)):
+            return cached[1]       # new advert routes are folded in at most every 5 minutes
+        for rk in pending[:self.LEARN_BUDGET]:
+            cnt, last, lat, lon, name = self.adv_routes[rk]
+            path = rk.partition("|")[2]
+            path = path.split(">") if path else []
+            out = []
+            if path and len(path) <= 24:
+                _, placed = self._fit_chain(path, anchor=(lat, lon))
+                out = [((path[i], path[i + 1] if i + 1 < len(path) else "ME"),
+                        {"key": r["key"], "name": r.get("name") or "", "lat": r["lat"], "lon": r["lon"]}) for i, r in placed]
+            fits[1][rk] = out
+        votes: dict[tuple, collections.Counter] = {}
+        reps: dict[str, dict] = {}
+        horizon = time.time() - 14 * 86400
+        for rk, (cnt, last, lat, lon, name) in self.adv_routes.items():
+            if last < horizon:
+                continue
+            key, _, ps = rk.partition("|")
+            path = ps.split(">") if ps else []
+            reps[key] = {"key": key, "name": name, "lat": lat, "lon": lon}
+            code = key[:len(path[0])] if path else key[:2]
+            votes.setdefault((code, path[0] if path else "ME"), collections.Counter())[key] += 2 * cnt
+            for ctx, r in fits[1].get(rk, []):
+                reps.setdefault(r["key"], r)
+                votes.setdefault(ctx, collections.Counter())[r["key"]] += cnt
+        learned = {}
+        for ctx, c in votes.items():
+            (k, top), total = c.most_common(1)[0], sum(c.values())
+            if top >= 3 and top >= 0.8 * total:
+                learned[ctx] = reps[k]
+        if not pending[self.LEARN_BUDGET:]:
+            self._learn_cache = ((self._adv_stamp, day), learned, time.time())
+        return learned
+
+    def resolve_path(self, path: list, distrust: frozenset = frozenset()) -> Optional[dict]:
+        """Work out where a message entered the mesh. Route codes are short and shared by many
+        repeaters, so a code on its own could be anywhere in the country. Codes are looked up in what
+        repeater adverts have taught us, in the context of the next code along:
+        - kind 'id': the first code is a repeater we've learnt, and it's in radio range of the next
+          hop (a repeater can advertise any location, so a claimed location far from its real
+          neighbours isn't believed);
+        - kind 'next': the first repeater isn't known but the one it handed the message to is, so the
+          message entered one hop from there ('claims' names an advert that gave a far-off location);
+        - kind 'guess': neither is known; the hops are fitted so each is in radio range of the next.
+        """
+        me = self.me or {}
+        if me.get("lat") is None or me.get("lon") is None or not path:
+            return None
+        cache = self._rep_index()[2]
+        learned = self._learned()
+        stamp = id(learned)
+        key = (">".join(path), distrust)
+        if key in cache and cache[key][0] == stamp:
+            return cache[key][1]
+        ctx = lambda i: (path[i], path[i + 1] if i + 1 < len(path) else "ME")
+        x = learned.get(ctx(0))
+        y = learned.get(ctx(1)) if len(path) > 1 else None
         res = None
-        if placed:
-            i, r = min(placed, key=lambda x: x[0])
-            res = {"key": r["key"], "name": r.get("name") or "", "lat": r["lat"], "lon": r["lon"],
-                   "index": i, "code": path[i]}
+        far = bool(x and y and self._km((x["lat"], x["lon"]), (y["lat"], y["lon"])) > 2 * self.NEAR_KM)
+        if x and not far and x["key"] not in distrust:
+            res = {"kind": "id", "key": x["key"], "name": x.get("name") or "", "lat": x["lat"], "lon": x["lon"],
+                   "index": 0, "code": path[0], "sure": True, "checked": bool(y)}
+        elif y:
+            res = {"kind": "next", "key": y["key"], "name": y.get("name") or "", "lat": y["lat"], "lon": y["lon"],
+                   "index": 0, "code": path[0], "sure": True, "claims": (x.get("name") or "") if x else ""}
+        else:
+            fixed = {i: learned[ctx(i)] for i in range(len(path)) if ctx(i) in learned}
+            if x and 0 in fixed:
+                del fixed[0]                     # don't believe a location its neighbours contradict
+            _, placed = self._fit_chain(path, fixed=fixed)
+            placed = [(i, r) for i, r in placed if not (x and r["key"] == x["key"])]
+            if placed:
+                i, r = min(placed, key=lambda t: t[0])
+                res = {"kind": "guess", "key": r["key"], "name": r.get("name") or "", "lat": r["lat"], "lon": r["lon"],
+                       "index": i, "code": path[i], "sure": False}
+        if res is not None and x and res["kind"] != "id":
+            res["claims"] = x.get("name") or ""
+        if res is not None:
+            res["far"] = far
+            res["x_key"] = x["key"] if x else None
         if len(cache) > 5000:
             cache.clear()
-        cache[key] = res
+        cache[key] = (stamp, res)
         return res
 
+    @staticmethod
+    def _geomedian(pts: list) -> tuple:
+        """Weighted geometric median of (lat, lon, weight): the point closest to all of them."""
+        w = sum(p[2] for p in pts)
+        c = (sum(p[0] * p[2] for p in pts) / w, sum(p[1] * p[2] for p in pts) / w)
+        for _ in range(50):
+            sx = sy = sw = 0.0
+            for p in pts:
+                d = max(0.5, SpamGuard._km(c, p))
+                sx += p[0] * p[2] / d
+                sy += p[1] * p[2] / d
+                sw += p[2] / d
+            c = (sx / sw, sy / sw)
+        return c
+
+    AREA_KM = 40         # neighbours of one source further apart than this are treated as separate sources
+    SURE_SPREAD_KM = 35  # an area is sure when 2+ known neighbours sit within this of its centre
+
     def spam_entries(self, cut24: float, cut7: float) -> dict:
-        """Where spam entered the mesh, from whole routes. Groups by the earliest repeater that could
-        be placed; 'before' says how many unplaced hops came before it (0 = the first repeater)."""
+        """Where spam entered the mesh over the last 7 days.
+        Learnt repeaters are entries of their own. Spam whose first repeater is unknown (often the
+        spammer's own node, never advertised) is placed from the known repeaters it was handed to:
+        for each first code those are grouped by area, and each group's centre is where it entered.
+        A group is 'sure' when at least two different known repeaters agree (median distance from
+        the centre within SURE_SPREAD_KM). In a test on real adverts with the first repeater hidden,
+        sure groups were within 30 km of the true spot 91% of the time. 'exact' counts sure messages."""
         entries: dict[str, dict] = {}
         unplaced = {"d1": 0, "d7": 0}
         by_code: dict[str, collections.Counter] = {}
+        nexts: dict[str, dict] = {}     # first code -> neighbour key -> [lat, lon, d7, d1, last, name, claims]
+
+        # A repeater can advertise any location. One whose spam is regularly handed to repeaters far
+        # from where it says it is, and never to ones nearby, isn't believed.
+        check: dict[str, list] = {}
+        for k, v in self.hist.items():
+            if int(k) < cut7:
+                continue
+            for ps, n in (v.get("p") or {}).items():
+                r = self.resolve_path(ps.split(">"))
+                if r and r.get("far"):
+                    check.setdefault(r["x_key"], [0, 0])[1] += n
+                elif r and r["kind"] == "id" and r.get("checked"):
+                    check.setdefault(r["key"], [0, 0])[0] += n
+        distrust = frozenset(k for k, (ok, bad) in check.items() if bad > ok)
+
+        def entry(k, r, sure):
+            return entries.setdefault(k, {"key": k, "name": r["name"], "lat": r["lat"], "lon": r["lon"], "code": r["code"],
+                                          "d1": 0, "d7": 0, "exact": 0, "before": collections.Counter(), "codes": collections.Counter(),
+                                          "last": 0, "kind": r.get("kind", "guess"), "near": [], "claims": [], "spread_km": None})
+
         for k, v in self.hist.items():
             t = int(k)
             if t < cut7:
@@ -1341,25 +1561,57 @@ class SpamGuard:
             recent = t >= cut24 - 3600
             for ps, n in (v.get("p") or {}).items():
                 path = ps.split(">")
-                r = self.resolve_path(path)
+                r = self.resolve_path(path, distrust)
                 if not r:
                     unplaced["d7"] += n
                     if recent:
                         unplaced["d1"] += n
                     continue
-                e = entries.setdefault(r["key"], {"key": r["key"], "name": r["name"], "lat": r["lat"], "lon": r["lon"],
-                                                  "code": r["code"], "d1": 0, "d7": 0, "exact": 0, "before": collections.Counter(),
-                                                  "codes": collections.Counter(), "last": 0})
+                if r["kind"] == "next":
+                    nb = nexts.setdefault(path[0], {}).setdefault(r["key"], [r["lat"], r["lon"], 0, 0, 0, r["name"], collections.Counter()])
+                    nb[2] += n
+                    nb[3] += n if recent else 0
+                    nb[4] = max(nb[4], t)
+                    if r.get("claims"):
+                        nb[6][r["claims"]] += n
+                    continue
+                e = entry(r["key"], r, r["sure"])
                 e["d7"] += n
                 if recent:
                     e["d1"] += n
-                if r["index"] == 0:
+                if r["sure"]:
                     e["exact"] += n
-                else:
+                if r["index"]:
                     e["before"][r["index"]] += n
                 e["codes"][path[0]] += n
                 e["last"] = max(e["last"], t)
                 by_code.setdefault(path[0], collections.Counter())[r["key"]] += n
+        for code, nbs in nexts.items():
+            groups: list[list] = []
+            for nk, nb in sorted(nbs.items(), key=lambda kv: -kv[1][2]):
+                for g in groups:
+                    c = self._geomedian([(p[1][0], p[1][1], p[1][2]) for p in g])
+                    if self._km(c, (nb[0], nb[1])) <= self.AREA_KM:
+                        g.append((nk, nb))
+                        break
+                else:
+                    groups.append([(nk, nb)])
+            for gi, g in enumerate(groups):
+                c = self._geomedian([(p[1][0], p[1][1], p[1][2]) for p in g])
+                ds = sorted(self._km(c, (p[1][0], p[1][1])) for p in g)
+                spread = ds[len(ds) // 2]
+                sure = len(g) >= 2 and spread <= self.SURE_SPREAD_KM
+                k = f"area:{code}:{gi}"
+                d7, d1 = sum(p[1][2] for p in g), sum(p[1][3] for p in g)
+                claims = collections.Counter()
+                for p in g:
+                    claims.update(p[1][6])
+                entries[k] = {"key": k, "name": "", "lat": c[0], "lon": c[1], "code": code, "d1": d1, "d7": d7,
+                              "exact": d7 if sure else 0, "before": collections.Counter(), "codes": collections.Counter({code: d7}),
+                              "last": max(p[1][4] for p in g), "kind": "area",
+                              "near": [p[1][5] for p in sorted(g, key=lambda p: -p[1][2])[:4]],
+                              "claims": [n for n, _ in claims.most_common(2)], "spread_km": round(spread)}
+                by_code.setdefault(code, collections.Counter())[k] += d7
         out = []
         for e in sorted(entries.values(), key=lambda e: -e["d7"])[:25]:
             e["codes"] = [c for c, _ in e["codes"].most_common(8)]
@@ -1372,8 +1624,11 @@ class SpamGuard:
         for code, cnt in by_code.items():
             k, n = cnt.most_common(1)[0]
             if k in names:
-                likely[code] = {"name": names[k]["name"], "key": k, "exact": names[k]["code"] == code}
-        return {"entries": out, "unplaced": unplaced, "likely": likely}
+                e = names[k]
+                likely[code] = {"name": e["name"] or (e["near"][0] if e["near"] else ""), "key": k,
+                                "exact": e["kind"] == "id" and e["code"] == code}
+        return {"entries": out, "unplaced": unplaced, "likely": likely,
+                "learned": len(self._learned()), "advert_routes": len(self.adv_routes)}
 
     def repeaters_for(self, hop: str) -> list:
         """Repeaters openHop has heard adverts from whose key starts with this route code.
@@ -1590,9 +1845,13 @@ class SpamGuard:
         new = 0
         for p in sorted(packets, key=lambda x: x.get("timestamp") or 0):
             try:
-                if int(p.get("type", -1)) != PAYLOAD_TYPE_GRP_TXT:
-                    continue
+                ptype = int(p.get("type", -1))
             except (TypeError, ValueError):
+                continue
+            if ptype == PAYLOAD_TYPE_ADVERT:
+                self.learn_advert(p)
+                continue
+            if ptype != PAYLOAD_TYPE_GRP_TXT:
                 continue
             key = str(p.get("packet_hash") or p.get("id"))
             if "transmitted" in p or "drop_reason" in p:
@@ -2289,10 +2548,30 @@ class SpamGuard:
         self._note_newest(packets)
         return packets or []
 
+    def backfill_adverts(self):
+        """Once after starting, read the last week of adverts from openHop so the map can place spam
+        straight away instead of waiting for adverts to arrive. Retries hourly if it fails."""
+        if self._adv_backfill and (self._adv_backfill > 1 or time.time() + self._adv_backfill < 3600):
+            return
+        try:
+            since = time.time() - 7 * 86400
+            res = self._api("GET", f"/api/filtered_packets?type={PAYLOAD_TYPE_ADVERT}&start_timestamp={since:.0f}&limit=20000")
+            rows = res.get("data", []) if isinstance(res, dict) else (res or [])
+            with self.lock:
+                for p in rows:
+                    if int(p.get("type", -1)) == PAYLOAD_TYPE_ADVERT:
+                        self.learn_advert(p)
+            self._adv_backfill = 2.0
+            log.info("Read %d recent adverts from openHop to learn route codes", len(rows))
+        except Exception as e:
+            self._adv_backfill = -time.time()           # negative: failed at this time
+            log.info("Could not read recent adverts from openHop yet: %s", e)
+
     def poll_once(self):
         try:
             self.refresh_openhop_info()
             self.refresh_public_map()
+            self.backfill_adverts()
         except Exception:
             pass
         packets = self.fetch_packets()
