@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.13.3
+- The Spam sources map now shows only the repeaters SpamGuard is sure spam came in through. The best guesses (dashed circles) are hidden unless you turn on **Show best guesses too** above the map, and the note under the map says how many spam messages that leaves out.
+- Fixed the public MeshCore map download never finishing. A handful of nodes on the public map report dates from 1970 (no clock set), and one of those stopped the whole list loading. Odd entries are now skipped one at a time.
+- The public map list now only keeps repeaters on the same radio settings as yours (frequency, bandwidth and spreading factor) that have been heard from in the last 90 days, so old and out-of-band repeaters no longer get picked as a match for a route code.
 ## v5.13.2
 - New **Clear spam history** button (Advanced > Settings, near the bottom). It empties the Overview charts, the Spam sources map and table, and the Possibly genuine list so they count again from now. Blocks, settings, known people and the evidence log are kept. Like Start again, it asks twice and needs RESET typed.
 

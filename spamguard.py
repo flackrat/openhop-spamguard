@@ -27,6 +27,7 @@ import subprocess
 import difflib
 import hashlib
 import hmac
+import calendar
 import json
 import math
 import logging
@@ -50,7 +51,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.13.2"
+VERSION = "5.13.3"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -266,7 +267,7 @@ EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix"}
 # openHop release that includes its own rule-check fix (openhop_repeater #520/#521); None until released.
 OPENHOP_FIXED_IN: Optional[str] = None
-PUBLIC_MAP_URL = "https://map.meshcore.dev/api/v1/nodes"
+PUBLIC_MAP_URL = "https://map.meshcore.io/api/v1/nodes"
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
 
@@ -1396,31 +1397,75 @@ class SpamGuard:
             pass
 
     @staticmethod
-    def parse_public_map(nodes, me: Optional[dict] = None, radius_km: float = 600) -> list:
-        """Repeaters (type 2) with a location from the public MeshCore map's node list, near us."""
+    def _iso_ts(v) -> float:
+        """Seconds since 1970 from the map's ISO dates, or 0 if missing or nonsense (nodes with no clock send 1970)."""
+        if isinstance(v, (int, float)):
+            t = float(v) / (1000 if v > 1e11 else 1)
+        elif isinstance(v, str):
+            try:
+                t = float(calendar.timegm(time.strptime(v[:19], "%Y-%m-%dT%H:%M:%S")))
+            except (ValueError, OverflowError):
+                return 0.0
+        else:
+            return 0.0
+        return t if 1577836800 <= t <= time.time() + 86400 else 0.0   # 2020 .. tomorrow
+
+    @staticmethod
+    def _same_radio(params, radio: Optional[dict]) -> bool:
+        """False only when both sides say which radio settings they use and they can't hear each other."""
+        if not isinstance(params, dict) or not radio:
+            return True
+        def num(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+        mf, nf = num(radio.get("frequency")), num(params.get("freq"))
+        mb, nb = num(radio.get("bandwidth")), num(params.get("bw"))
+        ms, ns = num(radio.get("spreading_factor")), num(params.get("sf"))
+        if mf and mf > 1e5:
+            mf /= 1e6                     # Hz -> MHz
+        if mb and mb > 1000:
+            mb /= 1000                    # Hz -> kHz
+        if mf and nf and abs(mf - nf) > 0.05:
+            return False
+        if mb and nb and abs(mb - nb) > 0.5:
+            return False
+        if ms and ns and ms != ns:
+            return False
+        return True
+
+    @staticmethod
+    def parse_public_map(nodes, me: Optional[dict] = None, radius_km: float = 600,
+                         radio: Optional[dict] = None, max_age_days: float = 90) -> list:
+        """Repeaters (type 2) with a location from the public MeshCore map's node list: near us, on our
+        radio settings and heard from in the last few months. One odd entry never spoils the rest."""
         if isinstance(nodes, dict):
             nodes = nodes.get("nodes") or nodes.get("data") or []
         out = []
         here = (float(me["lat"]), float(me["lon"])) if me and me.get("lat") is not None and me.get("lon") is not None else None
+        oldest = time.time() - max_age_days * 86400
         for n in nodes if isinstance(nodes, list) else []:
-            if not isinstance(n, dict) or str(n.get("type")) != "2":
+            try:
+                if not isinstance(n, dict) or str(n.get("type")) != "2":
+                    continue
+                key = str(n.get("public_key") or "").upper()
+                lat, lon = n.get("lat", n.get("adv_lat")), n.get("lon", n.get("adv_lon"))
+                if not re.fullmatch(r"[0-9A-F]{8,64}", key) or not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                    continue
+                if not (lat or lon) or abs(lat) > 90 or abs(lon) > 180:
+                    continue
+                if here and SpamGuard._km(here, (lat, lon)) > radius_km:
+                    continue
+                if not SpamGuard._same_radio(n.get("params"), radio):
+                    continue
+                seen = SpamGuard._iso_ts(n.get("last_advert")) or SpamGuard._iso_ts(n.get("updated_date"))
+                if seen and seen < oldest:
+                    continue
+                out.append({"key": key, "name": str(n.get("adv_name") or "")[:40], "lat": float(lat), "lon": float(lon),
+                            "seen": seen, "src": "map"})
+            except Exception:
                 continue
-            key = str(n.get("public_key") or "").upper()
-            lat, lon = n.get("lat", n.get("adv_lat")), n.get("lon", n.get("adv_lon"))
-            if not re.fullmatch(r"[0-9A-F]{8,64}", key) or not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
-                continue
-            if not (lat or lon) or abs(lat) > 90 or abs(lon) > 180:
-                continue
-            if here and SpamGuard._km(here, (lat, lon)) > radius_km:
-                continue
-            seen = n.get("last_advert") or n.get("updated_date") or 0
-            if isinstance(seen, str):
-                try:
-                    seen = time.mktime(time.strptime(seen[:19], "%Y-%m-%dT%H:%M:%S"))
-                except ValueError:
-                    seen = 0
-            out.append({"key": key, "name": str(n.get("adv_name") or "")[:40], "lat": float(lat), "lon": float(lon),
-                        "seen": float(seen or 0), "src": "map"})
         return out
 
     def refresh_public_map(self, force: bool = False):
@@ -1437,7 +1482,7 @@ class SpamGuard:
                                                                        "User-Agent": f"SpamGuard/{VERSION}"})
                 with urllib.request.urlopen(req, timeout=60) as r:
                     nodes = json.loads(r.read().decode("utf-8", "replace"))
-                reps = self.parse_public_map(nodes, self.me)
+                reps = self.parse_public_map(nodes, self.me, radio=self.radio)
                 self.public_reps = {"ts": time.time(), "list": reps, "error": None}
                 tmp = self._public_reps_path() + ".tmp"
                 with open(tmp, "w") as f:
