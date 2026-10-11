@@ -398,6 +398,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
 <section>
   <h2>Spam sources</h2>
   <p class="lead">Where spam entered the mesh over the last 7 days. Route codes are short and shared by many repeaters across the country, so SpamGuard follows each spam message's whole route back from your repeater, one radio hop at a time, and places each code at the repeater that fits the chain. Locations come from the repeater adverts your openHop has heard, and from the public MeshCore map if you turn that on.</p>
+  <label class="switch" style="margin:0 0 10px"><input type="checkbox" id="mapGuess"> Show best guesses too</label>
   <div id="mapBox" class="map"></div>
   <p class="explain" id="mapNote"></p>
 </section>
@@ -771,6 +772,8 @@ $("#evPlain").onclick=()=>{ if(confirm("This file contains people's names and me
 const adv=$("#advToggle");
 adv.checked=store.get("sgadv")==="1"; document.body.classList.toggle("advanced",adv.checked);
 adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classList.toggle("advanced",adv.checked); route(true); if(S) render(S); };
+$("#mapGuess").checked=store.get("sgguess")==="1";
+$("#mapGuess").onchange=e=>{ store.set("sgguess",e.target.checked?"1":"0"); if(S) renderSources(S); };
 
 function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
 function renderUpdate(d){
@@ -974,13 +977,15 @@ function renderSources(d){
   const rot=(m.entries||[]).filter(e=>e.codes&&e.codes.length>=3), rotN=rot.reduce((a,e)=>a+e.d7,0), allN=(m.entries||[]).reduce((a,e)=>a+e.d7,0)+((m.unplaced||{}).d7||0);
   $("#rotNote").innerHTML=rot.length&&rotN>=allN*0.3?`<div class="callout"><span><strong>${rotN} of ${allN} spam messages came from the same area under at least ${new Set(rot.flatMap(e=>e.codes)).size} different first-repeater codes</strong>, entering near ${rot.slice(0,3).map(e=>esc(e.name||"(no name)")).join(", ")}. That usually means one sender changing its repeater identity, so blocking codes one by one won't keep up. SpamGuard's rotation protection and campaign blocks deal with this automatically.</span></div>`:"";
   const me=m.me||{}, meOk=me.lat!=null&&me.lon!=null&&(me.lat||me.lon);
-  const ents=(m.entries||[]).filter(e=>e.lat!=null&&e.lon!=null);
-  const un=(m.unplaced||{}).d7||0, tot=ents.reduce((a,e)=>a+e.d7,0)+un;
+  const placed=(m.entries||[]).filter(e=>e.lat!=null&&e.lon!=null), guesses=$("#mapGuess").checked;
+  const isSure=e=>e.exact>=e.d7/2, ents=guesses?placed:placed.filter(isSure);
+  const un=(m.unplaced||{}).d7||0, tot=placed.reduce((a,e)=>a+e.d7,0)+un, hidN=guesses?0:placed.filter(e=>!isSure(e)).reduce((a,e)=>a+e.d7,0);
   let note;
   if(!m.sources.length) note="No spam recorded yet, so there's nothing to map.";
   else if(!meOk) note="Your repeater has no location set in openHop, so routes can't be traced back. Set its latitude and longitude in openHop's settings.";
-  else if(!ents.length) note="Spam routes recorded before this version, or routes through repeaters that haven't advertised a location, can't be placed yet. New spam will appear here.";
-  else note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red means it is currently blocked. A dashed outline means the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
+  else if(!placed.length) note="Spam routes recorded before this version, or routes through repeaters that haven't advertised a location, can't be placed yet. New spam will appear here.";
+  else if(guesses) note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red means it is currently blocked. A dashed outline is a best guess: the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
+  else note=`${ents.length?"Each circle is a repeater SpamGuard is sure spam entered the mesh through, sized by spam in the last 7 days; red means it is currently blocked.":"SpamGuard isn't sure of any entry point yet."}${hidN+un?` ${hidN+un} of ${tot} spam messages came in through repeaters it couldn't identify for certain, so they aren't shown. Turn on “Show best guesses too” to see roughly where those came from.`:""} The teal dot is your repeater.`;
   if(m.sources.length&&meOk&&!m.map_directory) note+=" For repeaters too far away for your openHop to hear, turn on “Use the public MeshCore map for repeater locations” under Advanced > Settings.";
   else if(m.map_directory&&m.public_error&&!m.public_repeaters) note+=" The public MeshCore map couldn't be downloaded yet; SpamGuard will try again.";
   $("#mapNote").textContent=note;
@@ -988,7 +993,7 @@ function renderSources(d){
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
-    const sig=JSON.stringify([ents.map(e=>[e.key,e.d1,e.d7,e.blocked]),meOk?[me.lat,me.lon]:0]);
+    const sig=JSON.stringify([guesses,ents.map(e=>[e.key,e.d1,e.d7,e.blocked]),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
