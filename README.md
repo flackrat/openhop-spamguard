@@ -276,6 +276,10 @@ SpamGuard only controls what **your** repeater forwards. People within range of 
 
 </details>
 
+## For developers
+
+`bash tests/run_all.sh` runs the test suite against a fake openHop (add `--slow` for the Pi-sized stress test); nothing in it talks to a real repeater, and all its data is made up. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). It only ever reads the log with names scrambled, and never the lists of people in the status.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE). Changes are listed in [CHANGELOG.md](CHANGELOG.md).

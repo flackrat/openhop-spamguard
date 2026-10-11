@@ -3,3 +3,10 @@ __pycache__/
 *.tar.gz
 *.jsonl
 state.json
+
+# test suite working files
+tests/.openhop/
+tests/.leaflet/
+tests/.out_*
+tests/__pycache__/
+tests/.openhop_core/

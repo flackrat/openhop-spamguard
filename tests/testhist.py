@@ -1,0 +1,21 @@
+import os
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"demo_setup.py")).read())
+blocks_before=len(g.blocks)
+try: g.action("clear_history",{}); print("FAIL no confirm accepted")
+except ValueError: print("refused without RESET: ok")
+print("hist hours before:", len(g.hist))
+async def main():
+    async with async_playwright() as p:
+        b=await p.chromium.launch(); pg=await (await b.new_context(viewport={"width":390,"height":844},is_mobile=True,has_touch=True)).new_page()
+        e=[]; pg.on("pageerror",lambda x:e.append(str(x)))
+        await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.evaluate("localStorage.setItem('sgadv','1')")
+        await pg.goto("http://127.0.0.1:18171/#/settings"); await pg.reload(); await pg.wait_for_timeout(1500)
+        print("box hidden at start:", await pg.is_hidden("#histBox"))
+        pg.once("dialog", lambda d: asyncio.ensure_future(d.accept()))
+        await pg.click("#histBtn"); await pg.wait_for_timeout(300)
+        await pg.fill("#histWord","res"); print("partial disabled:", await pg.is_disabled("#histGo"))
+        await pg.fill("#histWord","RESET"); await pg.click("#histGo"); await pg.wait_for_timeout(1500)
+        print("hist hours after:", len(g.hist), "blocks kept:", len(g.blocks)==blocks_before, "errors", e)
+        await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(1200)
+        print("overview errors", e)
+asyncio.run(main())

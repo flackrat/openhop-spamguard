@@ -1,0 +1,94 @@
+from harness import *
+SPAM="Totally free unlimited mesh upgrades, message me today to claim yours"
+def run(m,g,polls=1):
+    for _ in range(polls): g.poll_once(); time.sleep(0.05)
+    g.last_sync=0; g.sync_pending=True; g.poll_once()
+def obj(m): return (m.policy["policy_engine"].get("objects") or {}).get("spamguard")
+
+print("== learning known people")
+m=mock(); m.policy["policy_engine"]["objects"]={"pubkey_groups":{"mine":["AB"]}}
+for i in range(3): m.add("Dave M",f"Morning all, net at eight tonight number {i}",["44","13"],ago=900-i*60)
+m.add("Sue","Hello from the hill",["44","13"],ago=880)
+m.add("QX7TP2LM","Random junk here",["44","13"],ago=870)
+g=guard(m); run(m,g)
+check("Dave known after 3 genuine messages", g.is_known("Dave M"))
+check("Sue known after 1 (default)", g.is_known("Sue"))
+check("Sue not known when 2 needed", (g.cfg.__setitem__("known_min_msgs",2), not g.is_known("Sue"))[-1]); g.cfg["known_min_msgs"]=1
+check("random name never known", not g.is_known("QX7TP2LM"))
+check("no gated blocks -> no object written", obj(m) is None)
+
+print("== repeater block, except known people")
+for i in range(5): m.add(rname(),f"spam {i} "+rname(10),["76","04","3B"],ago=50-i)
+run(m,g)
+check("hop 76 block created in except-known mode", "hop:76" in g.blocks and g.hop_mode(g.blocks["hop:76"])=="contains_known")
+check("known list written as openHop object", obj(m)=={"known_senders":["Dave M","Sue"]})
+check("your own objects kept", m.policy["policy_engine"]["objects"].get("pubkey_groups")=={"mine":["AB"]})
+check("your own rule kept", any(r["name"]=="my own rule" for r in m.policy["policy_engine"]["rules"]))
+check("spam via 76 (new route) dropped", m.decide(rname(),"brand new wording",["76","B1","9E","3B"])=="drop")
+check("known Dave via 76 allowed", m.decide("Dave M","hi all",["76","04","3B"])=="allow")
+check("unknown name via 76 held", m.decide("Stranger","hi all",["76","04","3B"])=="drop")
+check("unknown name elsewhere allowed", m.decide("Newbie","hi all",["44","13"])=="allow")
+names=[r["name"] for r in m.policy["policy_engine"]["rules"]]
+check("known-people rule sits after your rules and before the 76 block",
+      names.index("my own rule") < names.index("spamguard:known-people:Public") < next(i for i,n in enumerate(names) if n.startswith("spamguard:hop:76")))
+check("mirror agrees: SpamGuard thinks known Dave not caught", not g.block_matches(g.blocks["hop:76"], sg.Event(time.time(),["76","04"],"Dave M","hi","Public")))
+check("not learnt from traffic via blocked repeater", (m.add("Eve","one",["76","04"],ago=300), m.add("Eve","two",["76","04"],ago=299), run(m,g), not g.is_known("Eve"))[-1])
+
+print("== newcomer whose route passes THROUGH the blocked repeater")
+def ev(sender,text,path):
+    e=sg.Event(time.time(),path,sender,text,"Public"); e.name_score=sg.name_score(sender,g.name_res)
+    e.random=e.name_score>=g.cfg["name_score_threshold"]; g._match_event(e,count=False); return e
+e1=ev("Over The Hill","Test",["44","13","76","3B"])
+check("first message held by the 76 block", e1.matched=="hop:76")
+g.learn_sender(e1, g._spammy(e1))
+check("held in passing still counts: now known", g.is_known("Over The Hill"))
+run(m,g)
+check("next message through 76 gets through openHop", m.decide("Over The Hill","good night",["44","13","76","3B"])=="allow")
+e2=ev("Mallory","hello all",["76","04","3B"]); g.learn_sender(e2, g._spammy(e2))
+check("name whose message STARTS at 76 is never learnt", not g.is_known("Mallory"))
+e3=ev("QX7TP2LM","junk junk junk here",["44","76","3B"]); g.learn_sender(e3, g._spammy(e3))
+check("random-looking name via 76 mid-route never learnt", not g.is_known("QX7TP2LM"))
+
+print("== links from unknown names")
+m=mock()
+for i in range(3): m.add("Dave M",f"Radio check from the hilltop number {i}",["44"],ago=900-i)
+for i in range(4): m.add(rname(),SPAM,["55","B1"],ago=200-i)
+g=guard(m); run(m,g)
+check("campaign -> links block on", "links:new" in g.blocks)
+check("unknown name with link held", m.decide("Newbie","see https://example.com/x",["44"])=="drop")
+check("unknown name with www. held", m.decide("Newbie","see www.example.com",["44"])=="drop")
+check("known name with link allowed", m.decide("Dave M","see https://example.com/x",["44"])=="allow")
+check("unknown name without link allowed", m.decide("Newbie","hello there",["44"])=="allow")
+g.apply_settings({"hold_links":"off"}); run(m,g)
+check("setting off -> links block gone", "links:new" not in g.blocks and m.decide("Newbie","see https://example.com/x",["44"])=="allow")
+g.apply_settings({"hold_links":"always"}); run(m,g)
+check("always -> permanent links block", g.blocks.get("links:new",{}).get("expires",0)-time.time()>86400*365)
+m3=mock(); g3=guard(m3); run(m3,g3)
+check("no campaign, default setting -> no links block", "links:new" not in g3.blocks)
+
+print("== lockdown")
+m=mock()
+for i in range(3): m.add("Dave M",f"Radio check from the hilltop number {i}",["44"],ago=900-i)
+g=guard(m); run(m,g)
+r=g.action("lockdown",{"minutes":30})
+check("lockdown message mentions count", "1 name SpamGuard" in r["message"] and "doesn't know many" in r["message"])
+check("lockdown: unknown held anywhere", m.decide("Newbie","hello",["99"])=="drop")
+check("lockdown: known allowed", m.decide("Dave M","hello",["99"])=="allow")
+st=g.status(); check("status shows lockdown time left", st["lockdown"] and 1700<st["lockdown"]["left"]<=1800)
+g.action("lockdown",{"minutes":0}); run(m,g)
+check("lockdown ended -> unknown allowed, object removed", m.decide("Newbie","hello",["99"])=="allow" and obj(m) is None)
+try: g.action("lockdown",{"minutes":5000}); ok=False
+except ValueError: ok=True
+check("lockdown over 24 h refused", ok)
+
+print("== pause and monitor")
+g.action("lockdown",{"minutes":30}); g.apply_settings({"paused":True}); run(m,g)
+check("paused -> no SpamGuard rules or object", not [r for r in m.policy["policy_engine"]["rules"] if r["name"].startswith("spamguard")] and obj(m) is None)
+g.apply_settings({"paused":False,"mode":"monitor"}); run(m,g)
+check("monitor -> lockdown rule watch-only", all(r["then"]["action"]=="log_only" for r in m.policy["policy_engine"]["rules"] if r["name"].startswith("spamguard:lockdown")))
+
+print("== state survives restart")
+g._save_state(force=True); g2=sg.SpamGuard(dict(g.file_cfg)); g2.rebuild_cfg()
+check("known names kept over restart", g2.is_known("Dave M"))
+check("rule ids kept over restart", g2.rule_ids==g.rule_ids)
+print(f"\n{sum(c for _,c in RESULTS)}/{len(RESULTS)} passed")
