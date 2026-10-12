@@ -10,39 +10,48 @@
   --signal:#0e7a7e; --signal-ink:#ffffff; --signal-tint:#e0f1f1;
   --amber:#a8650a; --amber-tint:#fbf0de; --stop:#b0322b; --stop-tint:#f9e5e3;
   --bar:#0e7a7e; --focus:#2b6cb0;
+  --amber-text:#8a5208; --signal-text:#0b6669; --field:#7b8794;
 }
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme=light]){
     --paper:#111a22; --panel:#18232e; --ink:#e3e9ee; --soft:#97a5b1; --line:#2a3946;
     --signal:#3bb3b6; --signal-ink:#0d1a1f; --signal-tint:#173335;
     --amber:#e3a548; --amber-tint:#33281a; --stop:#ef7a70; --stop-tint:#3a2224;
     --bar:#3bb3b6; --focus:#7fb3ff;
+    --amber-text:#e3a548; --signal-text:#3bb3b6; --field:#6f8090;
   }
+}
+:root[data-theme=dark]{
+    --paper:#111a22; --panel:#18232e; --ink:#e3e9ee; --soft:#97a5b1; --line:#2a3946;
+    --signal:#3bb3b6; --signal-ink:#0d1a1f; --signal-tint:#173335;
+    --amber:#e3a548; --amber-tint:#33281a; --stop:#ef7a70; --stop-tint:#3a2224;
+    --bar:#3bb3b6; --focus:#7fb3ff;
+    --amber-text:#e3a548; --signal-text:#3bb3b6; --field:#6f8090;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--paper);color:var(--ink);
-  font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  font:.9375rem/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   font-variant-numeric:tabular-nums}
 .wrap{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:17px;letter-spacing:-.01em}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:1.0625rem;letter-spacing:-.01em}
 .brand svg{flex:none}
-.brand small{font-weight:400;color:var(--soft);font-size:13px}
-.switch{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--soft);cursor:pointer;user-select:none}
-.switch input{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--line);position:relative;margin:0;cursor:pointer;transition:background .15s}
+.brand small{font-weight:400;color:var(--soft);font-size:0.8125rem}
+.switch{display:flex;align-items:center;gap:8px;font-size:0.875rem;color:var(--soft);cursor:pointer;user-select:none}
+.switch input{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--field);position:relative;margin:0;cursor:pointer;transition:background .15s}
 .switch input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--panel);transition:left .15s}
 .switch input:checked{background:var(--signal)}
 .switch input:checked::after{left:19px}
 
 /* hero: the status sentence is the page's one bold element */
 .hero{padding:6px 0 18px}
-.hero h1{font-size:clamp(24px,4.4vw,34px);line-height:1.18;font-weight:600;letter-spacing:-.02em;margin:0 0 6px;max-width:26em}
+.hero h1{font-size:clamp(1.5rem,4.4vw,2.125rem);line-height:1.18;font-weight:600;letter-spacing:-.02em;margin:0 0 6px;max-width:26em}
 .hero p{margin:0;color:var(--soft);max-width:60ch}
 .meter{display:flex;align-items:flex-end;gap:3px;height:46px;margin:16px 0 4px;max-width:520px}
 .meter i{flex:1;background:var(--bar);border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
 .meter i.zero{background:var(--line)}
-.meter-scale{display:flex;justify-content:space-between;max-width:520px;font-size:12px;color:var(--soft)}
+.meter-scale{display:flex;justify-content:space-between;max-width:520px;font-size:0.75rem;color:var(--soft)}
 
 .banner{border-radius:8px;padding:12px 14px;margin:0 0 14px;border:1px solid}
 .banner b{display:block;margin-bottom:2px}
@@ -51,8 +60,8 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .banner.info{background:var(--signal-tint);border-color:var(--signal)}
 
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
-section > h2{font-size:16px;font-weight:650;margin:0 0 4px}
-section > .lead{color:var(--soft);margin:0 0 12px;font-size:14px;max-width:70ch}
+section > h2{font-size:1rem;font-weight:650;margin:0 0 4px}
+section > .lead{color:var(--soft);margin:0 0 12px;font-size:0.875rem;max-width:70ch}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:720px){.controls{grid-template-columns:1fr}}
 .controls section{margin:0}
@@ -62,80 +71,80 @@ section > .lead{color:var(--soft);margin:0 0 12px;font-size:14px;max-width:70ch}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--signal);color:var(--signal-ink)}
 .seg.mode button[data-v=pause][aria-pressed=true]{background:var(--amber);color:#fff}
-.explain{font-size:14px;color:var(--soft);margin:0}
+.explain{font-size:0.875rem;color:var(--soft);margin:0}
 .explain strong{color:var(--ink);font-weight:600}
 
 button,select,input,textarea{font:inherit;color:inherit}
-button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:14px}
+button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:0.875rem}
 button:hover{border-color:var(--soft)}
 button.go{background:var(--signal);border-color:var(--signal);color:var(--signal-ink);font-weight:600}
 button.quiet{border-color:transparent;color:var(--soft);padding:5px 8px}
 button.quiet:hover{color:var(--ink);border-color:var(--line)}
 button.danger{color:var(--stop)}
-select,input,textarea{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:14px}
-textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+select,input,textarea{background:var(--panel);border:1px solid var(--field);border-radius:6px;padding:5px 8px;font-size:0.875rem}
+textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;font-size:0.8125rem}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* lists of blocks and messages */
 .rows{list-style:none;margin:0;padding:0}
-.rows li{display:grid;grid-template-columns:1fr auto;gap:4px 14px;padding:11px 0;border-top:1px solid var(--line)}
+.rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:11px 0;border-top:1px solid var(--line)}
 .rows li:first-child{border-top:0}
-.rows .what{font-weight:600}
-.rows .why{color:var(--soft);font-size:13.5px}
+.rows .what{font-weight:600;overflow-wrap:anywhere}
+.rows .why{color:var(--soft);font-size:0.84375rem}
 .rows .acts{display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;justify-content:flex-end}
-.rows .extra{grid-column:1/-1;font-size:13.5px}
-@media (max-width:600px){.rows li{grid-template-columns:1fr}.rows .acts{justify-content:flex-start}}
-.tag{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:10px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+.rows .extra{grid-column:1/-1;font-size:0.84375rem}
+@media (max-width:600px){.rows li{grid-template-columns:minmax(0,1fr)}.rows .acts{justify-content:flex-start}}
+.tag{display:inline-block;font-size:0.75rem;font-weight:600;padding:1px 8px;border-radius:10px;margin-left:6px;vertical-align:1px;white-space:nowrap}
 .tag.stop{background:var(--stop-tint);color:var(--stop)}
-.tag.would{background:var(--amber-tint);color:var(--amber)}
-.tag.sus{background:var(--amber-tint);color:var(--amber)}
-.tag.ok{background:var(--signal-tint);color:var(--signal)}
+.tag.would{background:var(--amber-tint);color:var(--amber-text)}
+.tag.sus{background:var(--amber-tint);color:var(--amber-text)}
+.tag.ok{background:var(--signal-tint);color:var(--signal-text)}
 .tag.plain{background:var(--paper);color:var(--soft)}
 .msg-text{word-break:break-word}
-.msg-meta{color:var(--soft);font-size:13px}
-.route{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.msg-meta{color:var(--soft);font-size:0.8125rem}
+.route{font-family:ui-monospace,Consolas,monospace;font-size:0.78125rem}
 .empty{color:var(--soft);padding:6px 0;margin:0}
-.more{color:var(--soft);font-size:13.5px;margin:8px 0 0}
+.more{color:var(--soft);font-size:0.84375rem;margin:8px 0 0}
 
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:left;font-weight:600;color:var(--soft);font-size:13px;padding:6px 8px;border-bottom:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;font-size:0.875rem}
+th{text-align:left;font-weight:600;color:var(--soft);font-size:0.8125rem;padding:6px 8px;border-bottom:1px solid var(--line)}
 td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 .scroll{overflow-x:auto}
 .num{text-align:right}
 
 /* settings */
 .set-group{margin:14px 0 4px}
-.notes{white-space:pre-wrap;font-size:13.5px;margin-top:6px;max-height:320px;overflow:auto}
-.set-group h3{font-size:14.5px;margin:0 0 4px}
+.notes{white-space:pre-wrap;font-size:0.84375rem;margin-top:6px;max-height:320px;overflow:auto}
+.set-group h3{font-size:0.90625rem;margin:0 0 4px}
 .setting{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:4px 18px;padding:12px 0;border-top:1px solid var(--line)}
 .setting label{font-weight:600}
-.setting .help{color:var(--soft);font-size:13.5px;margin:2px 0 0}
-.setting .risk{font-size:13.5px;margin:6px 0 0;padding-left:10px;border-left:3px solid var(--amber)}
-.setting .risk b{color:var(--amber)}
+.setting .help{color:var(--soft);font-size:0.84375rem;margin:2px 0 0}
+.setting .risk{font-size:0.84375rem;margin:6px 0 0;padding-left:10px;border-left:3px solid var(--amber)}
+.setting .risk b{color:var(--amber-text)}
 .setting .ctl{display:flex;align-items:flex-start;gap:6px;justify-content:flex-end}
 .setting .ctl input[type=number]{width:100px}
 .setting .ctl select{max-width:270px}
-.setting .def{font-size:12.5px;color:var(--soft)}
-.setting.changed label::after{content:" (changed)";font-weight:400;color:var(--amber);font-size:13px}
+.setting .def{font-size:0.78125rem;color:var(--soft)}
+.setting.changed label::after{content:" (changed)";font-weight:400;color:var(--amber-text);font-size:0.8125rem}
 @media (max-width:640px){.setting{grid-template-columns:1fr}.setting .ctl{justify-content:flex-start}}
 .savebar{position:sticky;bottom:10px;display:none;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}
 
 .inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0 12px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
-.chip{display:inline-flex;align-items:center;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:2px 4px 2px 10px;font-size:13.5px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:2px 4px 2px 10px;font-size:0.84375rem}
 .chip button{border:0;background:transparent;padding:0 6px;color:var(--soft)}
-details > summary{cursor:pointer;color:var(--soft);font-size:13.5px}
+details > summary{cursor:pointer;color:var(--soft);font-size:0.84375rem}
 .adv{display:none}
 body.advanced .adv{display:block}
 body.advanced .basic-only{display:none}
 .howto p{margin:6px 0;max-width:72ch}
-.howto h3{font-size:14.5px;margin:14px 0 2px}
-#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:14px;max-width:90vw;opacity:0;pointer-events:none;transition:opacity .2s}
+.howto h3{font-size:0.90625rem;margin:14px 0 2px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:8px;font-size:0.875rem;max-width:90vw;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
 body.dirty .savebar{display:flex}
 #toast.bad{background:var(--stop);color:#fff}
-.foot{color:var(--soft);font-size:12.5px;text-align:center;margin-top:24px}
-.foot.legal{margin-top:10px;font-size:11.5px;line-height:1.5;max-width:640px;margin-left:auto;margin-right:auto}
+.foot{color:var(--soft);font-size:0.78125rem;text-align:center;margin-top:24px}
+.foot.legal{margin-top:10px;font-size:0.71875rem;line-height:1.5;max-width:640px;margin-left:auto;margin-right:auto}
 .foot.legal a{color:inherit}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
@@ -143,10 +152,10 @@ body.dirty .savebar{display:flex}
 .hlist{margin:8px 0 0;padding-left:18px}
 .hlist li{margin:3px 0}
 .hlist li.bad{color:var(--stop)}
-.hlist li.warn{color:var(--amber)}
+.hlist li.warn{color:var(--amber-text)}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 18px;margin:12px 0 0}
 .stats div{min-width:0}
-.stats dt{font-size:12.5px;color:var(--soft)}
+.stats dt{font-size:0.78125rem;color:var(--soft)}
 .stats dd{margin:1px 0 0;font-weight:600;font-variant-numeric:tabular-nums}
 .stats.adv{display:none}
 body.advanced .stats.adv{display:grid}
@@ -158,65 +167,73 @@ body.advanced .stats.adv{display:grid}
 @media (max-width:640px){
   .wrap{padding:12px 12px 48px}
   header{position:sticky;top:0;z-index:5;background:var(--paper);margin:-12px -12px 12px;padding:10px 12px;border-bottom:1px solid var(--line)}
-  .brand{font-size:16px}
+  .brand{font-size:1rem}
   .hero{padding:0 0 12px}
   .meter{height:38px}
   section{padding:14px;margin:10px 0;border-radius:9px}
-  section > .lead{font-size:13.5px}
-  .seg button{padding:11px 4px;font-size:15px}
-  .rows .acts button{min-height:40px}
+  section > .lead{font-size:0.84375rem}
+  .seg button{padding:11px 4px;font-size:0.9375rem}
+  .rows .acts button{min-height:44px}
   /* tables become one block per row */
   table, tbody, tr, td{display:block;width:100%}
   table tr:first-child:has(th){display:none}
   tr{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:0 0 8px}
   td{border:0;padding:3px 0;text-align:left}
   td.num{display:inline-block;width:auto;margin:0 14px 0 0;text-align:left;font-weight:600}
-  td[data-label]::before{content:attr(data-label) " ";font-weight:400;color:var(--soft);font-size:12.5px}
+  td[data-label]::before{content:attr(data-label) " ";font-weight:400;color:var(--soft);font-size:0.78125rem}
   td.lead-cell{font-weight:600;padding-bottom:4px}
   td.act-cell{padding-top:6px}
-  td.act-cell button{min-height:40px}
+  td.act-cell button{min-height:44px}
   td.msg-meta.when{white-space:normal;color:var(--soft)}
   .scroll{overflow:visible}
   .inline-form{flex-direction:column;align-items:stretch}
   .inline-form input,.inline-form select,.inline-form button{width:100%;min-height:44px}
   .inline-form label{font-weight:600}
   .blk-ctl select{flex:1 1 100%;min-height:44px}
-  .blk-ctl button{flex:1;min-height:40px;border-color:var(--line)}
+  .blk-ctl button{flex:1;min-height:44px;border-color:var(--line)}
   .setting .ctl{justify-content:flex-start}
   .setting .ctl input[type=number]{width:120px;min-height:44px}
   .setting .ctl select{width:100%;max-width:none;min-height:44px}
   .savebar{bottom:8px;flex-wrap:wrap}
   .savebar button{flex:1;min-height:44px}
   .chip{padding:4px 4px 4px 10px}
-  .chip button{min-height:32px;min-width:32px}
+  .chip button{min-height:44px;min-width:44px}
+  button{min-height:44px}
+  .switch{min-height:44px}
+  .grp-h{padding:0 10px;min-height:44px;align-items:center}
+  .foot.legal a{display:inline-flex;align-items:center;min-height:44px}
+  .quietlink{display:inline-flex;align-items:center;min-height:44px}
+  details > summary{padding:12px 0}
+  .callout .quietlink,.kpis a{padding:12px 4px;margin:-12px -4px}
   #toast{bottom:12px;width:calc(100% - 24px);text-align:center}
 }
 @media (pointer:coarse){
   button{min-height:38px}
-  select,input{font-size:16px}  /* stops phones zooming in on focus */
+  select,input{font-size:1rem}  /* stops phones zooming in on focus */
 }
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 
 /* ---------- app layout: openHop-style side menu ---------- */
 :root{--c-stop:#009096;--c-let:#c2610c;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
-@media (prefers-color-scheme: dark){:root{--c-stop:#2ba3a6;--c-let:#cf7a32;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-stop:#2ba3a6;--c-let:#cf7a32;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
+:root[data-theme=dark]{--c-stop:#2ba3a6;--c-let:#cf7a32;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}
 .app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 .side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--nav);color:var(--nav-ink);border-right:1px solid var(--line);padding:14px 10px 20px;display:flex;flex-direction:column;gap:2px}
-.side .brand{padding:4px 8px 14px;font-size:16.5px}
-.side a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:14.5px}
+.side .brand{padding:4px 8px 14px;font-size:1.03125rem}
+.side a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:inherit;text-decoration:none;font-size:0.90625rem}
 .side a:hover{background:var(--panel)}
 .side a.active{background:var(--nav-active);font-weight:600}
 .side a svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
 .side a span{flex:1}
-.badge{font-size:11.5px;font-weight:650;padding:0 7px;border-radius:9px;line-height:18px;display:none}
+.badge{font-size:0.71875rem;font-weight:650;padding:0 7px;border-radius:9px;line-height:18px;display:none}
 .badge.on{display:inline-block}
-.badge.warn{background:var(--amber-tint);color:var(--amber)}
+.badge.warn{background:var(--amber-tint);color:var(--amber-text)}
 .badge.bad{background:var(--stop-tint);color:var(--stop)}
-.badge.ok{background:var(--signal-tint);color:var(--signal)}
+.badge.ok{background:var(--signal-tint);color:var(--signal-text)}
 .badge.plain{background:var(--panel);color:var(--soft)}
 .grp{margin-top:10px}
-.grp-h{all:unset;cursor:pointer;display:flex;justify-content:space-between;width:calc(100% - 20px);padding:4px 10px;font-size:11.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
-.grp-h::after{content:"▾";font-size:11px}
+.grp-h{all:unset;cursor:pointer;display:flex;justify-content:space-between;width:calc(100% - 20px);padding:4px 10px;font-size:0.71875rem;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+.grp-h::after{content:"▾";font-size:0.6875rem}
 .grp-h[aria-expanded=false]::after{content:"▸"}
 .grp-h[aria-expanded=false]+.grp-b{display:none}
 .adv-nav{display:none!important}
@@ -227,7 +244,7 @@ main{min-width:0}
 .page{display:none}
 .page.on{display:block}
 .topbar{display:none}
-.quietlink{margin-left:auto;font-size:13.5px;color:var(--signal)}
+.quietlink{margin-left:auto;font-size:0.84375rem;color:var(--signal)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .two section{margin:0}
 @media (max-width:820px){.two{grid-template-columns:1fr}.two section{margin:14px 0 0}}
@@ -235,11 +252,11 @@ main{min-width:0}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:10px;margin:10px 0 0}
 .kpis a,.callout a,.quietlink{color:var(--signal)}
 .kpis div{background:var(--paper);border-radius:8px;padding:10px 12px;min-width:0}
-.kpis dt{font-size:12.5px;color:var(--soft)}
-.kpis dd{margin:2px 0 0;font-size:24px;font-weight:650;letter-spacing:-.01em;line-height:1.15}
-.kpis small{display:block;font-size:12px;color:var(--soft);font-weight:400;margin-top:2px}
+.kpis dt{font-size:0.78125rem;color:var(--soft)}
+.kpis dd{margin:2px 0 0;font-size:1.5rem;font-weight:650;letter-spacing:-.01em;line-height:1.15}
+.kpis small{display:block;font-size:0.75rem;color:var(--soft);font-weight:400;margin-top:2px}
 /* charts */
-.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--soft);margin:2px 0 8px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:0.78125rem;color:var(--soft);margin:2px 0 8px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
 .sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)}
@@ -247,11 +264,11 @@ main{min-width:0}
 .chart.short{height:120px}
 .chart svg{width:100%;height:100%;overflow:visible}
 .chart .grid{stroke:var(--line);stroke-width:1}
-.chart .ax{fill:var(--soft);font-size:11px}
+.chart .ax{fill:var(--soft);font-size:0.6875rem}
 .chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)}
 .chart .hit{fill:transparent}
 .chart .hit:hover{fill:var(--line);opacity:.35}
-.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12.5px;padding:6px 9px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);opacity:0;transition:opacity .1s}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:0.78125rem;padding:6px 9px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-100%);opacity:0;transition:opacity .1s}
 .tip.show{opacity:1}
 /* map */
 .map{height:420px;border-radius:8px;border:1px solid var(--line);margin:6px 0 8px;background:var(--paper)}
@@ -259,7 +276,7 @@ main{min-width:0}
 .map{position:relative;z-index:0;isolation:isolate}
 .leaflet-container{font:inherit}
 /* folding lists */
-.foldbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:13.5px;color:var(--soft)}
+.foldbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:0.84375rem;color:var(--soft)}
 .foldbar:empty{display:none}
 [hidden]{display:none!important}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-all}
@@ -274,7 +291,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   .side .brand{order:-2}
   .side-adv{order:-1;margin:0 0 6px;border-bottom:1px solid var(--line);padding:2px 10px 12px}
   .callout .quietlink,.kpis a{display:inline-block;padding:8px 4px;margin:-8px -4px}
-  .topbar .adv-pill{margin-left:auto;font-size:12px;font-weight:650;padding:2px 8px;border-radius:9px;background:var(--signal-tint);color:var(--signal);display:none}
+  .topbar .adv-pill{margin-left:auto;font-size:0.75rem;font-weight:650;padding:2px 8px;border-radius:9px;background:var(--signal-tint);color:var(--signal-text);display:none}
   body.advanced .topbar .adv-pill{display:inline-block}
   body.menu-open{overflow:hidden}
   body.menu-open .side{transform:none}
@@ -285,9 +302,50 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   .topbar .t{font-weight:650}
   .wrap{padding:12px 12px 48px}
 }
+
+/* ---------- accessibility ---------- */
+.lead a,.explain a,.help a,.howto a,.note a,p a,.callout span a,.foot a{text-decoration:underline;text-underline-offset:2px}
+.skip{position:absolute;left:-9999px;top:8px;z-index:60;background:var(--panel);color:var(--ink);border:2px solid var(--focus);border-radius:6px;padding:10px 14px}
+.skip:focus{left:12px}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+main:focus{outline:none}
+.page h2[tabindex="-1"]:focus{outline:none}
+.chart-data{margin:4px 0 0}
+.chart-data table{font-size:.8125rem;max-width:520px}
+.chart-data td,.chart-data th{padding:3px 8px}
+.opt{padding:12px 0;border-top:1px solid var(--line)}
+.opt:first-of-type{border-top:0}
+.opt h3{font-size:.9375rem;margin:0 0 2px}
+.opt .seg{max-width:460px}
+@media (max-width:900px){
+  .side{visibility:hidden;transition:transform .18s,visibility 0s linear .18s}
+  body.menu-open .side{visibility:visible;transition:transform .18s}
+}
+@media (pointer:coarse){
+  button,select,input:not([type=checkbox]):not([type=radio]){min-height:44px}
+  .side a{min-height:44px}
+  .grp-h{padding:12px 10px}
+  .switch{min-height:44px}
+  .topbar button{min-width:44px;min-height:44px}
+  .chip button{min-height:44px;min-width:44px}
+  .foot.legal a{display:inline-block;padding:12px 0}
+}
+/* user options (Display page), saved per browser */
+html{font-size:100%}
+html[data-text=large]{font-size:112.5%}
+html[data-text=larger]{font-size:125%}
+html[data-motion=reduce] *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+html[data-contrast=high]{--ink:#000;--panel:#fff;--paper:#fff;--soft:#36424d;--line:#4d5a66;--field:#36424d;--nav:#f2f4f6;--focus:#0040a0;--amber-text:#6e4206;--signal-text:#08524f}
+html[data-contrast=high][data-theme=dark]{--ink:#fff;--panel:#121b23;--paper:#0b1117;--soft:#cdd6de;--line:#93a3b1;--field:#cdd6de;--nav:#0b1117;--focus:#9cc6ff;--amber-text:#f3c27a;--signal-text:#7fd6d8}
+@media (prefers-color-scheme: dark){html[data-contrast=high]:not([data-theme=light]){--ink:#fff;--panel:#121b23;--paper:#0b1117;--soft:#cdd6de;--line:#93a3b1;--field:#cdd6de;--nav:#0b1117;--focus:#9cc6ff;--amber-text:#f3c27a;--signal-text:#7fd6d8}}
+html[data-contrast=high] main a{text-decoration:underline}
+html[data-contrast=high] :focus-visible{outline-width:3px}
+html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px solid var(--line)}
 </style>
+<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme");if(t==="light"||t==="dark")d.dataset.theme=t;if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
 </head>
 <body>
+<a class="skip" href="#main" id="skipLink">Skip to content</a>
 <div class="app">
 <nav class="side" id="side" aria-label="SpamGuard menu">
   <div class="brand"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg><span>SpamGuard <small id="ver"></small></span></div>
@@ -297,11 +355,11 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   <div class="grp"><button class="grp-h" aria-expanded="true">Monitoring</button><div class="grp-b">
     <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a href="#/campaigns" data-nav="campaigns" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span>Campaigns</span><b class="badge" id="nb-campaigns"></b></a><a href="#/activity" data-nav="activity" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Activity</span><b class="badge" id="nb-activity"></b></a></div></div>
   <div class="grp"><button class="grp-h" aria-expanded="true">System</button><div class="grp-b">
-    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/exceptions" data-nav="exceptions" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg><span>Exceptions</span><b class="badge" id="nb-exceptions"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
+    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/exceptions" data-nav="exceptions" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg><span>Exceptions</span><b class="badge" id="nb-exceptions"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/display" data-nav="display"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16zM13.5 6.5l4 4M7 3v3M3 7h3M19 14v3M17 16h3"/></svg><span>Display</span><b class="badge" id="nb-display"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
   <label class="switch side-adv"><input type="checkbox" id="advToggle"> Advanced</label>
 </nav>
-<main>
-<div class="topbar"><button id="menuBtn" aria-label="Open menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span><span class="adv-pill">Advanced</span></div>
+<main id="main" tabindex="-1">
+<div class="topbar"><button id="menuBtn" aria-label="Open menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span><span class="adv-pill">Advanced</span></div>
 <div class="wrap">
 <div id="banners"></div>
 <div class="page" data-page="overview">
@@ -366,13 +424,13 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
-    <select id="hopMatch"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
-    <select id="hopTtl"></select>
+    <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
+    <select id="hopTtl" aria-label="How long to block it"></select>
     <button class="go" id="hopBtn">Block repeater</button>
   </div>
   <div class="inline-form">
     <label for="textIn">Text</label><input id="textIn" size="34" placeholder="part of the spam message" autocomplete="off">
-    <select id="textTtl"></select>
+    <select id="textTtl" aria-label="How long to block the text"></select>
     <button class="go" id="textBtn">Block text</button>
   </div>
 
@@ -453,23 +511,23 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
 <div class="page" data-page="exceptions"><section>
   <h2>Exceptions</h2>
   <p class="lead">Things SpamGuard should leave alone.</p>
-  <h3 style="font-size:14.5px;margin:6px 0 0">Trusted senders</h3>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Trusted senders</h3>
   <p class="explain">Never counted as spam names and never de-duplicated. Channel names are not verified, so a spammer can copy a trusted name. SpamGuard still blocks a campaign even if one of its names is trusted, and logs a warning when a trusted name turns up somewhere new.</p>
   <div class="chips" id="trustSenders"></div>
-  <div class="inline-form"><input id="trustIn" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
-  <h3 style="font-size:14.5px;margin:6px 0 0">Repeaters never blocked automatically</h3>
+  <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Repeaters never blocked automatically</h3>
   <p class="explain">Covers every hash width, so 27 also covers 27AB. You can still block these by hand.</p>
   <div class="chips" id="trustHops"></div>
-  <div class="inline-form"><input id="trustHopIn" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
-  <h3 style="font-size:14.5px;margin:6px 0 0">Text never blocked</h3>
+  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Text never blocked</h3>
   <p class="explain">Messages containing any of these (capitals ignored) are never de-duplicated or treated as campaigns. Use for bots, net check-ins or regular announcements.</p>
   <div class="chips" id="trustTexts"></div>
-  <div class="inline-form"><input id="trustTextIn" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
-  <h3 style="font-size:14.5px;margin:6px 0 0">Channels SpamGuard can read</h3>
+  <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Channels SpamGuard can read</h3>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name.</p>
   <div class="chips" id="channels"></div>
-  <div class="inline-form"><input id="chName" size="14" placeholder="#chat"><input id="chKey" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
-  <h3 style="font-size:14.5px;margin:6px 0 0">Not re-blocked</h3>
+  <div class="inline-form"><input id="chName" aria-label="Channel name" size="14" placeholder="#chat"><input id="chKey" aria-label="Channel key" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Not re-blocked</h3>
   <p class="explain">Blocks you removed by hand. SpamGuard won't re-create these for 24 hours.</p>
   <div class="chips" id="suppressed"></div>
 </section></div>
@@ -498,6 +556,22 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   <div class="inline-form" id="uBtns"></div>
   <details id="uNotesBox" hidden><summary>What's new</summary><div class="notes" id="uNotes"></div></details>
 </section></div>
+<div class="page" data-page="display"><section>
+  <h2>Display and accessibility</h2>
+  <p class="lead">Make SpamGuard's page easier to read and use. These choices are saved in this browser only, so each phone or computer can have its own. Nothing here changes what SpamGuard blocks.</p>
+  <div class="opt"><h3 id="optTextH">Text size</h3>
+    <div class="seg" role="group" aria-labelledby="optTextH" data-opt="text"><button data-v="normal">Normal</button><button data-v="large">Large</button><button data-v="larger">Larger</button></div></div>
+  <div class="opt"><h3 id="optThemeH">Colours</h3>
+    <div class="seg" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+  <div class="opt"><h3 id="optContrastH">Contrast</h3>
+    <p class="explain">High contrast darkens grey text and borders, outlines each panel, underlines every link and thickens the keyboard focus outline.</p>
+    <div class="seg" role="group" aria-labelledby="optContrastH" data-opt="contrast"><button data-v="standard">Standard</button><button data-v="high">High</button></div></div>
+  <div class="opt"><h3 id="optMotionH">Motion</h3>
+    <p class="explain">Reduce turns off slides, fades and the map's zoom animation. "Same as device" follows your phone or computer's own reduce-motion setting.</p>
+    <div class="seg" role="group" aria-labelledby="optMotionH" data-opt="motion"><button data-v="device">Same as device</button><button data-v="reduce">Reduce</button></div></div>
+  <div class="opt"><h3>Also built in</h3>
+    <p class="explain">Everything works with a keyboard: Tab moves between controls, Enter or Space presses them, Escape closes the menu, and "Skip to content" is the first thing Tab reaches. Each chart has a "Show the numbers" table, and the circles on the spam map can be reached with Tab and opened with Enter; the table under the map has the same information. Your browser's own zoom works too.</p></div>
+</section></div>
 <div class="page" data-page="help"><section class="howto">
   <h2>How SpamGuard works</h2>
   <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, and the same message sent under different names.</p>
@@ -516,6 +590,7 @@ Provided "as is", without warranty of any kind. You decide what your repeater fo
 </main>
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="alertBox" class="sr-only" role="alert"></div>
 <div class="tip" id="tip"></div>
 <script>
 "use strict";
@@ -528,7 +603,7 @@ const TTLS = [["1800","for 30 minutes"],["3600","for 1 hour"],["21600","for 6 ho
 function ago(ts){ if(!ts) return "never"; const s=Math.max(0,Date.now()/1000-ts);
   if(s<90) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" days ago"; }
 function left(sec, perm){ if(perm) return "Stays until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
-function toast(t,bad){ const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
+function toast(t,bad){ if(bad){ const a=$("#alertBox"); a.textContent=""; setTimeout(()=>a.textContent=t,50); } const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
 
 async function post(path, body){
   const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body||{})});
@@ -841,8 +916,10 @@ function render(d, editing){
     + (editing?" (some sections wait while you edit)":"");
 }
 /* ---------- menu and pages ---------- */
+const isDark=()=>{ const t=document.documentElement.dataset.theme; return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches); };
+const reduceMotion=()=>document.documentElement.dataset.motion==="reduce"||matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",lockdown:"Lockdown",messages:"Messages",sources:"Spam sources",
-  campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help"};
+  campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help",display:"Display and accessibility"};
 const ADV_PAGES=["campaigns","activity","settings","exceptions","evidence"];
 let PAGE="overview";
 function route(keepMenu){
@@ -854,6 +931,8 @@ function route(keepMenu){
   $("#topTitle").textContent=TITLES[p]; document.title="SpamGuard · "+TITLES[p];
   if(keepMenu!==true) document.body.classList.remove("menu-open");
   if(changed) window.scrollTo(0,0);
+  if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
+  route.ready=true;
   if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); }
 }
 window.addEventListener("hashchange",()=>route());
@@ -861,9 +940,12 @@ document.querySelectorAll(".grp-h").forEach((b,i)=>{
   if(store.get("sggrp"+i)==="0") b.setAttribute("aria-expanded","false");
   b.onclick=()=>{ const o=b.getAttribute("aria-expanded")!=="false"; b.setAttribute("aria-expanded",String(!o)); store.set("sggrp"+i,o?"0":"1"); };
 });
-$("#menuBtn").onclick=e=>{ e.stopPropagation(); const o=document.body.classList.toggle("menu-open"); $("#menuBtn").setAttribute("aria-expanded",String(o)); };
+function setMenu(o,focusBack){ document.body.classList.toggle("menu-open",o); const b=$("#menuBtn"); b.setAttribute("aria-expanded",String(o)); b.setAttribute("aria-label",o?"Close menu":"Open menu");
+  if(o){ const a=document.querySelector("#side a.active")||document.querySelector("#side a"); setTimeout(()=>a&&a.focus(),30); } else if(focusBack) b.focus(); }
+$("#menuBtn").onclick=e=>{ e.stopPropagation(); setMenu(!document.body.classList.contains("menu-open")); };
+$("#skipLink").onclick=e=>{ e.preventDefault(); const h=document.querySelector(".page.on h1, .page.on h2")||$("#main"); h.setAttribute("tabindex","-1"); h.focus(); };
 document.querySelectorAll("[data-nav]").forEach(a=>a.addEventListener("click",()=>document.body.classList.remove("menu-open")));
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.body.classList.remove("menu-open"); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&document.body.classList.contains("menu-open")) setMenu(false,true); });
 document.addEventListener("click",e=>{ if(document.body.classList.contains("menu-open") && !e.target.closest("#side")) document.body.classList.remove("menu-open"); });
 function badge(id,text,cls){ const b=$("#nb-"+id); if(!b) return; b.textContent=text||""; b.className="badge"+(text?" on "+(cls||"plain"):""); }
 function renderNav(d){
@@ -913,10 +995,13 @@ function renderOverview(d){
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`);
   $("#kpiSince").textContent=m.since&&Date.now()/1000-m.since<7*86400?"Counting since "+new Date(m.since*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
   const hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  columns($("#chart24"),m.hourly.map(r=>({c:r.c,x:r.x,label:hh(r.t),tip:`${hh(r.t)}: ${r.c} stopped, ${r.x} let through, ${r.m} messages`})),{every:6});
-  columns($("#chart7"),m.daily.map(r=>({c:r.c,x:r.x,label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),tip:`${new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"})}: ${r.c} stopped, ${r.x} let through`})),{every:1});
-  columns($("#chartHour"),m.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6});
-  $("#chart24").setAttribute("aria-label",`Spam per hour, last 24 hours: ${a.c} stopped, ${a.x} let through`);
+  columns($("#chart24"),m.hourly.map(r=>({c:r.c,x:r.x,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.c} stopped, ${r.x} let through, ${r.m} messages`})),{every:6,col:"Hour"});
+  columns($("#chart7"),m.daily.map(r=>({c:r.c,x:r.x,label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"}),tip:`${new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"})}: ${r.c} stopped, ${r.x} let through`})),{every:1,col:"Day"});
+  columns($("#chartHour"),m.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),full:`${String(i).padStart(2,"0")}:00 to ${String(i).padStart(2,"0")}:59`,tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6,col:"Time of day"});
+  $("#chart24").setAttribute("aria-label",`Spam per hour, last 24 hours: ${a.c} stopped, ${a.x} let through. The numbers are in the table below.`);
+  $("#chart7").setAttribute("aria-label",`Spam per day, last 7 days: ${w.c} stopped, ${w.x} let through. The numbers are in the table below.`);
+  const peak=m.by_hour.reduce((b,v,i)=>v>m.by_hour[b]?i:b,0);
+  $("#chartHour").setAttribute("aria-label",m.by_hour.some(v=>v)?`Spam by time of day, last 7 days. Busiest hour ${String(peak).padStart(2,"0")}:00 with ${m.by_hour[peak]}. The numbers are in the table below.`:"Spam by time of day: none in the last 7 days.");
   $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
 }
 function srcName(s){
@@ -952,7 +1037,13 @@ function columns(el,rows,opt){
     g+=`<rect class="hit" x="${L+i*band}" y="${T}" width="${band}" height="${base-T}" data-tip="${esc(r.tip)}"/>`;
     if(i%opt.every===0) g+=`<text class="ax" x="${x0+w/2}" y="${H-3}" text-anchor="middle">${esc(r.label)}</text>`;
   });
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${g}</svg>`;
+  // the same numbers as a table, for keyboard and screen reader users (and anyone who prefers figures)
+  let d=el.nextElementSibling;
+  if(!d||!d.classList.contains("chart-data")){ d=document.createElement("details"); d.className="chart-data"; d.innerHTML="<summary>Show the numbers</summary><div class='scroll'></div>"; el.after(d); }
+  const hasX=rows.some(r=>r.x);
+  d.querySelector("div").innerHTML=`<table><tr><th scope="col">${esc(opt.col||"When")}</th><th scope="col" class="num">${hasX?"Stopped":"Spam"}</th>${hasX?'<th scope="col" class="num">Let through</th>':""}</tr>`+
+    rows.map(r=>`<tr><td>${esc(r.full||r.label)}</td><td class="num">${r.c}</td>${hasX?`<td class="num">${r.x||0}</td>`:""}</tr>`).join("")+"</table>";
 }
 document.addEventListener("mousemove",e=>{
   const t=$("#tip"), h=e.target.closest&&e.target.closest(".hit");
@@ -962,6 +1053,12 @@ document.addEventListener("mousemove",e=>{
 let rsz; window.addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S&&PAGE==="overview") renderOverview(S); },200); });
 
 /* ---------- spam sources page and map ---------- */
+function keyMarker(mk,label){   // let keyboard and screen reader users reach map circles
+  const apply=()=>{ const el=mk.getElement&&mk.getElement(); if(!el||el.dataset.kb) return; el.dataset.kb="1";
+    el.setAttribute("tabindex","0"); el.setAttribute("role","button"); el.setAttribute("aria-label",label);
+    el.addEventListener("keydown",ev=>{ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); mk.openPopup(); } }); };
+  if(mk.getElement&&mk.getElement()) apply(); else mk.once("add",apply);   // the map may create it later
+}
 let MAP=null, MAPLAYER=null, LEAFLET=null, MAPSIG="", MAPFIT="";
 function loadLeaflet(){
   if(LEAFLET) return LEAFLET;
@@ -985,21 +1082,21 @@ function renderSources(d){
   else if(!meOk) note="Your repeater has no location set in openHop, so routes can't be traced back. Set its latitude and longitude in openHop's settings.";
   else if(m.map_working) note="SpamGuard is working out where spam entered the mesh. This takes a minute or two after it starts.";
   else if(!placed.length) note="Spam routes recorded before this version, or routes through repeaters that haven't advertised a location, can't be placed yet. New spam will appear here.";
-  else if(guesses) note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red means it is currently blocked. A dashed outline is a best guess: the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
-  else note=`${ents.length?"Each circle is where SpamGuard is sure spam entered the mesh: a repeater it has identified, or the area around a repeater that isn't on any list, placed from the known repeaters it hands the spam to. Sized by spam in the last 7 days; red means it is currently blocked.":"SpamGuard isn't sure of any entry point yet."}${hidN+un?` ${hidN+un} of ${tot} spam messages came in through repeaters it couldn't place for certain, so they aren't shown. Turn on “Show best guesses too” to see roughly where those came from.`:""}${m.learned!=null?` Route codes learnt so far: ${m.learned} (from ${m.advert_routes} advert routes); this grows as adverts arrive.`:""} The teal dot is your repeater.`;
+  else if(guesses) note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red with a white centre means it is currently blocked. A dashed outline is a best guess: the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
+  else note=`${ents.length?"Each circle is where SpamGuard is sure spam entered the mesh: a repeater it has identified, or the area around a repeater that isn't on any list, placed from the known repeaters it hands the spam to. Sized by spam in the last 7 days; red with a white centre means it is currently blocked.":"SpamGuard isn't sure of any entry point yet."}${hidN+un?` ${hidN+un} of ${tot} spam messages came in through repeaters it couldn't place for certain, so they aren't shown. Turn on “Show best guesses too” to see roughly where those came from.`:""}${m.learned!=null?` Route codes learnt so far: ${m.learned} (from ${m.advert_routes} advert routes); this grows as adverts arrive.`:""} The teal dot is your repeater.`;
   if(m.sources.length&&meOk&&!m.map_directory) note+=" For repeaters too far away for your openHop to hear, turn on “Use the public MeshCore map for repeater locations” under Advanced > Settings.";
   else if(m.map_directory&&m.public_error&&!m.public_repeaters) note+=" The public MeshCore map couldn't be downloaded yet; SpamGuard will try again.";
   $("#mapNote").textContent=note;
   if(!ents.length&&!meOk){ $("#mapBox").style.display="none"; return; }
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
-    if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
+    if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false,keyboard:true,zoomAnimation:!reduceMotion(),fadeAnimation:!reduceMotion(),markerZoomAnimation:!reduceMotion()}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
     const sig=JSON.stringify([guesses,ents.map(e=>[e.key,e.d1,e.d7,e.blocked]),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
     MAPLAYER=L.layerGroup().addTo(MAP);
-    const dark=matchMedia("(prefers-color-scheme: dark)").matches, red=dark?"#ef7a70":"#b0322b", org=dark?"#cf7a32":"#c2610c", teal=dark?"#2ba3a6":"#009096";
+    const dark=isDark(), red=dark?"#ef7a70":"#b0322b", org=dark?"#cf7a32":"#c2610c", teal=dark?"#2ba3a6":"#009096";
     const bounds=[];
     ents.forEach(e=>{
       const r=Math.min(26,6+Math.sqrt(e.d7)*2.2), exact=e.exact>=e.d7/2;
@@ -1010,11 +1107,13 @@ function renderSources(d){
         :e.typical_before?`Best guess: spam entered the mesh about ${e.typical_before} hop${e.typical_before===1?"":"s"} before this repeater.`:"Best guess: spam entered the mesh at this repeater, but its route code is shared with others.";
       const claim=(e.claims||[]).length?`<br><i>Also advertises as “${(e.claims||[]).map(esc).join("”, “")}” with a location its neighbours contradict.</i>`:"";
       const rot=e.codes.length>=3?`<br><i>The first repeater's code keeps changing (${e.codes.map(esc).join(", ")}): probably one sender changing identity.</i>`:`<br>First repeater code${e.codes.length>1?"s":""}: ${e.codes.map(esc).join(", ")}`;
-      L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":(e.blocked?red:org),weight:2,dashArray:exact?null:"4 4",fillColor:e.blocked?red:org,fillOpacity:exact?.85:.45})
+      const mk=L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":(e.blocked?red:org),weight:2,dashArray:exact?null:"4 4",fillColor:e.blocked?red:org,fillOpacity:exact?.85:.45})
        .bindPopup(`<b>${title}</b><br>${where}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${rot}<br>${e.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
+      if(e.blocked) L.circleMarker([e.lat,e.lon],{radius:Math.max(3,r/3.2),stroke:false,fillColor:"#fff",fillOpacity:1,interactive:false}).addTo(MAPLAYER);
+      keyMarker(mk,`${e.kind==="area"?"Unlisted repeater using code "+e.code:(e.name||"Repeater "+e.code)}: ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${exact?"":", best guess"}`);
       bounds.push([e.lat,e.lon]);
     });
-    if(meOk){ L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); bounds.push([me.lat,me.lon]); }
+    if(meOk){ const meMk=L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); keyMarker(meMk,"Your repeater"); bounds.push([me.lat,me.lon]); }
     const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],10); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:11}); }
   }).catch(()=>{ $("#mapBox").style.display="none"; $("#mapNote").textContent="The map needs an internet connection to load. The table below has the same information."; });
 }
@@ -1026,6 +1125,26 @@ async function load(force){
     $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; }
 }
 document.addEventListener("change",ev=>{ if(ev.target.tagName==="SELECT") ev.target.blur(); });
+/* ---------- display and accessibility options (saved per browser) ---------- */
+const OPT_KEYS={text:"sgtext",theme:"sgtheme",contrast:"sgcontrast",motion:"sgmotion"};
+const OPT_DEF={text:"normal",theme:"device",contrast:"standard",motion:"device"};
+function optGet(k){ return store.get(OPT_KEYS[k])||OPT_DEF[k]; }
+function optApply(){
+  const d=document.documentElement;
+  d.dataset.text=optGet("text"); d.dataset.contrast=optGet("contrast");
+  const t=optGet("theme"); if(t==="device") delete d.dataset.theme; else d.dataset.theme=t;
+  if(optGet("motion")==="reduce") d.dataset.motion="reduce"; else delete d.dataset.motion;
+  document.querySelectorAll("[data-opt]").forEach(g=>g.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===optGet(g.dataset.opt)))));
+}
+document.querySelectorAll("[data-opt]").forEach(g=>g.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  store.set(OPT_KEYS[g.dataset.opt],b.dataset.v); optApply();
+  if(g.dataset.opt==="theme"||g.dataset.opt==="motion"){ MAPSIG=""; if(MAP&&g.dataset.opt==="motion"){ MAP.remove(); MAP=null; MAPLAYER=null; MAPFIT=""; } }
+  if(S) render(S);
+  toast("Saved for this browser");
+}));
+optApply();
+
 route(); load(true); setInterval(load,8000);
 </script>
 </body>
