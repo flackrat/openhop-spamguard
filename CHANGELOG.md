@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.15
+- **Accessibility.** The web page now meets WCAG 2.1 AA in an automated axe-core scan of every page, in light and dark, on desktop and phone, and has been checked by hand for keyboard use.
+- New **Display** page (in the menu, no Advanced needed): text size (Normal, Large, Larger), colours (same as device, light or dark), contrast (standard or high) and motion (same as device or reduce). Saved in each browser separately; nothing there changes what SpamGuard blocks.
+- Keyboard: a "Skip to content" link, focus moves to the new page's heading when you change page, the phone menu takes focus when opened and gives it back when closed with Escape, and while closed its links are hidden from the keyboard and screen readers.
+- Charts: each has a spoken description and a "Show the numbers" table. Spam map: circles can be reached with Tab and opened with Enter, and blocked circles have a white centre so they don't rely on red versus orange.
+- Clearer colours for the amber and teal labels, stronger outlines on text boxes and switches, underlined links in text, larger tap targets on phones, labels on every form field, and error messages are announced straight away to screen readers.
+- `tests/testa11y.py` keeps all of this checked.
 ## v5.14.4
 - The evidence log now records whether each sender was already known when their message arrived (`known_then`), and whether a message was held only because it passed through a blocked repeater partway along its route (`in_passing`). The existing `known` field is written a couple of minutes later, so someone's very first message could show as known even though they were held.
 - `tools/fieldcheck.js` reports messages held in passing (and how many came from people SpamGuard didn't know yet), flags any message from a known person that a block stopped, flags messages you marked as not spam, and no longer counts one restart at about 02:00 (a scheduled nightly reboot) as a problem.
