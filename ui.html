@@ -317,6 +317,9 @@ main:focus{outline:none}
 .opt:first-of-type{border-top:0}
 .opt h3{font-size:.9375rem;margin:0 0 2px}
 .opt .seg{max-width:460px}
+.chpick{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 12px}
+.chpick select{min-height:44px;max-width:100%}
+.chpick .explain{flex:1 1 100%}
 @media (max-width:900px){
   .side{visibility:hidden;transition:transform .18s,visibility 0s linear .18s}
   body.menu-open .side{visibility:visible;transition:transform .18s}
@@ -387,6 +390,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
   <dl class="kpis" id="kpis"></dl>
 </section>
+<div class="chpick" id="chPick" hidden>
+  <label for="chSel">Show the graphs for</label>
+  <select id="chSel"></select>
+  <span class="explain" id="chNote" aria-live="polite"></span>
+</div>
 <section>
   <h2>Spam, last 24 hours</h2>
   <p class="lead">Per hour. Tap or hover a column for the numbers.</p>
@@ -981,6 +989,30 @@ function renderLeaks(m){
   const l=(m&&m.d1&&m.d1.l)||0;
   $("#leakCallout").innerHTML=l?`<div class="callout"><span><strong>openHop passed on ${l} spam message${l===1?"":"s"} in the last 24 hours that SpamGuard had a block for.</strong> ${m.rulecheck_fix===false?"This is a known openHop bug; SpamGuard includes a one-line fix. Run <code>sudo bash /opt/openhop_spamguard/tune-openhop.sh</code> on the Pi.":"Check the Health page for details."}</span><a href="#/health" class="quietlink">Health</a></div>`:"";
 }
+/* channel picker: the Overview graphs for all channels together, or one channel SpamGuard reads */
+let chPick=(()=>{ try{ return localStorage.getItem("sgch")||""; }catch(e){ return ""; } })();
+function chView(m){
+  const chs=m.channels||{}, names=Object.keys(chs), sel=$("#chSel");
+  $("#chPick").hidden=names.length<2;
+  if(chPick&&!chs[chPick]) chPick="";
+  const opts=[["","All channels"]].concat(names.map(n=>[n,n]));
+  const sig=opts.map(o=>o[0]).join("\n");
+  if(sel.dataset.sig!==sig){
+    sel.innerHTML=opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("");
+    sel.dataset.sig=sig;
+  }
+  sel.value=chPick;
+  const sum=(rows,f)=>rows.reduce((t,r)=>t+(r[f]||0),0);
+  if(!chPick){
+    $("#chNote").textContent="";
+    return {hourly:m.hourly,daily:m.daily,by_hour:m.by_hour,on:"",c1:m.d1.c,x1:m.d1.x,c7:m.d7.c,x7:m.d7.x};
+  }
+  const c=chs[chPick], since=m.channels_since;
+  $("#chNote").textContent=since&&m.daily.length&&since>m.daily[0].t
+    ?`Counts per channel started ${new Date(since*1000).toLocaleString([],{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}, so earlier hours show as none.`:"";
+  return {hourly:c.hourly,daily:c.daily,by_hour:c.by_hour,on:` on ${chPick}`,
+          c1:sum(c.hourly,"c"),x1:sum(c.hourly,"x"),c7:sum(c.daily,"c"),x7:sum(c.daily,"x")};
+}
 function renderOverview(d){
   const m=d.metrics; if(!m) return; renderLeaks(m);
   const a=m.d1, w=m.d7;
@@ -995,13 +1027,14 @@ function renderOverview(d){
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`);
   $("#kpiSince").textContent=m.since&&Date.now()/1000-m.since<7*86400?"Counting since "+new Date(m.since*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
   const hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  columns($("#chart24"),m.hourly.map(r=>({c:r.c,x:r.x,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.c} stopped, ${r.x} let through, ${r.m} messages`})),{every:6,col:"Hour"});
-  columns($("#chart7"),m.daily.map(r=>({c:r.c,x:r.x,label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"}),tip:`${new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"})}: ${r.c} stopped, ${r.x} let through`})),{every:1,col:"Day"});
-  columns($("#chartHour"),m.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),full:`${String(i).padStart(2,"0")}:00 to ${String(i).padStart(2,"0")}:59`,tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6,col:"Time of day"});
-  $("#chart24").setAttribute("aria-label",`Spam per hour, last 24 hours: ${a.c} stopped, ${a.x} let through. The numbers are in the table below.`);
-  $("#chart7").setAttribute("aria-label",`Spam per day, last 7 days: ${w.c} stopped, ${w.x} let through. The numbers are in the table below.`);
-  const peak=m.by_hour.reduce((b,v,i)=>v>m.by_hour[b]?i:b,0);
-  $("#chartHour").setAttribute("aria-label",m.by_hour.some(v=>v)?`Spam by time of day, last 7 days. Busiest hour ${String(peak).padStart(2,"0")}:00 with ${m.by_hour[peak]}. The numbers are in the table below.`:"Spam by time of day: none in the last 7 days.");
+  const g=chView(m);
+  columns($("#chart24"),g.hourly.map(r=>({c:r.c,x:r.x,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.c} stopped, ${r.x} let through, ${r.m} messages`})),{every:6,col:"Hour"});
+  columns($("#chart7"),g.daily.map(r=>({c:r.c,x:r.x,label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"}),tip:`${new Date(r.t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"})}: ${r.c} stopped, ${r.x} let through`})),{every:1,col:"Day"});
+  columns($("#chartHour"),g.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),full:`${String(i).padStart(2,"0")}:00 to ${String(i).padStart(2,"0")}:59`,tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6,col:"Time of day"});
+  $("#chart24").setAttribute("aria-label",`Spam per hour${g.on}, last 24 hours: ${g.c1} stopped, ${g.x1} let through. The numbers are in the table below.`);
+  $("#chart7").setAttribute("aria-label",`Spam per day${g.on}, last 7 days: ${g.c7} stopped, ${g.x7} let through. The numbers are in the table below.`);
+  const peak=g.by_hour.reduce((b,v,i)=>v>g.by_hour[b]?i:b,0);
+  $("#chartHour").setAttribute("aria-label",g.by_hour.some(v=>v)?`Spam by time of day${g.on}, last 7 days. Busiest hour ${String(peak).padStart(2,"0")}:00 with ${g.by_hour[peak]}. The numbers are in the table below.`:`Spam by time of day${g.on}: none in the last 7 days.`);
   $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
 }
 function srcName(s){
@@ -1050,6 +1083,7 @@ document.addEventListener("mousemove",e=>{
   if(!h){ t.classList.remove("show"); return; }
   t.textContent=h.dataset.tip; t.style.left=e.clientX+"px"; t.style.top=(e.clientY-10)+"px"; t.style.position="fixed"; t.classList.add("show");
 });
+$("#chSel").addEventListener("change",ev=>{ chPick=ev.target.value; try{ localStorage.setItem("sgch",chPick); }catch(e){} if(S) renderOverview(S); });
 let rsz; window.addEventListener("resize",()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S&&PAGE==="overview") renderOverview(S); },200); });
 
 /* ---------- spam sources page and map ---------- */

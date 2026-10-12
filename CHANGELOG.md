@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.16
+- **Graphs per channel.** If SpamGuard reads more than one channel (Public plus any you add on the Exceptions page), the Overview now has a "Show the graphs for" picker above the charts: All channels, or one channel at a time. The 24 hour, 7 day and time of day charts, their spoken descriptions and their "Show the numbers" tables all follow it, and each browser remembers the choice. The tiles under "Spam at a glance" still show every channel together.
+- Counts per channel start from this update, since older history wasn't split by channel. Until a full week has built up, picking a channel says when its counts began and shows earlier hours as none.
+- `tests/testchannels.py` and `tests/testchpick.py` check that the per-channel counts add up to the totals and that the picker works on desktop and phone.
 ## v5.15
 - **Accessibility.** The web page now meets WCAG 2.1 AA in an automated axe-core scan of every page, in light and dark, on desktop and phone, and has been checked by hand for keyboard use.
 - New **Display** page (in the menu, no Advanced needed): text size (Normal, Large, Larger), colours (same as device, light or dark), contrast (standard or high) and motion (same as device or reduce). Saved in each browser separately; nothing there changes what SpamGuard blocks.
