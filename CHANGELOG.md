@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.14.4
+- The evidence log now records whether each sender was already known when their message arrived (`known_then`), and whether a message was held only because it passed through a blocked repeater partway along its route (`in_passing`). The existing `known` field is written a couple of minutes later, so someone's very first message could show as known even though they were held.
+- `tools/fieldcheck.js` reports messages held in passing (and how many came from people SpamGuard didn't know yet), flags any message from a known person that a block stopped, flags messages you marked as not spam, and no longer counts one restart at about 02:00 (a scheduled nightly reboot) as a problem.
 ## v5.14.3
 - The spam map no longer pins a spammer's route code on a real repeater elsewhere that happens to share it. A short code can belong both to a genuine advertised repeater and to the spammer's unlisted one. SpamGuard now looks at every known repeater that code's spam is handed to, and if they agree on an area, a learnt repeater for that code far from it is not believed. On one live repeater this moved 38 messages from a repeater near Farnborough back to the Salisbury area their other neighbours point to.
 ## v5.14.2
