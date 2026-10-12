@@ -67,8 +67,12 @@ def guard(m, **over):
 def mock():
     PORT[0]+=1; return Mock(0)
 def rname(n=8, lower=False):
-    s="".join(random.choice(string.ascii_uppercase+string.digits) for _ in range(n-1))+random.choice(string.digits)
-    return s.lower() if lower else s
+    # A made-up name in the style the spammer uses. Re-rolled on the rare chance it comes out looking
+    # like a device's default name (all hex), which SpamGuard deliberately counts for less.
+    while True:
+        s="".join(random.choice(string.ascii_uppercase+string.digits) for _ in range(n-1))+random.choice(string.digits)
+        if not (n == 8 and all(c in "0123456789ABCDEF" for c in s)):
+            return s.lower() if lower else s
 RESULTS=[]
 def check(name, cond, detail=""):
     RESULTS.append((name,bool(cond))); print(("PASS " if cond else "FAIL ")+name+(("  -- "+str(detail)) if detail and not cond else ""))
