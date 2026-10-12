@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.14.3"
+VERSION = "5.14.4"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -739,7 +739,7 @@ class EvidenceLog:
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length", "leaked")
+                 "length", "leaked", "known_then", "in_passing")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -755,6 +755,8 @@ class Event:
         # @[name] mentions are someone else's name, not this message's text
         self.obfuscated = is_obfuscated(MENTION.sub(" ", text)) or is_obfuscated(sender, name=True)
         self.matched: Optional[str] = None
+        self.known_then: Optional[bool] = None   # was the sender known when the message arrived?
+        self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
         self.recorded = False
@@ -913,7 +915,8 @@ class SpamGuard:
             self.ev({"type": "msg", "ts": round(e.ts, 2), "packet": e.packet, "channel": e.channel,
                      "sender": e.sender, "shape": name_shape(e.sender), "text": e.text,
                      "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random,
-                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender), "exempt": e.exempt,
+                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
+                     "known_then": e.known_then, "in_passing": e.in_passing, "exempt": e.exempt,
                      "sender_count_24h": h.get("count"), "sender_first_seen": round(h.get("first", e.ts), 2),
                      "campaign_senders": len(cc["senders"]) if cc else 0,
                      "origin_known": bool(e.path) and self.known_origin(e.first_hop),
@@ -1983,7 +1986,10 @@ class SpamGuard:
                 while len(self.counted_packets) > 3000:
                     self.counted_packets.popitem(last=False)
             h["hops"].add(e.first_hop)
+            if e.known_then is None:
+                e.known_then = self.is_known(e.sender)
             self._match_event(e, count=not again)
+            e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
             if b and not again and b["kind"] in ("hop", "suffix", "links", "lockdown") \
