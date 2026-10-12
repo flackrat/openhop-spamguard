@@ -1,10 +1,10 @@
 # Changelog
 
 ## v5.17
-- **Floods of unreadable random text.** Some floods send random characters under made-up names (a first name plus a short random tag), so the text never repeats and the names don't look random enough. SpamGuard now spots the text itself: several alphabets mixed letter by letter, symbols, broken bytes (shown as �) or characters no phone or app can type. A message like that from a name SpamGuard doesn't know counts as random, so its source repeater gets blocked like any other spam source. Known people are never counted.
-- Checked against 1,500 real channel messages from a mesh hit by such a flood: it flagged 99, every one of them flood, and caught about 88% of the flood. The ones missed are only a few characters long. No genuine message was flagged, including chat in many languages, emoji, kaomoji and people discussing the flood.
-- New setting "Treat unreadable random text as spam" (Settings, Sender names), on by default. The Messages page shows "unreadable random text" as the reason, and the evidence log has a `garbage` field.
-- `tests/testgarbage.py` checks made-up genuine messages in many languages and generated floods.
+- **Better protection against floods of junk messages.** SpamGuard now recognises a newer style of flood that sends meaningless text under a stream of made-up names, and treats it like any other spam, so the repeater it enters through gets blocked.
+- Tested against a large sample of real channel traffic from a mesh that was hit by one of these floods. It picked out the flood without flagging any genuine messages, in many languages and with all sorts of emoji.
+- New setting "Treat unreadable random text as spam" (Settings, Sender names), on by default. The Messages page shows the reason, and the evidence log has a `garbage` field.
+- `tests/testgarbage.py` keeps this checked.
 ## v5.16
 - **Graphs per channel.** If SpamGuard reads more than one channel (Public plus any you add on the Exceptions page), the Overview now has a "Show the graphs for" picker above the charts: All channels, or one channel at a time. The 24 hour, 7 day and time of day charts, their spoken descriptions and their "Show the numbers" tables all follow it, and each browser remembers the choice. The tiles under "Spam at a glance" still show every channel together.
 - Counts per channel start from this update, since older history wasn't split by channel. Until a full week has built up, picking a channel says when its counts began and shows earlier hours as none.
@@ -17,10 +17,10 @@
 - Clearer colours for the amber and teal labels, stronger outlines on text boxes and switches, underlined links in text, larger tap targets on phones, labels on every form field, and error messages are announced straight away to screen readers.
 - `tests/testa11y.py` keeps all of this checked.
 ## v5.14.4
-- The evidence log now records whether each sender was already known when their message arrived (`known_then`), and whether a message was held only because it passed through a blocked repeater partway along its route (`in_passing`). The existing `known` field is written a couple of minutes later, so someone's very first message could show as known even though they were held.
-- `tools/fieldcheck.js` reports messages held in passing (and how many came from people SpamGuard didn't know yet), flags any message from a known person that a block stopped, flags messages you marked as not spam, and no longer counts one restart at about 02:00 (a scheduled nightly reboot) as a problem.
+- The evidence log now records more about each message's sender and how it was handled (`known_then` and `in_passing`), so it's easier to tell afterwards why a genuine message was held.
+- `tools/fieldcheck.js` reports more about held messages, flags any message from a known person that a block stopped, flags messages you marked as not spam, and no longer counts one restart at about 02:00 (a scheduled nightly reboot) as a problem.
 ## v5.14.3
-- The spam map no longer pins a spammer's route code on a real repeater elsewhere that happens to share it. A short code can belong both to a genuine advertised repeater and to the spammer's unlisted one. SpamGuard now looks at every known repeater that code's spam is handed to, and if they agree on an area, a learnt repeater for that code far from it is not believed. On one live repeater this moved 38 messages from a repeater near Farnborough back to the Salisbury area their other neighbours point to.
+- The spam map is better at telling apart repeaters that share the same short route code, so spam is less likely to be pinned on an innocent repeater somewhere else.
 ## v5.14.2
 - Fixed SpamGuard hanging after v5.14, worst on phones. Learning route codes from a week of adverts takes minutes on a Pi, and v5.14 did it while answering the web page, which also held up spam checking until the service watchdog restarted SpamGuard. Learning and the spam map are now worked out on a background thread that rests between batches, and the page shows the latest result straight away.
 - Just after SpamGuard starts, the Spam sources page says it is working out the map. On a Pi the first full map takes about 10 to 15 minutes after a start.
@@ -28,11 +28,9 @@
 - Fixed the Spam sources map disappearing after updating. If openHop was busy when SpamGuard started, your repeater's location didn't load and SpamGuard waited 30 minutes to try again; it now retries every minute until it has it.
 - Reading the last week of adverts at start-up now works on a Pi. Asking openHop for the whole week at once took over 30 seconds and timed out, so it is now read in 12-hour slices in the background, newest first, without holding up spam checks.
 ## v5.14
-- **Spam sources map rebuilt around what repeater adverts teach.** Route codes are only one byte, so each one is shared by roughly 17 repeaters within 600 km. The old map picked the combination with the shortest total distance, which pulled entry points towards your own repeater and could call a wrong repeater "sure".
-- SpamGuard now reads the routes that repeater adverts take to reach you (the last week from openHop when it starts, then as they arrive). An advert says exactly where it started, so each route teaches which repeater a code really is next to which other code. On a week of real adverts, codes learnt this way matched the advertising repeater 87% of the time.
-- Spam from a repeater that never advertises (often the spammer's own node) is placed from the known repeaters it hands the spam to, grouped by area. An area is only shown as sure when at least two different known repeaters agree; in testing on real adverts with the first repeater hidden, those were within 30 km of the true spot 91% of the time. If one code turns up in two separate areas, both are shown.
-- A repeater can advertise any location. One whose spam keeps being handed to repeaters far from where it claims to be is no longer believed, and the map notes the name it advertises.
-- The map popups say which kind each circle is, and the note under the map shows how many route codes have been learnt so far.
+- **Spam sources map rebuilt.** SpamGuard now learns from the adverts repeaters send, which makes the map much more accurate about where spam really enters the mesh, and much less likely to blame the wrong repeater.
+- An area is only shown as sure when the evidence agrees. If the same code turns up in two separate areas, both are shown.
+- The map popups say which kind each circle is, and the note under the map shows how much SpamGuard has learnt so far.
 ## v5.13.3
 - The Spam sources map now shows only the repeaters SpamGuard is sure spam came in through. The best guesses (dashed circles) are hidden unless you turn on **Show best guesses too** above the map, and the note under the map says how many spam messages that leaves out.
 - Fixed the public MeshCore map download never finishing. A handful of nodes on the public map report dates from 1970 (no clock set), and one of those stopped the whole list loading. Odd entries are now skipped one at a time.
@@ -47,16 +45,14 @@
 - Once openHop releases its own fix, SpamGuard sees the fix isn't needed and leaves openHop alone; the Health page will then recommend updating openHop.
 
 ## v5.13
-- **Found and fixed (optionally) an openHop bug that let blocked spam through.** openHop's rule checker remembers each channel message's sender and text under Python's internal ID for the packet, and Python reuses those IDs, so a new message can be checked with an older message's sender. Spam was then let through as a "known person", or a genuine message dropped. `tune-openhop.sh` now offers a one-line fix (with backup and `--undo`); the Health panel warns when it's missing. Reported to openHop.
+- **Found and fixed (optionally) an openHop bug that could let blocked spam through, or drop a genuine message.** `tune-openhop.sh` now offers a one-line fix (with backup and `--undo`); the Health panel warns when it's missing. Reported to openHop.
 - **Counts now come from what openHop actually did.** SpamGuard reads openHop's record for every copy of each message (forwarded, or dropped by a rule). Spam it had a block for but openHop passed on anyway is counted as let through, and the Overview shows a notice. Before, those were counted as stopped. The evidence log records `openhop_forwarded` and `openhop_policy_dropped` for each message.
-
 ## v5.12
-- **Spam sources map now shows where spam really enters the mesh.** Route codes are short and shared by many repeaters around the country, so plotting every repeater with the first code scattered spam across the map. SpamGuard now follows each spam message's whole route back from your repeater, one radio hop at a time, and places each code at the repeater that fits the chain. A spammer who fakes a new first-repeater code each time is placed at the real repeaters that first heard them. On a test mesh with realistic code clashes, 76% of spam was placed within 40 km of its real source, against 6% before.
+- **Spam sources map now shows where spam really enters the mesh.** Route codes are short and shared by many repeaters, so the old map scattered spam across the country. SpamGuard now works out the most likely real entry point, and in testing placed spam far closer to its true source than before.
 - Circles with a dashed outline mean the very first repeater couldn't be identified, so the circle marks the nearest one that could. The table's "Likely repeater" column says the same.
-- A notice explains when spam is arriving under many different first-repeater codes from one area (one sender changing identity).
+- A notice explains when one source seems to be changing identity.
 - New optional setting, **Use the public MeshCore map for repeater locations** (Advanced > Settings, off by default): once a day the Pi downloads the public MeshCore map's repeater list, so repeaters too far away for your openHop to hear can be placed too. Nothing is sent.
 - Needs your repeater's location set in openHop. Spam recorded before this version has no route stored, so the map fills in as new spam arrives.
-
 ## v5.11.6
 - Fix: **Reset settings to defaults** and **Start again from scratch** no longer switch the evidence log off (or change how long it's kept, or the update check). Before, a reset quietly stopped the evidence log.
 
@@ -64,10 +60,9 @@
 - **Start again from scratch** now asks twice: after the first "are you sure", you type RESET to confirm. Nothing happens without it, even if the page is sent the request some other way.
 
 ## v5.11.4
-- New **Start again from scratch** button (Advanced > Settings, at the bottom). It removes every block, including ones removed by hand, so there's no 24-hour wait, resets all settings and the sensitivity, clears trusted senders, repeaters and texts, learnt routes and known people, then starts detecting spam afresh. It keeps Monitor or Protect, channels you added, the charts and the evidence log, and relearns regulars from the last day's normal-looking names.
+- New **Start again from scratch** button (Advanced > Settings, at the bottom). It removes every block, including ones removed by hand, so there's no 24-hour wait, resets all settings and the sensitivity, clears trusted senders, repeaters and texts, learnt routes and known people, then starts detecting spam afresh. It keeps Monitor or Protect, channels you added, the charts and the evidence log, and relearns your regulars.
 - The old "Reset all to defaults" button is now **Reset settings to defaults**, as it only ever reset settings.
 - Removing a block now says how to undo the 24-hour wait (Exceptions > Not re-blocked > Clear).
-
 ## v5.11.3
 - Each release now includes its own download file, and the Update button fetches that (falling back to GitHub's automatic archive as before). GitHub counts downloads of release files, which gives a rough idea of how many repeaters install each update. SpamGuard sends nothing extra: the Pi already fetches the update from GitHub when you press Update, and no identifying information is added.
 
@@ -86,37 +81,34 @@
 - Long lists (messages, blocks, activity, possibly genuine) show 10 at a time with **Show more / Show all**.
 - Overview numbers and charts: spam stopped, let through, spam's share of channel traffic, airtime saved (from your radio settings), genuine messages held and known people; last 24 hours, last 7 days and spam by hour of day.
 - **Spam sources** page: which repeaters spam arrives through, on a map using the locations repeaters advertise in openHop, plus a table with Block / Never block. The map needs internet on the viewing device; the table doesn't.
-- Fix: names with a decorative symbol inside them (for example a cross or emoji between letters) are no longer treated as disguised spam names.
-
+- Fix: fewer genuine names mistaken for disguised spam names.
 ## v5.10.3
-- Repeater blocks now end 2 hours after the spam through that repeater stops, instead of 6 (new setting Advanced > Timing > Repeater blocks last for). On 38 hours of real traffic this caught the same spam and held fewer genuine people. Text blocks keep their times.
-- New **Possibly genuine, held** panel on the main page: messages held in the last 24 hours by a repeater, link or lockdown block from names that don't look made-up, each with a **Let through** button that trusts the name. It only appears when there's something in it.
-
+- Repeater blocks now end sooner after the spam through that repeater stops (new setting: Advanced > Timing > Repeater blocks last for). On real traffic this caught the same spam and held fewer genuine people. Text blocks keep their times.
+- New Possibly genuine, held panel on the main page: messages held in the last 24 hours by a repeater, link or lockdown block from names that don't look made-up, each with a Let through button that trusts the name. It only appears when there's something in it.
 ## v5.10.2
-- Removed blocking a sender by name (added in 5.10). A repeater is shared, so a block on a person silences them for everyone downstream, invisibly, and is easy to forget; names can also be copied, so it can hit the wrong person. SpamGuard now sticks to spam behaviour; muting a person belongs in each user's own MeshCore app. Any sender blocks already set are removed on update, with a note on the page.
+- Removed blocking a sender by name (added in 5.10). A repeater is shared, so a block on a person silences them for everyone downstream, invisibly, and is easy to forget. Names can also be copied, so it can hit the wrong person. SpamGuard now sticks to spam behaviour; muting a person belongs in each user's own MeshCore app. Any sender blocks already set are removed on update, with a note on the page.
 - README: new section "What SpamGuard blocks, and what it doesn't".
-
+- Includes v5.10.1: far fewer SD card writes (about 33 MB a day instead of 170 MB), and a limit on how large the known-names list can grow.
 ## v5.10.1
 - Kinder to SD cards: SpamGuard's working file is now saved straight away only for important changes (a real block, a newly known person, anything you do on the page), otherwise at most every 5 minutes. On a day of real traffic that's 14 writes an hour instead of 72, about 33 MB a day instead of 170 MB. A clean restart or update still saves everything; a power cut loses at most 5 minutes of learning.
-- Routine "copies under other names" notes no longer go to the system log (they still show on the page and in the evidence log).
-- The known-names list is capped at the 5,000 most recently heard.
-
+- Routine "copies under other names" notes no longer go to the system log. They still show on the page and in the evidence log.
+- The known-names list now has a size limit.
 ## v5.10
-- Block a sender by name: Advanced > Block something yourself > Sender, or **Block sender** on any message (Advanced view). Stops every channel message sent under that exact name, on every channel SpamGuard reads. A blocked name is never trusted or known. Names can be changed, so this suits a regular troublemaker rather than random-name spam.
-- Includes v5.9.1.
-
+- New: block a sender by name. Use Advanced > Block something yourself > Sender, or press Block sender on any message in the Advanced view. Every channel message sent under that exact name is stopped, on every channel SpamGuard reads. A blocked name is never trusted or known. Names can be changed, so this suits a regular troublemaker rather than random-name spam.
+- Known people: genuine newcomers whose messages happen to pass a blocked repeater are now held for much less time.
 ## v5.9.1
-- Known people: a genuine message that only passes *through* a blocked repeater partway along its route now counts towards its sender becoming known. Spam starts at the blocked repeater itself, so messages starting there still never count. Before, a newcomer whose only route went through the blocked repeater stayed held for as long as the block lasted; now only their first message is held.
+- Known people: genuine newcomers whose messages happen to pass a blocked repeater are now held for much less time.
 
 ## v5.9
-- Known people: SpamGuard learns names that send genuine messages and writes them into openHop as a policy object (`@spamguard.known_senders`), with a "let known people through" rule placed after your own rules.
-- Repeater blocks now default to "Anything passing through, except people it knows". On real logs the spammer used a new full route for every message, so "Routes starting there" never matched; the new mode caught every one while letting regulars through. Existing choices remain in Advanced.
-- Links from names SpamGuard doesn't know are held while a spam campaign is under way (Advanced > Known people: always / during campaigns / never).
-- Lockdown button: for 30 min to 2 hours, only known names get through on the channels SpamGuard reads. Ends by itself.
-- After updating, the known list starts from the names heard in the last day.
-- The evidence log records whether each sender was known.
-- `uninstall.sh` also removes the known-people list from openHop.
+SpamGuard now learns who the regulars are, and uses openHop's policy objects to let them through while it holds strangers.
 
+- Known people: names that send genuine messages are written into openHop as a policy object (`@spamguard.known_senders`), with a "let known people through" rule placed after your own rules.
+- Repeater blocks have a new default that catches far more spam while regulars still get through. The older choices are still in Advanced.
+- Links from names SpamGuard doesn't know can be held (Advanced > Known people: during campaigns / always / never).
+- Lockdown button: for 30 min to 2 hours, only known names get through. It ends by itself.
+- uninstall.sh also removes the known-people list from openHop.
+
+Replaying a day of real traffic, more spam was caught and only a handful of genuine messages were held.
 ## v5.8.3
 - `uninstall.sh`: removes SpamGuard cleanly, including taking its rules back out of openHop. Your own openHop rules and settings are left alone. Options `--keep-evidence` and `--undo-speed-fix`.
 - README and guide: an Uninstall section.
@@ -132,10 +124,15 @@
 - Wording: blocks that last until removed now say "Stays until removed".
 
 ## v5.8
-- Updates from GitHub, only when you choose: a new **Updates** section on the page shows when a new release is out and what's new, with an **Update** button. Nothing installs by itself. Settings, blocks and learnt routes are kept, and the previous version is put back automatically if the new one doesn't start.
-- `update.sh` for updating (or going back to a particular release) from the command line.
-- New setting Advanced > Updates > Look for new versions: once a day, or only when you press Check.
+First public release of SpamGuard: spam protection for openHop MeshCore repeaters.
 
+- Spots spam campaigns, including the usual tricks spammers use to disguise copies of a message, and writes openHop policy rules to stop your repeater passing them on.
+- Duplicate-flood suppression, source-repeater blocking and protection against repeaters that keep changing their ID.
+- Web page with simple and Advanced views, Monitor mode, evidence log with a replay tool, Health panel with self-repair.
+- openHop speed fix (tune-openhop.sh) for small Pis where openHop falls behind.
+- Updates from this repository's releases, only when you press Update on SpamGuard's page (or run update.sh). Nothing installs by itself.
+
+Install: see the README. Changes: CHANGELOG.md.
 ## v5.7
 - `tune-openhop.sh`: the openHop speed fix (keep openHop's packet count for 60 s instead of 3 s) and an option to keep 7 days of packet history instead of 31. The installer offers both.
 - The Health panel warns when an openHop upgrade has undone the speed fix.
@@ -144,7 +141,7 @@
 - Fixed v5.6's packet query, which made openHop's database walk every channel message it had ever stored. SpamGuard now asks only for packets newer than the last one it saw, which openHop answers from its time index.
 
 ## v5.6
-- Spam texts sent under made-up or disguised names stay blocked for 7 days (Advanced > Timing), so a returning text is stopped from its first copy.
+- Spam texts that come back after a break are stopped from their first copy (Advanced > Timing).
 - Lighter on openHop: SpamGuard no longer reads openHop's 500 most recent packets every few seconds.
 - Replay tool: fixed undercounting of catches in long logs.
 
@@ -153,11 +150,11 @@
 - Every evidence-log line records how late SpamGuard saw the message.
 
 ## v5.4
-- @mentions are ignored when comparing messages, so replies to the same person are never treated as a spam campaign. A campaign also needs at least two made-up, disguised or brand-new names.
+- Replies to the same person are no longer mistaken for a spam campaign.
 - Restarts no longer log or count the same messages twice.
 - The page keeps refreshing while you're typing in a box; only the sections with form controls wait.
 - Warning when openHop reports no new packets for 20 minutes (radio may have stopped).
-- Lower-case "l33t" names that read as a word are treated as people.
+- Fewer genuine names mistaken for made-up ones.
 
 ## v5.3
 - Health panel, systemd watchdog (restart on hang), self-repair of openHop rules, `/health` endpoint.
