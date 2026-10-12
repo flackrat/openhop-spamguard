@@ -21,8 +21,11 @@ for k in range(24*7):
     burst=(18<=hr<=23) and random.random()<0.55
     c=random.randint(3,14) if burst else (1 if random.random()<0.08 else 0)
     x=1 if (c and random.random()<0.15) else 0
-    h[str(t)]={"m":msgs+c+x,"c":c,"x":x,"g":1 if random.random()<0.02 else 0,"a":c*706.0,"h":{"C4":c} if c else {}}
+    tm=random.randint(0,min(4,msgs)); tc=min(c,random.randint(0,2)) if c else 0
+    h[str(t)]={"m":msgs+c+x,"c":c,"x":x,"g":1 if random.random()<0.02 else 0,"a":c*706.0,"h":{"C4":c} if c else {},
+               "ch":{"Public":{"m":msgs-tm+c-tc+x,"c":c-tc,"x":x},"#trailchat":{"m":tm+tc,"c":tc}}}
 g.hist=h
+g.extra_channels["#trailchat"]=sg.hashtag_secret("trailchat"); g.rebuild_cfg()
 g.radio={"spreading_factor":8,"bandwidth":62500,"coding_rate":8,"preamble_length":32}
 g.me={"name":"Example Repeater","hash":"5A","lat":0,"lon":0}
 g.repeaters={"ts":time.time()+1e9,"list":[{"key":"C4AB12","name":"Ridgeway Relay","seen":time.time(),"lat":0,"lon":0}]}
