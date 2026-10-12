@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.17
+- **Floods of unreadable random text.** Some floods send random characters under made-up names (a first name plus a short random tag), so the text never repeats and the names don't look random enough. SpamGuard now spots the text itself: several alphabets mixed letter by letter, symbols, broken bytes (shown as �) or characters no phone or app can type. A message like that from a name SpamGuard doesn't know counts as random, so its source repeater gets blocked like any other spam source. Known people are never counted.
+- Checked against 1,500 real channel messages from a mesh hit by such a flood: it flagged 99, every one of them flood, and caught about 88% of the flood. The ones missed are only a few characters long. No genuine message was flagged, including chat in many languages, emoji, kaomoji and people discussing the flood.
+- New setting "Treat unreadable random text as spam" (Settings, Sender names), on by default. The Messages page shows "unreadable random text" as the reason, and the evidence log has a `garbage` field.
+- `tests/testgarbage.py` checks made-up genuine messages in many languages and generated floods.
 ## v5.16
 - **Graphs per channel.** If SpamGuard reads more than one channel (Public plus any you add on the Exceptions page), the Overview now has a "Show the graphs for" picker above the charts: All channels, or one channel at a time. The 24 hour, 7 day and time of day charts, their spoken descriptions and their "Show the numbers" tables all follow it, and each browser remembers the choice. The tiles under "Spam at a glance" still show every channel together.
 - Counts per channel start from this update, since older history wasn't split by channel. Until a full week has built up, picking a channel says when its counts began and shows earlier hours as none.
