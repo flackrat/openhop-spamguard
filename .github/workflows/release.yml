@@ -1,11 +1,12 @@
 # Publishes a GitHub release whenever the version number in spamguard.py changes on main.
 # The release notes are that version's section of CHANGELOG.md. Uses GitHub's built-in
 # token for this repository only; no personal token is stored anywhere.
+# When CHANGELOG.md is edited, the notes of releases already published are brought in line with it.
 name: Release
 on:
   push:
     branches: [main]
-    paths: [spamguard.py]
+    paths: [spamguard.py, CHANGELOG.md]
   workflow_dispatch:
 permissions:
   contents: write
@@ -28,3 +29,17 @@ jobs:
           # count shows roughly how many repeaters installed the update.
           git archive --format=tar.gz --prefix="spamguard-v$v/" -o "spamguard-v$v.tar.gz" HEAD
           gh release create "v$v" "spamguard-v$v.tar.gz" --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --latest
+      - name: Bring existing release notes in line with CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for t in $(gh release list --limit 200 --json tagName --jq '.[].tagName'); do
+            awk -v h="## $t" '$0==h{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > want.md
+            [ -s want.md ] || continue
+            gh release view "$t" --json body --jq .body > have.md
+            if ! diff -qbB want.md have.md >/dev/null; then
+              gh release edit "$t" --notes-file want.md
+              echo "updated notes for $t"
+            fi
+          done
