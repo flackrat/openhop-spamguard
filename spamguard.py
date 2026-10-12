@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.17"
+VERSION = "5.18"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -476,6 +476,9 @@ def is_obfuscated(text: str, name: bool = False) -> bool:
     return False
 
 
+CALLSIGN = re.compile(r"(?:[A-Z]{1,2}|[A-Z]\d|\d[A-Z])\d{1,2}[A-Z]{1,4}\d?", re.I)
+
+
 def name_score(name: str, patterns: list) -> int:
     """0-6: how machine-generated a sender name looks. Emoji are ignored, so adding one
     ("UD6DWREK🔥") doesn't hide a random name, and emoji in a genuine name don't count against it."""
@@ -493,6 +496,16 @@ def name_score(name: str, patterns: list) -> int:
     # "Dave1985", "Bob42", "Sarah2": a word followed by a number reads as a person.
     if re.fullmatch(r"[A-Z]?[a-z]{2,}\d{1,4}", plain):
         return 1
+    # A radio callsign on its own (such as "N0CALL"), sometimes with a
+    # station number ("N5LVC1"), is a person, not a made-up name.
+    if len(plain) <= 7 and CALLSIGN.fullmatch(plain) and (plain.isupper() or plain.islower()):
+        return 1
+    # A device's default name is the start of its own key ("198EC9D5"): a person who hasn't
+    # renamed their node. Counted less than a made-up name, but not ignored.
+    if re.fullmatch(r"[0-9A-F]{8}|[0-9a-f]{8}", plain) and re.search(r"\d", plain) and re.search(r"[A-Fa-f]", plain):
+        score_cap = 2
+    else:
+        score_cap = 6
     # Lower-case "l33t" names ("r3dm0zzy" = redmozzy) read as a word once the digits are turned back.
     if plain[1:] == plain[1:].lower() and re.search(r"\d", plain):
         word = plain.lower().translate(str.maketrans("013457", "oieast"))
@@ -516,7 +529,7 @@ def name_score(name: str, patterns: list) -> int:
         cases = ["u" if c.isupper() else "l" for c in letters]
         if sum(1 for a, b in zip(cases, cases[1:]) if a != b) >= 4:
             score += 1
-    return min(score, 6)
+    return min(score, score_cap)
 
 
 def middle_chunk(text: str, length: int) -> str:

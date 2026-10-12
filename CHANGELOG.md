@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.18
+- **Fewer genuine people mistaken for spammers, especially outside the UK.** Some name styles that are common on meshes in other countries were being counted as made-up, which on a busy repeater could add up to a block. Checked against thousands of real names from meshes across Europe, North America and South Africa, this cuts those false alarms by about three quarters with no change to the spam caught on real logs.
+- `tests/testnames.py` keeps this checked.
 ## v5.17
 - **Better protection against floods of junk messages.** SpamGuard now recognises a newer style of flood that sends meaningless text under a stream of made-up names, and treats it like any other spam, so the repeater it enters through gets blocked.
 - Tested against a large sample of real channel traffic from a mesh that was hit by one of these floods. It picked out the flood without flagging any genuine messages, in many languages and with all sorts of emoji.
