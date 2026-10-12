@@ -72,13 +72,13 @@ SETTINGS_META: list[dict] = [
     {"key": "enable_hop_rules", "risk": "Turning this off means a spammer who keeps changing names and wording can only be caught by text rules, so more spam gets through. While on, everyone whose channel messages start at a blocked repeater is blocked too, including genuine users who rely on that repeater.", "group": "Blocking by source repeater", "type": "bool",
      "label": "Block spam at its source repeater",
      "help": "When a lot of spam enters the mesh through one repeater, block channel messages that start at that repeater."},
-    {"key": "hop_match_mode", "risk": "'Anything passing through, except people it knows' still blocks a genuine person on that route until they have sent a couple of messages SpamGuard has seen, and a spammer who copies a known person's exact name gets through. 'Anything passing through' also blocks known people on any route through the spam repeater, and any other repeater sharing the same short hash. 'Routes starting there' only blocks routes it has already seen, so a spammer whose messages take a new route each time is never stopped by it.", "group": "Blocking by source repeater", "type": "choice",
+    {"key": "hop_match_mode", "risk": "'Anything passing through, except people it knows' still blocks a genuine person on that route until SpamGuard gets to know them, and names can be copied, so it isn't watertight on its own. 'Anything passing through' also blocks known people on any route through the spam repeater, and any other repeater sharing the same short hash. 'Routes starting there' only blocks routes it has already seen, so it misses a lot of spam.", "group": "Blocking by source repeater", "type": "choice",
      "choices": [["contains_known", "Anything passing through, except people it knows (recommended)"],
                  ["exact_paths", "Routes starting there"],
                  ["contains", "Anything passing through"]],
      "label": "How to block a repeater",
      "help": "'Except people it knows' blocks every channel message passing through the spam repeater, but lets through names SpamGuard "
-             "has already seen sending genuine messages on other routes (see Known people). "
+             "has already seen sending genuine messages (see Known people). "
              "'Routes starting there' blocks only messages that started at the spam repeater, one learnt route at a time. "
              "'Anything passing through' blocks everything through it, including people it knows."},
     {"key": "hop_random_senders", "risk": "Lower = blocks a spam repeater sooner, but a repeater used by a couple of people with code-like names (e.g. M0ABC123) could get blocked. Higher = more spam gets out before the block starts.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 100,
@@ -95,13 +95,13 @@ SETTINGS_META: list[dict] = [
      "preset": True, "label": "Slow spam: random names over the long window",
      "help": "Catches a spammer who posts slowly to stay under the limits: block after this many random-looking names over the long window."},
     {"key": "enable_rotation_guard", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "While a rotation block is active, a genuine repeater that has never been heard before, sitting in the same place in the network as the spammer, is blocked until it builds up history or you allow it. Turning this off lets a spammer who keeps changing his repeater's identity get one message through per change.",
+     "risk": "While a rotation block is active, a genuine repeater that has never been heard before, sitting in the same place in the network as the spammer, is blocked until it builds up history or you allow it. Turning this off lets more spam through from a spammer who keeps changing his repeater's identity.",
      "label": "Catch a spam repeater that keeps changing its identity",
      "help": "Some firmware lets a repeater change its ID (and so its hash) at will. The spam then arrives from a new first repeater each time, but always through the same next repeaters. SpamGuard learns which repeaters normally appear in front of each route and, when many unknown ones start sending spam the same way, blocks unknown ones there while still letting the known ones through."},
     {"key": "rotate_first_hops", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 50,
      "preset": True, "risk": "Lower = reacts to an identity-changing spammer sooner, but a couple of new genuine repeaters appearing behind the same route at the same time as some odd-looking names could trigger it. Higher = more spam gets through first.",
      "label": "Unknown repeaters before a rotation block",
-     "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs (made-up names, disguised text or campaign copies)."},
+     "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs."},
     {"key": "route_memory_days", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 60, "unit": "days",
      "risk": "Shorter = repeaters that only talk occasionally are forgotten and may be treated as unknown during a rotation block. Longer = slightly more memory and disk use.",
      "label": "Remember normal routes for",
@@ -144,12 +144,12 @@ SETTINGS_META: list[dict] = [
      "help": "Messages shorter than this are never de-duplicated, so 'Morning all' or 'Anyone about?' are safe."},
     {"key": "text_rule_chars", "risk": "Shorter = harder for the spammer to dodge by editing the message, but more chance of matching a genuine message that shares that wording. Longer = more precise, but small edits can dodge it.", "group": "Duplicate suppression", "type": "int", "min": 10, "max": 150,
      "label": "Characters matched by a duplicate rule",
-     "help": "A duplicate rule matches this many characters from the middle of the message, so extra words added at the start or end do not get round it."},
+     "help": "How much of a message a duplicate rule matches, so small edits don't get round it."},
     # -- Known people
     {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
-     "risk": "1 = anyone who has sent one genuine-looking message on another route counts, so a spammer could get a name known by first posting something harmless. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
+     "risk": "1 = names become known very quickly, which is easier to abuse. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
      "label": "Genuine messages before a name counts as known",
-     "help": "A name counts as known after this many genuine messages that didn't come through a blocked repeater. Names that look made-up never count. Trusted names always count."},
+     "help": "A name counts as known after this many genuine messages. Trusted names always count."},
     {"key": "known_days", "group": "Known people", "type": "int", "min": 1, "max": 365, "unit": "days",
      "risk": "Shorter = occasional users are forgotten and treated as unknown again. Longer = a longer list kept on the Pi and in openHop.",
      "label": "Remember known names for",
@@ -158,19 +158,19 @@ SETTINGS_META: list[dict] = [
      "choices": [["campaign", "While a spam campaign is under way (recommended)"], ["always", "Always"], ["off", "Never"]],
      "risk": "While on, a genuine first-time poster sharing a link is held too. 'Always' does this all the time; 'while a campaign is under way' only for an hour after spam campaign activity.",
      "label": "Hold links from names it doesn't know",
-     "help": "Spammers often post links. When on, channel messages containing a link (http or www.) are blocked unless the sender is a known name."},
+     "help": "Spammers often post links. When on, channel messages containing a link are blocked unless the sender is a known name."},
     # -- Names
-    {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but genuine names such as callsign-plus-numbers, 'RptHill3'-style node names or 'Dave1985' may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
+    {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
-     "help": "Names are scored 0-6 for looking machine-generated (mixed letters and digits, no vowels, odd capitals...). "
+     "help": "Names are scored 0-6 for looking machine-generated. "
              "Names at or above this score count as random. Lower = stricter."},
     {"key": "random_name_patterns", "risk": "A pattern that is too broad (e.g. any 8 letters) marks genuine people as random. Try new patterns in Monitor mode first.", "group": "Sender names", "type": "list",
      "label": "Extra name patterns (regular expressions)",
      "help": "Optional. One regular expression per line. Names matching any of these always count as random. Matching ignores case."},
-    {"key": "detect_garbage", "risk": "Turning this off lets floods of made-up names sending random characters through unless their names look random too. While on, a brand-new sender whose message is mostly unreadable symbols from several alphabets counts as random. Known people are never counted.", "group": "Sender names", "type": "bool",
+    {"key": "detect_garbage", "risk": "Turning this off lets junk-text floods through until other signs catch up. While on, a newcomer whose message is genuinely garbled could be counted as spam.", "group": "Sender names", "type": "bool",
      "label": "Treat unreadable random text as spam",
-     "help": "Some floods send random characters: several alphabets mixed letter by letter, symbols and broken bytes (shown as \ufffd). "
-             "Messages like that from names SpamGuard doesn't know count as random. Ordinary messages in any language, with emoji or kaomoji, are not affected."},
+     "help": "Some floods send meaningless junk text under made-up names. When on, junk messages like that count as spam. "
+             "Ordinary messages in any language, with emoji or kaomoji, are not affected."},
     # -- Timing
     {"key": "window_seconds", "risk": "Longer = slow spam is easier to spot, but on a busy repeater genuine new users add up and can trip the 'brand-new names' limit. Shorter = only fast bursts are detected.", "group": "Timing", "type": "int", "min": 60, "max": 86400, "unit": "s",
      "label": "Detection window",
@@ -198,7 +198,7 @@ SETTINGS_META: list[dict] = [
     {"key": "openhop_autofix", "group": "Updates", "type": "bool",
      "risk": "When on, SpamGuard edits one line of openHop (with a backup) and restarts openHop for a few seconds whenever an openHop update removes the fix. Turned off, blocked spam can sometimes be let through until you apply the fix by hand.",
      "label": "Keep openHop's rule-check fix in place",
-     "help": "openHop has a bug that can let blocked spam through as if it came from a known person. SpamGuard applies a one-line fix when it updates, and puts it back if an openHop update removes it, until openHop releases its own fix."},
+     "help": "openHop has a bug that can sometimes let blocked spam through. SpamGuard applies a one-line fix when it updates, and puts it back if an openHop update removes it, until openHop releases its own fix."},
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
