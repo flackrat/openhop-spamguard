@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.16"
+VERSION = "5.17"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -167,6 +167,10 @@ SETTINGS_META: list[dict] = [
     {"key": "random_name_patterns", "risk": "A pattern that is too broad (e.g. any 8 letters) marks genuine people as random. Try new patterns in Monitor mode first.", "group": "Sender names", "type": "list",
      "label": "Extra name patterns (regular expressions)",
      "help": "Optional. One regular expression per line. Names matching any of these always count as random. Matching ignores case."},
+    {"key": "detect_garbage", "risk": "Turning this off lets floods of made-up names sending random characters through unless their names look random too. While on, a brand-new sender whose message is mostly unreadable symbols from several alphabets counts as random. Known people are never counted.", "group": "Sender names", "type": "bool",
+     "label": "Treat unreadable random text as spam",
+     "help": "Some floods send random characters: several alphabets mixed letter by letter, symbols and broken bytes (shown as \ufffd). "
+             "Messages like that from names SpamGuard doesn't know count as random. Ordinary messages in any language, with emoji or kaomoji, are not affected."},
     # -- Timing
     {"key": "window_seconds", "risk": "Longer = slow spam is easier to spot, but on a busy repeater genuine new users add up and can trip the 'brand-new names' limit. Shorter = only fast bursts are detected.", "group": "Timing", "type": "int", "min": 60, "max": 86400, "unit": "s",
      "label": "Detection window",
@@ -241,6 +245,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "text_rule_chars": 40,
     "random_name_patterns": [r"(?=.*\d)(?=.*[a-z])[a-z0-9]{8}"],
+    "detect_garbage": True,
     "window_seconds": 600,
     "long_window_seconds": 7200,
     "block_ttl_seconds": 6 * 3600,
@@ -344,6 +349,76 @@ def emoji_tokens(text: str) -> list[str]:
 
 LATIN = re.compile(r"[A-Za-z]")
 NON_LATIN_LETTER = re.compile(r"[Ͱ-ϿЀ-ӿ]")
+
+
+_SCRIPTS = ((0x0250, 0x02AF, "ipa"), (0x0370, 0x03FF, "greek"), (0x0400, 0x052F, "cyrillic"),
+            (0x0530, 0x058F, "armenian"), (0x0590, 0x05FF, "hebrew"), (0x0600, 0x06FF, "arabic"),
+            (0x0750, 0x077F, "arabic"), (0x0900, 0x0DFF, "indic"), (0x0E00, 0x0E7F, "thai"),
+            (0x10A0, 0x10FF, "georgian"), (0x1100, 0x11FF, "hangul"), (0x1E00, 0x1EFF, "latin"),
+            (0x1F00, 0x1FFF, "greek"), (0x3040, 0x30FF, "cjk"), (0x3100, 0x9FFF, "cjk"),
+            (0xAC00, 0xD7AF, "hangul"), (0xF900, 0xFAFF, "cjk"), (0xFB50, 0xFEFF, "arabic"),
+            (0xFF00, 0xFFEF, "cjk"))
+def _script(c):
+    """Which writing system a character belongs to, or 'symbol', 'mark' or 'bad' (unreadable bytes,
+    control or unassigned characters). None for spaces, digits, ordinary punctuation and emoji."""
+    o = ord(c)
+    if o < 0x80:
+        return "latin" if c.isalpha() else None
+    if c == "\ufffd":
+        return "bad"
+    if EMOJI_BASE.match(c) or EMOJI_PARTS.match(c):
+        return None
+    cat = unicodedata.category(c)
+    if cat in ("Cc", "Cf", "Co", "Cn", "Cs"):
+        return "bad"
+    if cat in ("Mn", "Me", "Mc"):
+        return "mark"
+    if cat[0] != "L":
+        return "symbol" if cat in ("So", "Sm", "Sk") else None
+    if o < 0x250:
+        return "latin"
+    for lo, hi, name in _SCRIPTS:
+        if lo <= o <= hi:
+            return name
+    return "other"
+
+def garbage_score(text: str) -> int:
+    """0 and up: how much a message looks like random bytes rather than words. Floods of made-up names
+    sending unreadable text mix several writing systems letter by letter, with symbols and broken bytes;
+    real messages, in any language and with any emoji, kaomoji or fancy lettering, do not."""
+    # Characters from Unicode planes 4-13, where nothing is assigned yet: no phone or app can type
+    # these, so even a very short message containing one is random bytes.
+    if any(0x40000 <= ord(c) < 0xE0000 for c in text):
+        return 9
+    chars = [c for c in text if not c.isspace()]
+    if len(chars) < 6:
+        return 0
+    tags = [_script(c) for c in chars]
+    bad, odd = tags.count("bad"), tags.count("symbol") + tags.count("mark")
+    letters = {t for t in tags if t not in (None, "bad", "symbol", "mark")}
+    # neighbouring letters from different writing systems ("πЖĽЂ"): real words, in any language, don't do this
+    lt = [_script(c) for c in text]
+    switches = sum(1 for x, y in zip(lt, lt[1:]) if x != y and x in letters and y in letters)
+    s = 0
+    if bad >= 2 and bad / len(chars) >= 0.08:
+        s += 2
+    if bad >= 3:   # three or more broken characters: genuine apps send valid text
+        s += 1
+    if bad >= 5:
+        s += 1
+    if len(letters) >= 3:
+        s += 1
+    if len(letters) >= 4 and switches:
+        s += 1
+    if switches >= 2:
+        s += 1
+    if switches >= 4:
+        s += 1
+    if switches and odd / len(chars) >= 0.15:
+        s += 1
+    return s
+def is_garbage(text: str) -> bool:
+    return garbage_score(text) >= 3
 
 
 MENTION = re.compile(r"@\[[^\]\n]{1,48}\]")  # "@[Sam-N0CALL]": who a reply is to, not what it says
@@ -737,7 +812,7 @@ class EvidenceLog:
 
 
 class Event:
-    __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles",
+    __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
                  "length", "leaked", "known_then", "in_passing")
 
@@ -754,6 +829,7 @@ class Event:
         self.random = False
         # @[name] mentions are someone else's name, not this message's text
         self.obfuscated = is_obfuscated(MENTION.sub(" ", text)) or is_obfuscated(sender, name=True)
+        self.garbage = is_garbage(MENTION.sub(" ", text))   # unreadable random text
         self.matched: Optional[str] = None
         self.known_then: Optional[bool] = None   # was the sender known when the message arrived?
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
@@ -914,8 +990,8 @@ class SpamGuard:
             cc = self.clusters.get(e.campaign) if e.campaign is not None else None
             self.ev({"type": "msg", "ts": round(e.ts, 2), "packet": e.packet, "channel": e.channel,
                      "sender": e.sender, "shape": name_shape(e.sender), "text": e.text,
-                     "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random,
-                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
+                     "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random, "garbage": e.garbage,
+                     "obfuscated": e.obfuscated, "garbage": e.garbage, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
                      "known_then": e.known_then, "in_passing": e.in_passing, "exempt": e.exempt,
                      "sender_count_24h": h.get("count"), "sender_first_seen": round(h.get("first", e.ts), 2),
                      "campaign_senders": len(cc["senders"]) if cc else 0,
@@ -2027,7 +2103,11 @@ class SpamGuard:
             e.exempt = self.text_allowed(e.text)
             trusted = e.sender in self.allow_senders
             e.name_score = name_score(e.sender, self.name_res)
-            e.random = not trusted and (e.name_score >= self.cfg["name_score_threshold"] or e.obfuscated)
+            # Unreadable text only counts from names SpamGuard doesn't know: a regular whose radio sends
+            # one garbled message is not a spammer.
+            e.garbage = e.garbage and bool(self.cfg.get("detect_garbage", True)) and not trusted \
+                and not self.is_known(e.sender)
+            e.random = not trusted and (e.name_score >= self.cfg["name_score_threshold"] or e.obfuscated or e.garbage)
             h = self.sender_history.setdefault(e.sender, {"first": ts, "count": 0, "hops": set()})
             if trusted and e.first_hop not in h["hops"] and h["hops"] and not any(
                     hops_related(e.first_hop, x) for x in h["hops"]):
@@ -2147,7 +2227,7 @@ class SpamGuard:
         hops: dict[str, dict] = {}
 
         def hop(k):
-            return hops.setdefault(k, {"msgs": 0, "senders": set(), "random": set(), "new": set(),
+            return hops.setdefault(k, {"msgs": 0, "senders": set(), "random": set(), "garbage": set(), "new": set(),
                                        "campaign": set(), "random_long": set(), "caught": 0})
 
         for e in long_win:
@@ -2161,6 +2241,8 @@ class SpamGuard:
                 h["caught"] += 1
             if e.random:
                 h["random"].add(e.sender)
+            if e.garbage:
+                h["garbage"].add(e.sender)
             hist = self.sender_history.get(e.sender, {"first": e.ts, "count": 1})
             if (hist["count"] <= 2 and hist["first"] >= now - c["window_seconds"]
                     and e.sender not in self.allow_senders):
@@ -2191,7 +2273,8 @@ class SpamGuard:
         c = self.cfg
         why = []
         if len(h["random"]) >= c["hop_random_senders"]:
-            why.append(f"{len(h['random'])} random-looking names")
+            g = len(h.get("garbage") or ())
+            why.append(f"{len(h['random'])} random-looking names" + (f" ({g} sending unreadable text)" if g else ""))
         if len(h["new"]) >= c["hop_new_senders"]:
             why.append(f"{len(h['new'])} brand-new names")
         if len(h["campaign"]) >= c["hop_campaign_senders"]:
@@ -3117,7 +3200,7 @@ class SpamGuard:
                 recent.append({"ts": e.ts, "time": time.strftime("%H:%M:%S", time.localtime(e.ts)),
                                "path": ">".join(e.path) or "direct", "first_hop": e.first_hop,
                                "sender": e.sender, "text": e.text[:160], "channel": e.channel,
-                               "random": e.random, "name_score": e.name_score, "obfuscated": e.obfuscated,
+                               "random": e.random, "name_score": e.name_score, "obfuscated": e.obfuscated, "garbage": e.garbage,
                                "trusted": e.sender in self.allow_senders, "campaign": e.campaign is not None,
                                "matched": e.matched, "packet": e.packet,
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
