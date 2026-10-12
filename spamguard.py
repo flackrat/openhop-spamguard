@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover
     AES = None
 
-VERSION = "5.15"
+VERSION = "5.16"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1169,6 +1169,27 @@ class SpamGuard:
         return bool(b) and b["kind"] in ("hop", "suffix", "links", "lockdown")
 
     def _count(self, e: Event):
+        # The same counts again per channel, so the Overview graphs can show one channel at a time.
+        hour = str(int(e.ts // 3600 * 3600))
+        f = ("m", "c", "x", "g")
+        b0 = self.hist.get(hour) or {}
+        before = [b0.get(k, 0) for k in f]
+        self._count_all(e)
+        h = self.hist.get(hour)
+        if not h or not e.channel:
+            return
+        d = [h.get(k, 0) - n for k, n in zip(f, before)]
+        if not any(d):
+            return
+        chs = h.setdefault("ch", {})
+        if e.channel not in chs and len(chs) >= 20:
+            return
+        c = chs.setdefault(e.channel, {})
+        for k, n in zip(f, d):
+            if n:
+                c[k] = c.get(k, 0) + n
+
+    def _count_all(self, e: Event):
         if e.ts <= self.hist_mark:
             return  # already counted before a restart
         self.hist_mark = e.ts
@@ -1253,6 +1274,38 @@ class SpamGuard:
                 if t >= cut24 - 3600:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
+        # Per channel, for the Overview's channel picker. Only hours counted since v5.16 carry a split.
+        ch_since = min((int(k) for k, v in self.hist.items() if "ch" in v), default=None)
+        names = set((self.cfg.get("channels") or {}).keys())
+        for k, v in self.hist.items():
+            if int(k) >= cut7 - 3600:
+                names |= set((v.get("ch") or {}).keys())
+        per_ch = {}
+        for name in sorted(names, key=lambda n: (n != "Public", n.lower())):
+            def one(v):
+                return (v.get("ch") or {}).get(name) or {}
+            hr = []
+            for r in hourly:
+                c = one(self.hist.get(str(r["t"]), {}))
+                hr.append({"t": r["t"], "c": c.get("c", 0), "x": c.get("x", 0), "m": c.get("m", 0)})
+            dy = []
+            for r in daily:
+                c = x = m = 0
+                for k, v in self.hist.items():
+                    if r["t"] <= int(k) < r["t"] + 86400:
+                        o = one(v); c += o.get("c", 0); x += o.get("x", 0); m += o.get("m", 0)
+                dy.append({"t": r["t"], "c": c, "x": x, "m": m})
+            bh = [0] * 24
+            t24 = {"m": 0, "c": 0, "x": 0}
+            for k, v in self.hist.items():
+                t = int(k)
+                o = one(v)
+                if t >= cut7:
+                    bh[time.localtime(t).tm_hour] += o.get("c", 0) + o.get("x", 0)
+                if t >= cut24 - 3600:
+                    for f in t24:
+                        t24[f] += o.get(f, 0)
+            per_ch[name] = {"hourly": hr, "daily": dy, "by_hour": bh, "d1": t24}
         top = sorted(sources.values(), key=lambda s: (-s["d7"], -s["d1"]))[:15]
         # Worked out on the background map thread (map_refresh); never computed here, under the lock.
         ent = (getattr(self, "_geo", None) or {}).get("ent") or {"entries": [], "unplaced": {"d1": 0, "d7": 0},
@@ -1272,7 +1325,8 @@ class SpamGuard:
                 "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
                 "public_error": self.public_reps.get("error"),
                 "me": self.me, "radio_known": bool(self.airtime_ms(40)),
-                "since": min((int(k) for k in self.hist), default=None)}
+                "since": min((int(k) for k in self.hist), default=None),
+                "channels": per_ch, "channels_since": ch_since}
 
     LINK_KM = 130        # longest plausible single LoRa link between repeaters
     UNKNOWN_COST = 60    # cost of leaving a hop unplaced (no repeater with that code nearby)
