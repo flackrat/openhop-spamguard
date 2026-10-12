@@ -141,7 +141,7 @@ curl -s http://127.0.0.1:8091/health
 
 | Symptom | Check / fix |
 |---|---|
-| A regular's messages are held by a repeater block | They aren't known yet (they need one genuine message on another route). Press **Not spam** on their message: that trusts them and lets them through at once. |
+| A regular's messages are held by a repeater block | They aren't known yet. Press **Not spam** on their message: that trusts them and lets them through at once. |
 | A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Not spam**, or set Advanced > Known people > Hold links to Never. |
 | Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
 | One named account keeps posting things people don't like | That's a person, not spam, so SpamGuard leaves it alone (see "What SpamGuard blocks, and what it doesn't" in the README). Anyone who doesn't want to read it can mute it in their own MeshCore app. If it turns into copy-paste floods or random-name waves, SpamGuard catches that as spam. |
@@ -169,7 +169,7 @@ sudo /opt/openhop_repeater/venv/bin/pip install py-spy
 sudo /opt/openhop_repeater/venv/bin/py-spy dump --pid $(pgrep -f repeater.main) | grep -A4 "(active)"
 ```
 
-SpamGuard also remembers spam texts sent under made-up names for 7 days (Advanced > Timing), so a text the spammer brings back is stopped from its first copy even while openHop is behind.
+SpamGuard also remembers spam texts for a while (Advanced > Timing), so a text the spammer brings back is stopped from its first copy even while openHop is behind.
 
 ## Evidence log and replay
 
