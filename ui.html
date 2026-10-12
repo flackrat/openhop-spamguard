@@ -751,7 +751,7 @@ function renderRecent(d){
     if(m.matched) tag=d.mode==="protect"&&!d.paused?"<span class='tag stop'>Stopped</span>":"<span class='tag would'>Would be stopped</span>";
     else if(m.random||m.obfuscated||m.campaign) tag="<span class='tag sus'>Suspicious</span>";
     if(m.trusted) tag+="<span class='tag ok'>Trusted</span>";
-    const why=[]; if(m.random) why.push("made-up looking name"); if(m.obfuscated) why.push("hidden or look-alike characters"); if(m.campaign) why.push("same message as other names");
+    const why=[]; if(m.garbage) why.push("unreadable random text"); else if(m.garbage) why.push("unreadable random text"); else if(m.random) why.push("made-up looking name"); if(m.obfuscated) why.push("hidden or look-alike characters"); if(m.campaign) why.push("same message as other names");
     const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
       ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"quiet")+(m.matched?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"))
       : (m.trusted?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"));
