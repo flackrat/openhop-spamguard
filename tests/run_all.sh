@@ -16,7 +16,7 @@ if [ ! -d .openhop_core/src ]; then
     || { echo "could not fetch openhop_core source"; exit 2; }
 fi
 python3 -c "import Crypto" 2>/dev/null || pip install -q pycryptodome 2>/dev/null || pip install -q --break-system-packages pycryptodome
-TESTS="scenarios test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testnames testdocker testplugin"
+TESTS="scenarios test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testnames testdocker testplugin testmigrate"
 [ "${1:-}" = "--slow" ] && TESTS="$TESTS teststress"
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   [ -d .leaflet/node_modules/leaflet ] || (mkdir -p .leaflet && cd .leaflet && npm i -s leaflet@1.9.4 >/dev/null 2>&1)

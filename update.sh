@@ -53,6 +53,13 @@ if [ "$FROM_REQUEST" = 1 ]; then
   ACTION=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1])).get('action','update'))" "$REQUEST" 2>/dev/null)
   WANT=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$REQUEST" 2>/dev/null)
   rm -f "$REQUEST"
+  if [ "$ACTION" = "retire" ]; then
+    # SpamGuard has moved into openHop as a plugin: switch this copy off but keep its files, so it can
+    # be switched back on (sudo systemctl enable --now openhop-spamguard) if ever needed.
+    status done "Moved to the openHop plugin; this copy is switched off."
+    systemctl disable --now openhop-spamguard >/dev/null 2>&1 || true
+    exit 0
+  fi
   if [ "$ACTION" = "openhop-fix" ]; then
     # Re-apply the openHop rule-check fix (an openHop update removes it). Nothing else changes.
     if out=$(bash "$APP/tune-openhop.sh" --rulefix 2>&1); then

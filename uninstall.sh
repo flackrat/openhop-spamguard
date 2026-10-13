@@ -62,6 +62,7 @@ try:
     removed = len(rules) - len(keep)
     objects = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
     had_list = objects.pop("spamguard", None) is not None  # SpamGuard's list of known names
+    had_list = (objects.pop("spamguard_owner", None) is not None) or had_list  # which SpamGuard was in charge
     if removed or had_list:
         pe["rules"] = keep
         pe["objects"] = objects

@@ -21,30 +21,35 @@ _Example data: names and numbers are made up._
 
 ## Install
 
-You need openHop on a Raspberry Pi or other Linux machine, and an openHop API token: openHop dashboard > System > Configuration > Access > API Tokens. New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
+**SpamGuard runs as an openHop plugin**, installed from openHop's own dashboard. That works however openHop is installed (directly on a Pi, in Docker, on Unraid or as a Home Assistant add-on) and needs openHop 1.1.2 or later.
 
-**openHop installed natively** (the usual install). On the Pi:
+1. Download `openhop_spamguard-<version>-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest).
+2. In openHop's dashboard go to **System > Plugins > Install wheel** and pick that file.
+3. In SpamGuard's plugin settings paste an openHop API token into `api_key` (openHop dashboard > System > Configuration > Access > API Tokens), then enable the plugin.
+4. Open `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+
+Full guide, including openHop in Docker: [docs/openhop-plugin.md](docs/openhop-plugin.md). New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
+
+**Already running SpamGuard the older way?** Its page offers **Move to the plugin**: one press installs the plugin, carries over your settings, blocks and known people, and switches the old copy off once the plugin has taken over. Only one SpamGuard can look after a repeater at a time, and each copy checks for another before changing anything.
+
+<details>
+<summary><b>Other ways to install (older openHop, or a separate container)</b></summary>
+
+**openHop older than 1.1.2, installed directly on a Pi:** update openHop if you can. If not, install SpamGuard as its own service:
 
 ```
 git clone https://github.com/flackrat/openhop-spamguard.git
 cd openhop-spamguard
 sudo bash install.sh
-```
-
-Answer **y** to the installer's two questions about openHop's speed. Then add your token and start it:
-
-```
 sudo sed -i 's/PASTE_OPENHOP_API_TOKEN_HERE/YOUR_TOKEN/' /etc/openhop_spamguard/config.yaml
 sudo systemctl start openhop-spamguard
 ```
 
-Open `http://<your-pi>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](docs/install-and-troubleshooting.md). Once openHop is updated, use **Move to the plugin** on SpamGuard's page.
 
-Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](docs/install-and-troubleshooting.md).
+**A separate Docker container** next to openHop: [docs/docker.md](docs/docker.md). The plugin is simpler for most people, as it needs no container of its own.
 
-**As an openHop plugin:** install SpamGuard from openHop's own dashboard (System > Plugins), whichever way openHop is installed. Guide: [docs/openhop-plugin.md](docs/openhop-plugin.md).
-
-**openHop running in Docker or on Unraid:** run SpamGuard as a container next to it. Copy [docker-compose.example.yml](docker-compose.example.yml), add your token, and `docker compose up -d`. Full guide: [docs/docker.md](docs/docker.md).
+</details>
 
 ## What to expect
 
