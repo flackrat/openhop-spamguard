@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.20
+- **SpamGuard as an openHop plugin.** Each release now includes an openHop plugin file, so SpamGuard can be installed from openHop's own dashboard (System > Plugins > Install wheel), whether openHop is installed directly, in Docker, on Unraid or as a Home Assistant add-on. Paste your openHop token into the plugin's settings and enable it. Guide: `docs/openhop-plugin.md`.
+- Docker: the example compose file now uses openHop's own service name (`openhop-repeater`), and the guide explains how to reach openHop from a separate compose file.
+- `tests/testplugin.py` installs, starts and stops the plugin with openHop's own plugin manager.
 ## v5.19
 - **SpamGuard now runs in Docker**, for openHop installs that run in Docker or as an Unraid app. Copy `docker-compose.example.yml`, add your openHop token and run `docker compose up -d`. Images are published for 64-bit and 32-bit Pi and for PCs on GitHub's container registry. Full guide: `docs/docker.md`.
 - In Docker, settings can be given as environment variables, everything SpamGuard learns is kept in a data folder, and the Updates page shows the command to update instead of an Update button. The openHop speed and rule-check fixes aren't applied in Docker, as one container can't sensibly edit another's files.

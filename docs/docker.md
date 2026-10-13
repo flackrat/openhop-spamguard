@@ -31,8 +31,8 @@ Everything SpamGuard learns (blocks, known people, settings and the evidence log
 
 ## Reaching openHop
 
-- **Same compose file or same Docker network:** use openHop's service or container name, for example `http://openhop:8000`.
-- **Different compose files:** put both on a shared Docker network, or use the host's address, for example `http://192.168.1.20:8000`.
+- **Same compose file or same Docker network:** use openHop's service name. openHop's own compose file calls it `openhop-repeater`, so the address is `http://openhop-repeater:8000`. Some examples call it `repeater` instead; `docker compose ps` in your openHop folder shows the name.
+- **Different compose files:** each compose file gets its own network, so either join SpamGuard to openHop's network (it is usually called `<openhop folder>_default`; add it under `networks:` as an external network), or use the host's address, for example `http://192.168.1.20:8000`.
 - **openHop uses host networking:** give SpamGuard `network_mode: host` too, set `OPENHOP_URL` to `http://127.0.0.1:8000`, and remove the `ports:` section.
 
 The Health page shows straight away whether SpamGuard can reach openHop and whether the token works.

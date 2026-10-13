@@ -9,10 +9,10 @@ services:
     environment:
       # openHop dashboard > System > Configuration > Access > API Tokens
       OPENHOP_API_KEY: "PASTE_OPENHOP_API_TOKEN_HERE"
-      # openHop's address as seen from this container. If both are in the same compose file or on
-      # the same Docker network, use openHop's service or container name. If openHop uses host
-      # networking, see the note below.
-      OPENHOP_URL: "http://openhop:8000"
+      # openHop's address as seen from this container. openHop's own compose file names its
+      # service "openhop-repeater" (some examples use "repeater"); use whichever yours has, on the
+      # same Docker network. If openHop uses host networking, see the note below.
+      OPENHOP_URL: "http://openhop-repeater:8000"
       # Optional:
       # SPAMGUARD_MODE: "monitor"          # monitor or protect (you can switch on the page)
       # SPAMGUARD_SENSITIVITY: "balanced"  # relaxed, balanced or strict

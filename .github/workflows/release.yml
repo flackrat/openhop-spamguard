@@ -6,7 +6,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: [spamguard.py, CHANGELOG.md, Dockerfile, docker-entrypoint.sh]
+    paths: [spamguard.py, CHANGELOG.md, Dockerfile, docker-entrypoint.sh, plugin/**, tools/build_plugin.py]
   workflow_dispatch:
 permissions:
   contents: write
@@ -28,7 +28,9 @@ jobs:
           # Download file for this version; the Pi's Update button fetches this, so its download
           # count shows roughly how many repeaters installed the update.
           git archive --format=tar.gz --prefix="spamguard-v$v/" -o "spamguard-v$v.tar.gz" HEAD
-          gh release create "v$v" "spamguard-v$v.tar.gz" --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --latest
+          # The openHop plugin file for this version (System > Plugins > Install wheel in openHop).
+          python3 tools/build_plugin.py dist
+          gh release create "v$v" "spamguard-v$v.tar.gz" dist/*.whl --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --latest
       - name: Bring existing release notes in line with CHANGELOG.md
         env:
           GH_TOKEN: ${{ github.token }}
