@@ -23,7 +23,7 @@ The repeater stays protected the whole time, and the page carries on at the same
 2. In openHop's dashboard, go to **System > Plugins**, choose **Install wheel** and pick that file. openHop installs it switched off.
 3. Open SpamGuard's settings in the Plugins page and paste an openHop API token into `api_key` (openHop dashboard > System > Configuration > Access > API Tokens). Leave the other settings as they are unless you need to change them.
 4. Enable the plugin. openHop starts SpamGuard and restarts it if it ever stops unexpectedly.
-5. Open SpamGuard's page from the plugin's page in openHop, or go to `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+5. Open SpamGuard's own page at `http://<your-repeater>:8091/` (it isn't inside openHop's dashboard). Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 ## Settings in openHop's Plugins page
 
@@ -46,7 +46,34 @@ If you'd rather not change openHop's container, run SpamGuard in its own contain
 
 ## Updating
 
-SpamGuard's page tells you when a new version is out. Install the new release's wheel the same way (System > Plugins > Install wheel); openHop keeps SpamGuard's settings and everything it has learnt. Once SpamGuard is in the catalogue, updates appear there.
+SpamGuard's page tells you when a new version is out (Updates in its menu). Press **Update**: SpamGuard fetches the new plugin file, hands it to openHop, and openHop restarts it on the new version. Settings and everything it has learnt are kept. You can also install a newer wheel by hand under System > Plugins > Install wheel.
+
+## Plugin manager isn't running
+
+If openHop's System > Plugins page says the plugin manager is unavailable (or SpamGuard's page says so), openHop's plugin manager service isn't running. This can happen after updating an openHop that was installed directly on the Pi. On the Pi:
+
+```
+sudo systemctl enable --now openhop-plugin-manager
+```
+
+If that says the service doesn't exist, install it from openHop itself and start it:
+
+```
+UNIT=$(/opt/openhop_repeater/venv/bin/python -I -c 'from importlib.metadata import distribution; print(distribution("openhop_repeater").locate_file("repeater/plugins/openhop-plugin-manager.service"))')
+sudo install -o root -g root -m 0644 "$UNIT" /etc/systemd/system/openhop-plugin-manager.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now openhop-plugin-manager
+```
+
+If it starts and stops again straight away, check that openHop's `config.yaml` doesn't have `enabled: false` under `plugins:`.
+
+## Backups
+
+openHop's own backup doesn't include plugin data. Everything SpamGuard has learnt is in its plugin data folder, `/var/lib/openhop_repeater/plugins/openhop-spamguard/data` on an openHop installed directly on a Pi (inside openHop's data volume in Docker). Copy that folder if you want a backup.
+
+## Don't make SpamGuard openHop's main web page
+
+SpamGuard versions 5.20 and 5.21 of the plugin had a small page that openHop offers under its web frontend setting. Choosing it would replace openHop's dashboard with that page. Newer versions don't have it, so the choice disappears once you update. If it was chosen by mistake: on the Pi, remove the `web_path:` line under `web:` in `/etc/openhop_repeater/config.yaml` and run `sudo systemctl restart openhop-repeater`.
 
 ## Going back
 
@@ -58,5 +85,4 @@ Uninstalling the plugin stops SpamGuard but leaves its rules in openHop, so bloc
 
 ## Differences from the normal install
 
-- Updates come from openHop's Plugins page, not SpamGuard's Update button.
 - The optional openHop speed fix isn't applied automatically; see the main README if your Pi needs it.

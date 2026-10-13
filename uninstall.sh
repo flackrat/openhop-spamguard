@@ -58,6 +58,13 @@ try:
     res = call("GET")
     pe = dict((res.get("data", res) or {}).get("policy_engine") or {})
     rules = [r for r in (pe.get("rules") or []) if isinstance(r, dict)]
+    owner = (pe.get("objects") or {}).get("spamguard_owner") if isinstance(pe.get("objects"), dict) else None
+    import time as _t
+    if isinstance(owner, dict) and owner.get("kind") in ("plugin", "docker") and owner.get("state") == "active" \
+            and _t.time() - float(owner.get("ts") or 0) < 900:
+        print("  SpamGuard's " + ("openHop plugin" if owner.get("kind") == "plugin" else "Docker container")
+              + " is looking after this repeater now, so its rules are left in place.")
+        sys.exit(0)
     keep = [r for r in rules if not str(r.get("name", "")).startswith("spamguard:")]
     removed = len(rules) - len(keep)
     objects = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}

@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.22
+- **Plugin updates with one press.** As an openHop plugin, SpamGuard's Update button now fetches the new version, hands it to openHop and restarts on it, keeping everything it has learnt.
+- **Health page fits the install.** The plugin and Docker versions no longer ask you to re-run an installer they don't have, and they restart themselves if they ever get stuck. The openHop fix messages now give the right instructions for each kind of install, and the Apply openHop fix button only appears where it works.
+- **Safer plugin.** The plugin no longer has a page of its own inside openHop, so it can't be picked by mistake as openHop's main web page (which would hide openHop's dashboard). SpamGuard's page stays on its own port, 8091.
+- **New installs go to the plugin.** On an openHop that can run plugins, `install.sh` now points to the plugin instead (use `--legacy` to install the older way). Updates to existing installs are unaffected.
+- **Uninstalling the older install no longer touches the plugin's rules** when the plugin is the one looking after the repeater.
+- If openHop's plugin manager isn't running, SpamGuard now says so plainly and how to start it; the plugin guide has the steps, plus where SpamGuard's data lives for backups.
+- `tests/testpluginops.py` checks plugin updates through openHop's own plugin manager, the Health advice and the restart-if-stuck watchdog.
 ## v5.21
 - **SpamGuard is now an openHop plugin first.** The README leads with installing it from openHop's dashboard (System > Plugins), which works however openHop is installed, on openHop 1.1.2 or later.
 - **Move to the plugin.** An existing install (its own service on the Pi, or a Docker container) shows a **Move to the plugin** button on its Overview. One press installs the plugin in openHop, copies the settings and token across, hands over everything SpamGuard has learnt, and switches the old copy off once the plugin has taken over. The repeater stays protected throughout, and the page stays at the same address. If openHop is too old for plugins, the page says how to update it.
