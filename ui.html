@@ -688,6 +688,7 @@ function renderHealth(d){
     st("Time per check", h.check_ms!=null?h.check_ms+" ms":"–")+
     st("Errors (last hour)", h.errors_hour??"–")+
     st("Rules put back", h.self_heals??0)+
+    st("Live packet feed", {on:"on",reconnecting:"reconnecting",unavailable:"not offered by this openHop",off:"off"}[h.live_feed]||"–")+
     (h.kind&&h.kind!=="normal"?"":st("openHop service", h.openhop_service||"–"))+
     st("openHop speed fix", h.openhop_speed_fix==null?"not needed":(h.openhop_speed_fix?"on":"off"))+
     st("openHop rule-check fix", h.openhop_rulecheck_fix==null?"unknown":(h.openhop_rulecheck_fix?"on or not needed":"off"))+

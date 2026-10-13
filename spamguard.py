@@ -17,6 +17,7 @@ Needs: Python 3.9+, pycryptodome and PyYAML (both already in openHop's venv).
 from __future__ import annotations
 
 import argparse
+import base64
 import collections
 import glob
 import secrets
@@ -56,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.24"
+VERSION = "5.25"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -206,6 +207,9 @@ SETTINGS_META: list[dict] = [
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
+    {"key": "live_feed", "risk": "Turned off, SpamGuard only looks for new packets on the timer above, so it reacts a second or two later.", "group": "Timing", "type": "bool",
+     "label": "React as soon as openHop hears a packet",
+     "help": "Listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting for the next timed check. The timed check carries on as a backup."},
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 2000,
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
@@ -260,6 +264,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "openhop_autofix": True,
     "update_repo": UPDATE_REPO,
     "poll_seconds": 3,
+    "live_feed": True,
     "fetch_limit": 500,
     "max_total_rules": 300,
     "min_sync_seconds": 2,
@@ -954,6 +959,8 @@ class SpamGuard:
         self.started = time.time()
         self.loop_beat: Optional[float] = None    # end of the last check loop, success or not
         self.loop_count = 0
+        self.wake = threading.Event()        # set by the live packet feed to check straight away
+        self.live = {"state": "off", "since": None, "packets": 0}
         self.poll_ms: Optional[int] = None
         self.openhop_ms: Optional[int] = None
         self.errors: collections.deque[float] = collections.deque(maxlen=500)
@@ -3270,6 +3277,7 @@ class SpamGuard:
 
     def run(self, stop: threading.Event):
         threading.Thread(target=self.map_loop, args=(stop,), daemon=True, name="map").start()
+        threading.Thread(target=self.live_feed_loop, args=(stop,), daemon=True, name="live").start()
         if install_kind() != "normal":
             threading.Thread(target=self.watchdog_loop, args=(stop,), daemon=True, name="watchdog").start()
         while not stop.is_set():
@@ -3308,7 +3316,120 @@ class SpamGuard:
             self.loop_count += 1
             # Tell systemd the loop is alive. If this stops (a hang), systemd restarts SpamGuard.
             sd_notify("WATCHDOG=1")
-            stop.wait(self.cfg["poll_seconds"])
+            woke = self.wake.wait(self.cfg["poll_seconds"])
+            self.wake.clear()
+            if woke and not stop.is_set():
+                # let the other copies of a burst arrive, and never check more than about once a second
+                stop.wait(max(0.4, 1.0 - (time.time() - t0)))
+
+    # ---- openHop's live packet feed (a nudge to check now; the timed check stays the source of truth) ----
+    def _ws_open(self):
+        """Open openHop's /ws/packets websocket with the API token. Returns the socket, or raises."""
+        u = urllib.parse.urlparse(self.cfg["openhop_url"])
+        tls = u.scheme == "https"
+        host, port = u.hostname or "127.0.0.1", u.port or (443 if tls else 80)
+        sock = socket.create_connection((host, port), timeout=15)
+        if tls:
+            import ssl
+            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+        key = base64.b64encode(os.urandom(16)).decode()
+        path = (u.path.rstrip("/") or "") + "/ws/packets"
+        req = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nX-API-Key: {self.cfg.get('api_key', '')}\r\n\r\n")
+        sock.sendall(req.encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = sock.recv(1024)
+            if not chunk or len(head) > 16384:
+                sock.close()
+                raise ConnectionError("no websocket handshake")
+            head += chunk
+        status = head.split(b"\r\n", 1)[0]
+        if b" 101" not in status:
+            sock.close()
+            raise PermissionError(status.decode(errors="replace")[:60])
+        return sock, head.split(b"\r\n\r\n", 1)[1]
+
+    @staticmethod
+    def _ws_send(sock, opcode: int, payload: bytes = b""):
+        mask = os.urandom(4)
+        n = len(payload)
+        hdr = bytes([0x80 | opcode]) + (bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n))
+        sock.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+    def live_feed_loop(self, stop: threading.Event):
+        """Wake the checking loop whenever openHop broadcasts a packet. Any failure just means waiting for
+        the normal timed check; it retries quietly with a growing pause."""
+        pause = 5
+        while not stop.is_set():
+            if not self.cfg.get("live_feed", True):
+                self.live.update(state="off", since=None)
+                stop.wait(30)
+                continue
+            sock = None
+            try:
+                sock, buf = self._ws_open()
+                sock.settimeout(95)      # openHop pings every 30 s; silence for longer means a dead link
+                self.live.update(state="on", since=time.time())
+                pause = 5
+                frag = b""
+
+                def need(n):
+                    nonlocal buf
+                    while len(buf) < n:
+                        chunk = sock.recv(65536)
+                        if not chunk:
+                            raise ConnectionError("closed")
+                        buf += chunk
+                    out, buf = buf[:n], buf[n:]
+                    return out
+
+                while not stop.is_set():
+                    b0, b1 = need(2)
+                    op, n = b0 & 0x0F, b1 & 0x7F
+                    if n == 126:
+                        n = struct.unpack(">H", need(2))[0]
+                    elif n == 127:
+                        n = struct.unpack(">Q", need(8))[0]
+                    if n > 4 * 1024 * 1024:
+                        raise ConnectionError("frame too large")
+                    mask = need(4) if b1 & 0x80 else None
+                    data = need(n)
+                    if mask:
+                        data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+                    if op == 8:
+                        if len(data) >= 2 and struct.unpack(">H", data[:2])[0] == 1008:
+                            raise PermissionError("openHop refused the API token for its live feed")
+                        raise ConnectionError("closed by openHop")
+                    if op == 9:
+                        self._ws_send(sock, 10, data)
+                        continue
+                    if op in (1, 2, 0):
+                        frag += data
+                        if not b0 & 0x80:
+                            continue
+                        msg, frag = frag, b""
+                        if b'"type": "ping"' in msg[:40] or b'"type":"ping"' in msg[:40]:
+                            self._ws_send(sock, 1, b'{"type": "pong"}')
+                        elif b'"packet"' in msg[:40]:
+                            self.live["packets"] += 1
+                            self.wake.set()
+            except PermissionError as e:
+                # openHop answered but wouldn't upgrade (too old for the feed, or the token was refused)
+                self.live.update(state="unavailable", since=None, why=str(e))
+                pause = 600
+            except Exception as e:
+                if self.live.get("state") == "on":
+                    log.info("openHop's live packet feed dropped (%s); checking on the timer until it's back", e)
+                self.live.update(state="reconnecting", since=None)
+            finally:
+                if sock:
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+            stop.wait(pause)
+            pause = min(pause * 2, 600)
 
     # ---- health ----
     def health(self) -> dict:
@@ -3383,6 +3504,7 @@ class SpamGuard:
                 "check_ms": self.poll_ms, "openhop_ms": self.openhop_ms, "openhop_service": openhop_state,
                 "openhop_ok": self.last_error is None and self.last_poll_ok is not None,
                 "rules_expected": self.rules_expected, "rules_seen": self.rules_seen, "self_heals": self.self_heals,
+                "live_feed": self.live.get("state"), "live_packets": self.live.get("packets", 0),
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
                 "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
