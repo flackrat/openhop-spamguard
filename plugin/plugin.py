@@ -9,6 +9,45 @@ import os
 import sys
 
 
+def take_over(data: str, config: str) -> None:
+    """When SpamGuard is being moved here from a normal install (or Docker), the settings include a
+    one-time link to that copy. Fetch everything it has learnt before starting, then forget the link."""
+    try:
+        with open(config) as f:
+            cfg = json.load(f) or {}
+    except (OSError, ValueError):
+        return
+    src = cfg.get("import_from") if isinstance(cfg, dict) else None
+    if not src:
+        return
+    import time
+    import urllib.request
+    for _ in range(20):
+        try:
+            with urllib.request.urlopen(src, timeout=20) as r:
+                state = json.loads(r.read().decode())
+            if isinstance(state, dict) and "blocks" in state:
+                for name, body in (("state.json", state), ("imported.json", {"from": src.split("/handover")[0],
+                                                                              "at": time.time()})):
+                    tmp = os.path.join(data, name + ".tmp")
+                    with open(tmp, "w") as f:
+                        json.dump(body, f)
+                    os.replace(tmp, os.path.join(data, name))
+                print("SpamGuard: picked up everything the previous SpamGuard had learnt", flush=True)
+                break
+        except Exception as e:  # the other copy may still be starting up
+            print(f"SpamGuard: waiting to pick up the previous SpamGuard's data ({e})", flush=True)
+            time.sleep(3)
+    cfg.pop("import_from", None)
+    try:
+        tmp = config + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=2)
+        os.replace(tmp, config)
+    except OSError:
+        pass
+
+
 def main() -> None:
     data = os.environ.get("OPENHOP_PLUGIN_DATA") or os.getcwd()
     os.environ["SPAMGUARD_PLUGIN"] = "1"
@@ -24,6 +63,7 @@ def main() -> None:
             json.dump({"web_page_port": port}, f)
     except OSError:
         pass
+    take_over(data, config)
     sys.argv = ["openhop-spamguard", "--config", config]
     from openhop_spamguard import spamguard
     spamguard.main()

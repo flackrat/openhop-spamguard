@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.21
+- **SpamGuard is now an openHop plugin first.** The README leads with installing it from openHop's dashboard (System > Plugins), which works however openHop is installed, on openHop 1.1.2 or later.
+- **Move to the plugin.** An existing install (its own service on the Pi, or a Docker container) shows a **Move to the plugin** button on its Overview. One press installs the plugin in openHop, copies the settings and token across, hands over everything SpamGuard has learnt, and switches the old copy off once the plugin has taken over. The repeater stays protected throughout, and the page stays at the same address. If openHop is too old for plugins, the page says how to update it.
+- **Only one SpamGuard per repeater.** Each copy now checks whether another is already looking after the repeater before changing anything, and waits if so, taking over by itself if the other one stops. Installing the plugin next to an older install can't make them fight, and the installer won't install over the plugin.
+- Going back is easy: disable the plugin and switch the old copy on again; it takes over straight away.
+- `tests/testmigrate.py` tests all of this with openHop's own plugin manager.
 ## v5.20
 - **SpamGuard as an openHop plugin.** Each release now includes an openHop plugin file, so SpamGuard can be installed from openHop's own dashboard (System > Plugins > Install wheel), whether openHop is installed directly, in Docker, on Unraid or as a Home Assistant add-on. Paste your openHop token into the plugin's settings and enable it. Guide: `docs/openhop-plugin.md`.
 - Docker: the example compose file now uses openHop's own service name (`openhop-repeater`), and the guide explains how to reach openHop from a separate compose file.

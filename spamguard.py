@@ -55,7 +55,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.20"
+VERSION = "5.21"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -284,6 +284,25 @@ IN_DOCKER = os.environ.get("SPAMGUARD_DOCKER") == "1"
 DOCKER_UPDATE = "docker compose pull && docker compose up -d"
 # Running as an openHop plugin: openHop installs, starts and updates it from System > Plugins.
 IN_PLUGIN = os.environ.get("SPAMGUARD_PLUGIN") == "1"
+
+
+# Only one SpamGuard may manage a repeater's rules. The one in charge keeps a marker in openHop's policy
+# (objects.spamguard_owner) and refreshes it every few minutes; any other copy waits in standby until the
+# marker is released to it or goes stale (the other copy stopped).
+OWNER_KEY = "spamguard_owner"
+LEASE_SECONDS = 900
+LEASE_REFRESH = 300
+PLUGIN_ID = "openhop-spamguard"
+KIND_NAMES = {"normal": "a normal install", "docker": "a Docker container", "plugin": "the openHop plugin"}
+
+
+def install_kind() -> str:
+    return "plugin" if IN_PLUGIN else "docker" if IN_DOCKER else "normal"
+
+
+def plugin_version(v: str = VERSION) -> str:
+    """SpamGuard's version as openHop plugin manifests write it (5.21 -> 5.21.0)."""
+    return ".".join((v.split(".") + ["0", "0"])[:3])
 
 
 def managed_update() -> Optional[str]:
@@ -1110,7 +1129,15 @@ class SpamGuard:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
             with open(tmp, "w") as f:
-                json.dump({
+                json.dump(self.state_dict(), f)
+            os.replace(tmp, path)
+        except Exception as e:
+            log.warning("Could not save state: %s", e)
+
+    def state_dict(self) -> dict:
+        """Everything SpamGuard has learnt, as saved to its state file (and handed to the plugin when moving)."""
+        now = time.time()
+        return {
                     "version": VERSION,
                     "blocks": self.blocks,
                     "suppressed": self.suppressed,
@@ -1133,10 +1160,7 @@ class SpamGuard:
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
-                }, f)
-            os.replace(tmp, path)
-        except Exception as e:
-            log.warning("Could not save state: %s", e)
+                }
 
     def reset_all(self):
         """Back to a fresh install, keeping only Monitor/Protect, channels you added, the charts and the
@@ -2726,10 +2750,76 @@ class SpamGuard:
             self.note(f"Rule limit ({limit}) reached - oldest duplicate rules were left out")
         return rules[:limit]
 
+    # ---- which SpamGuard is in charge of this repeater ----
+    @property
+    def instance_id(self) -> str:
+        """A random id for this copy of SpamGuard, kept next to its state file (never in it, so a copy
+        that imports another's state still has its own id)."""
+        if getattr(self, "_instance_id", None):
+            return self._instance_id
+        path = os.path.splitext(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])[0] + ".instance.json"
+        iid = None
+        try:
+            with open(path) as f:
+                iid = str(json.load(f).get("id") or "") or None
+        except (OSError, ValueError):
+            pass
+        if not iid:
+            iid = os.urandom(6).hex()
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    json.dump({"id": iid}, f)
+            except OSError:
+                pass
+        self._instance_id = iid
+        return iid
+
+    def owner_marker(self, state: str = "active", to: Optional[str] = None) -> dict:
+        m = {"id": self.instance_id, "kind": install_kind(), "host": socket.gethostname()[:40],
+             "version": VERSION, "state": state, "ts": round(time.time())}
+        if to:
+            m["to"] = to
+        return m
+
+    def describe_owner(self, o: dict) -> str:
+        what = KIND_NAMES.get(str(o.get("kind")), "another copy")
+        host = str(o.get("host") or "")
+        return f"{what}{' on ' + host if host else ''}"
+
+    def _lease_blocks_me(self, owner: Optional[dict]) -> bool:
+        """True while another copy of SpamGuard holds this repeater."""
+        if not isinstance(owner, dict) or not owner.get("id") or owner.get("id") == self.instance_id:
+            return False
+        if time.time() - float(owner.get("ts") or 0) >= LEASE_SECONDS:
+            return False  # it stopped refreshing: it has gone
+        if owner.get("state") == "released":
+            return bool(owner.get("to")) and owner.get("to") != self.instance_id
+        return True
+
     def sync_policy(self, force: bool = False) -> bool:
+        if getattr(self, "retired", False):
+            return False
         res = self._api("GET", "/api/policy")
         data = res.get("data", res)
         pe = dict(data.get("policy_engine") or {})
+        objs0 = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
+        owner = objs0.get(OWNER_KEY) if isinstance(objs0.get(OWNER_KEY), dict) else None
+        if self._lease_blocks_me(owner):
+            if not getattr(self, "standby", None):
+                self.note(f"Another SpamGuard ({self.describe_owner(owner)}) is already looking after this repeater, "
+                          "so this one is waiting and won't change openHop's rules")
+            self.standby = dict(owner)
+            self.sync_pending = False
+            self.last_sync = time.time()
+            return False
+        if getattr(self, "standby", None) or (owner and owner.get("id") != self.instance_id):
+            prev = getattr(self, "standby", None) or owner
+            self.note(f"Took over this repeater from {self.describe_owner(prev)}")
+        self.standby = None
+        now = time.time()
+        refresh_owner = (not owner or owner.get("id") != self.instance_id or owner.get("state") != "active"
+                         or now - float(owner.get("ts") or 0) > LEASE_REFRESH)
         existing = [r for r in (pe.get("rules") or []) if isinstance(r, dict)]
         user_rules = [r for r in existing if not str(r.get("name", "")).startswith(RULE_PREFIX)]
         ours_now = [r for r in existing if str(r.get("name", "")).startswith(RULE_PREFIX)]
@@ -2746,8 +2836,9 @@ class SpamGuard:
             objects.pop("spamguard", None)
         else:
             objects["spamguard"] = obj_new
+        objects[OWNER_KEY] = self.owner_marker() if refresh_owner else owner
         pe["objects"] = objects
-        if not force and not needs_enable and obj_now == obj_new \
+        if not force and not needs_enable and obj_now == obj_new and not refresh_owner \
                 and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
             self.sync_pending = False
             return False
@@ -2860,6 +2951,17 @@ class SpamGuard:
             self.backfill_adverts()
         except Exception:
             pass
+        if getattr(self, "retired", False):
+            return
+        if getattr(self, "standby", None):
+            # Another SpamGuard is in charge: read nothing, change nothing, just check often whether
+            # it has handed over or stopped.
+            if time.time() - self.last_verify > 15:
+                self.last_verify = time.time()
+                with self.lock:
+                    self.sync_policy()
+            self.write_runtime()
+            return
         packets = self.fetch_packets()
         with self.lock:
             self.ingest(packets)
@@ -2878,6 +2980,204 @@ class SpamGuard:
                 self.sync_policy()
         if time.time() - self.last_verify > 60:
             self.last_verify = time.time()
+        self.write_runtime()
+
+    # ---- moving to the openHop plugin ----
+    def _maybe_check_plugins(self):
+        """Every 10 minutes, see whether this openHop can run plugins and whether SpamGuard's plugin is
+        already installed (normal and Docker installs only)."""
+        if IN_PLUGIN or time.time() - getattr(self, "_plugins_checked", 0) < 600:
+            return
+        self._plugins_checked = time.time()
+        try:
+            res = self._api("GET", "/api/plugins", timeout=10)
+            items = res.get("plugins") or res.get("data") or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            ids = {str(p.get("id")) for p in items if isinstance(p, dict)}
+            self.openhop_plugins = {"supported": True, "installed": PLUGIN_ID in ids}
+        except urllib.error.HTTPError as e:
+            self.openhop_plugins = {"supported": False if e.code == 404 else None, "installed": False,
+                                    "error": None if e.code == 404 else f"HTTP {e.code}"}
+        except Exception as e:
+            self.openhop_plugins = {"supported": None, "installed": False, "error": str(e)[:80]}
+
+    def move_summary(self) -> dict:
+        p = getattr(self, "openhop_plugins", None) or {}
+        st = getattr(self, "move_state", None)
+        why = None
+        if IN_PLUGIN:
+            why = "already the plugin"
+        elif p.get("supported") is False:
+            why = ("This openHop is too old for plugins. Update openHop to 1.1.2 or later (its dashboard's update "
+                   "option, or manage.sh upgrade), then come back here.")
+        elif p.get("supported") is None:
+            why = "Checking whether this openHop can run plugins..." if not p else \
+                  f"Couldn't check whether this openHop can run plugins ({p.get('error') or 'no answer'})."
+        return {"possible": why is None and not (st and st.get("running")), "why_not": why,
+                "plugin_installed": bool(p.get("installed")), "state": st}
+
+    def _move_step(self, msg: str, running: bool = True, ok: Optional[bool] = None):
+        self.move_state = {"running": running, "message": msg, "ok": ok, "ts": time.time()}
+        if ok is not None:
+            self.note(("Moved to the openHop plugin: " if ok else "Couldn't move to the openHop plugin: ") + msg)
+
+    def start_move_to_plugin(self) -> dict:
+        s = self.move_summary()
+        if not s["possible"]:
+            raise ValueError(s["why_not"] or "A move is already under way.")
+        if getattr(self, "standby", None):
+            raise ValueError("This SpamGuard is waiting while another one looks after the repeater.")
+        self._handover_key = os.urandom(16).hex()
+        self._handover_until = time.time() + 900
+        self._move_step("Getting the plugin for this version...")
+        threading.Thread(target=self._move_to_plugin, daemon=True, name="move").start()
+        return {"ok": True, "message": "Moving SpamGuard into openHop as a plugin. This takes a minute or two; "
+                                       "this page shows how it's going."}
+
+    def _plugin_api(self, method: str, path: str, body: Optional[dict] = None, timeout: float = 60) -> dict:
+        res = self._api(method, path, body, timeout=timeout)
+        return res if isinstance(res, dict) else {}
+
+    def _upload_wheel(self, name: str, data: bytes) -> dict:
+        boundary = "----spamguard" + os.urandom(8).hex()
+        body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"wheel\"; filename=\"{name}\"\r\n"
+                f"Content-Type: application/octet-stream\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+        req = urllib.request.Request(self.cfg["openhop_url"].rstrip("/") + "/api/plugins/install", data=body, method="POST")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        req.add_header("Accept", "application/json")
+        if self.cfg.get("api_key"):
+            req.add_header("X-API-Key", self.cfg["api_key"])
+        with urllib.request.urlopen(req, timeout=600) as r:
+            res = json.loads(r.read().decode() or "{}")
+        if isinstance(res, dict) and res.get("success") is False:
+            raise RuntimeError(res.get("error") or "openHop couldn't install the plugin")
+        return res
+
+    def _plugin_runtime(self) -> dict:
+        r = self._plugin_api("GET", f"/api/plugins/runtime?id={PLUGIN_ID}", timeout=15)
+        for k in ("runtime", "data"):
+            if isinstance(r.get(k), dict):
+                return r[k]
+        return r
+
+    def _move_to_plugin(self):
+        try:
+            name = f"openhop_spamguard-{plugin_version()}-py3-none-any.whl"
+            url = self.cfg.get("plugin_wheel_url") or \
+                f"https://github.com/{self._repo()}/releases/download/v{VERSION}/{name}"
+            with urllib.request.urlopen(url, timeout=120) as r:
+                wheel = r.read()
+            self._move_step("Installing the plugin in openHop (it sets up its own copy, which can take a minute)...")
+            self._upload_wheel(name, wheel)
+            port = int(self.cfg.get("listen_port") or 8091)
+            c = self.cfg
+            config = {"api_key": c.get("api_key", ""), "openhop_url": c.get("openhop_url"),
+                      "mode": c.get("mode", "monitor"), "sensitivity": c.get("sensitivity", "balanced"),
+                      "listen_port": port, "hashtag_channels": list(c.get("hashtag_channels") or []),
+                      "import_from": f"http://127.0.0.1:{port}/handover?key={self._handover_key}"}
+            if c.get("listen_api_key"):
+                config["listen_api_key"] = c["listen_api_key"]
+            self._move_step("Copying the settings across...")
+            self._plugin_api("POST", "/api/plugins/settings", {"id": PLUGIN_ID, "config": config, "restart": False})
+            self._move_step("Starting the plugin...")
+            self._plugin_api("POST", "/api/plugins/enable", {"id": PLUGIN_ID})
+            try:
+                self._plugin_api("POST", "/api/plugins/start", {"id": PLUGIN_ID})
+            except Exception:
+                pass  # enabling usually starts it already
+            self._move_step("Waiting for the plugin to pick up what this SpamGuard has learnt...")
+            plugin_id, deadline = None, time.time() + 300
+            while time.time() < deadline:
+                try:
+                    rt = self._plugin_runtime()
+                    if rt.get("imported") and rt.get("state") == "standby" and rt.get("instance"):
+                        plugin_id = rt["instance"]
+                        break
+                except Exception:
+                    pass
+                time.sleep(3)
+            if not plugin_id:
+                raise RuntimeError("the plugin didn't report back within 5 minutes; this SpamGuard carries on as "
+                                   "before. Check the plugin's log in openHop (System > Plugins).")
+            self._move_step("Handing over...")
+            with self.lock:
+                self._save_state(force=True)
+                res = self._api("GET", "/api/policy")
+                pe = dict(res.get("data", res).get("policy_engine") or {})
+                objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
+                objects[OWNER_KEY] = self.owner_marker("released", to=plugin_id)
+                pe["objects"] = objects
+                self._api("POST", "/api/policy", {"policy_engine": pe})
+                self.retired = True
+            self._handover_key = None
+            if install_kind() == "normal":
+                folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
+                req = os.path.join(folder, "update-request")
+                if os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
+                    with open(req + ".tmp", "w") as f:
+                        json.dump({"action": "retire", "asked": time.time()}, f)
+                    os.replace(req + ".tmp", req)
+                    msg = ("Done. The plugin is looking after the repeater now and this copy is switching off. "
+                           "Reload this page in a minute: the plugin's page takes over at the same address.")
+                else:
+                    msg = ("Done. The plugin is looking after the repeater now. Stop this copy: "
+                           "sudo systemctl disable --now openhop-spamguard")
+            else:
+                msg = "Done. The plugin is looking after the repeater now. You can remove this container."
+            self._move_step(msg, running=False, ok=True)
+        except Exception as e:
+            self._handover_key = None
+            self._move_step(str(e)[:300], running=False, ok=False)
+            log.error("Move to the openHop plugin failed: %s", e)
+
+    def release_on_stop(self):
+        """The plugin, stopped cleanly by openHop (disabled or uninstalled), lets go of the repeater at once,
+        so a normal install switched back on can take over straight away. A restart takes it back."""
+        if getattr(self, "standby", None) or getattr(self, "retired", False):
+            return
+        try:
+            res = self._api("GET", "/api/policy", timeout=2)
+            pe = dict(res.get("data", res).get("policy_engine") or {})
+            objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
+            if (objects.get(OWNER_KEY) or {}).get("id") == self.instance_id:
+                objects[OWNER_KEY] = self.owner_marker("released")
+                pe["objects"] = objects
+                self._api("POST", "/api/policy", {"policy_engine": pe}, timeout=2)
+        except Exception:
+            pass
+
+    def handover_state(self, key: str) -> Optional[dict]:
+        """The one-time copy of everything learnt, for the plugin taking over (needs the key from the move)."""
+        want = getattr(self, "_handover_key", None)
+        if not want or time.time() > getattr(self, "_handover_until", 0) or not hmac.compare_digest(str(key), want):
+            return None
+        with self.lock:
+            return self.state_dict()
+
+    def write_runtime(self, extra: Optional[dict] = None):
+        """As an openHop plugin, keep a short status note openHop's dashboard (and a moving SpamGuard) can read."""
+        if not IN_PLUGIN:
+            return
+        sb = getattr(self, "standby", None)
+        note = {"instance": self.instance_id, "version": VERSION, "web_page_port": int(self.cfg.get("listen_port") or 8091),
+                "state": "retired" if getattr(self, "retired", False) else "standby" if sb else "active",
+                "imported": os.path.exists(os.path.join(os.environ.get("OPENHOP_PLUGIN_DATA") or ".", "imported.json")),
+                "message": (f"Waiting: another SpamGuard ({self.describe_owner(sb)}) is looking after this repeater."
+                            if sb else "Protecting this repeater.")}
+        if extra:
+            note.update(extra)
+        if note == getattr(self, "_runtime_note", None):
+            return
+        self._runtime_note = note
+        data = os.environ.get("OPENHOP_PLUGIN_DATA") or os.path.dirname(self.cfg.get("state_file") or ".")
+        try:
+            tmp = os.path.join(data, "runtime.json.tmp")
+            with open(tmp, "w") as f:
+                json.dump(note, f)
+            os.replace(tmp, os.path.join(data, "runtime.json"))
+        except OSError:
+            pass
 
     def run(self, stop: threading.Event):
         threading.Thread(target=self.map_loop, args=(stop,), daemon=True, name="map").start()
@@ -2886,6 +3186,7 @@ class SpamGuard:
             try:
                 self._maybe_check_update()
                 self._maybe_fix_openhop()
+                self._maybe_check_plugins()
             except Exception:
                 pass
             try:
@@ -3299,6 +3600,11 @@ class SpamGuard:
                 "activity": [{"ts": x["ts"], "msg": x["msg"]} for x in list(self.activity)[:80]],
                 "window_seconds": c["window_seconds"],
                 "update": self.update_summary(),
+                "install": {"kind": install_kind(), "instance": self.instance_id,
+                            "standby": ({"who": self.describe_owner(self.standby), "since": self.standby.get("ts")}
+                                        if getattr(self, "standby", None) else None),
+                            "retired": bool(getattr(self, "retired", False)),
+                            "move": self.move_summary()},
             }
 
     # ---- actions from the web page ----
@@ -3598,6 +3904,10 @@ def make_handler(guard: SpamGuard):
                 return self._send(200, guard.status())
             if path == "/rules":
                 return self._send(200, guard.build_rules())
+            if path == "/handover":
+                from urllib.parse import parse_qs, urlparse
+                st = guard.handover_state((parse_qs(urlparse(self.path).query).get("key") or [""])[0])
+                return self._send(200, st) if st is not None else self._send(403, {"error": "no handover under way"})
             if path == "/health":
                 h = guard.health()
                 return self._send(503 if h["state"] == "bad" else 200,
@@ -3638,6 +3948,8 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.apply_settings(body))
                 if path in ("check_update", "install_update"):
                     return self._send(200, guard.update_action(path, body))
+                if path == "move_to_plugin":
+                    return self._send(200, guard.start_move_to_plugin())
                 if path == "openhop_fix":
                     return self._send(200, guard.request_openhop_fix("asked for on the page"))
                 if path in ACTIONS:
@@ -3713,6 +4025,7 @@ def remove_rules(cfg: dict) -> int:
         keep = [r for r in rules if not str(r.get("name", "")).startswith("spamguard:")]
         objects = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
         had_list = objects.pop("spamguard", None) is not None
+        had_list = (objects.pop(OWNER_KEY, None) is not None) or had_list
         if len(keep) != len(rules) or had_list:
             pe["rules"], pe["objects"] = keep, objects
             call("POST", {"policy_engine": pe})
@@ -3752,8 +4065,31 @@ def main():
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     guard.snapshot_settings("started")
-    srv = QuietServer((guard.cfg["listen_host"], int(guard.cfg["listen_port"])), make_handler(guard))
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    servers: list = []
+
+    def serve() -> bool:
+        try:
+            srv = QuietServer((guard.cfg["listen_host"], int(guard.cfg["listen_port"])), make_handler(guard))
+        except OSError:
+            return False
+        servers.append(srv)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return True
+
+    if not serve():
+        if not IN_PLUGIN:
+            raise SystemExit(f"Port {guard.cfg['listen_port']} is already in use - is another SpamGuard running?")
+        # As a plugin, the port may still belong to the SpamGuard this one is taking over from: keep
+        # protecting the repeater and open the page as soon as the port is free.
+        log.warning("Port %s is in use (another SpamGuard?); the web page will open when it is free",
+                    guard.cfg["listen_port"])
+
+        def retry():
+            while not stop.is_set() and not serve():
+                stop.wait(5)
+            if servers:
+                log.info("Web page now open on port %s", guard.cfg["listen_port"])
+        threading.Thread(target=retry, daemon=True, name="port").start()
     log.info("SpamGuard %s running in %s mode - web page on port %s", VERSION, guard.cfg["mode"], guard.cfg["listen_port"])
     sd_notify("READY=1")
     try:
@@ -3765,7 +4101,10 @@ def main():
         if guard.evidence is not None:
             guard.evidence.flush(force=True, keep_days=guard.cfg["evidence_days"])
         guard._save_state(force=True)
-        srv.shutdown()
+        if IN_PLUGIN:
+            guard.release_on_stop()
+        for srv in servers:
+            srv.shutdown()
 
 
 if __name__ == "__main__":

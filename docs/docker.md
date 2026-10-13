@@ -1,6 +1,8 @@
 # Running SpamGuard in Docker
 
-If your openHop runs in Docker (or as an Unraid app), run SpamGuard as a container next to it. It talks to openHop only through openHop's web API, the same as the normal install, so it needs no access to openHop's files.
+**Most people should use the openHop plugin instead** ([openhop-plugin.md](openhop-plugin.md)): it runs inside openHop's own container, so there's no second container to look after. This guide is for anyone who prefers SpamGuard in a container of its own. If you already run it this way, SpamGuard's page offers **Move to the plugin**.
+
+If your openHop runs in Docker (or as an Unraid app), you can run SpamGuard as a container next to it. It talks to openHop only through openHop's web API, the same as the normal install, so it needs no access to openHop's files.
 
 ## What you need
 

@@ -12,6 +12,14 @@ if [ "$(ps -p 1 -o comm= 2>/dev/null)" != "systemd" ] || ! command -v systemctl 
   echo "It can't be installed inside a Docker container or on a system without systemd." >&2
   exit 1
 fi
+# SpamGuard installed as an openHop plugin already? Two copies on one repeater would fight over its rules.
+if [ -d /var/lib/openhop_repeater/plugins/openhop-spamguard ] && [ ! -f /etc/systemd/system/openhop-spamguard.service ] \
+   && [ "${1:-}" != "--force" ]; then
+  echo "SpamGuard is already installed in openHop as a plugin (System > Plugins in openHop's dashboard)." >&2
+  echo "That's the recommended way to run it, so there's nothing more to install. Only one SpamGuard can" >&2
+  echo "look after a repeater at a time; to use this install instead, uninstall the plugin first." >&2
+  exit 1
+fi
 if [ ! -x /opt/openhop_repeater/venv/bin/python ]; then
   echo "openHop wasn't found at /opt/openhop_repeater." >&2
   echo "SpamGuard needs openHop installed natively with its own installer (manage.sh install), not with Docker." >&2
