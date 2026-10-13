@@ -55,7 +55,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.19"
+VERSION = "5.20"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -282,6 +282,17 @@ PUBLIC_MAP_URL = "https://map.meshcore.io/api/v1/nodes"
 # and updates come from pulling a new image rather than the Update button.
 IN_DOCKER = os.environ.get("SPAMGUARD_DOCKER") == "1"
 DOCKER_UPDATE = "docker compose pull && docker compose up -d"
+# Running as an openHop plugin: openHop installs, starts and updates it from System > Plugins.
+IN_PLUGIN = os.environ.get("SPAMGUARD_PLUGIN") == "1"
+
+
+def managed_update() -> Optional[str]:
+    """How to update when SpamGuard can't update itself (Docker or openHop plugin), else None."""
+    if IN_PLUGIN:
+        return "SpamGuard runs as an openHop plugin here, so it is updated from openHop's dashboard: System > Plugins."
+    if IN_DOCKER:
+        return f"SpamGuard runs in Docker here. To update, run {DOCKER_UPDATE} in the folder with your compose file."
+    return None
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
 
@@ -3085,7 +3096,8 @@ class SpamGuard:
                 "available": bool(latest) and self._vtuple(latest) > self._vtuple(VERSION),
                 "auto_check": self.cfg.get("update_check", "daily") == "daily",
                 "installer_ready": os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
-                "docker": IN_DOCKER, "docker_update": DOCKER_UPDATE,
+                "docker": IN_DOCKER, "docker_update": DOCKER_UPDATE, "plugin": IN_PLUGIN,
+                "managed_update": managed_update(),
                 "status": self.update_status()}
 
     def update_action(self, op: str, body: dict) -> dict:
@@ -3100,9 +3112,8 @@ class SpamGuard:
         want = str(body.get("version") or self.update_info.get("latest") or "").lstrip("v")
         if not re.fullmatch(r"\d+(\.\d+){1,3}", want):
             raise ValueError("Press Check first, so SpamGuard knows which version to install.")
-        if IN_DOCKER:
-            raise ValueError(f"SpamGuard is running in Docker, so it can't update itself. In the folder with your "
-                             f"compose file, run: {DOCKER_UPDATE}")
+        if managed_update():
+            raise ValueError(managed_update())
         if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
             raise ValueError("The updater isn't set up on this Pi yet. Run the installer once by hand: sudo bash install.sh")
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])

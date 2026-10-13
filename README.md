@@ -42,6 +42,8 @@ Open `http://<your-pi>:8091/`. Leave it in **Monitor** for a day (it shows what 
 
 Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](docs/install-and-troubleshooting.md).
 
+**As an openHop plugin:** install SpamGuard from openHop's own dashboard (System > Plugins), whichever way openHop is installed. Guide: [docs/openhop-plugin.md](docs/openhop-plugin.md).
+
 **openHop running in Docker or on Unraid:** run SpamGuard as a container next to it. Copy [docker-compose.example.yml](docker-compose.example.yml), add your token, and `docker compose up -d`. Full guide: [docs/docker.md](docs/docker.md).
 
 ## What to expect
