@@ -55,7 +55,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.21"
+VERSION = "5.22"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -300,6 +300,25 @@ def install_kind() -> str:
     return "plugin" if IN_PLUGIN else "docker" if IN_DOCKER else "normal"
 
 
+TUNE_URL = "https://raw.githubusercontent.com/flackrat/openhop-spamguard/main/tune-openhop.sh"
+
+
+def openhop_in_container() -> bool:
+    """openHop itself runs in a container (and SpamGuard, as its plugin, inside it)."""
+    return IN_PLUGIN and os.path.exists("/.dockerenv")
+
+
+def fix_hint(which: str) -> Optional[str]:
+    """How to apply one of SpamGuard's openHop fixes on this kind of install, or None if it can't be."""
+    flag = " --rulefix" if which == "rule" else ""
+    if install_kind() == "normal":
+        return ("press Apply openHop fix on the Health page, or run sudo bash /opt/openhop_spamguard/tune-openhop.sh"
+                + flag) if which == "rule" else "sudo bash /opt/openhop_spamguard/tune-openhop.sh"
+    if IN_PLUGIN and not openhop_in_container():
+        return f"run this on the Pi: curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
+    return None
+
+
 def plugin_version(v: str = VERSION) -> str:
     """SpamGuard's version as openHop plugin manifests write it (5.21 -> 5.21.0)."""
     return ".".join((v.split(".") + ["0", "0"])[:3])
@@ -307,8 +326,6 @@ def plugin_version(v: str = VERSION) -> str:
 
 def managed_update() -> Optional[str]:
     """How to update when SpamGuard can't update itself (Docker or openHop plugin), else None."""
-    if IN_PLUGIN:
-        return "SpamGuard runs as an openHop plugin here, so it is updated from openHop's dashboard: System > Plugins."
     if IN_DOCKER:
         return f"SpamGuard runs in Docker here. To update, run {DOCKER_UPDATE} in the folder with your compose file."
     return None
@@ -2997,8 +3014,8 @@ class SpamGuard:
             ids = {str(p.get("id")) for p in items if isinstance(p, dict)}
             self.openhop_plugins = {"supported": True, "installed": PLUGIN_ID in ids}
         except urllib.error.HTTPError as e:
-            self.openhop_plugins = {"supported": False if e.code == 404 else None, "installed": False,
-                                    "error": None if e.code == 404 else f"HTTP {e.code}"}
+            self.openhop_plugins = {"supported": False if e.code == 404 else "down" if e.code == 503 else None,
+                                    "installed": False, "error": None if e.code in (404, 503) else f"HTTP {e.code}"}
         except Exception as e:
             self.openhop_plugins = {"supported": None, "installed": False, "error": str(e)[:80]}
 
@@ -3011,6 +3028,10 @@ class SpamGuard:
         elif p.get("supported") is False:
             why = ("This openHop is too old for plugins. Update openHop to 1.1.2 or later (its dashboard's update "
                    "option, or manage.sh upgrade), then come back here.")
+        elif p.get("supported") == "down":
+            why = ("openHop can run plugins, but its plugin manager isn't running (common after updating openHop). "
+                   "On the Pi run: sudo systemctl enable --now openhop-plugin-manager. If that says the service "
+                   "doesn't exist, see the plugin guide's \"Plugin manager isn't running\" section.")
         elif p.get("supported") is None:
             why = "Checking whether this openHop can run plugins..." if not p else \
                   f"Couldn't check whether this openHop can run plugins ({p.get('error') or 'no answer'})."
@@ -3155,6 +3176,16 @@ class SpamGuard:
         with self.lock:
             return self.state_dict()
 
+    def watchdog_loop(self, stop: threading.Event, limit: float = 300):
+        """Plugin and Docker installs have no systemd watchdog: if the checking loop ever stalls, exit so
+        openHop (or Docker) starts SpamGuard again."""
+        while not stop.wait(30):
+            last = self.loop_beat or self.started
+            if time.time() - last > limit:
+                log.error("SpamGuard's checking loop has been stuck for %d s; restarting", time.time() - last)
+                self._save_state(force=True)
+                os._exit(70)
+
     def write_runtime(self, extra: Optional[dict] = None):
         """As an openHop plugin, keep a short status note openHop's dashboard (and a moving SpamGuard) can read."""
         if not IN_PLUGIN:
@@ -3181,6 +3212,8 @@ class SpamGuard:
 
     def run(self, stop: threading.Event):
         threading.Thread(target=self.map_loop, args=(stop,), daemon=True, name="map").start()
+        if install_kind() != "normal":
+            threading.Thread(target=self.watchdog_loop, args=(stop,), daemon=True, name="watchdog").start()
         while not stop.is_set():
             t0 = time.time()
             try:
@@ -3249,17 +3282,18 @@ class SpamGuard:
                             "Restarting openHop clears it for a while.")
         rfix = self.openhop_rulecheck_fix()
         if rfix is False:
-            warnings.append("openHop has a bug that can let blocked spam through: its rule checker sometimes uses an "
-                            "earlier message's sender, so spam can be passed on as if from a known person. "
+            hint = fix_hint("rule")
+            warnings.append("openHop has a bug that can sometimes let blocked spam through. "
                             + (f"openHop {OPENHOP_FIXED_IN} and later fix this, so updating openHop is the best cure. "
                                if OPENHOP_FIXED_IN else "")
-                            + "SpamGuard can apply a one-line fix: press Apply openHop fix on the Health page, or run "
-                            "sudo bash /opt/openhop_spamguard/tune-openhop.sh")
+                            + (f"SpamGuard has a one-line fix: {hint}" if hint else
+                               "openHop runs in a container here, so the fix can't be applied from outside it; "
+                               "it goes away once openHop releases its own fix."))
         fix = self.openhop_speed_fix()
-        if fix is False:
+        hint = fix_hint("speed")
+        if fix is False and hint:
             warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back). "
-                            "Without it openHop can fall minutes behind on a small Pi. To apply it: "
-                            "sudo bash /opt/openhop_spamguard/tune-openhop.sh")
+                            f"Without it openHop can fall minutes behind on a small Pi. To apply it, {hint}")
         quiet = c.get("quiet_warn_minutes", 20) * 60
         if self.heard_at and self.last_error is None and now - self.heard_at > quiet and now - self.started > quiet:
             warnings.append(f"openHop hasn't reported any new packets for {round((now - self.heard_at) / 60)} minutes. "
@@ -3282,7 +3316,7 @@ class SpamGuard:
             warnings.append(f"Each check is taking {self.poll_ms / 1000:.1f} s, longer than the {c['poll_seconds']} s interval.")
         if errors_hour >= 20:
             warnings.append(f"{errors_hour} errors talking to openHop in the last hour.")
-        if not watchdog and restarts is not None:
+        if not watchdog and restarts is not None and install_kind() == "normal":
             warnings.append("Automatic restart-on-hang is not active. Re-run the installer to enable it.")
         state = "bad" if problems else ("warn" if warnings else "ok")
         return {"state": state, "problems": problems, "warnings": warnings,
@@ -3293,7 +3327,9 @@ class SpamGuard:
                 "rules_expected": self.rules_expected, "rules_seen": self.rules_seen, "self_heals": self.self_heals,
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
-                "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN, **sysr}
+                "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
+                "can_apply_fix": install_kind() == "normal"
+                and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"), **sysr}
 
     # ---- updates from GitHub (only installed when asked) ----
     @staticmethod
@@ -3378,7 +3414,41 @@ class SpamGuard:
                 self._update_checking = False
         threading.Thread(target=go, daemon=True).start()
 
+    def start_plugin_update(self, want: str) -> dict:
+        """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
+        restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
+        if (getattr(self, "plugin_update", None) or {}).get("state") == "running":
+            return {"ok": True, "message": "Already updating."}
+        self.plugin_update = {"state": "running", "message": f"Getting version {want}...", "ts": time.time()}
+
+        def work():
+            try:
+                name = f"openhop_spamguard-{plugin_version(want)}-py3-none-any.whl"
+                url = (self.cfg.get("plugin_wheel_url") or
+                       f"https://github.com/{self._repo()}/releases/download/v{{version}}/{{name}}")
+                with urllib.request.urlopen(url.format(version=want, name=name), timeout=120) as r:
+                    wheel = r.read()
+                self.plugin_update = {"state": "running", "ts": time.time(),
+                                      "message": "openHop is installing the new version (this can take a minute)..."}
+                self._upload_wheel(name, wheel)
+                self.plugin_update = {"state": "running", "ts": time.time(),
+                                      "message": f"Restarting on version {want}; this page reconnects by itself."}
+                self._save_state(force=True)
+                self._plugin_api("POST", "/api/plugins/restart", {"id": PLUGIN_ID}, timeout=30)
+            except Exception as e:
+                # A restart that cut our own request short is the update working, not failing.
+                if not isinstance(e, (ConnectionError, TimeoutError, socket.timeout, urllib.error.URLError)) \
+                        or self.plugin_update.get("message", "").startswith("Getting"):
+                    self.plugin_update = {"state": "failed", "message": f"Update failed: {str(e)[:200]}",
+                                          "ts": time.time()}
+                    log.error("Plugin update failed: %s", e)
+        threading.Thread(target=work, daemon=True, name="plugin-update").start()
+        self.note(f"Update to v{want} requested from the web page")
+        return {"ok": True, "message": f"Updating to v{want}. SpamGuard restarts in a minute or two; this page reconnects by itself."}
+
     def update_status(self) -> dict:
+        if IN_PLUGIN:
+            return dict(getattr(self, "plugin_update", None) or {})
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
         out = {}
         try:
@@ -3396,7 +3466,7 @@ class SpamGuard:
                 "checked": i.get("checked"), "error": i.get("error"), "repo": self._repo(),
                 "available": bool(latest) and self._vtuple(latest) > self._vtuple(VERSION),
                 "auto_check": self.cfg.get("update_check", "daily") == "daily",
-                "installer_ready": os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
+                "installer_ready": IN_PLUGIN or os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
                 "docker": IN_DOCKER, "docker_update": DOCKER_UPDATE, "plugin": IN_PLUGIN,
                 "managed_update": managed_update(),
                 "status": self.update_status()}
@@ -3415,6 +3485,8 @@ class SpamGuard:
             raise ValueError("Press Check first, so SpamGuard knows which version to install.")
         if managed_update():
             raise ValueError(managed_update())
+        if IN_PLUGIN:
+            return self.start_plugin_update(want)
         if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
             raise ValueError("The updater isn't set up on this Pi yet. Run the installer once by hand: sudo bash install.sh")
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
@@ -3427,6 +3499,10 @@ class SpamGuard:
 
     def request_openhop_fix(self, why: str = "") -> dict:
         """Ask the root-owned updater to (re-)apply the openHop rule-check fix."""
+        if install_kind() != "normal":
+            hint = fix_hint("rule")
+            raise ValueError(("To apply it, " + hint) if hint else
+                             "openHop runs in a container here, so this fix can't be applied from outside it.")
         if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
             raise ValueError("The updater isn't set up on this Pi yet. Run: sudo bash /opt/openhop_spamguard/tune-openhop.sh")
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
@@ -3444,7 +3520,7 @@ class SpamGuard:
 
     def _maybe_fix_openhop(self):
         """If an openHop update has removed the rule-check fix, put it back (once an hour at most)."""
-        if not self.cfg.get("openhop_autofix", True):
+        if not self.cfg.get("openhop_autofix", True) or install_kind() != "normal":
             return
         if time.time() - getattr(self, "_fix_requested", 0) < 3600 or time.time() - self.started < 120:
             return

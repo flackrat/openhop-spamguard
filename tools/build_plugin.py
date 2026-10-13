@@ -19,7 +19,7 @@ PLUGIN_ID = "openhop-spamguard"
 def version() -> str:
     """SpamGuard's version padded to the three numbers openHop's manifests require (5.19 -> 5.19.0)."""
     text = open(os.path.join(HERE, "spamguard.py"), encoding="utf-8").read()
-    v = re.search(r'^VERSION = "([0-9.]+)"$', text, re.M).group(1)
+    v = os.environ.get("SPAMGUARD_BUILD_VERSION") or re.search(r'^VERSION = "([0-9.]+)"$', text, re.M).group(1)
     parts = v.split(".")
     return ".".join((parts + ["0", "0"])[:3])
 
@@ -34,15 +34,17 @@ def build(out_dir: str) -> str:
         for f in ("spamguard.py", "ui.html", "replay.py"):
             shutil.copy2(os.path.join(HERE, f), pkg)
         shutil.copy2(os.path.join(HERE, "plugin", "plugin.py"), pkg)
-        shutil.copytree(os.path.join(HERE, "plugin", "spamguard-ui"), os.path.join(pkg, "spamguard-ui"))
         manifest = {
             "schema": 1,
             "id": PLUGIN_ID,
             "name": "SpamGuard",
             "version": v,
-            "description": "Stops MeshCore channel spam at this repeater, while regulars keep getting through.",
+            "description": "Stops MeshCore channel spam at this repeater, while regulars keep getting through. "
+                           "Paste an openHop API token into api_key, then open SpamGuard's own page at "
+                           "http://<this repeater>:8091/",
+            # No "ui" on purpose: openHop offers any plugin page as a choice for its main web page, and
+            # choosing SpamGuard's would hide openHop's own dashboard. SpamGuard's page is on its own port.
             "runtime": {"type": "python", "entrypoint": "openhop-spamguard"},
-            "ui": {"type": "application", "entry": "spamguard-ui/index.html"},
             "config": {"defaults": {
                 "api_key": "",
                 "openhop_url": "http://127.0.0.1:8000",
@@ -63,7 +65,7 @@ setup(
     url="https://github.com/flackrat/openhop-spamguard",
     license="MIT",
     packages=["openhop_spamguard"],
-    package_data={{"openhop_spamguard": ["ui.html", "spamguard-ui/*"]}},
+    package_data={{"openhop_spamguard": ["ui.html"]}},
     data_files=[("share/openhop/plugins/{PLUGIN_ID}", ["openhop-plugin.json"])],
     install_requires=["pycryptodome>=3.15", "pyyaml>=5.4"],
     python_requires=">=3.9",

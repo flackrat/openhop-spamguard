@@ -3,6 +3,7 @@
 openHop's plugin manager runs this with no arguments, in the plugin's data folder, with
 OPENHOP_PLUGIN_DATA set. SpamGuard's settings for openHop (API token, address, web page port)
 live in that folder's config.json, which openHop's dashboard edits under System > Plugins.
+SpamGuard's own page is on its own port (8091 by default), not inside openHop's dashboard.
 Everything SpamGuard learns is kept in the same folder."""
 import json
 import os

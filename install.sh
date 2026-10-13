@@ -12,6 +12,19 @@ if [ "$(ps -p 1 -o comm= 2>/dev/null)" != "systemd" ] || ! command -v systemctl 
   echo "It can't be installed inside a Docker container or on a system without systemd." >&2
   exit 1
 fi
+# New installs on an openHop that can run plugins should use the plugin instead. Existing installs
+# (updates, which re-run this script) carry on as before, and --legacy installs this way regardless.
+if [ ! -f /etc/systemd/system/openhop-spamguard.service ] && [ "${1:-}" != "--legacy" ] && [ "${1:-}" != "--force" ] \
+   && /opt/openhop_repeater/venv/bin/python -I -c "import repeater.plugins.manager" 2>/dev/null; then
+  echo "Your openHop can run plugins, so the recommended way to install SpamGuard is as an openHop plugin:"
+  echo "  1. Download the openhop_spamguard-...-py3-none-any.whl file from"
+  echo "     https://github.com/flackrat/openhop-spamguard/releases/latest"
+  echo "  2. In openHop's dashboard: System > Plugins > Install wheel, and pick that file."
+  echo "  3. Paste an openHop API token into SpamGuard's plugin settings (api_key), then enable it."
+  echo "Guide: https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md"
+  echo "To install SpamGuard as its own service anyway, run: sudo bash install.sh --legacy"
+  exit 0
+fi
 # SpamGuard installed as an openHop plugin already? Two copies on one repeater would fight over its rules.
 if [ -d /var/lib/openhop_repeater/plugins/openhop-spamguard ] && [ ! -f /etc/systemd/system/openhop-spamguard.service ] \
    && [ "${1:-}" != "--force" ]; then
