@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.23
+- Health page, as a plugin or in Docker: "Restart if it hangs" now shows on (SpamGuard restarts itself if it gets stuck), and the systemd-only figures are hidden. The "Keep openHop's rule-check fix in place" setting is hidden where SpamGuard can't apply it.
+- Guides revised after testing every install route on a fresh openHop 1.1.5: the plugin installed from openHop's dashboard, an older install moved to the plugin, and a Docker container. The README now covers the plugin way for health checks, the openHop fixes, updating, uninstalling and the replay tool, and the install steps match openHop's own buttons (System > API Tokens, then Config, Save and Enable on the Plugins page).
 ## v5.22
 - **Plugin updates with one press.** As an openHop plugin, SpamGuard's Update button now fetches the new version, hands it to openHop and restarts on it, keeping everything it has learnt.
 - **Health page fits the install.** The plugin and Docker versions no longer ask you to re-run an installer they don't have, and they restart themselves if they ever get stuck. The openHop fix messages now give the right instructions for each kind of install, and the Apply openHop fix button only appears where it works.

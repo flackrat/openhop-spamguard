@@ -55,7 +55,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.22"
+VERSION = "5.23"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -317,6 +317,11 @@ def fix_hint(which: str) -> Optional[str]:
     if IN_PLUGIN and not openhop_in_container():
         return f"run this on the Pi: curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
     return None
+
+
+def hidden_settings() -> set:
+    """Settings that mean nothing for this kind of install, so the page doesn't offer them."""
+    return set() if install_kind() == "normal" else {"openhop_autofix"}
 
 
 def plugin_version(v: str = VERSION) -> str:
@@ -3328,6 +3333,7 @@ class SpamGuard:
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
                 "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
+                "kind": install_kind(),
                 "can_apply_fix": install_kind() == "normal"
                 and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"), **sysr}
 
@@ -3655,7 +3661,8 @@ class SpamGuard:
                             "channel_messages": self.stats.get("channel_messages", 0),
                             "unreadable": self.stats.get("unreadable", 0)},
                 "direct_spam": direct,
-                "settings": settings, "meta": SETTINGS_META, "presets": PRESETS,
+                "settings": settings, "meta": [m for m in SETTINGS_META if m["key"] not in hidden_settings()],
+                "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "channels": sorted(c["channels"]),
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
