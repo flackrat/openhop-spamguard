@@ -21,8 +21,8 @@ The repeater stays protected the whole time, and the page carries on at the same
 
 1. Download `openhop_spamguard-<version>-py3-none-any.whl` from the latest [release](https://github.com/flackrat/openhop-spamguard/releases/latest). (Once SpamGuard is in openHop's plugin catalogue you'll be able to install it from there with one click instead.)
 2. In openHop's dashboard, go to **System > Plugins**, choose **Install wheel** and pick that file. openHop installs it switched off.
-3. Open SpamGuard's settings in the Plugins page and paste an openHop API token into `api_key` (openHop dashboard > System > Configuration > Access > API Tokens). Leave the other settings as they are unless you need to change them.
-4. Enable the plugin. openHop starts SpamGuard and restarts it if it ever stops unexpectedly.
+3. Create an openHop API token (openHop dashboard > System > API Tokens). Back on the Plugins page, press **Config** in SpamGuard's row, paste the token into `api_key` and press **Save**. Leave the other settings as they are unless you need to change them.
+4. Press **Enable** in SpamGuard's row. openHop starts SpamGuard and restarts it if it ever stops unexpectedly. The row shows RUNNING, and **Logs** shows what it's doing.
 5. Open SpamGuard's own page at `http://<your-repeater>:8091/` (it isn't inside openHop's dashboard). Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 ## Settings in openHop's Plugins page

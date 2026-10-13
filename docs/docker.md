@@ -7,7 +7,7 @@ If your openHop runs in Docker (or as an Unraid app), you can run SpamGuard as a
 ## What you need
 
 - openHop running in Docker, with its web API reachable from other containers (it listens on port 8000 by default).
-- An openHop API token: openHop dashboard > System > Configuration > Access > API Tokens.
+- An openHop API token: openHop dashboard > System > API Tokens.
 - Docker with the compose plugin. Images are published for 64-bit and 32-bit Raspberry Pi OS and for ordinary PCs.
 
 ## Set it up
