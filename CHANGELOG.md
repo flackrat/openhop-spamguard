@@ -1,5 +1,8 @@
 # Changelog
 
+## v5.25
+- **Reacts as soon as openHop hears a packet.** SpamGuard now listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting up to three seconds for its next timed check. The timed check carries on as a backup, and if the feed isn't available SpamGuard simply works as before. It checks at most about once a second, so a busy repeater doesn't make the Pi work harder. You can turn it off under Advanced, Timing ("React as soon as openHop hears a packet"), and Health shows whether the feed is on.
+- `tests/testlive.py` covers the feed, including openHop's pings and a refused token.
 ## v5.24
 - **Moving a Docker container to the plugin now works when openHop also runs in Docker**, and when the plugin was already installed and waiting. Before, the move could wait five minutes and give up (the container carried on safely as before).
 - After a reboot, the Move to the plugin button no longer stays unavailable for ten minutes if SpamGuard started before openHop. The page now says openHop isn't answering yet and checks again shortly, and pressing the button checks straight away.
