@@ -43,3 +43,40 @@ jobs:
               echo "updated notes for $t"
             fi
           done
+  image:
+    # The Docker image for this version, for Pis (64- and 32-bit) and PCs, on GitHub's own registry.
+    # Built once per version; later pushes that don't change the version leave it alone.
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Work out the version
+        id: v
+        run: echo "v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Already built?
+        id: have
+        run: |
+          if docker manifest inspect "ghcr.io/flackrat/openhop-spamguard:${{ steps.v.outputs.v }}" >/dev/null 2>&1; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "Image for ${{ steps.v.outputs.v }} already published"
+          fi
+      - uses: docker/setup-qemu-action@v3
+        if: steps.have.outputs.skip != '1'
+      - uses: docker/setup-buildx-action@v3
+        if: steps.have.outputs.skip != '1'
+      - uses: docker/build-push-action@v6
+        if: steps.have.outputs.skip != '1'
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ghcr.io/flackrat/openhop-spamguard:${{ steps.v.outputs.v }}
+            ghcr.io/flackrat/openhop-spamguard:latest

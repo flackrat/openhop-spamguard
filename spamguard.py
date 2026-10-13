@@ -50,9 +50,12 @@ except ImportError:  # pragma: no cover
 try:
     from Crypto.Cipher import AES  # pycryptodome
 except ImportError:  # pragma: no cover
-    AES = None
+    try:
+        from Cryptodome.Cipher import AES  # the same library packaged as pycryptodomex (Debian, Ubuntu)
+    except ImportError:
+        AES = None
 
-VERSION = "5.18"
+VERSION = "5.19"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -275,6 +278,10 @@ KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory
 # openHop release that includes its own rule-check fix (openhop_repeater #520/#521); None until released.
 OPENHOP_FIXED_IN: Optional[str] = None
 PUBLIC_MAP_URL = "https://map.meshcore.io/api/v1/nodes"
+# Running from the Docker image: settings can come from environment variables, data lives in /data,
+# and updates come from pulling a new image rather than the Update button.
+IN_DOCKER = os.environ.get("SPAMGUARD_DOCKER") == "1"
+DOCKER_UPDATE = "docker compose pull && docker compose up -d"
 LEGACY_KEYS = {"hop_one_shot_senders": "hop_new_senders"}
 
 
@@ -2945,7 +2952,8 @@ class SpamGuard:
         if self.heard_at and self.last_error is None and now - self.heard_at > quiet and now - self.started > quiet:
             warnings.append(f"openHop hasn't reported any new packets for {round((now - self.heard_at) / 60)} minutes. "
                             "If its own packet list has stopped too, its radio may have stopped receiving: "
-                            "restart openHop (sudo systemctl restart openhop-repeater).")
+                            + ("restart openHop's container." if IN_DOCKER else
+                               "restart openHop (sudo systemctl restart openhop-repeater)."))
         if self.rules_expected is not None and self.rules_seen is not None and self.rules_seen != self.rules_expected:
             warnings.append("openHop's rules don't match SpamGuard's. They will be put back within a minute.")
         if openhop_state and openhop_state not in ("active", "reloading", "activating"):
@@ -3077,6 +3085,7 @@ class SpamGuard:
                 "available": bool(latest) and self._vtuple(latest) > self._vtuple(VERSION),
                 "auto_check": self.cfg.get("update_check", "daily") == "daily",
                 "installer_ready": os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
+                "docker": IN_DOCKER, "docker_update": DOCKER_UPDATE,
                 "status": self.update_status()}
 
     def update_action(self, op: str, body: dict) -> dict:
@@ -3091,6 +3100,9 @@ class SpamGuard:
         want = str(body.get("version") or self.update_info.get("latest") or "").lstrip("v")
         if not re.fullmatch(r"\d+(\.\d+){1,3}", want):
             raise ValueError("Press Check first, so SpamGuard knows which version to install.")
+        if IN_DOCKER:
+            raise ValueError(f"SpamGuard is running in Docker, so it can't update itself. In the folder with your "
+                             f"compose file, run: {DOCKER_UPDATE}")
         if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
             raise ValueError("The updater isn't set up on this Pi yet. Run the installer once by hand: sudo bash install.sh")
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])
@@ -3648,7 +3660,56 @@ def load_config(path: Optional[str]) -> dict:
     env_key = os.environ.get("OPENHOP_API_KEY")
     if env_key:
         cfg["api_key"] = env_key
+    # Optional settings from the environment, mainly for Docker. The config file wins when both are set,
+    # except for the token above.
+    env = {"OPENHOP_URL": "openhop_url", "SPAMGUARD_MODE": "mode", "SPAMGUARD_SENSITIVITY": "sensitivity",
+           "SPAMGUARD_PASSWORD": "listen_api_key"}
+    for var, key in env.items():
+        if os.environ.get(var) and key not in cfg:
+            cfg[key] = os.environ[var]
+    if os.environ.get("SPAMGUARD_CHANNELS") and "hashtag_channels" not in cfg:
+        cfg["hashtag_channels"] = [c.strip() for c in os.environ["SPAMGUARD_CHANNELS"].split(",") if c.strip()]
+    data = os.environ.get("SPAMGUARD_DATA")
+    if data:
+        cfg.setdefault("state_file", os.path.join(data, "state.json"))
+        cfg.setdefault("evidence_dir", os.path.join(data, "evidence"))
     return cfg
+
+
+def remove_rules(cfg: dict) -> int:
+    """Take SpamGuard's rules (names starting "spamguard:") and its known-people list out of openHop,
+    leaving everything else in place. Returns 0 when done."""
+    url = str(cfg.get("openhop_url") or DEFAULT_CONFIG["openhop_url"]).rstrip("/") + "/api/policy"
+
+    def call(method, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(url, data=data, method=method)
+        req.add_header("Accept", "application/json")
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        if cfg.get("api_key"):
+            req.add_header("X-API-Key", str(cfg["api_key"]))
+        with urllib.request.urlopen(req, timeout=15) as r:
+            res = json.loads(r.read().decode() or "{}")
+        if isinstance(res, dict) and res.get("success") is False:
+            raise RuntimeError(res.get("error") or res.get("message") or "API error")
+        return res
+
+    try:
+        res = call("GET")
+        pe = dict((res.get("data", res) or {}).get("policy_engine") or {})
+        rules = [r for r in (pe.get("rules") or []) if isinstance(r, dict)]
+        keep = [r for r in rules if not str(r.get("name", "")).startswith("spamguard:")]
+        objects = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
+        had_list = objects.pop("spamguard", None) is not None
+        if len(keep) != len(rules) or had_list:
+            pe["rules"], pe["objects"] = keep, objects
+            call("POST", {"policy_engine": pe})
+        print(f"Removed {len(rules) - len(keep)} SpamGuard rule(s); {len(keep)} of your own rule(s) left in place.")
+        return 0
+    except Exception as e:
+        print(f"Could not update openHop's rules ({e}).", file=sys.stderr)
+        return 1
 
 
 def main():
@@ -3656,12 +3717,16 @@ def main():
     ap.add_argument("--config", default="/etc/openhop_spamguard/config.yaml")
     ap.add_argument("--once", action="store_true", help="check once, print a summary, exit")
     ap.add_argument("--verbose", "-v", action="store_true")
+    ap.add_argument("--remove-rules", action="store_true",
+                    help="take SpamGuard's rules and known-people list out of openHop, then exit (used when removing it)")
     args = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     if AES is None:
         raise SystemExit("pycryptodome missing - run with openHop's venv python: "
-                         "/opt/openhop_repeater/venv/bin/python spamguard.py")
+                         "/opt/openhop_repeater/venv/bin/python spamguard.py, or pip install pycryptodome")
+    if args.remove_rules:
+        raise SystemExit(remove_rules(load_config(args.config)))
     guard = SpamGuard(load_config(args.config))
     if not guard.cfg.get("api_key") or "PASTE" in str(guard.cfg.get("api_key")):
         log.error("No openHop API key set - edit %s", args.config)

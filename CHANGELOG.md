@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.19
+- **SpamGuard now runs in Docker**, for openHop installs that run in Docker or as an Unraid app. Copy `docker-compose.example.yml`, add your openHop token and run `docker compose up -d`. Images are published for 64-bit and 32-bit Pi and for PCs on GitHub's container registry. Full guide: `docs/docker.md`.
+- In Docker, settings can be given as environment variables, everything SpamGuard learns is kept in a data folder, and the Updates page shows the command to update instead of an Update button. The openHop speed and rule-check fixes aren't applied in Docker, as one container can't sensibly edit another's files.
+- New `--remove-rules` option takes SpamGuard's rules back out of openHop when removing it, leaving your own rules alone.
+- SpamGuard now also works with the copy of its encryption library that Debian and Ubuntu package under a different name.
+- `tests/testdocker.py` checks the Docker settings.
 ## v5.18
 - **Fewer genuine people mistaken for spammers, especially outside the UK.** Some name styles that are common on meshes in other countries were being counted as made-up, which on a busy repeater could add up to a block. Checked against thousands of real names from meshes across Europe, North America and South Africa, this cuts those false alarms by about three quarters with no change to the spam caught on real logs.
 - `tests/testnames.py` keeps this checked.

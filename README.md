@@ -21,9 +21,9 @@ _Example data: names and numbers are made up._
 
 ## Install
 
-You need openHop installed **natively** on a Raspberry Pi or other Debian-style Linux (not the Docker version), and an openHop API token: openHop dashboard > System > Configuration > Access > API Tokens. New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
+You need openHop on a Raspberry Pi or other Linux machine, and an openHop API token: openHop dashboard > System > Configuration > Access > API Tokens. New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
 
-On the Pi:
+**openHop installed natively** (the usual install). On the Pi:
 
 ```
 git clone https://github.com/flackrat/openhop-spamguard.git
@@ -41,6 +41,8 @@ sudo systemctl start openhop-spamguard
 Open `http://<your-pi>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](docs/install-and-troubleshooting.md).
+
+**openHop running in Docker or on Unraid:** run SpamGuard as a container next to it. Copy [docker-compose.example.yml](docker-compose.example.yml), add your token, and `docker compose up -d`. Full guide: [docs/docker.md](docs/docker.md).
 
 ## What to expect
 
@@ -233,7 +235,8 @@ Everything SpamGuard keeps has a limit: learnt routes, known names and the activ
 <details>
 <summary><b>Requirements and tested systems</b></summary>
 
-- openHop Repeater installed natively (not Docker) on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
+- Normal install: openHop Repeater installed natively on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
+- Docker: any host running openHop in Docker. Images are published for 64-bit and 32-bit Pi and for PCs (see [docs/docker.md](docs/docker.md)).
 - Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, and with a full openHop + SpamGuard install on Ubuntu 24.04 (x86_64). Python 3.10 to 3.13.
 - Works with 1-, 2- and 3-byte path hashes, and with hashtag channels (add them by name in Advanced > Exceptions > Channels).
 

@@ -1,0 +1,28 @@
+# SpamGuard alongside an openHop container. Copy this next to your openHop compose file (or add the
+# service to it), put in your openHop API token, then run: docker compose up -d
+# Open http://<your-host>:8091/ and leave SpamGuard in Monitor mode for a day before switching to Protect.
+services:
+  spamguard:
+    image: ghcr.io/flackrat/openhop-spamguard:latest
+    container_name: openhop-spamguard
+    restart: unless-stopped
+    environment:
+      # openHop dashboard > System > Configuration > Access > API Tokens
+      OPENHOP_API_KEY: "PASTE_OPENHOP_API_TOKEN_HERE"
+      # openHop's address as seen from this container. If both are in the same compose file or on
+      # the same Docker network, use openHop's service or container name. If openHop uses host
+      # networking, see the note below.
+      OPENHOP_URL: "http://openhop:8000"
+      # Optional:
+      # SPAMGUARD_MODE: "monitor"          # monitor or protect (you can switch on the page)
+      # SPAMGUARD_SENSITIVITY: "balanced"  # relaxed, balanced or strict
+      # SPAMGUARD_CHANNELS: "#chat,#test"  # extra hashtag channels to protect
+      # SPAMGUARD_PASSWORD: ""             # ask for a password before changes on the page
+      TZ: "Europe/London"                  # your time zone, so the charts use local time
+    ports:
+      - "8091:8091"
+    volumes:
+      - ./spamguard-data:/data             # blocks, known people, settings, evidence log
+    # If openHop runs with network_mode: host, do the same here and set OPENHOP_URL to
+    # http://127.0.0.1:8000 (and remove the ports section).
+    # network_mode: host

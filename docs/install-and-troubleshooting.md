@@ -4,7 +4,7 @@ _For SpamGuard on openHop Repeater · October 2026_
 
 ## Before you start
 
-SpamGuard installs in about 10 minutes on a Pi that already runs openHop Repeater natively (not in Docker). You need SSH access to the Pi and an openHop API token. If openHop isn't installed yet, follow [openHop Repeater: prerequisites and fresh install](openhop-fresh-install.md) first.
+SpamGuard installs in about 10 minutes on a Pi that already runs openHop Repeater natively. If your openHop runs in Docker, see [docker.md](docker.md) instead. You need SSH access to the Pi and an openHop API token. If openHop isn't installed yet, follow [openHop Repeater: prerequisites and fresh install](openhop-fresh-install.md) first.
 
 Commands in this guide use two placeholders. Swap in your own values when you type them, without the `< >`.
 
