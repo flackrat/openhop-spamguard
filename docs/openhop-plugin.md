@@ -23,7 +23,7 @@ The repeater stays protected the whole time, and the page carries on at the same
 2. In openHop's dashboard, go to **System > Plugins**, choose **Install wheel** and pick that file. openHop installs it switched off.
 3. Create an openHop API token (openHop dashboard > System > API Tokens). Back on the Plugins page, press **Config** in SpamGuard's row, paste the token into `api_key` and press **Save**. Leave the other settings as they are unless you need to change them.
 4. Press **Enable** in SpamGuard's row. openHop starts SpamGuard and restarts it if it ever stops unexpectedly. The row shows RUNNING, and **Logs** shows what it's doing.
-5. Open SpamGuard's own page at `http://<your-repeater>:8091/` (it isn't inside openHop's dashboard). Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+5. Press the **Open** button in SpamGuard's row (the arrow in a box) to go to SpamGuard's own page, which is on port 8091 of your repeater unless you change `listen_port`. You can also bookmark `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 ## Settings in openHop's Plugins page
 
@@ -35,8 +35,11 @@ The repeater stays protected the whole time, and the page carries on at the same
 | `sensitivity` | `relaxed`, `balanced` or `strict` at first start |
 | `listen_port` | The port for SpamGuard's own page (default 8091) |
 | `hashtag_channels` | Extra hashtag channels to protect, e.g. `["#chat", "#test"]` |
+| `listen_api_key` | A password for changes on SpamGuard's page. Leave empty for none; anyone on your network can then change settings there |
 
 openHop saves these settings as a whole, so restart the plugin after changing them. Everything else is changed on SpamGuard's own page.
+
+openHop also lists SpamGuard under its web frontends (System > Web Options), because the Open button is a small page openHop serves. SpamGuard isn't a replacement for openHop's dashboard, so if it's picked there by mistake, SpamGuard puts openHop's own dashboard back straight away.
 
 ## openHop in Docker or on Unraid
 
