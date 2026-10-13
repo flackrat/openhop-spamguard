@@ -3,10 +3,18 @@
 ARG BASE=python:3.12-slim
 FROM ${BASE}
 
-RUN (python3 -c "import yaml, sys, importlib.util as u; sys.exit(0 if u.find_spec('Crypto') or u.find_spec('Cryptodome') else 1)" 2>/dev/null \
-     || pip install --no-cache-dir pycryptodome==3.21.0 pyyaml==6.0.2) \
- && useradd --system --uid 1000 --home /data spamguard \
- && mkdir -p /app /data && chown spamguard /data
+# The two libraries SpamGuard needs. Some platforms (32-bit Pi) have no ready-made builds, so a
+# compiler is installed just for this step and removed again.
+RUN set -e; \
+    if ! python3 -c "import yaml, sys, importlib.util as u; sys.exit(0 if u.find_spec('Crypto') or u.find_spec('Cryptodome') else 1)" 2>/dev/null; then \
+      if ! pip install --no-cache-dir --only-binary=:all: pycryptodome==3.21.0 pyyaml==6.0.2 2>/dev/null; then \
+        apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev; \
+        pip install --no-cache-dir pycryptodome==3.21.0 pyyaml==6.0.2; \
+        apt-get purge -y gcc libc6-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
+      fi; \
+    fi; \
+    useradd --system --uid 1000 --home /data spamguard; \
+    mkdir -p /app /data && chown spamguard /data
 
 COPY spamguard.py ui.html replay.py docker-entrypoint.sh /app/
 
