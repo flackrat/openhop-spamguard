@@ -22,12 +22,15 @@ class Mock:
     def __init__(self, port):
         self.packets=[]; self.policy={"policy_engine":{"enabled":True,"default_action":"allow","rules":[
             {"id":1,"name":"my own rule","enabled":True,"if":{"field":"hop_count","op":"equals","value":99},"then":{"action":"drop"}}],"objects":{}},"groups":{}}
-        self.posts=0; m=self; self.filtered=True; self.filtered_calls=0; self.recent_calls=0
+        self.posts=0; m=self; self.filtered=True; self.filtered_calls=0; self.recent_calls=0; self.plugins=None  # optional handler for openHop's /api/plugins endpoints
         class H(BaseHTTPRequestHandler):
             def log_message(self,*a): pass
             def do_GET(self):
                 from urllib.parse import urlparse, parse_qs
                 u=urlparse(self.path); q={k:v[0] for k,v in parse_qs(u.query).items()}
+                if u.path.startswith("/api/plugins"):
+                    if not m.plugins: self.send_response(404); self.end_headers(); return
+                    return m.plugins(self, "GET", u.path, q)
                 if "filtered_packets" in u.path:
                     if not m.filtered:
                         self.send_response(404); self.end_headers(); return
@@ -43,6 +46,9 @@ class Mock:
                     d={"success":True,"data":m.policy}
                 b=json.dumps(d).encode(); self.send_response(200); self.end_headers(); self.wfile.write(b)
             def do_POST(self):
+                if self.path.startswith("/api/plugins"):
+                    if not m.plugins: self.send_response(404); self.end_headers(); return
+                    return m.plugins(self, "POST", self.path.split("?")[0], {})
                 body=json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 m.policy["policy_engine"]=body["policy_engine"]; m.posts+=1
                 self.send_response(200); self.end_headers(); self.wfile.write(b'{"success":true}')

@@ -368,6 +368,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="overview">
 <div class="hero" id="hero"><h1>Loading…</h1></div>
 <div id="updCallout"></div>
+<div id="moveCallout" aria-live="polite"></div>
 <div id="leakCallout"></div>
 <div id="heldCallout"></div>
 <div class="controls">
@@ -1014,7 +1015,20 @@ function chView(m){
   return {hourly:c.hourly,daily:c.daily,by_hour:c.by_hour,on:` on ${chPick}`,
           c1:sum(c.hourly,"c"),x1:sum(c.hourly,"x"),c7:sum(c.daily,"c"),x7:sum(c.daily,"x")};
 }
+/* One SpamGuard per repeater, and moving a normal or Docker install into openHop as a plugin */
+function renderMove(d){
+  const i=d.install||{}, mv=i.move||{}, st=mv.state, el=$("#moveCallout"); if(!el) return;
+  let h="";
+  if(i.retired) h=`<div class="callout info"><span><strong>SpamGuard has moved into openHop as a plugin.</strong> ${esc((st&&st.message)||"This copy no longer changes anything.")}</span></div>`;
+  else if(i.standby) h=`<div class="callout"><span><strong>Waiting: another SpamGuard (${esc(i.standby.who)}) is looking after this repeater.</strong> Only one can at a time, so this one won't change openHop's rules. It takes over by itself if the other one stops.</span></div>`;
+  else if(st&&st.running) h=`<div class="callout info"><span><strong>Moving SpamGuard into openHop…</strong> ${esc(st.message)}</span></div>`;
+  else if(st&&st.ok===false) h=`<div class="callout"><span><strong>The move didn't finish.</strong> ${esc(st.message)} Nothing has changed: this SpamGuard is still looking after the repeater.</span>${mv.possible?`<span class="cbtns"><button class="go" onclick="post('/move_to_plugin',{})">Try again</button></span>`:""}</div>`;
+  else if(i.kind!=="plugin"&&mv.possible) h=`<div class="callout info"><span><strong>SpamGuard now runs as an openHop plugin${mv.plugin_installed?", and the plugin is already installed here":""}.</strong> That's the recommended way to run it from now on: openHop looks after starting and updating it. Moving takes a minute or two and keeps everything SpamGuard has learnt, and the repeater stays protected throughout.</span><span class="cbtns"><a href="https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md" target="_blank" rel="noopener" class="quietlink">About the plugin</a><button class="go" data-confirm="Move SpamGuard into openHop as a plugin now? Your settings, blocks and known people go with it, and this copy switches off once the plugin has taken over." onclick="post('/move_to_plugin',{})">Move to the plugin</button></span></div>`;
+  else if(i.kind!=="plugin"&&mv.why_not&&/too old/.test(mv.why_not)) h=`<div class="callout"><span><strong>SpamGuard now runs as an openHop plugin.</strong> ${esc(mv.why_not)} This install keeps working in the meantime.</span></div>`;
+  el.innerHTML=h;
+}
 function renderOverview(d){
+  renderMove(d);
   const m=d.metrics; if(!m) return; renderLeaks(m);
   const a=m.d1, w=m.d7;
   const tile=(t,v,sub)=>`<div><dt>${t}</dt><dd>${v}<small>${sub||""}</small></dd></div>`;

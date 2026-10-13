@@ -2,7 +2,20 @@
 
 openHop has a plugin system (System > Plugins in its dashboard) that works the same whether openHop is installed directly, in Docker, on Unraid or as a Home Assistant add-on. SpamGuard can run as one of those plugins, so you don't need SSH, an installer or a separate container.
 
-Use either the plugin or one of the other installs, not both: two copies of SpamGuard on one repeater would fight over its rules.
+It needs **openHop 1.1.2 or later**. If System > Plugins isn't in your openHop dashboard, your openHop is older: update it with the update option in its dashboard, or `manage.sh upgrade` on the Pi, and the Plugins page appears.
+
+Only one SpamGuard can look after a repeater at a time. Each copy checks for another before changing anything, and waits if one is already in charge, so installing the plugin next to an older install never makes them fight. To switch, use **Move to the plugin** (below).
+
+## Moving from an older SpamGuard install
+
+If SpamGuard is already running the older way (its own service on the Pi, or a Docker container), you don't need to do any of the steps below by hand. Update it to the latest version, then press **Move to the plugin** on its Overview page. It:
+
+1. installs the plugin in openHop for you,
+2. copies your settings and token across,
+3. starts the plugin, which picks up everything the old copy has learnt (blocks, known people, charts and the map),
+4. hands the repeater over, and switches the old copy off (a Docker container is left for you to remove).
+
+The repeater stays protected the whole time, and the page carries on at the same address. The old copy's files are kept, so you can go back (see "Going back" below). The evidence log, if you had it on, stays in the old copy's folder.
 
 ## Install
 
@@ -34,6 +47,10 @@ If you'd rather not change openHop's container, run SpamGuard in its own contain
 ## Updating
 
 SpamGuard's page tells you when a new version is out. Install the new release's wheel the same way (System > Plugins > Install wheel); openHop keeps SpamGuard's settings and everything it has learnt. Once SpamGuard is in the catalogue, updates appear there.
+
+## Going back
+
+To return to the older install after a move: disable the plugin in openHop (System > Plugins), then on the Pi run `sudo systemctl enable --now openhop-spamguard`. The plugin lets go of the repeater as soon as it is disabled, so the old copy takes over straight away.
 
 ## Removing it
 
