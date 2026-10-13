@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.25"
+VERSION = "5.26"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -3012,6 +3012,22 @@ class SpamGuard:
             self.last_verify = time.time()
         self.write_runtime()
 
+    def _maybe_guard_frontend(self):
+        """As a plugin, SpamGuard's small doorway page shows up in openHop's list of main web pages. It isn't
+        a dashboard, so if someone picks it, put openHop's own dashboard back (checked once a minute)."""
+        if not IN_PLUGIN or time.time() - getattr(self, "_frontend_checked", 0) < 60:
+            return
+        self._frontend_checked = time.time()
+        try:
+            res = self._api("GET", "/api/web_frontends", timeout=10)
+            data = res.get("data", res) if isinstance(res, dict) else {}
+            if data.get("selected_id") == f"plugin:{PLUGIN_ID}":
+                self._api("POST", "/api/update_web_config", {"web": {"web_path": None}}, timeout=15)
+                self.note("openHop's main web page had been set to SpamGuard, which would hide openHop's dashboard. "
+                          "Put openHop's own dashboard back.")
+        except Exception:
+            pass
+
     # ---- moving to the openHop plugin ----
     def _maybe_check_plugins(self):
         """Every 10 minutes, see whether this openHop can run plugins and whether SpamGuard's plugin is
@@ -3286,6 +3302,7 @@ class SpamGuard:
                 self._maybe_check_update()
                 self._maybe_fix_openhop()
                 self._maybe_check_plugins()
+                self._maybe_guard_frontend()
             except Exception:
                 pass
             try:
@@ -3470,9 +3487,10 @@ class SpamGuard:
                                "it goes away once openHop releases its own fix."))
         fix = self.openhop_speed_fix()
         hint = fix_hint("speed")
-        if fix is False and hint:
-            warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back). "
-                            f"Without it openHop can fall minutes behind on a small Pi. To apply it, {hint}")
+        if fix is False and hint and lag is not None and lag >= c.get("lag_warn_seconds", 30):
+            # Only worth doing when openHop is actually falling behind; most repeaters keep up without it.
+            warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back), and it "
+                            f"would help openHop keep up. To apply it, {hint}")
         quiet = c.get("quiet_warn_minutes", 20) * 60
         if self.heard_at and self.last_error is None and now - self.heard_at > quiet and now - self.started > quiet:
             warnings.append(f"openHop hasn't reported any new packets for {round((now - self.heard_at) / 60)} minutes. "

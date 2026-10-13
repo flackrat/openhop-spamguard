@@ -26,7 +26,7 @@ _Example data: names and numbers are made up._
 1. Download `openhop_spamguard-<version>-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest).
 2. In openHop's dashboard go to **System > Plugins > Install wheel** and pick that file.
 3. Create an openHop API token (openHop dashboard > System > API Tokens). In SpamGuard's row on the Plugins page press **Config**, paste the token into `api_key`, press **Save**, then press **Enable**.
-4. Open `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+4. Press **Open** in SpamGuard's row to go to its page (or open `http://<your-repeater>:8091/`). Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 Full guide, including openHop in Docker: [docs/openhop-plugin.md](docs/openhop-plugin.md). New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
 

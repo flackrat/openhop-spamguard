@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.26
+- **Open button on openHop's Plugins page.** SpamGuard's row now has openHop's Open button, which takes you straight to SpamGuard's page on whatever port it uses. Nothing to remember or bookmark.
+- **openHop's dashboard can't be replaced by mistake.** Because of that button, openHop lists SpamGuard among its web frontends. If it's picked there, SpamGuard puts openHop's own dashboard back within a minute (and at once if you're logged in), and notes it in Activity.
+- **Page password in the plugin settings.** `listen_api_key` now appears in SpamGuard's Config on the Plugins page, so you can protect changes on SpamGuard's page without editing files.
+- Health no longer warns about openHop's speed fix unless openHop is actually falling behind. Most repeaters keep up without it.
 ## v5.25
 - **Reacts as soon as openHop hears a packet.** SpamGuard now listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting up to three seconds for its next timed check. The timed check carries on as a backup, and if the feed isn't available SpamGuard simply works as before. It checks at most about once a second, so a busy repeater doesn't make the Pi work harder. You can turn it off under Advanced, Timing ("React as soon as openHop hears a packet"), and Health shows whether the feed is on.
 - `tests/testlive.py` covers the feed, including openHop's pings and a refused token.

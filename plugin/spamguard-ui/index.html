@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpamGuard</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b2430; --muted:#55606e; --accent:#0b7a75; --line:#d5dae1; --warn:#8a5a00; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12161c; --card:#1b222b; --ink:#e7ebf0; --muted:#a9b3bf; --accent:#4fc3bb; --line:#2c3642; --warn:#f0b955; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:40rem; margin:0 auto; padding:2rem 1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:1.5rem; }
+  h1 { font-size:1.5rem; margin:0 0 .5rem; }
+  p { color:var(--muted); margin:.5rem 0; }
+  p.warn { color:var(--warn); }
+  a.go, button.go { display:inline-block; margin:1rem .5rem .5rem 0; padding:.7rem 1.2rem; min-height:44px; box-sizing:border-box; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; text-decoration:none; cursor:pointer; }
+  a.go:focus-visible, button.go:focus-visible { outline:3px solid var(--ink); outline-offset:2px; }
+  code { font-size:.95em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card" id="card">
+    <h1>SpamGuard</h1>
+    <p id="status" role="status">Finding SpamGuard's page...</p>
+    <a class="go" id="open" href="#" hidden>Open SpamGuard</a>
+    <p id="note">SpamGuard has its own page on port <span id="port">8091</span> of this machine. You can change the port in its settings here (Config, <code>listen_port</code>).</p>
+  </div>
+</main>
+<script>
+// This page is only a doorway: SpamGuard's own page runs on its own port, next to openHop.
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var token = null;
+  try { token = localStorage.getItem("pymc_jwt_token"); } catch (e) {}
+  var auth = token ? { "Authorization": "Bearer " + token } : {};
+  var host = location.hostname.indexOf(":") >= 0 ? "[" + location.hostname + "]" : location.hostname;
+
+  function urlFor(port) { return "http://" + host + ":" + port + "/"; }
+
+  // Picked by mistake as openHop's main web page? That would hide openHop's own dashboard,
+  // so put openHop's dashboard back (SpamGuard itself also does this within a minute).
+  if (location.pathname.indexOf("/plugins/") !== 0) {
+    $("status").className = "warn";
+    $("status").textContent = "SpamGuard isn't a replacement for openHop's dashboard, so it can't be openHop's main web page. "
+      + "Putting openHop's own dashboard back...";
+    $("note").textContent = "This page reloads by itself in a moment.";
+    var back = function () { setTimeout(function () { location.reload(); }, 4000); };
+    if (token) {
+      fetch("/api/update_web_config", { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, auth),
+        body: JSON.stringify({ web: { web_path: null } }) }).then(back, back);
+    } else {
+      back();
+    }
+    return;
+  }
+
+  function show(port, message, autoOpen) {
+    $("port").textContent = port;
+    $("open").href = urlFor(port);
+    $("open").hidden = false;
+    $("status").textContent = message;
+    if (autoOpen) { location.replace(urlFor(port)); }
+  }
+
+  if (!token) { show(8091, "Press the button to open SpamGuard's page.", false); return; }
+  fetch("/api/plugins/runtime?id=openhop-spamguard", { headers: auth })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var rt = (d && d.runtime) || {};
+      var port = parseInt(rt.web_page_port, 10) || 8091;
+      if (rt.state === "active") { show(port, "Opening SpamGuard...", true); }
+      else if (rt.state === "standby") { show(port, rt.message || "Another SpamGuard is looking after this repeater, so this one is waiting.", false); }
+      else if (rt.instance) { show(port, rt.message || "SpamGuard is running.", false); }
+      else { show(port, "SpamGuard doesn't seem to be running yet. Check it's enabled here in Plugins, and that an openHop API token is pasted into api_key in its Config.", false); }
+    })
+    .catch(function () { show(8091, "Press the button to open SpamGuard's page.", false); });
+})();
+</script>
+</body>
+</html>
