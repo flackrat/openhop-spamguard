@@ -868,8 +868,8 @@ function renderUpdate(d){
     line=`${esc(st.message||"Update requested...")} SpamGuard restarts during the update; this page reconnects by itself.`;
   } else if(u.available){
     pill="<span class='tag would'>Update available</span>";
-    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.docker?"":" Nothing changes until you press Update.");
-    btns=(u.docker?`<p class="explain">SpamGuard runs in Docker here. To update, run <code>${esc(u.docker_update)}</code> in the folder with your compose file.</p>`:`<button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update to ${esc(u.latest)}</button>`)
+    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.managed_update?"":" Nothing changes until you press Update.");
+    btns=(u.managed_update?`<p class="explain">${esc(u.managed_update)}</p>`:`<button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update to ${esc(u.latest)}</button>`)
         +btn("Check again","/check_update",{},"quiet");
   } else {
     pill=u.latest?"<span class='tag ok'>Up to date</span>":"";
@@ -880,10 +880,10 @@ function renderUpdate(d){
   if(u.error && !running) issues+=`<li class="warn">${esc(u.error)}</li>`;
   if(st.state==="failed" && !running) issues+=`<li class="bad">Last update: ${esc(st.message)}</li>`;
   else if(st.state==="done" && st.ts && Date.now()/1000-st.ts<86400 && !running) issues+=`<li class="ok">${esc(st.message)}</li>`;
-  if(!u.installer_ready&&!u.docker) issues+=`<li class="warn">The Update button needs the updater, which the installer sets up. Run the installer once by hand (sudo bash install.sh).</li>`;
+  if(!u.installer_ready&&!u.managed_update) issues+=`<li class="warn">The Update button needs the updater, which the installer sets up. Run the installer once by hand (sudo bash install.sh).</li>`;
   let uc="";
   if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> It restarts for a minute; this page reconnects by itself.</span></div>`;
-  else if(u.available&&u.docker) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. To update, run <code>${esc(u.docker_update)}</code> in the folder with your compose file.</span><a href="#/updates" class="quietlink">What's new</a></div>`;
+  else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
   else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. Nothing changes until you press Update.</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
   $("#updCallout").innerHTML=uc;
