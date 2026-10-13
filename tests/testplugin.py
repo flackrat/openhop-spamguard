@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(REPO, "tools")); import build_plugin
 wheel = build_plugin.build(os.path.join(TMP, "dist"))
 man = load_manifest_from_wheel(wheel)
 check(man.id=="openhop-spamguard" and man.runtime, "openHop accepts the manifest")
-check(man.ui is None, "no page openHop could offer as its main web page")
+check(man.ui is not None and man.ui.entry=="spamguard-ui/index.html", "doorway page for openHop's Open button")
 check(man.version==build_plugin.version(), "manifest version matches SpamGuard's")
 m = mock()
 for i,(n,t) in enumerate([("Hilltop Hiker","Morning all, clear skies up here"),("Canal Boat Ted","Anyone hearing me from the lock?")]):
@@ -24,6 +24,7 @@ storage = PluginStorage(os.path.join(TMP, "plugins")); storage.ensure_root()
 rt = PluginRuntime(storage)
 info = rt.install_wheel(wheel, man)
 rel = Path(info["release_dir"])
+check((rel/"spamguard-ui"/"index.html").is_file() or any(rel.rglob("spamguard-ui/index.html")), "doorway page installed")
 cfg = storage.read_config(man.id)
 check(cfg.get("mode")=="monitor" and cfg.get("api_key")=="" and cfg.get("listen_port")==8091, "default settings seeded: "+str(cfg))
 port = 18197
