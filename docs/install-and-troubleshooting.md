@@ -30,7 +30,7 @@ On Windows, PuTTY gives you `ssh` access and `pscp` for copying files; WinSCP is
 
 A fresh install ends with SpamGuard running in Monitor mode, so nothing is blocked until you choose Protect.
 
-1. **Create an openHop API token.** In the openHop dashboard go to System > Configuration > Access > API Tokens, create one and copy it. It is shown only once and gives full admin access, so treat it like a password.
+1. **Create an openHop API token.** In the openHop dashboard go to System > API Tokens, create one and copy it. It is shown only once and gives full admin access, so treat it like a password.
 2. **Download and install** (on the Pi):
 
     ```

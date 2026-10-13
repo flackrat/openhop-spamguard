@@ -122,7 +122,7 @@ Don't forward port 8000 on your router. Use a VPN (Tailscale, WireGuard) if you 
 
 ## Next steps: API token and SpamGuard
 
-1. In the openHop dashboard, go to **System > Configuration > Access > API Tokens** and create a token named `spamguard`. Copy it straight away, because it is only shown once.
+1. In the openHop dashboard, go to **System > API Tokens** and create a token named `spamguard`. Copy it straight away, because it is only shown once.
 2. Follow the [SpamGuard install and troubleshooting guide](install-and-troubleshooting.md) from its first step. SpamGuard uses openHop's Python venv, so openHop must be installed first.
 
 Treat the token like a password. If it has been pasted anywhere public, delete it and create a new one.

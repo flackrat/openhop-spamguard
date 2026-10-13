@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.24
+- **Moving a Docker container to the plugin now works when openHop also runs in Docker**, and when the plugin was already installed and waiting. Before, the move could wait five minutes and give up (the container carried on safely as before).
+- After a reboot, the Move to the plugin button no longer stays unavailable for ten minutes if SpamGuard started before openHop. The page now says openHop isn't answering yet and checks again shortly, and pressing the button checks straight away.
+- The openHop fix hint for the plugin says to run the command on whatever computer runs openHop, not only a Pi.
+- Guides: the API token is under System > API Tokens in openHop's dashboard everywhere (some pages still had an older menu path).
+- Tested end to end on a fresh openHop 1.1.4 on a PC: plugin install from the dashboard, upgrading a 5.21 plugin by hand, rules surviving openHop and plugin restarts, your own openHop rules left alone, the older install moved to the plugin, and Docker (SpamGuard's container, the plugin inside openHop's container, and moving between them). SpamGuard no longer appears in openHop's web frontend list.
 ## v5.23
 - Health page, as a plugin or in Docker: "Restart if it hangs" now shows on (SpamGuard restarts itself if it gets stuck), and the systemd-only figures are hidden. The "Keep openHop's rule-check fix in place" setting is hidden where SpamGuard can't apply it.
 - Guides revised after testing every install route on a fresh openHop 1.1.5: the plugin installed from openHop's dashboard, an older install moved to the plugin, and a Docker container. The README now covers the plugin way for health checks, the openHop fixes, updating, uninstalling and the replay tool, and the install steps match openHop's own buttons (System > API Tokens, then Config, Save and Enable on the Plugins page).

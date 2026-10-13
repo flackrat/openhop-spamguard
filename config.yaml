@@ -9,7 +9,7 @@
 # ============================================================================
 
 # ---- STEP 1 (required): your openHop API token -----------------------------
-# In the openHop dashboard go to System > Configuration > Access > API Tokens,
+# In the openHop dashboard go to System > API Tokens,
 # create a token, and paste it between the quotes below.
 api_key: "PASTE_OPENHOP_API_TOKEN_HERE"
 

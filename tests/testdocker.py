@@ -28,6 +28,19 @@ sg.IN_DOCKER=True
 s=g.update_summary(); check(s["docker"] is True and "docker compose pull" in s["docker_update"],"page told it runs in Docker")
 try: g.update_action("install_update",{"version":"9.9"}); check(False,"Update button refused in Docker")
 except ValueError as e: check("docker compose pull" in str(e),"Update explains how to update in Docker: "+str(e)[:60])
+# Moving a container to the plugin: the plugin (inside openHop's container) must be able to reach this one
+g.cfg["openhop_url"]="http://127.0.0.1:8000"
+check(g._address_seen_by_openhop()=="127.0.0.1","next to a native openHop the handover link uses 127.0.0.1")
+import socket
+g.cfg["openhop_url"]="http://"+socket.gethostname()+":8000"
+a=g._address_seen_by_openhop(); check(a and a.count(".")==3,"container handover address is an IPv4 address: "+str(a))
+# A failed plugin check (openHop still starting) is retried within a minute, not ten
+g._plugins_checked=0; g.cfg["openhop_url"]="http://127.0.0.1:1"
+real=g._api
+def boom(*a,**k): raise OSError("Connection refused")
+g._api=boom; g._maybe_check_plugins(); g._api=real
+check(g._plugins_checked < sg.time.time()-500,"failed plugin check retried soon")
+check("isn't answering yet" in (g.move_summary()["why_not"] or ""),"friendly message while openHop starts: "+str(g.move_summary()["why_not"])[:60])
 sg.IN_DOCKER=False
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

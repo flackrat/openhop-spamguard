@@ -7,7 +7,7 @@ services:
     container_name: openhop-spamguard
     restart: unless-stopped
     environment:
-      # openHop dashboard > System > Configuration > Access > API Tokens
+      # openHop dashboard > System > API Tokens
       OPENHOP_API_KEY: "PASTE_OPENHOP_API_TOKEN_HERE"
       # openHop's address as seen from this container. openHop's own compose file names its
       # service "openhop-repeater" (some examples use "repeater"); use whichever yours has, on the

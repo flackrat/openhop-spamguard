@@ -46,7 +46,7 @@ If you'd rather not change openHop's container, run SpamGuard in its own contain
 
 ## Updating
 
-SpamGuard's page tells you when a new version is out (Updates in its menu). Press **Update**: SpamGuard fetches the new plugin file, hands it to openHop, and openHop restarts it on the new version. Settings and everything it has learnt are kept. You can also install a newer wheel by hand under System > Plugins > Install wheel.
+SpamGuard's page tells you when a new version is out (Updates in its menu). Press **Update**: SpamGuard fetches the new plugin file, hands it to openHop, and openHop restarts it on the new version. Settings and everything it has learnt are kept. You can also install a newer wheel by hand: download it from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest), choose System > Plugins > Install wheel in openHop, then press Disable and Enable on SpamGuard's row so it restarts on the new version. If your plugin is 5.21, update it this way once: 5.21's page sends you to openHop's Plugins page, which has no update button of its own. From 5.22 on, the Update button does it all.
 
 ## Plugin manager isn't running
 

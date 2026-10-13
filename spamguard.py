@@ -39,6 +39,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Optional
 
@@ -55,7 +56,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.23"
+VERSION = "5.24"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -315,7 +316,7 @@ def fix_hint(which: str) -> Optional[str]:
         return ("press Apply openHop fix on the Health page, or run sudo bash /opt/openhop_spamguard/tune-openhop.sh"
                 + flag) if which == "rule" else "sudo bash /opt/openhop_spamguard/tune-openhop.sh"
     if IN_PLUGIN and not openhop_in_container():
-        return f"run this on the Pi: curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
+        return f"run this on the Pi (or whatever computer runs openHop): curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
     return None
 
 
@@ -3022,6 +3023,8 @@ class SpamGuard:
             self.openhop_plugins = {"supported": False if e.code == 404 else "down" if e.code == 503 else None,
                                     "installed": False, "error": None if e.code in (404, 503) else f"HTTP {e.code}"}
         except Exception as e:
+            # openHop not answering (often just still starting): try again in 30 seconds, not 10 minutes.
+            self._plugins_checked = time.time() - 570
             self.openhop_plugins = {"supported": None, "installed": False, "error": str(e)[:80]}
 
     def move_summary(self) -> dict:
@@ -3039,7 +3042,9 @@ class SpamGuard:
                    "doesn't exist, see the plugin guide's \"Plugin manager isn't running\" section.")
         elif p.get("supported") is None:
             why = "Checking whether this openHop can run plugins..." if not p else \
-                  f"Couldn't check whether this openHop can run plugins ({p.get('error') or 'no answer'})."
+                  ("openHop isn't answering yet, so SpamGuard couldn't check whether it can run plugins. It will try "
+                   "again in a moment." if not str(p.get("error") or "").startswith("HTTP") else
+                   f"Couldn't check whether this openHop can run plugins ({p.get('error')}).")
         return {"possible": why is None and not (st and st.get("running")), "why_not": why,
                 "plugin_installed": bool(p.get("installed")), "state": st}
 
@@ -3049,6 +3054,9 @@ class SpamGuard:
             self.note(("Moved to the openHop plugin: " if ok else "Couldn't move to the openHop plugin: ") + msg)
 
     def start_move_to_plugin(self) -> dict:
+        if (getattr(self, "openhop_plugins", None) or {}).get("supported") is not True:
+            self._plugins_checked = 0       # the last check failed or is old news: look again now
+            self._maybe_check_plugins()
         s = self.move_summary()
         if not s["possible"]:
             raise ValueError(s["why_not"] or "A move is already under way.")
@@ -3060,6 +3068,33 @@ class SpamGuard:
         threading.Thread(target=self._move_to_plugin, daemon=True, name="move").start()
         return {"ok": True, "message": "Moving SpamGuard into openHop as a plugin. This takes a minute or two; "
                                        "this page shows how it's going."}
+
+    def _plugin_state(self) -> Optional[str]:
+        """openHop's state for SpamGuard's plugin (RUNNING, DISABLED, ...), or None if it isn't installed."""
+        try:
+            res = self._api("GET", "/api/plugins", timeout=10)
+            items = res.get("plugins") or res.get("data") or []
+            if isinstance(items, dict):
+                items = list(items.values())
+            for p in items:
+                if isinstance(p, dict) and p.get("id") == PLUGIN_ID:
+                    return str(p.get("state") or "")
+        except Exception:
+            pass
+        return None
+
+    def _address_seen_by_openhop(self) -> str:
+        """The address openHop (and so the plugin, which runs where openHop runs) can reach this SpamGuard on:
+        127.0.0.1 next to a native openHop, or this container's address on the network it shares with openHop."""
+        host = urllib.parse.urlparse(self.cfg.get("openhop_url") or "").hostname or "127.0.0.1"
+        if host in ("127.0.0.1", "localhost", "::1"):
+            return "127.0.0.1"
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((socket.gethostbyname(host), 9))
+                return s.getsockname()[0]
+        except Exception:
+            return "127.0.0.1"
 
     def _plugin_api(self, method: str, path: str, body: Optional[dict] = None, timeout: float = 60) -> dict:
         res = self._api(method, path, body, timeout=timeout)
@@ -3095,13 +3130,15 @@ class SpamGuard:
             with urllib.request.urlopen(url, timeout=120) as r:
                 wheel = r.read()
             self._move_step("Installing the plugin in openHop (it sets up its own copy, which can take a minute)...")
+            was_running = self._plugin_state() == "RUNNING"
+            started = time.time()
             self._upload_wheel(name, wheel)
             port = int(self.cfg.get("listen_port") or 8091)
             c = self.cfg
             config = {"api_key": c.get("api_key", ""), "openhop_url": c.get("openhop_url"),
                       "mode": c.get("mode", "monitor"), "sensitivity": c.get("sensitivity", "balanced"),
                       "listen_port": port, "hashtag_channels": list(c.get("hashtag_channels") or []),
-                      "import_from": f"http://127.0.0.1:{port}/handover?key={self._handover_key}"}
+                      "import_from": f"http://{self._address_seen_by_openhop()}:{port}/handover?key={self._handover_key}"}
             if c.get("listen_api_key"):
                 config["listen_api_key"] = c["listen_api_key"]
             self._move_step("Copying the settings across...")
@@ -3112,12 +3149,19 @@ class SpamGuard:
                 self._plugin_api("POST", "/api/plugins/start", {"id": PLUGIN_ID})
             except Exception:
                 pass  # enabling usually starts it already
+            if was_running:  # it was already running (in standby): restart it so it picks up this copy's data
+                try:
+                    self._plugin_api("POST", "/api/plugins/restart", {"id": PLUGIN_ID}, timeout=30)
+                except Exception:
+                    pass
             self._move_step("Waiting for the plugin to pick up what this SpamGuard has learnt...")
             plugin_id, deadline = None, time.time() + 300
             while time.time() < deadline:
                 try:
                     rt = self._plugin_runtime()
-                    if rt.get("imported") and rt.get("state") == "standby" and rt.get("instance"):
+                    # not left over from an older move (plugins before 5.24 don't say when they imported)
+                    fresh = "imported_at" not in rt or float(rt.get("imported_at") or 0) >= started - 5
+                    if rt.get("imported") and fresh and rt.get("state") == "standby" and rt.get("instance"):
                         plugin_id = rt["instance"]
                         break
                 except Exception:
@@ -3191,6 +3235,14 @@ class SpamGuard:
                 self._save_state(force=True)
                 os._exit(70)
 
+    @staticmethod
+    def _imported_at() -> float:
+        try:
+            with open(os.path.join(os.environ.get("OPENHOP_PLUGIN_DATA") or ".", "imported.json")) as f:
+                return float(json.load(f).get("at") or 0)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return 0.0
+
     def write_runtime(self, extra: Optional[dict] = None):
         """As an openHop plugin, keep a short status note openHop's dashboard (and a moving SpamGuard) can read."""
         if not IN_PLUGIN:
@@ -3199,6 +3251,7 @@ class SpamGuard:
         note = {"instance": self.instance_id, "version": VERSION, "web_page_port": int(self.cfg.get("listen_port") or 8091),
                 "state": "retired" if getattr(self, "retired", False) else "standby" if sb else "active",
                 "imported": os.path.exists(os.path.join(os.environ.get("OPENHOP_PLUGIN_DATA") or ".", "imported.json")),
+                "imported_at": self._imported_at(),
                 "message": (f"Waiting: another SpamGuard ({self.describe_owner(sb)}) is looking after this repeater."
                             if sb else "Protecting this repeater.")}
         if extra:
