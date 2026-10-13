@@ -2,7 +2,7 @@
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 
-**Stops MeshCore channel spam at your [openHop](https://docs.openhop.dev/) repeater, automatically.** It runs on the same Pi as openHop, watches the channel messages your repeater hears, and tells openHop not to pass spam on. It blocks spam *behaviour*, never people or opinions.
+**Stops MeshCore channel spam at your [openHop](https://docs.openhop.dev/) repeater, automatically.** It runs inside openHop as a plugin, watches the channel messages your repeater hears, and tells openHop not to pass spam on. It blocks spam *behaviour*, never people or opinions.
 
 ## What it does
 
@@ -11,7 +11,7 @@
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Lockdown button** for a heavy attack: for a while, only people it already knows get through.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
-- **Speeds up openHop on small Pis** with an optional one-line fix the installer offers.
+- **Speeds up openHop on small Pis** with an optional one-line fix.
 
 ![SpamGuard's web page (example data)](docs/screenshot-overview.png)
 
@@ -25,7 +25,7 @@ _Example data: names and numbers are made up._
 
 1. Download `openhop_spamguard-<version>-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest).
 2. In openHop's dashboard go to **System > Plugins > Install wheel** and pick that file.
-3. In SpamGuard's plugin settings paste an openHop API token into `api_key` (openHop dashboard > System > Configuration > Access > API Tokens), then enable the plugin.
+3. Create an openHop API token (openHop dashboard > System > API Tokens). In SpamGuard's row on the Plugins page press **Config**, paste the token into `api_key`, press **Save**, then press **Enable**.
 4. Open `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
 
 Full guide, including openHop in Docker: [docs/openhop-plugin.md](docs/openhop-plugin.md). New to openHop? See [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
@@ -71,7 +71,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 | Start over with a clean slate | Advanced > Settings > **Start again from scratch** |
 | Clear the charts and spam map | Advanced > Settings > **Clear spam history** |
 | Update | Press **Update** when the page says a new version is out |
-| Remove it | `sudo bash /opt/openhop_spamguard/uninstall.sh` |
+| Remove it | Plugin: press **Pause**, wait a minute, then uninstall it in openHop (System > Plugins). Older install: `sudo bash /opt/openhop_spamguard/uninstall.sh` |
 
 ## What SpamGuard blocks, and what it doesn't
 
@@ -120,15 +120,15 @@ Things to know:
 The **Health** panel on the page shows whether SpamGuard is working: how long it has been running, when it last checked, whether openHop is answering, whether all its rules are in place in openHop, and how many times it has restarted. Advanced adds the Pi's temperature, memory, disk and load.
 
 SpamGuard looks after itself:
-- **Restarts if it hangs.** It checks in with systemd after every pass of its checking loop. If it stops checking in for 90 seconds, systemd restarts it. It also restarts after a crash, and never gives up.
+- **Restarts if it hangs or crashes.** As a plugin (or in Docker) it watches its own checking loop and quits if it ever gets stuck, and openHop (or Docker) starts it again. The older install checks in with systemd after every pass instead, and systemd restarts it if it stops checking in for 90 seconds.
 - **Puts its rules back.** Once a minute it confirms openHop still has exactly its rules (after an openHop restart, restore or manual edit), and restores them if not. Your own rules are never touched.
 - **Keeps protecting while down.** Its rules live in openHop, so blocking carries on even if SpamGuard is stopped. Blocks just don't expire or update until it's back.
 - **Measures openHop's delay.** It shows how far behind real time openHop's packet list is, and warns when it is 30 seconds or more behind, because spam copies arriving in that gap get through before a block starts. Each evidence-log line also records how late SpamGuard saw the message.
 - **Notices a deaf radio.** If openHop reports no new packets of any kind for 20 minutes, the Health panel warns that its radio may have stopped receiving.
 - **Asks openHop for as little as possible.** It reads only packets newer than the last ones it saw, using a query openHop's database answers from its time index (older openHop versions fall back to the recent packet list).
-- **Stays out of the repeater's way.** It runs at lower CPU priority than openHop and is capped at 400 MB of memory.
+- **Stays out of the repeater's way.** It uses a few tens of MB of memory and very little CPU. The older install also runs at lower CPU priority than openHop and is capped at 400 MB.
 
-Quick checks from the command line:
+As a plugin, openHop's **System > Plugins** page shows whether SpamGuard is running, with a **Logs** button. On the older install, quick checks from the command line:
 ```
 systemctl is-active openhop-spamguard          # "active" = running
 curl -s http://127.0.0.1:8091/health           # "state": "ok" / "warn" / "bad"
@@ -145,6 +145,8 @@ On a small Pi with a large packet database, openHop can fall minutes behind savi
 
 The cause is in openHop. Every time it saves a packet it recounts every packet it has stored, and keeps the answer for only 3 seconds. That count is only used for the graphs, which are written once a minute. `tune-openhop.sh` changes that 3 seconds to 60 seconds, which changes nothing you can see, and offers to keep 7 days of packet history instead of 31.
 
+As a plugin, fetch the script first (on the Pi): `curl -fsSL https://raw.githubusercontent.com/flackrat/openhop-spamguard/main/tune-openhop.sh -o tune-openhop.sh`, then run it with `sudo bash tune-openhop.sh`. On the older install it's already there:
+
 ```
 sudo bash /opt/openhop_spamguard/tune-openhop.sh            # apply (asks first)
 sudo bash /opt/openhop_spamguard/tune-openhop.sh --check    # report only
@@ -160,7 +162,7 @@ An openHop upgrade puts the old value back. The Health panel then says "openHop'
 
 openHop's rule checker has a bug that can mix up one channel message with an earlier one, so spam a rule should stop is sometimes passed on, or a genuine message dropped.
 
-SpamGuard applies a one-line fix for it. It does this automatically when it installs or updates, keeps a copy of openHop's original file, and puts the fix back if an openHop update removes it (turn that off under Advanced > Settings > Updates). `sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo` removes it. The bug has been reported to openHop ([#520](https://github.com/openhop-dev/openhop_repeater/issues/520)); once their own fix is released, SpamGuard sees it isn't needed and the Health page recommends updating openHop instead.
+SpamGuard has a one-line fix for it, which keeps a copy of openHop's original file. On the older install it applies the fix automatically and puts it back if an openHop update removes it (turn that off under Advanced > Settings > Updates). A plugin can't change openHop's own files, so as a plugin the Health page tells you when the fix is missing and gives the one command to run on the Pi. If openHop itself runs in Docker the fix can't be applied, and openHop's own fix is the cure. `sudo bash tune-openhop.sh --undo` removes it. The bug has been reported to openHop ([#520](https://github.com/openhop-dev/openhop_repeater/issues/520)); once their own fix is released, SpamGuard sees it isn't needed and the Health page recommends updating openHop instead.
 
 SpamGuard also reads openHop's own record of what happened to each message, so any spam openHop passes on despite a block is counted as let through, and the Overview says so.
 
@@ -169,9 +171,9 @@ SpamGuard also reads openHop's own record of what happened to each message, so a
 <details>
 <summary><b>Updating</b></summary>
 
-SpamGuard looks for a new release once a day (you can turn that off in Advanced > Updates) and shows it in the **Updates** section of its page, with what's new. It only installs when you press **Update**. Your settings, blocks and learnt routes are kept, and if the new version doesn't start, the previous one is put back automatically.
+SpamGuard looks for a new release once a day (you can turn that off in Advanced > Updates) and shows it in the **Updates** section of its page, with what's new. It only installs when you press **Update**, and your settings, blocks and learnt routes are kept.
 
-From the command line instead:
+As a plugin, **Update** fetches the new plugin file, hands it to openHop and openHop restarts SpamGuard on it. In Docker, run `docker compose pull && docker compose up -d`. On the older install, if the new version doesn't start, the previous one is put back automatically; from the command line:
 
 ```
 sudo bash /opt/openhop_spamguard/update.sh --check          # installed and latest versions
@@ -187,6 +189,10 @@ How the button works: SpamGuard runs as an ordinary user, so it can't install so
 
 <details>
 <summary><b>Uninstalling</b></summary>
+
+**Plugin:** on SpamGuard's page press **Pause** and wait a minute (that takes its rules back out of openHop), then uninstall it in openHop under System > Plugins. Its data folder goes with it unless you keep it.
+
+**Older install:**
 
 ```
 sudo bash /opt/openhop_spamguard/uninstall.sh
@@ -213,7 +219,7 @@ Switch on **Keep an evidence log** in Advanced > Detection settings. SpamGuard t
 
 Download it from Advanced > Evidence log. **Names scrambled** replaces every name and @mention with a code (keeping its spam score and shape), so it can be shared safely.
 
-Replay a log with different settings to see what would have been caught, missed or wrongly blocked:
+Replay a log with different settings to see what would have been caught, missed or wrongly blocked. On the older install it's already on the Pi; otherwise use a copy of this repository (`python3 replay.py ...`, with `pycryptodome` and `pyyaml` installed):
 ```
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py spamguard-evidence.jsonl --details
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py spamguard-evidence.jsonl --set dedupe_seconds=600
@@ -242,9 +248,10 @@ Everything SpamGuard keeps has a limit: learnt routes, known names and the activ
 <details>
 <summary><b>Requirements and tested systems</b></summary>
 
-- Normal install: openHop Repeater installed natively on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
+- Plugin (recommended): openHop 1.1.2 or later with its plugin manager running, however openHop is installed.
+- Older install: openHop Repeater installed natively on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
 - Docker: any host running openHop in Docker. Images are published for 64-bit and 32-bit Pi and for PCs (see [docs/docker.md](docs/docker.md)).
-- Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, and with a full openHop + SpamGuard install on Ubuntu 24.04 (x86_64). Python 3.10 to 3.13.
+- Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, as the older install and as the plugin on openHop 1.1.5, and with openHop 1.1.5 on Ubuntu 24.04 (x86_64) as the plugin, the older install moved to the plugin, and a Docker container. Python 3.10 to 3.13.
 - Works with 1-, 2- and 3-byte path hashes, and with hashtag channels (add them by name in Advanced > Exceptions > Channels).
 
 </details>

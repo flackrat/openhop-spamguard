@@ -681,14 +681,14 @@ function renderHealth(d){
     st("openHop", h.openhop_ok?`answering${h.openhop_ms!=null?" ("+h.openhop_ms+" ms)":""}`:"not answering")+
     st("openHop delay", h.openhop_lag_s==null?"–":(h.openhop_lag_s<90?h.openhop_lag_s+" s":Math.round(h.openhop_lag_s/60)+" min"))+
     st("Rules in openHop", rules)+
-    st("Restarts since boot", h.restarts==null?"–":h.restarts)+
-    st("Restart if it hangs", h.watchdog?"on":"off");
+    (h.kind&&h.kind!=="normal"?"":st("Restarts since boot", h.restarts==null?"–":h.restarts))+
+    st("Restart if it hangs", h.kind&&h.kind!=="normal"?"on":(h.watchdog?"on":"off"));
   $("#hStatsAdv").innerHTML=
     st("Checks done", (h.checks||0).toLocaleString())+
     st("Time per check", h.check_ms!=null?h.check_ms+" ms":"–")+
     st("Errors (last hour)", h.errors_hour??"–")+
     st("Rules put back", h.self_heals??0)+
-    st("openHop service", h.openhop_service||"–")+
+    (h.kind&&h.kind!=="normal"?"":st("openHop service", h.openhop_service||"–"))+
     st("openHop speed fix", h.openhop_speed_fix==null?"not needed":(h.openhop_speed_fix?"on":"off"))+
     st("openHop rule-check fix", h.openhop_rulecheck_fix==null?"unknown":(h.openhop_rulecheck_fix?"on or not needed":"off"))+
     st("Pi temperature", h.temp_c!=null?h.temp_c+" °C":"–")+
