@@ -2,7 +2,13 @@
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 
-**Stops MeshCore channel spam at your [openHop](https://docs.openhop.dev/) repeater, automatically.** It runs inside openHop as a plugin, watches the channel messages your repeater hears, and tells openHop not to pass spam on. It blocks spam *behaviour*, never people or opinions.
+> **Spam on your mesh, stopped at the door.** SpamGuard is anti-spam for MeshCore that works it out for itself. It spots spam floods as they happen and stops your repeater passing them on, so the rest of the mesh never hears them. No block lists to keep up, and your regulars keep chatting.
+
+It runs inside [openHop](https://docs.openhop.dev/) as a plugin, watches the channel messages your repeater hears, and tells openHop not to pass spam on. It blocks spam *behaviour*, never people or opinions.
+
+## Why it's different
+
+Most MeshCore spam tools either hide spam on your own phone, while the mesh still carries it to everyone else, or give repeater owners rules to write and keep up to date by hand. SpamGuard decides for itself, at the repeater, so spam is stopped before it spreads to everyone downstream. It learns who your regulars are, so they still get through even when spam arrives the same way. It starts in a watch-only mode that shows what it *would* stop before it stops anything, and any decision can be undone with one press.
 
 ## What it does
 
