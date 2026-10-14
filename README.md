@@ -15,6 +15,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Catches spam campaigns:** the same text sent under made-up, rotating names, even when it's disguised.
 - **Finds where spam enters the mesh** and blocks it there, while still letting your regulars through.
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
+- **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
 - **Lockdown button** for a heavy attack: for a while, only people it already knows get through.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
 
@@ -82,8 +83,9 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 
 A repeater is shared: anything it refuses to pass on disappears for everyone downstream, and they can't see why. So SpamGuard judges **behaviour, never opinions or people**.
 
-- **It blocks:** the same text sent under several names, made-up or disguised names, floods of repeats, and repeaters injecting spam campaigns.
-- **It doesn't block** what someone says, or a named person for their views. There's deliberately no "block this person" button: muting someone is each user's choice, in their own MeshCore app.
+- **It blocks:** the same text sent under several names, made-up or disguised names, floods of repeats (including one name posting the same message again and again), and repeaters injecting spam campaigns.
+- **It doesn't block** what someone says, or a named person for their views. Even the repeat guard only holds back *further copies of the repeated message*, for an hour; anything new that person says still goes out.
+- **Blocking a particular person is your app's job, not the repeater's.** There's deliberately no "block this person" button. MeshCore apps and sites let each user block or hide a sender, repeater or channel for themselves. That only changes what *you* see, and the mesh still carries it, so it's the right place for "I don't want to read this person". SpamGuard deals with behaviour that harms everyone's channel, at the repeater, so it never travels further.
 - **"This is spam" and text blocks are for spam content**, not for silencing a point of view. Every automatic block expires once the spam stops.
 
 ## Advanced
