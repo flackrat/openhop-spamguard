@@ -68,7 +68,9 @@ PORT=[18100]
 def guard(m, **over):
     st=os.path.join(TMP, f"state_{PORT[0]}.json")
     if os.path.exists(st): os.remove(st)
-    cfg={"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st}
+    # Most tests were written when one message made a name "known"; they test other things, so keep that.
+    cfg={"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
+         "known_min_msgs":1}
     cfg.update(over); return sg.SpamGuard(cfg)
 def mock():
     PORT[0]+=1; return Mock(0)
