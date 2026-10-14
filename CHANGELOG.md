@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.27
+- **Stops one name repeating the same message over and over.** If the same name sends the same message more than three times in ten minutes, further copies of that message from that name aren't passed on for an hour. Their first copies, and anything new they say, still go out, and other people quoting it are unaffected. You can adjust or turn this off under Advanced, Duplicate suppression.
+- **Quieter copy-paste guard.** SpamGuard still sets up a short guard against copies of longer messages under other names, but it no longer fills Activity and the evidence log with "Started blocking" lines for everyday chat. It only shows up when it actually stops a copy.
+- A new name now needs three genuine messages, not one, before it counts as a known regular (Advanced, Known people).
 ## v5.26
 - **Open button on openHop's Plugins page.** SpamGuard's row now has openHop's Open button, which takes you straight to SpamGuard's page on whatever port it uses. Nothing to remember or bookmark.
 - **openHop's dashboard can't be replaced by mistake.** Because of that button, openHop lists SpamGuard among its web frontends. If it's picked there, SpamGuard puts openHop's own dashboard back within a minute (and at once if you're logged in), and notes it in Activity.

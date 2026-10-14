@@ -96,7 +96,8 @@ for _ in range(30):
     try: page=json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/status",timeout=2).read()); break
     except Exception: time.sleep(1)
 check(page and page["install"]["kind"]=="plugin","plugin's page opens on the same port once it is free")
-check(page and (page.get("known") or {}).get("count",0)>=len(known_before),"plugin's page knows the regulars: "+str((page or {}).get("known")))
+kn=(page or {}).get("known") or {}
+check(page and kn.get("count",0)+kn.get("learning",0)>=len(known_before),"plugin's page carries the regulars over: "+str(kn))
 g2=guard(m, state_file=os.path.join(TMP,"again.json")); g2.poll_once(); g2.last_sync=0; g2.sync_pending=True; g2.poll_once()
 check(g2.standby is not None,"a normal install started again afterwards waits for the plugin")
 rt.stop("openhop-spamguard")

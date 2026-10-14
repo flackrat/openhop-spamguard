@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.26"
+VERSION = "5.27"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -150,6 +150,21 @@ SETTINGS_META: list[dict] = [
     {"key": "text_rule_chars", "risk": "Shorter = harder for the spammer to dodge by editing the message, but more chance of matching a genuine message that shares that wording. Longer = more precise, but small edits can dodge it.", "group": "Duplicate suppression", "type": "int", "min": 10, "max": 150,
      "label": "Characters matched by a duplicate rule",
      "help": "How much of a message a duplicate rule matches, so small edits don't get round it."},
+    {"key": "repeat_guard", "group": "Duplicate suppression", "type": "bool",
+     "risk": "Turned off, one name can post the same line over and over and it all goes out, because SpamGuard never blocks a person for what they say.",
+     "label": "Stop one name repeating the same message",
+     "help": "When the same name sends the same message again and again in a short time, further copies of that message from that name are not passed on for a while. Their first copies, and anything new they say, still go out."},
+    {"key": "repeat_max", "group": "Duplicate suppression", "type": "int", "min": 2, "max": 20,
+     "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
+     "label": "Copies allowed before repeats are stopped",
+     "help": "How many times one name can send the same message within the time below before further copies are stopped."},
+    {"key": "repeat_window_seconds", "group": "Duplicate suppression", "type": "int", "min": 60, "max": 7200, "unit": "s",
+     "label": "Within",
+     "help": "The time in which those copies are counted."},
+    {"key": "repeat_block_seconds", "group": "Duplicate suppression", "type": "int", "min": 300, "max": 86400, "unit": "s",
+     "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = they can start again sooner.",
+     "label": "Stop further copies for",
+     "help": "How long further copies of that message from that name are stopped."},
     # -- Known people
     {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
      "risk": "1 = names become known very quickly, which is easier to abuse. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
@@ -238,7 +253,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hashtag_channels": [],               # e.g. ["#test", "#chat"] - keys are worked out from the name
     "enable_hop_rules": True,
     "hop_match_mode": "contains_known",
-    "known_min_msgs": 1,
+    "known_min_msgs": 3,
     "known_days": 30,
     "hold_links": "campaign",
     "max_paths_per_hop": 50,
@@ -251,6 +266,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enable_text_rules": True,
     "min_rule_chars": 14,
     "dedupe_enabled": True,
+    "repeat_guard": True,
+    "repeat_max": 3,
+    "repeat_window_seconds": 600,
+    "repeat_block_seconds": 3600,
     "text_rule_chars": 40,
     "random_name_patterns": [r"(?=.*\d)(?=.*[a-z])[a-z0-9]{8}"],
     "detect_garbage": True,
@@ -2120,6 +2139,8 @@ class SpamGuard:
             if self.hop_mode(b) in ("contains", "contains_known"):
                 return b["value"] in e.path
             return ">".join(e.path) in (b.get("paths") or {})
+        if b["kind"] == "repeat":
+            return e.sender == b.get("who") and b["value"] in e.text
         if b.get("sender") and e.sender == b["sender"]:
             return False  # the original sender may re-send their own message
         if b["kind"] == "words":
@@ -2138,6 +2159,11 @@ class SpamGuard:
             if e.ts >= b["created"] - 1 and self.block_matches(b, e):
                 e.matched = key
                 if count:
+                    if b.get("source") == "dedupe" and not b.get("announced"):
+                        b["announced"] = True
+                        self.note(f"Stopped a copy sent under another name: {self.describe(b)}")
+                        self.ev({"type": "block", "event": "start", "key": key, "kind": b["kind"], "value": b["value"],
+                                 "source": "dedupe", "reason": b.get("reason"), "exempt_sender": b.get("sender")})
                     b["hits"] = b.get("hits", 0) + 1
                     b["last_hit"] = e.ts
                     self.stats["caught"] += 1
@@ -2369,7 +2395,7 @@ class SpamGuard:
         return why
 
     def _add_block(self, key, kind, value, reason, source, channel=None, ttl=None, from_ts=None,
-                   action=None, match=None, sender=None) -> bool:
+                   action=None, match=None, sender=None, extra=None) -> bool:
         now = time.time()
         expires = (from_ts or now) + (ttl or self.cfg["block_ttl_seconds"])
         if expires <= now:
@@ -2380,18 +2406,20 @@ class SpamGuard:
                                 "reason": reason, "source": source, "created": now, "expires": expires,
                                 "hits": 0, "last_hit": None, "action": action, "match": match,
                                 "manual": source == "manual", "sender": sender}
+            if extra:
+                self.blocks[key].update(extra)
             if kind == "hop":
                 self.blocks[key]["paths"] = {}
             if kind == "suffix":
                 self.blocks[key]["user_allowed"] = []
                 self.blocks[key]["allow_ids"] = {}
-            self.note(f"Started blocking {self.describe(self.blocks[key])}: {reason[0].lower() + reason[1:]}",
-                      journal=source != "dedupe")
+            # The copy-paste guard sets one up for most longer messages, so it stays quiet until it
+            # actually stops a copy (see _match_event); everything else is noted straight away.
             if source != "dedupe":
+                self.note(f"Started blocking {self.describe(self.blocks[key])}: {reason[0].lower() + reason[1:]}")
                 self._important = True
-            nb = self.blocks[key]
-            self.ev({"type": "block", "event": "start", "key": key, "kind": kind, "value": value,
-                     "source": source, "reason": reason, "exempt_sender": sender})
+                self.ev({"type": "block", "event": "start", "key": key, "kind": kind, "value": value,
+                         "source": source, "reason": reason, "exempt_sender": sender})
             return True
         if expires >= b["expires"]:
             b["expires"] = expires
@@ -2418,6 +2446,8 @@ class SpamGuard:
             route = ">".join(b["value"])
             return (f"new repeaters sending via {route}" if route
                     else "new repeaters right next to yours")
+        if b["kind"] == "repeat":
+            return f"more copies of \"{b['value']}\" from {b.get('who')}"
         but = f" (except from {b['sender']})" if b.get("sender") else ""
         if b["kind"] == "words":
             return "messages containing all of " + ", ".join(f"\"{w}\"" for w in b["value"]) + but
@@ -2586,6 +2616,29 @@ class SpamGuard:
             for snip, e in first.items():
                 want(text_key(snip), "text", snip, "Copies under other names are blocked", "dedupe",
                      channel=e.channel, ttl=c["dedupe_seconds"], from_ts=last[snip], sender=e.sender)
+
+        # 2b. One name sending the same message over and over: let the first few copies through, then stop
+        # further copies of that message from that name for a while. (Never anything else they say.)
+        if c.get("repeat_guard", True):
+            groups: dict[tuple, list] = {}
+            for e in a["long"]:
+                if e.ts < now - c["repeat_window_seconds"] or e.exempt or e.sender in self.allow_senders:
+                    continue
+                content = longest_piece(strip_mentions(e.text)).strip()
+                if len(content) < 8:
+                    continue
+                groups.setdefault((e.sender, e.channel, normalise(content)), []).append((e, content))
+            for (who, ch, _), evs in groups.items():
+                if len({x[0].packet for x in evs}) <= int(c["repeat_max"]):
+                    continue
+                snip = middle_chunk(evs[-1][1], c["text_rule_chars"])
+                key = "repeat:" + hashlib.sha1(f"{who}|{snip}".encode()).hexdigest()[:10]
+                if self.suppressed.get(key, 0) > now:
+                    continue
+                if self._add_block(key, "repeat", snip, f"Sent {len(evs)} times in a few minutes", "repeat",
+                                   channel=ch, ttl=int(c["repeat_block_seconds"]), from_ts=evs[-1][0].ts,
+                                   extra={"who": who}):
+                    changed = True
 
         # 3. Source repeater blocking.
         if c.get("enable_hop_rules", True):
@@ -2773,6 +2826,8 @@ class SpamGuard:
                     {"field": "channel_message_body", "op": "contains", "value": b["value"]}]}
             if b["kind"] in ("text", "words") and b.get("sender"):
                 cond["all"].append({"field": "channel_sender", "op": "not_equals", "value": b["sender"]})
+            if b["kind"] == "repeat":
+                cond["all"].append({"field": "channel_sender", "op": "equals", "value": b.get("who") or ""})
             rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}", "enabled": True,
                           "if": cond, "then": {"action": self.rule_action(b)}})
         if len(rules) >= limit and not self.stats.get("rule_limit_warned"):
