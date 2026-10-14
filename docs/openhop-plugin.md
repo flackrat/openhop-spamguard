@@ -76,7 +76,7 @@ openHop's own backup doesn't include plugin data. Everything SpamGuard has learn
 
 ## Don't make SpamGuard openHop's main web page
 
-SpamGuard versions 5.20 and 5.21 of the plugin had a small page that openHop offers under its web frontend setting. Choosing it would replace openHop's dashboard with that page. Newer versions don't have it, so the choice disappears once you update. If it was chosen by mistake: on the Pi, remove the `web_path:` line under `web:` in `/etc/openhop_repeater/config.yaml` and run `sudo systemctl restart openhop-repeater`.
+Plugin versions 5.20 and 5.21 had a page that openHop offers under its web frontend setting, and choosing it would replace openHop's dashboard. From 5.26 that page is SpamGuard's Open button, and if it's ever chosen as openHop's main page SpamGuard puts openHop's dashboard back within a minute. If you're still on 5.20 or 5.21 and it was chosen by mistake: on the Pi, remove the `web_path:` line under `web:` in `/etc/openhop_repeater/config.yaml` and run `sudo systemctl restart openhop-repeater`, then update SpamGuard.
 
 ## Going back
 
@@ -88,4 +88,3 @@ Uninstalling the plugin stops SpamGuard but leaves its rules in openHop, so bloc
 
 ## Differences from the normal install
 
-- The optional openHop speed fix isn't applied automatically; see the main README if your Pi needs it.

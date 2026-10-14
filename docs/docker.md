@@ -66,7 +66,7 @@ docker compose pull && docker compose up -d
 ## Differences from the normal install
 
 - **No Update button**: update by pulling the new image, as above.
-- **No automatic openHop fixes.** On a normal install SpamGuard can apply openHop's speed fix and rule-check fix by editing one file inside openHop. One container can't sensibly edit another's files, and an openHop image update would undo it anyway, so the Docker version leaves openHop alone. The speed fix mostly matters on small Pis with a large packet history. The rule-check fix is for an openHop bug ([#520](https://github.com/openhop-dev/openhop_repeater/issues/520)) that goes away once openHop releases its own fix.
+- **No automatic openHop fixes.** On a normal install SpamGuard can apply openHop's rule-check fix by editing one file inside openHop. One container can't sensibly edit another's files, and an openHop image update would undo it anyway, so the Docker version leaves openHop alone. The rule-check fix is for an openHop bug ([#520](https://github.com/openhop-dev/openhop_repeater/issues/520)) that goes away once openHop releases its own fix.
 - **Restarts** are handled by Docker (`restart: unless-stopped`), and the image has a health check on SpamGuard's `/health` page, so `docker ps` shows whether it is healthy.
 
 ## Removing it
