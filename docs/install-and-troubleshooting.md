@@ -145,7 +145,7 @@ curl -s http://127.0.0.1:8091/health
 | A regular's messages are held by a repeater block | They aren't known yet. Press **Not spam** on their message: that trusts them and lets them through at once. |
 | A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Not spam**, or set Advanced > Known people > Hold links to Never. |
 | Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
-| One named account keeps posting things people don't like | That's a person, not spam, so SpamGuard leaves it alone (see "What SpamGuard blocks, and what it doesn't" in the README). Anyone who doesn't want to read it can mute it in their own MeshCore app. If it turns into copy-paste floods or random-name waves, SpamGuard catches that as spam. |
+| One named account keeps posting things people don't like | That's a person, not spam, so SpamGuard leaves it alone (see "What SpamGuard blocks, and what it doesn't" in the README). Anyone who doesn't want to read it can block or hide that sender in their own MeshCore app. If they post the same message over and over, the repeat guard holds back the further copies; copy-paste floods and random-name waves are caught as spam too. |
 | openHop shows a policy object called `spamguard` | That's the known-people list. SpamGuard keeps it up to date and the uninstaller removes it. |
 
 ## If openHop falls behind
