@@ -17,7 +17,6 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Lockdown button** for a heavy attack: for a while, only people it already knows get through.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
-- **Speeds up openHop on small Pis** with an optional one-line fix.
 
 ![SpamGuard's web page (example data)](docs/screenshot-overview.png)
 
@@ -145,21 +144,9 @@ systemctl show openhop-spamguard -p NRestarts  # how many times systemd has rest
 </details>
 
 <details>
-<summary><b>openHop running behind (speed fix)</b></summary>
+<summary><b>openHop running behind</b></summary>
 
-On a small Pi with a large packet database, openHop can fall minutes behind saving packets. SpamGuard then sees spam late, and a wave gets through before a block starts. The Health panel shows this as **openHop delay**.
-
-The cause is in openHop. Every time it saves a packet it recounts every packet it has stored, and keeps the answer for only 3 seconds. That count is only used for the graphs, which are written once a minute. `tune-openhop.sh` changes that 3 seconds to 60 seconds, which changes nothing you can see, and offers to keep 7 days of packet history instead of 31.
-
-As a plugin, fetch the script first (on the Pi): `curl -fsSL https://raw.githubusercontent.com/flackrat/openhop-spamguard/main/tune-openhop.sh -o tune-openhop.sh`, then run it with `sudo bash tune-openhop.sh`. On the older install it's already there:
-
-```
-sudo bash /opt/openhop_spamguard/tune-openhop.sh            # apply (asks first)
-sudo bash /opt/openhop_spamguard/tune-openhop.sh --check    # report only
-sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo     # put openHop's value back
-```
-
-An openHop upgrade puts the old value back. The Health panel then says "openHop's speed fix isn't in place"; run the script again.
+Most repeaters never see this. If the Health panel shows **openHop delay** in minutes rather than seconds, openHop is struggling to save the packets it hears (usually an older Pi with a large packet history), so SpamGuard sees spam late. Health then suggests a fix to run. Keeping 7 days of packet history instead of 31 also helps: see [docs/openhop-fresh-install.md](docs/openhop-fresh-install.md).
 
 </details>
 

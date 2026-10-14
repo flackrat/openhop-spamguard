@@ -151,7 +151,7 @@ sudo systemctl status openhop-repeater openhop-plugin-manager
 sudo journalctl -u openhop-repeater -u openhop-plugin-manager -n 100 --no-pager
 ```
 
-After an openHop upgrade, SpamGuard puts its rules back within a minute. You don't need to reinstall it, but do reapply the speed fix below.
+After an openHop upgrade, SpamGuard puts its rules back within a minute. You don't need to reinstall it.
 
 ### Change radio settings
 
@@ -163,9 +163,9 @@ cd ~/openhop_repeater && sudo bash setup-radio-config.sh /etc/openhop_repeater
 sudo systemctl restart openhop-repeater
 ```
 
-### Keep openHop fast on a small Pi
+### If openHop is slow on an older Pi
 
-On a Pi 3 with a large packet database, openHop can sit at 100% CPU and fall minutes behind saving packets. Its dashboard and anything reading its packet list (such as SpamGuard) then run late. Two settings keep it quick.
+Most repeaters don't need this. On a Pi 3 with a large packet database, openHop can sit at 100% CPU and fall minutes behind saving packets. Its dashboard and anything reading its packet list (such as SpamGuard) then run late. Two settings keep it quick.
 
 **1. Keep 7 days of packet history instead of 31.** The long-term graphs come from a separate metrics file and are not affected.
 
@@ -178,7 +178,7 @@ sudo nano /etc/openhop_repeater/config.yaml
 sudo systemctl restart openhop-repeater
 ```
 
-**2. Apply the packet-count speed fix.** Each time openHop saves a packet it recounts every stored packet, keeping the answer for only 3 seconds, although only the once-a-minute graphs use it. Keeping it for 60 seconds removes most of that work. If SpamGuard is installed, its installer offers this, or run `sudo bash /opt/openhop_spamguard/tune-openhop.sh`. Without SpamGuard:
+**2. Apply the packet-count speed fix.** Each time openHop saves a packet it recounts every stored packet, keeping the answer for only 3 seconds, although only the once-a-minute graphs use it. Keeping it for 60 seconds removes most of that work. SpamGuard's Health page suggests this when openHop is falling behind. To do it by hand:
 
 ```
 F=$(sudo find /opt/openhop_repeater -path "*repeater/data_acquisition/sqlite_handler.py" | head -1)

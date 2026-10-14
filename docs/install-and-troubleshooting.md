@@ -40,7 +40,7 @@ A fresh install ends with SpamGuard running in Monitor mode, so nothing is block
     sudo bash install.sh
     ```
 
-    The installer asks two questions about openHop. Answer **y** to both unless you have a reason not to. The first applies the openHop speed fix; the second keeps 7 days of packet history instead of 31. Both are explained under "If openHop falls behind" below.
+    The installer may ask two questions about making openHop faster. They only matter on an older Pi; see "If openHop falls behind" below.
 
 3. **Add the token to the config** (replace `YOUR_TOKEN`; the quotes stay):
 
@@ -123,7 +123,6 @@ Start with the Health panel on the page and the last 50 log lines; most problems
 | `grep: ... Permission denied` on the config | The config is readable by root only (it holds the token) | Put `sudo` in front. |
 | Times on the page are an hour or more out | Pi's time zone not set (it defaults to UTC) | See Pi housekeeping below. |
 | Newest message is old | Quiet channel, or checking stopped | Check the footer "last checked"; if it is not "just now", restart SpamGuard and send the log. |
-| `ConnectionResetError` in older logs | A phone closed the page mid-refresh | Harmless; v5.1.1 and later no longer log it. |
 | "Restart if it hangs: off" on the page | Old service settings | Re-run `sudo bash install.sh` from the package folder. |
 | Genuine people being blocked | A rule too broad for your traffic | Press **Not spam** on their message, remove the block, or choose Relaxed sensitivity. |
 | Spam getting through | Spam doesn't match the current signs yet | Press **This is spam**; try Strict during an attack; keep the evidence log on for tuning. |
@@ -151,17 +150,15 @@ curl -s http://127.0.0.1:8091/health
 
 ## If openHop falls behind
 
-On a small Pi (a Pi 3, say) with a large packet database, openHop can fall minutes behind saving the packets it hears. SpamGuard reads that saved list, so it then sees spam minutes late and a whole wave gets through before a block starts. The Health panel shows this as **openHop delay**. A few seconds is normal; minutes means openHop is struggling.
+Most repeaters never see this. On an older Pi with a large packet database, openHop can fall minutes behind saving the packets it hears. SpamGuard reads that saved list, so it then sees spam late and a wave gets through before a block starts. The Health panel shows this as **openHop delay**: a few seconds is normal, minutes means openHop is struggling, and Health then suggests a fix.
 
-The cause is inside openHop. Every time it saves a packet it recounts every packet it has stored, and keeps that answer for only 3 seconds. The count is only used for the graphs, which are written once a minute. SpamGuard's `tune-openhop.sh` makes openHop keep the count for 60 seconds instead, which changes nothing you can see, and offers to keep 7 days of packet history instead of 31 so the database stays small.
+The fix makes openHop do less work each time it saves a packet, and can keep 7 days of packet history instead of 31:
 
 ```
 sudo bash /opt/openhop_spamguard/tune-openhop.sh            # apply (asks before each change)
 sudo bash /opt/openhop_spamguard/tune-openhop.sh --check    # just report
 sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo     # put openHop's original value back
 ```
-
-An openHop upgrade puts the old value back. When that happens the Health panel says "openHop's speed fix isn't in place": run the script again. Advanced view shows **openHop speed fix: on/off** in the Health panel.
 
 To see what openHop is busy with, if it is still slow:
 
