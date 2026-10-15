@@ -919,7 +919,7 @@ class EvidenceLog:
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length", "leaked", "known_then", "in_passing")
+                 "length", "leaked", "known_then", "in_passing", "local")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -940,6 +940,7 @@ class Event:
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
+        self.local = False   # sent by this repeater itself (one of its own companions)
         self.recorded = False
         self.logged = False
         self.packet = ""
@@ -1099,7 +1100,7 @@ class SpamGuard:
                      "sender": e.sender, "shape": name_shape(e.sender), "text": e.text,
                      "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random, "garbage": e.garbage,
                      "obfuscated": e.obfuscated, "garbage": e.garbage, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
-                     "known_then": e.known_then, "in_passing": e.in_passing, "exempt": e.exempt,
+                     "known_then": e.known_then, "in_passing": e.in_passing, "exempt": e.exempt, "own": self.is_own(e),
                      "sender_count_24h": h.get("count"), "sender_first_seen": round(h.get("first", e.ts), 2),
                      "campaign_senders": len(cc["senders"]) if cc else 0,
                      "origin_known": bool(e.path) and self.known_origin(e.first_hop),
@@ -2083,6 +2084,55 @@ class SpamGuard:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def refresh_own_identities(self, force: bool = False):
+        """This repeater's own companions (and room servers), from openHop, every 5 minutes. Their messages
+        start here (no path), and SpamGuard leaves them alone."""
+        now = time.time()
+        if not force and now - getattr(self, "_own_checked", 0) < 300:
+            return
+        self._own_checked = now
+        try:
+            res = self._api("GET", "/api/identities", timeout=10)
+            data = res.get("data", res) if isinstance(res, dict) else {}
+        except Exception as e:
+            log.debug("openHop identities not available: %s", e)
+            return
+        own: dict[str, dict] = {}
+        for comp in data.get("configured_companions") or []:
+            settings = comp.get("settings") or {}
+            pk = str(comp.get("public_key") or "")
+            for nm in {str(comp.get("name") or "").strip(), str(settings.get("node_name") or "").strip()}:
+                if nm:
+                    own[nm] = {"name": nm, "kind": "companion", "id": pk[:12].upper(), "hash": comp.get("hash")}
+        for rs in data.get("configured") or []:
+            settings = rs.get("settings") or {}
+            pk = str(rs.get("public_key") or "")
+            for nm in {str(rs.get("name") or "").strip(), str(settings.get("node_name") or "").strip()}:
+                if nm:
+                    own.setdefault(nm, {"name": nm, "kind": rs.get("type") or "room server", "id": pk[:12].upper(),
+                                        "hash": rs.get("hash")})
+        if set(own) != set(getattr(self, "own_names", {}) or {}):
+            if own:
+                self.note("This repeater's own companions: " + ", ".join(sorted(own)) + ". Their messages are never blocked.",
+                          journal=False)
+        self.own_names = own
+
+    def own_summary(self) -> list[dict]:
+        """One entry per own identity (its ID), with every name it goes by."""
+        by: dict[str, dict] = {}
+        for o in (getattr(self, "own_names", None) or {}).values():
+            k = o.get("id") or o["name"]
+            ent = by.setdefault(k, {"name": o["name"], "names": [], "kind": o.get("kind"), "id": o.get("id")})
+            ent["names"].append(o["name"])
+        for ent in by.values():
+            ent["names"].sort()
+            ent["name"] = " / ".join(ent["names"])
+        return sorted(by.values(), key=lambda o: o["name"])
+
+    def is_own(self, e) -> bool:
+        """A message this repeater sent itself: it has no path, and the name is one of its own companions."""
+        return getattr(e, "local", False) or (not e.path and e.sender in (getattr(self, "own_names", None) or {}))
+
     def refresh_openhop_info(self, force: bool = False):
         """Radio settings (for airtime) and the repeater directory (for the map), at most every 30 min."""
         now = time.time()
@@ -2160,6 +2210,8 @@ class SpamGuard:
         return b["value"] in e.text
 
     def _match_event(self, e: Event, count: bool = True):
+        if self.is_own(e):
+            return   # openHop never applies SpamGuard's blocks to the repeater's own messages
         # Same order openHop checks the rules in (see build_rules).
         rank = {"manual": 0, "hop": 1, "campaign": 2, "dedupe": 3, "rotation": 9}
         for key, b in sorted(self.blocks.items(), key=lambda kv: (10 if self.gated(kv[1]) else rank.get(kv[1].get("source"), 2),
@@ -2214,12 +2266,15 @@ class SpamGuard:
             ts = float(p.get("timestamp") or now)
             e = Event(ts, parse_path(p.get("original_path")), dec["sender"] or "?", dec["text"], dec["channel"])
             e.packet = str(p.get("packet_hash") or "")
+            # openHop records what this repeater sends itself with no path and no received signal
+            e.local = (not e.path and "rssi" in p and "snr" in p and not p.get("rx_radio_id")
+                       and not p.get("rssi") and not p.get("snr"))
             try:
                 e.length = int(p.get("length") or 0) or len(payload) + 2 + len(e.path) * max(1, len((e.path or ["00"])[0]) // 2)
             except (TypeError, ValueError):
                 e.length = len(payload)
             e.seen_at = now
-            e.exempt = self.text_allowed(e.text)
+            e.exempt = self.text_allowed(e.text) or self.is_own(e)
             trusted = e.sender in self.allow_senders
             e.name_score = name_score(e.sender, self.name_res)
             # Unreadable text only counts from names SpamGuard doesn't know: a regular whose radio sends
@@ -2756,7 +2811,19 @@ class SpamGuard:
                              {"field": "hop_count", "op": "equals", "value": len(suf) + 1}]
                              + [{"field": "path_hashes", "op": "contains", "value": h} for h in suf]},
                          "then": {"action": self.rule_action(b)}})
-        return self._build_main(), tail + self._build_gated()
+        return self._not_own(self._build_main()), self._not_own(tail + self._build_gated())
+
+    @staticmethod
+    def _not_own(rules: list[dict]) -> list[dict]:
+        """SpamGuard's blocks never apply to messages this repeater sends itself (its own companions and
+        room servers): openHop tells the rules so (local_transmission), and that can't be faked over the air.
+        'not_equals true' also matches on an older openHop that doesn't say, so nothing is lost there."""
+        for r in rules:
+            if (r.get("then") or {}).get("action") in ("drop", "log_only"):
+                conds = r.setdefault("if", {}).setdefault("all", [])
+                if not any(c.get("field") == "local_transmission" for c in conds):
+                    conds.append({"field": "local_transmission", "op": "not_equals", "value": True})
+        return rules
 
     def _rid(self, key: str) -> int:
         if key not in self.rule_ids:
@@ -3040,6 +3107,7 @@ class SpamGuard:
     def poll_once(self):
         try:
             self.refresh_openhop_info()
+            self.refresh_own_identities()
             self.refresh_public_map()
             self.backfill_adverts()
         except Exception:
@@ -3939,6 +4007,7 @@ class SpamGuard:
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
+                "own": self.own_summary(),
                 "known": {"count": len(self.known_list()), "min_msgs": int(c.get("known_min_msgs", 1)),
                           "learning": sum(1 for k in self.known if not self.is_known(k))},
                 "metrics": self.metrics(),
