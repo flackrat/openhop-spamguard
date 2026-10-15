@@ -67,7 +67,7 @@ setup(
     version="{v}",
     description="SpamGuard: spam protection for openHop MeshCore repeaters (openHop plugin)",
     url="https://github.com/flackrat/openhop-spamguard",
-    license="MIT",
+    license="AGPL-3.0-or-later",
     packages=["openhop_spamguard"],
     package_data={{"openhop_spamguard": ["ui.html", "spamguard-ui/*"]}},
     data_files=[("share/openhop/plugins/{PLUGIN_ID}", ["openhop-plugin.json"])],

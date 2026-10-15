@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# SpamGuard: channel-spam protection for openHop repeaters.
+# Copyright (c) 2026 Flackrat. https://github.com/flackrat/openhop-spamguard
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the
+# GNU Affero General Public License as published by the Free Software Foundation, either version 3
+# of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY;
+# see the GNU Affero General Public License (the LICENSE file) for details.
 """
 openHop SpamGuard v5 - offline channel-spam protection for openHop Repeater.
 
@@ -57,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.32"
+VERSION = "5.33"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -403,6 +410,12 @@ def hashtag_secret(name: str) -> str:
     if not name.startswith("#"):
         name = "#" + name
     return hashlib.sha256(name.encode("utf-8")).digest()[:16].hex()
+
+
+def oh_sender(name) -> str:
+    """The sender as openHop's rules see it: a message without a "Name: " prefix is from "Unknown" there
+    (SpamGuard keeps such a sender blank), so a rule about it must say "Unknown" to match anything."""
+    return str(name or "").strip() or "Unknown"
 
 
 def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dict]:
@@ -984,6 +997,9 @@ class SpamGuard:
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
+        # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
+        # message with that text counts as a first copy again. {text or "w:word|word": time released}
+        self.released: dict[str, float] = {}
         self.allow_hops: set[str] = set()
         self.allow_senders: set[str] = set()
         self.allow_texts: set[str] = set()
@@ -1158,6 +1174,7 @@ class SpamGuard:
         self.removed_sender_blocks = [v.get("value") for k, v in self.blocks.items() if v.get("kind") == "sender"]
         self.blocks = {k: v for k, v in self.blocks.items() if v.get("kind") != "sender"}
         self.suppressed = {k: v for k, v in st.get("suppressed", {}).items() if v > now}
+        self.released = {k: v for k, v in st.get("released", {}).items() if v > now - 86400}
         self.allow_hops = set(st.get("allow_hops", []))
         self.allow_senders = set(st.get("allow_senders", []))
         self.allow_texts = set(st.get("allow_texts", []))
@@ -1224,6 +1241,7 @@ class SpamGuard:
                     "version": VERSION,
                     "blocks": self.blocks,
                     "suppressed": self.suppressed,
+                    "released": self.released,
                     "allow_hops": sorted(self.allow_hops),
                     "allow_senders": sorted(self.allow_senders),
                     "allow_texts": sorted(self.allow_texts),
@@ -1343,7 +1361,8 @@ class SpamGuard:
         """The names written to openHop for 'let known people through' (most recently heard kept)."""
         names = [k for k in self.known if self.is_known(k)]
         names = sorted(names, key=lambda k: -self.known[k][1])[:2000]
-        return sorted(set(names) | {n for n in self.allow_senders if n})
+        # Never "Unknown": openHop gives that name to every message without a "Name: " prefix.
+        return sorted((set(names) | {n for n in self.allow_senders if n}) - {"Unknown"})
 
     def _held_in_passing(self, e: Event) -> bool:
         """Held only because it passed THROUGH a blocked repeater partway along its route
@@ -1353,7 +1372,7 @@ class SpamGuard:
 
     def learn_sender(self, e: Event, spam: bool):
         """Count a genuine message towards its sender becoming known."""
-        if spam or e.random or e.obfuscated or not e.sender or e.sender == "?":
+        if spam or e.random or e.obfuscated or not e.sender or e.sender in ("?", "Unknown"):
             return
         if e.matched and not self._held_in_passing(e):
             return
@@ -2222,6 +2241,24 @@ class SpamGuard:
         if len(self.known) > 5000:  # keep the 5,000 most recently heard
             self.known = dict(sorted(self.known.items(), key=lambda kv: -kv[1][1])[:5000])
 
+    def release_duplicate(self, b: dict):
+        """Forgive the copies of a duplicate block's message seen so far, instead of holding the block
+        off: the next copy counts as a first copy again, and repeats after it are held back as usual."""
+        v = b.get("value")
+        k = "w:" + "|".join(v) if isinstance(v, list) else str(v)
+        self.released[k] = time.time()
+
+    def _released(self, e) -> bool:
+        for k, ts in self.released.items():
+            if e.ts > ts:
+                continue
+            if k.startswith("w:"):
+                if all(w in e.text for w in k[2:].split("|")):
+                    return True
+            elif k in e.text:
+                return True
+        return False
+
     def covers_everyone(self, b: dict) -> bool:
         """Blocks that also stop people SpamGuard knows: these can't be kept for ever."""
         return b["kind"] in ("text", "words") or (b["kind"] == "hop" and self.hop_mode(b) == "contains")
@@ -2696,7 +2733,8 @@ class SpamGuard:
             variants: dict[str, dict] = {}
             for e in a["long"]:
                 if e.ts >= now - c["dedupe_seconds"] and not e.exempt and e.sender not in self.allow_senders \
-                        and not self._caught_by_text(e) and len(e.norm) >= c["dedupe_min_chars"] * 0.6:
+                        and not self._caught_by_text(e) and len(e.norm) >= c["dedupe_min_chars"] * 0.6 \
+                        and not (self.released and self._released(e)):
                     v = variants.setdefault(e.norm, {"raws": set(), "last": 0, "ch": e.channel, "senders": set()})
                     v["raws"].add(e.text)
                     v["senders"].add(e.sender)
@@ -2724,10 +2762,17 @@ class SpamGuard:
                     continue
                 content = longest_piece(strip_mentions(e.text))
                 if e.exempt or e.sender in self.allow_senders or len(content) < c["dedupe_min_chars"] \
-                        or self._caught_by_text(e):
+                        or self._caught_by_text(e) or (self.released and self._released(e)):
                     continue  # already stopped by a text block: a second rule for the same message adds nothing
                 snip = middle_chunk(content, c["text_rule_chars"])
-                if len(snip) < c["min_rule_chars"]:
+                n = int(c["text_rule_chars"])
+                if len(snip) < n <= len(content.strip()):
+                    # whole words from the middle came out too short: take the characters as they come
+                    body = content.strip()
+                    snip = body[(len(body) - n) // 2:][:n]
+                # A duplicate rule goes by duplicate suppression's own two lengths (which can go down to 5),
+                # not by the shortest text a campaign rule may match.
+                if len(snip) < min(c["min_rule_chars"], c["text_rule_chars"], c["dedupe_min_chars"]):
                     continue
                 first.setdefault(snip, e)
                 last[snip] = e.ts
@@ -2833,6 +2878,8 @@ class SpamGuard:
             changed = True
         for k in [k for k, v in self.suppressed.items() if v <= now]:
             del self.suppressed[k]
+        for k in [k for k, v in self.released.items() if v < now - 86400]:
+            del self.released[k]
         self._save_state(force=self._important)
         return changed
 
@@ -3028,9 +3075,9 @@ class SpamGuard:
                     {"field": "channel_hash", "op": "equals", "value": secret},
                     {"field": "channel_message_body", "op": "contains", "value": b["value"]}]}
             if b["kind"] in ("text", "words") and b.get("sender"):
-                cond["all"].append({"field": "channel_sender", "op": "not_equals", "value": b["sender"]})
+                cond["all"].append({"field": "channel_sender", "op": "not_equals", "value": oh_sender(b["sender"])})
             if b["kind"] == "repeat":
-                cond["all"].append({"field": "channel_sender", "op": "equals", "value": b.get("who") or ""})
+                cond["all"].append({"field": "channel_sender", "op": "equals", "value": oh_sender(b.get("who"))})
             rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
                           "if": cond, "then": {"action": self.rule_action(b)}})
         if len(rules) >= limit and not self.stats.get("rule_limit_warned"):
@@ -4303,8 +4350,12 @@ class SpamGuard:
                 b = self.blocks.pop(key, None)
                 if b:
                     self.note(f"Removed by hand: {self.describe(b)}")
-                self.suppressed[key] = now + int(body.get("suppress_seconds", 86400))
-                msg = "Block removed. SpamGuard won't re-create it for 24 hours (Exceptions > Not re-blocked > Clear undoes that)."
+                if b and b.get("source") == "dedupe":
+                    self.release_duplicate(b)
+                    msg = "Duplicate block removed. The copies so far are forgiven; if the message keeps being copied, the next copy starts a new block."
+                else:
+                    self.suppressed[key] = now + int(body.get("suppress_seconds", 86400))
+                    msg = "Block removed. SpamGuard won't re-create it for 24 hours (Exceptions > Not re-blocked > Clear undoes that)."
             elif op == "lockdown":
                 minutes = int(body.get("minutes") or 0)
                 if minutes <= 0:
@@ -4497,8 +4548,10 @@ class SpamGuard:
                 # and it looks like the clear did nothing.
                 for k in [k for k, b in self.blocks.items() if b.get("source") != "manual"]:
                     b = self.blocks.pop(k)
-                    hold = b.get("expires", 0) if b.get("source") == "dedupe" else now + 86400
-                    self.suppressed[k] = max(hold, now + 600)
+                    if b.get("source") == "dedupe":
+                        self.release_duplicate(b)   # forgiven: new copies start a new block
+                    else:
+                        self.suppressed[k] = now + 86400
                 self.note("Cleared all automatic blocks")
                 msg = ("Automatic blocks cleared. SpamGuard won't re-create those for 24 hours "
                        "(Exceptions > Not re-blocked > Clear undoes that). New spam can still make new ones.")
