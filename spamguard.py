@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.33"
+VERSION = "5.34"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -321,6 +321,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
 KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix"}
+# A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
+# log, updates or how SpamGuard runs on this machine.
+PROFILE_FORMAT = "spamguard-profile"
+PROFILE_EXCLUDE = KEEP_ON_RESET | {"auto_protect", "poll_seconds", "live_feed", "rules_after_yours"}
+MAX_PROFILES = 50
+
+
+def profile_keys() -> list[str]:
+    return [m["key"] for m in SETTINGS_META if m["key"] not in PROFILE_EXCLUDE]
 # openHop release that includes its own rule-check fix (openhop_repeater #520/#521); None until released.
 OPENHOP_FIXED_IN: Optional[str] = None
 PUBLIC_MAP_URL = "https://map.meshcore.io/api/v1/nodes"
@@ -1020,6 +1029,8 @@ class SpamGuard:
         self.hidden_sources: dict[str, float] = {}   # Spam sources rows you removed (back if spam comes again)
         self.monitor_since = 0.0   # when SpamGuard last went into Monitor (for switching to Protect by itself)
         self.genuine_marks: list[float] = []   # when you last said a message wasn't spam
+        self.profiles: dict[str, dict] = {}     # saved settings profiles, by name
+        self.profile_in_use: Optional[str] = None
         self.started = time.time()
         self.loop_beat: Optional[float] = None    # end of the last check loop, success or not
         self.loop_count = 0
@@ -1203,6 +1214,8 @@ class SpamGuard:
         self.view_marks = {k: float(v) for k, v in (st.get("view_marks") or {}).items()}
         self.hidden_sources = {k: float(v) for k, v in (st.get("hidden_sources") or {}).items() if float(v) > now - 8 * 86400}
         self.genuine_marks = [float(t) for t in (st.get("genuine_marks") or []) if float(t) > now - 7 * 86400]
+        self.profiles = {k: v for k, v in (st.get("profiles") or {}).items() if isinstance(v, dict)}
+        self.profile_in_use = st.get("profile_in_use") if st.get("profile_in_use") in self.profiles else None
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
@@ -1263,6 +1276,7 @@ class SpamGuard:
                     "view_marks": getattr(self, "view_marks", {}),
                     "hidden_sources": getattr(self, "hidden_sources", {}),
                     "genuine_marks": getattr(self, "genuine_marks", [])[-50:],
+                    "profiles": self.profiles, "profile_in_use": self.profile_in_use,
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
@@ -4252,6 +4266,9 @@ class SpamGuard:
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "channels": sorted(c["channels"]),
                 "rule_summary": getattr(self, "rule_summary", None),
+                "profiles": {"list": [dict(v, name=k) for k, v in sorted(self.profiles.items())],
+                             "in_use": self.profile_in_use, "modified": self.profile_modified(),
+                             "current": self.current_profile(), "keys": profile_keys()},
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
@@ -4284,6 +4301,69 @@ class SpamGuard:
             }
 
     # ---- actions from the web page ----
+    # ---- settings profiles ----
+    def current_profile(self) -> dict:
+        """The detection settings in force now, as a profile: the sensitivity plus every value you changed."""
+        return {"sensitivity": self.cfg.get("sensitivity", "balanced"),
+                "values": {k: self.settings[k] for k in profile_keys() if k in self.settings}}
+
+    @staticmethod
+    def check_profile(p) -> dict:
+        """A profile from a file or the page, checked: only known detection settings, within their limits.
+        Anything else (channels, keys, exceptions, the mode, unknown fields) is refused, not ignored."""
+        if not isinstance(p, dict):
+            raise ValueError("That isn't a SpamGuard profile")
+        extra = set(p) - {"format", "version", "name", "sensitivity", "values", "saved"}
+        if extra:
+            raise ValueError("A profile can't hold " + ", ".join(sorted(extra)))
+        if p.get("format", PROFILE_FORMAT) != PROFILE_FORMAT or int(p.get("version", 1)) != 1:
+            raise ValueError("That isn't a SpamGuard profile (or it is from a newer version)")
+        sens = p.get("sensitivity", "balanced")
+        if sens not in PRESETS:
+            raise ValueError("Unknown sensitivity in the profile")
+        vals = p.get("values") or {}
+        if not isinstance(vals, dict):
+            raise ValueError("The profile's values aren't readable")
+        allowed = set(profile_keys())
+        bad = [k for k in vals if k not in allowed]
+        if bad:
+            raise ValueError("A profile can only hold detection settings, not " + ", ".join(sorted(bad)[:5]))
+        out = {}
+        for k, v in vals.items():
+            m = META_BY_KEY[k]
+            if m["type"] == "bool":
+                v = bool(v)
+            elif m["type"] == "int":
+                v = int(v)
+                if not m.get("min", v) <= v <= m.get("max", v):
+                    raise ValueError(f"'{m['label']}' in the profile must be between {m['min']} and {m['max']}")
+            elif m["type"] == "choice":
+                if v not in [x[0] for x in m["choices"]]:
+                    raise ValueError(f"Invalid choice for '{m['label']}' in the profile")
+            elif m["type"] == "list":
+                v = [str(x) for x in (v if isinstance(v, list) else [])][:50]
+                for x in v:
+                    re.compile(x)
+            out[k] = v
+        return {"sensitivity": sens, "values": out}
+
+    def profile_modified(self) -> bool:
+        p = self.profiles.get(self.profile_in_use or "")
+        if not p:
+            return False
+        cur = self.current_profile()
+        return cur["sensitivity"] != p.get("sensitivity") or cur["values"] != (p.get("values") or {})
+
+    def apply_profile(self, p: dict):
+        """Put a profile's detection settings in place. Everything a profile doesn't hold stays as it is."""
+        p = self.check_profile(p)
+        with self.lock:
+            for k in profile_keys():
+                self.settings.pop(k, None)
+        self.apply_settings({"sensitivity": p["sensitivity"]})
+        if p["values"]:
+            self.apply_settings(dict(p["values"]))
+
     def apply_settings(self, body: dict) -> dict:
         with self.lock:
             if body.get("reset"):
@@ -4568,6 +4648,37 @@ class SpamGuard:
                           "blocks, settings and the evidence log are unchanged")
                 self._important = True
                 msg = "Spam history cleared. The charts and Spam sources start again from now."
+            elif op == "profile_save":
+                name = str(body.get("name", "")).strip()[:40]
+                if not name:
+                    raise ValueError("Give the profile a name")
+                if name not in self.profiles and len(self.profiles) >= MAX_PROFILES:
+                    raise ValueError(f"At most {MAX_PROFILES} profiles; delete one first")
+                self.profiles[name] = dict(self.current_profile(), saved=now)
+                self.profile_in_use = name
+                msg = f"Saved the current settings as '{name}'"
+            elif op == "profile_import":
+                p = self.check_profile(body.get("profile"))
+                name = str(body.get("name") or (body.get("profile") or {}).get("name") or "Imported profile").strip()[:40]
+                base, i = name, 2
+                while name in self.profiles:
+                    name, i = f"{base} ({i})", i + 1
+                if len(self.profiles) >= MAX_PROFILES:
+                    raise ValueError(f"At most {MAX_PROFILES} profiles; delete one first")
+                self.profiles[name] = dict(p, saved=now)
+                msg = f"Imported '{name}'. Nothing has changed yet: press Apply when you want to use it."
+            elif op == "profile_apply":
+                name = str(body.get("name", ""))
+                if name not in self.profiles:
+                    raise ValueError("That profile no longer exists")
+                self.apply_profile(self.profiles[name])
+                self.profile_in_use = name
+                self.note(f"Applied settings profile '{name}'")
+                msg = f"Settings profile '{name}' applied"
+            elif op == "profile_delete":
+                self.profiles.pop(str(body.get("name", "")), None)
+                if self.profile_in_use not in self.profiles:
+                    self.profile_in_use = None
             elif op in ("clear_held", "clear_recent"):
                 self.view_marks[op.split("_")[1]] = now
                 msg = "Cleared. Anything new still shows up here, and the evidence log keeps everything."
@@ -4602,7 +4713,7 @@ def load_page() -> str:
 
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
-           "unallow_text", "add_channel", "add_openhop_channel", "remove_channel", "clear_auto", "clear_suppressed",
+           "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source"}
 

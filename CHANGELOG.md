@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.34
+- **Settings profiles.** Settings (Advanced) has a new Profiles card. A profile is a saved set of detection settings: the sensitivity and every value you changed. **Save current settings as a profile** stores what's in force now, and **Apply** puts a profile back, first listing every value it will change. The card shows which profile is in use and when settings have changed since.
+- **Share with other operators.** **Export** downloads a profile as a small file, and **Import a profile file** adds one to your list without applying it. A profile never holds channels, keys, exceptions, the mode, the evidence log or update settings, and a file that tries to is refused.
+- `tests/testprofiles.py` covers profiles.
+- The idea came from a sister project that reworked SpamGuard's ideas for another app.
+
 ## v5.33
 - **Removing a duplicate block no longer switches duplicate checking off for that message.** Before, removing one by hand (or pressing Clear automatic blocks) held that text off for 24 hours, so later copies weren't caught at all. Now the copies seen so far are simply forgiven: the next copy counts as a first copy again, and copies after it are held back as usual. Campaign and repeater blocks you remove are still held off for 24 hours.
 - **Low duplicate lengths now work.** With "Only for messages at least this long" and "Characters matched by a duplicate rule" set below the old minimum, short messages still got no duplicate rule. A duplicate rule now goes by those two settings only, and when the words in the middle of a message come out too short it takes the characters as they come.
