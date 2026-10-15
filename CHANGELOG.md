@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.35
+- **See and edit who SpamGuard knows.** Exceptions (Advanced) now lists the known people: everyone SpamGuard has learnt from genuine messages, most recently heard first, with how many genuine messages they've sent and when they were last heard, plus names still being learnt. A search box finds a name among hundreds. **Trust** keeps a name for good, and **Forget** makes someone count as new again and takes them off the list openHop lets through. The list shows names only, never messages. Suggested by a tester in the Dutch MeshCore community.
+- `tests/testknownlist.py` covers it.
+
 ## v5.34
 - **Settings profiles.** Settings (Advanced) has a new Profiles card. A profile is a saved set of detection settings: the sensitivity and every value you changed. **Save current settings as a profile** stores what's in force now, and **Apply** puts a profile back, first listing every value it will change. The card shows which profile is in use and when settings have changed since.
 - **Share with other operators.** **Export** downloads a profile as a small file, and **Import a profile file** adds one to your list without applying it. A profile never holds channels, keys, exceptions, the mode, the evidence log or update settings, and a file that tries to is refused.
