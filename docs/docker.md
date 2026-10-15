@@ -27,7 +27,7 @@ If your openHop runs in Docker (or as an Unraid app), you can run SpamGuard as a
    docker compose up -d
    ```
 
-4. Open `http://<your-host>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+4. Open `http://<your-host>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**. If you don't come back, it switches itself to Protect once it has watched for a day and seen enough spam (the Overview shows when, with a **Stay in Monitor** button).
 
 Everything SpamGuard learns (blocks, known people, settings and the evidence log, if you switch it on) is kept in the `spamguard-data` folder next to the compose file, so it survives restarts and updates.
 

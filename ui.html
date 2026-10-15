@@ -503,7 +503,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <section>
   <h2>Start again from scratch</h2>
   <p class="lead">Puts SpamGuard back as if it had just been installed and starts filtering spam afresh. It removes every block (including ones you added or removed by hand, with no 24-hour wait), resets every setting and the sensitivity, and clears trusted senders, repeaters and texts, learnt routes and the people it knows. It then relearns regulars from the last day's normal-looking names.</p>
-  <p class="explain">Kept: Monitor or Protect, channels you added, and whether the evidence log is on. The page starts again from now: charts, messages, activity and the evidence log only show what happens after the reset (older evidence days are still deleted on schedule). Your own openHop rules are never touched.</p>
+  <p class="explain">Kept: Monitor or Protect, channels you added, and whether the evidence log is on. Nothing recorded is thrown away, but the page starts again from now: charts, messages, activity and the held list only show what happens after the reset. The evidence log keeps everything, before and after. Your own openHop rules are never touched.</p>
   <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
   <div id="resetBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
     <span><strong>Are you sure?</strong> This can't be undone. Type <b>RESET</b> below to confirm.</span>
@@ -585,14 +585,16 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section></div>
 <div class="page" data-page="help"><section class="howto">
   <h2>How SpamGuard works</h2>
-  <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, and the same message sent under different names.</p>
+  <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, the same message sent under different names, and one name posting the same message over and over. Messages from this repeater's own companions are never blocked.</p>
   <p>When it finds spam it adds a rule to openHop so your repeater stops passing it on. It never changes your own openHop rules, and every automatic block ends by itself once the spam stops.</p>
   <h3>Getting started</h3>
-  <p>Leave SpamGuard on <strong>Monitor</strong> for a day. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>.</p>
+  <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
   <h3>If it blocks someone genuine</h3>
-  <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same long message are the usual causes. <strong>Relaxed</strong> sensitivity makes both less likely.</p>
+  <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same message are the usual causes. <strong>Relaxed</strong> sensitivity makes both less likely.</p>
   <h3>Limits</h3>
-  <p>SpamGuard only controls what <em>your</em> repeater forwards. People in direct range of the spammer will still hear him, so the more repeaters near the source run a filter, the better. It cannot read private channels or direct messages unless you give it the channel key.</p>
+  <p>SpamGuard only controls what <em>your</em> repeater forwards. People in direct range of the spammer will still hear him, so the more repeaters near the source run a filter, the better. It cannot read private channels or direct messages unless you give it the channel key. It never blocks a person for what they say: to hide someone you'd rather not read, use the block option in your own MeshCore app.</p>
+  <h3>Starting again</h3>
+  <p><strong>Start again from scratch</strong> (Advanced, Settings) clears every block, setting and exception, and the page then shows only what happens after the reset. Nothing recorded is thrown away: the evidence log keeps everything.</p>
 </section></div>
 <p class="foot" id="foot"></p>
 <p class="foot legal">SpamGuard <span id="footVer"></span> · <a id="repoLink" href="https://github.com/flackrat/openhop-spamguard" target="_blank" rel="noopener noreferrer">github.com/flackrat/openhop-spamguard</a> · MIT licence<br>
@@ -651,7 +653,11 @@ function renderTop(d){
   $("#modeExplain").innerHTML={
     monitor:"<strong>Monitor</strong> spots spam and shows it here, but nothing is blocked. Start here.",
     protect:"<strong>Protect</strong> stops your repeater passing spam on. Genuine messages are forwarded as normal.",
-    pause:"<strong>Paused.</strong> All SpamGuard blocks are lifted. Detection carries on so you can resume instantly."}[m];
+    pause:"<strong>Paused.</strong> All SpamGuard blocks are lifted. Detection carries on so you can resume instantly."}[m]
+    +(d.auto_protect&&m==="monitor"?`<span class="autoprot"> ${d.auto_protect.waiting
+        ?`It would normally switch itself to Protect after watching for a day, but ${esc(d.auto_protect.waiting)}.`
+        :`It will switch itself to Protect on ${new Date(d.auto_protect.due*1000).toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"})} unless you choose otherwise (${d.auto_protect.spam} spam spotted so far).`}
+        ${btn("Stay in Monitor","/settings",{auto_protect:false},"quiet")}</span>`:"");
   document.querySelectorAll("#sensSeg button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===d.sensitivity)));
   const custom=d.overridden.some(k=>(d.meta.find(m=>m.key===k)||{}).preset);
   $("#sensExplain").innerHTML={
@@ -833,7 +839,7 @@ $("#histBtn").onclick=()=>{ if(!confirm("Clear the spam history?\n\nThe charts, 
 $("#histWord").oninput=()=>{ $("#histGo").disabled=$("#histWord").value.trim().toUpperCase()!=="RESET"; };
 $("#histNo").onclick=()=>{ $("#histBox").hidden=true; $("#histBtn").hidden=false; };
 $("#histGo").onclick=()=>{ if($("#histWord").value.trim().toUpperCase()!=="RESET") return; $("#histBox").hidden=true; $("#histBtn").hidden=false; MAPSIG=""; post("/clear_history",{confirm:"RESET"}); };
-$("#resetAll").onclick=()=>{ if(!confirm("Start SpamGuard again from scratch?\n\nEvery block, setting and exception is cleared and it begins detecting spam afresh. Monitor/Protect and your channels are kept. The charts, messages and activity start again from now, and the evidence log only offers what happens from now on.")) return;
+$("#resetAll").onclick=()=>{ if(!confirm("Start SpamGuard again from scratch?\n\nEvery block, setting and exception is cleared and it begins detecting spam afresh. Monitor/Protect and your channels are kept. Nothing recorded is thrown away: the page just shows what happens from now on, and the evidence log keeps everything.")) return;
   $("#resetBox").hidden=false; $("#resetAll").hidden=true; $("#resetWord").value=""; $("#resetGo").disabled=true; $("#resetWord").focus(); };
 $("#resetWord").oninput=()=>{ $("#resetGo").disabled=$("#resetWord").value.trim().toUpperCase()!=="RESET"; };
 $("#resetNo").onclick=()=>{ $("#resetBox").hidden=true; $("#resetAll").hidden=false; };

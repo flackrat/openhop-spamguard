@@ -60,7 +60,7 @@ A fresh install ends with SpamGuard running in Monitor mode, so nothing is block
     `active` and `"state": "ok"` mean it is working.
 
 5. **Open the page** at `http://<pi-ip>:8091` and check the Health panel says Healthy and "Restart if it hangs" is on.
-6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". Press **Not spam** on anything genuine, **This is spam** on anything it missed.
+6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". Press **Not spam** on anything genuine, **This is spam** on anything it missed. Then switch to **Protect**. If you don't, SpamGuard switches itself once it has watched for a day and seen enough spam, unless you've marked something as Not spam.
 7. **Switch to Protect** on the page when you are happy it only catches spam.
 
 Optional: Advanced > Detection settings > **Keep an evidence log**, so detection can be tuned against your real traffic later.

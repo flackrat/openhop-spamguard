@@ -219,6 +219,10 @@ SETTINGS_META: list[dict] = [
      "risk": "When on, SpamGuard edits one line of openHop (with a backup) and restarts openHop for a few seconds whenever an openHop update removes the fix. Turned off, blocked spam can sometimes be let through until you apply the fix by hand.",
      "label": "Keep openHop's rule-check fix in place",
      "help": "openHop has a bug that can sometimes let blocked spam through. SpamGuard applies a one-line fix when it updates, and puts it back if an openHop update removes it, until openHop releases its own fix."},
+    {"key": "auto_protect", "group": "Timing", "type": "bool",
+     "risk": "Turned off, SpamGuard stays in Monitor until you switch it to Protect yourself, so nothing is blocked if you never come back to the page.",
+     "label": "Switch to Protect by itself after watching",
+     "help": "A new SpamGuard starts in Monitor. Once it has watched for at least a day and seen enough spam, with nothing it would block marked as genuine and few genuine-looking messages held, it switches itself to Protect and says so in Activity. Choosing Monitor yourself turns this off."},
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
@@ -283,6 +287,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "openhop_autofix": True,
     "update_repo": UPDATE_REPO,
     "poll_seconds": 3,
+    "auto_protect": True,
     "live_feed": True,
     "fetch_limit": 500,
     "max_total_rules": 300,
@@ -834,7 +839,6 @@ class EvidenceLog:
         self.buf: list[str] = []
         self.last_flush = time.time()
         self.lock = threading.Lock()
-        self.since = 0.0   # after "Start again from scratch", downloads only include what came after it
 
     def add(self, record: dict):
         record.setdefault("ts", round(time.time(), 2))
@@ -869,13 +873,8 @@ class EvidenceLog:
 
     def summary(self) -> dict:
         fs = self.files()
-        first = os.path.basename(fs[0])[:10] if fs else None
-        since_day = time.strftime("%Y-%m-%d", time.localtime(self.since)) if self.since else None
-        if since_day:
-            fs = [f for f in fs if os.path.basename(f)[:10] >= since_day]
-            first = (time.strftime("%Y-%m-%d %H:%M", time.localtime(self.since)) if fs else None)
         return {"days": len(fs), "bytes": sum(os.path.getsize(f) for f in fs),
-                "first": first, "pending": len(self.buf)}
+                "first": os.path.basename(fs[0])[:10] if fs else None, "pending": len(self.buf)}
 
     def export(self, days: int, scramble: bool) -> str:
         self.flush(force=True)
@@ -885,13 +884,6 @@ class EvidenceLog:
             if os.path.basename(fpath)[:10] >= cutoff:
                 with open(fpath, encoding="utf-8") as f:
                     lines.extend(l for l in f.read().splitlines() if l.strip())
-        if self.since:
-            def after(ln):
-                try:
-                    return float(json.loads(ln).get("ts") or 0) >= self.since
-                except ValueError:
-                    return False
-            lines = [ln for ln in lines if after(ln)]
         if not scramble:
             return "\n".join(lines) + ("\n" if lines else "")
         salt = secrets.token_hex(8)
@@ -998,6 +990,8 @@ class SpamGuard:
         self.sync_pending = False
         self.evidence: Optional[EvidenceLog] = None
         self.reset_at = 0.0   # when "Start again from scratch" was last used
+        self.monitor_since = 0.0   # when SpamGuard last went into Monitor (for switching to Protect by itself)
+        self.genuine_marks: list[float] = []   # when you last said a message wasn't spam
         self.started = time.time()
         self.loop_beat: Optional[float] = None    # end of the last check loop, success or not
         self.loop_count = 0
@@ -1084,7 +1078,6 @@ class SpamGuard:
         if cfg.get("evidence_log"):
             if self.evidence is None or self.evidence.folder != cfg["evidence_dir"]:
                 self.evidence = EvidenceLog(cfg["evidence_dir"])
-            self.evidence.since = getattr(self, "reset_at", 0.0)
         elif self.evidence is not None:
             self.evidence.flush(force=True, keep_days=cfg["evidence_days"])
             self.evidence = None
@@ -1177,8 +1170,8 @@ class SpamGuard:
         self.hist = {k: v for k, v in (st.get("hist") or {}).items() if isinstance(v, dict) and int(k) > now - 8 * 86400}
         self.hist_mark = float(st.get("hist_mark") or 0)
         self.reset_at = float(st.get("reset_at") or 0)
-        if self.evidence is not None:
-            self.evidence.since = self.reset_at
+        self.monitor_since = float(st.get("monitor_since") or 0)
+        self.genuine_marks = [float(t) for t in (st.get("genuine_marks") or []) if float(t) > now - 7 * 86400]
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
@@ -1234,21 +1227,20 @@ class SpamGuard:
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
                     "reset_at": getattr(self, "reset_at", 0.0),
+                    "monitor_since": getattr(self, "monitor_since", 0.0),
+                    "genuine_marks": getattr(self, "genuine_marks", [])[-50:],
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                 }
 
     def reset_all(self):
-        """Back to a fresh install, keeping only Monitor/Protect and channels you added. The page starts
-        again from now too (charts, messages, activity, held list), and the evidence log only offers what
-        comes after the reset; older days stay on disk until they expire as usual, then go.
+        """Back to a fresh install, keeping only Monitor/Protect and channels you added. Nothing recorded is
+        thrown away (activity, charts and the evidence log are all kept), but the page only shows what
+        happens after the reset, so old and new don't get mixed up.
         Removed blocks don't wait 24 hours: detection starts again straight away."""
         mode = self.cfg.get("mode", "monitor")
         self.reset_at = time.time()
-        if self.evidence is not None:
-            self.evidence.flush(force=True)
-            self.evidence.since = self.reset_at
         n = len(self.blocks)
         self.blocks.clear()
         self.suppressed.clear()
@@ -1264,11 +1256,8 @@ class SpamGuard:
         self.clusters.clear()
         self.held.clear()
         self.rule_ids.clear()
-        self.events.clear()               # the page shows only what arrives from now on
-        self.activity.clear()
-        self.hist.clear()
-        self.catches.clear()
-        self.lag_samples.clear()
+        for e in self.events:            # recent messages are judged again under the fresh rules
+            e.matched = None
         self.rebuild_cfg()
         # Same starting point as a new install reading openHop's recent traffic: names heard in the
         # last day that don't look made-up count as known, so regulars aren't all held at first.
@@ -1453,10 +1442,13 @@ class SpamGuard:
 
     def metrics(self) -> dict:
         now = time.time()
+        # Everything is kept, but after "Start again from scratch" the page counts from the reset hour on.
+        shown_from = int(getattr(self, "reset_at", 0) // 3600 * 3600)
+        hist = {k: v for k, v in self.hist.items() if int(k) >= shown_from} if shown_from else self.hist
         cut24, cut7 = now - 86400, now - 7 * 86400
         def tot(cut):
             t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "l": 0}
-            for k, v in self.hist.items():
+            for k, v in hist.items():
                 if int(k) >= cut - 3600:
                     for f in t:
                         t[f] += v.get(f, 0)
@@ -1468,19 +1460,19 @@ class SpamGuard:
         this_hour = int(now // 3600 * 3600)
         hourly = []
         for i in range(23, -1, -1):
-            v = self.hist.get(str(this_hour - i * 3600), {})
+            v = hist.get(str(this_hour - i * 3600), {})
             hourly.append({"t": this_hour - i * 3600, "c": v.get("c", 0), "x": v.get("x", 0), "m": v.get("m", 0)})
         daily = []
         for i in range(6, -1, -1):
             day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - i * 86400
             c = x = m = 0
-            for k, v in self.hist.items():
+            for k, v in hist.items():
                 if day0 <= int(k) < day0 + 86400:
                     c += v.get("c", 0); x += v.get("x", 0); m += v.get("m", 0)
             daily.append({"t": day0, "c": c, "x": x, "m": m})
         by_hour = [0] * 24  # spam by hour of day, last 7 days
         sources: dict[str, dict] = {}
-        for k, v in self.hist.items():
+        for k, v in hist.items():
             t = int(k)
             if t < cut7:
                 continue
@@ -1492,9 +1484,9 @@ class SpamGuard:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
         # Per channel, for the Overview's channel picker. Only hours counted since v5.16 carry a split.
-        ch_since = min((int(k) for k, v in self.hist.items() if "ch" in v), default=None)
+        ch_since = min((int(k) for k, v in hist.items() if "ch" in v), default=None)
         names = set((self.cfg.get("channels") or {}).keys())
-        for k, v in self.hist.items():
+        for k, v in hist.items():
             if int(k) >= cut7 - 3600:
                 names |= set((v.get("ch") or {}).keys())
         per_ch = {}
@@ -1503,18 +1495,18 @@ class SpamGuard:
                 return (v.get("ch") or {}).get(name) or {}
             hr = []
             for r in hourly:
-                c = one(self.hist.get(str(r["t"]), {}))
+                c = one(hist.get(str(r["t"]), {}))
                 hr.append({"t": r["t"], "c": c.get("c", 0), "x": c.get("x", 0), "m": c.get("m", 0)})
             dy = []
             for r in daily:
                 c = x = m = 0
-                for k, v in self.hist.items():
+                for k, v in hist.items():
                     if r["t"] <= int(k) < r["t"] + 86400:
                         o = one(v); c += o.get("c", 0); x += o.get("x", 0); m += o.get("m", 0)
                 dy.append({"t": r["t"], "c": c, "x": x, "m": m})
             bh = [0] * 24
             t24 = {"m": 0, "c": 0, "x": 0}
-            for k, v in self.hist.items():
+            for k, v in hist.items():
                 t = int(k)
                 o = one(v)
                 if t >= cut7:
@@ -1542,7 +1534,7 @@ class SpamGuard:
                 "map_directory": bool(self.cfg.get("map_directory")), "public_repeaters": len(self.public_reps["list"]),
                 "public_error": self.public_reps.get("error"),
                 "me": self.me, "radio_known": bool(self.airtime_ms(40)),
-                "since": min((int(k) for k in self.hist), default=None),
+                "since": min((int(k) for k in hist), default=None),
                 "channels": per_ch, "channels_since": ch_since}
 
     LINK_KM = 130        # longest plausible single LoRa link between repeaters
@@ -3171,6 +3163,50 @@ class SpamGuard:
             self.last_verify = time.time()
         self.write_runtime()
 
+    AUTO_MIN_SECONDS = 24 * 3600      # watch at least a day
+    AUTO_QUIET_SECONDS = 72 * 3600    # a quiet repeater switches after three days anyway (nothing to lose)
+    AUTO_MIN_SPAM = 10                # or as soon as it has seen this much spam it would have stopped
+    AUTO_MAX_HELD = 3                 # too many genuine-looking messages held: leave it to you
+
+    def auto_protect_status(self) -> Optional[dict]:
+        """Whether SpamGuard will switch itself from Monitor to Protect, when, and what it's waiting for."""
+        c = self.cfg
+        if c.get("mode") != "monitor" or not c.get("auto_protect", True):
+            return None
+        now = time.time()
+        since = self.monitor_since or self.started
+        spam = sum(1 for t in self.catches if t >= since)
+        held = sum(1 for h in self.held if h.get("ts", 0) >= since)
+        marked = sum(1 for t in self.genuine_marks if t >= since)
+        due = since + (self.AUTO_MIN_SECONDS if spam >= self.AUTO_MIN_SPAM else self.AUTO_QUIET_SECONDS)
+        waiting = None
+        if c.get("paused"):
+            waiting = "paused"
+        elif marked:
+            waiting = "you marked a message it would have blocked as genuine, so it's leaving the switch to you"
+        elif held > self.AUTO_MAX_HELD:
+            waiting = f"{held} genuine-looking messages were held; check Possibly genuine first"
+        return {"since": since, "due": max(due, now) if not waiting else None, "spam": spam, "held": held,
+                "waiting": waiting}
+
+    def _maybe_auto_protect(self):
+        if time.time() - getattr(self, "_auto_checked", 0) < 300:
+            return
+        self._auto_checked = time.time()
+        s = self.auto_protect_status()
+        if not s or s["waiting"] or time.time() < s["due"]:
+            return
+        with self.lock:
+            hours = round((time.time() - s["since"]) / 3600)
+            self.settings["mode"] = "protect"
+            self.rebuild_cfg()
+            self.note(f"Switched to Protect by itself after watching for {hours} hours: it would have stopped "
+                      f"{s['spam']} spam message{'' if s['spam'] == 1 else 's'}, and nothing it would block was marked "
+                      "as genuine. You can switch back to Monitor at any time on the Overview.")
+            self.snapshot_settings("switched to Protect by itself")
+            self._save_state(force=True)
+            self.sync_policy(force=True)
+
     def _maybe_guard_frontend(self):
         """As a plugin, SpamGuard's small doorway page shows up in openHop's list of main web pages. It isn't
         a dashboard, so if someone picks it, put openHop's own dashboard back (checked once a minute)."""
@@ -3462,6 +3498,7 @@ class SpamGuard:
                 self._maybe_fix_openhop()
                 self._maybe_check_plugins()
                 self._maybe_guard_frontend()
+                self._maybe_auto_protect()
             except Exception:
                 pass
             try:
@@ -3982,7 +4019,7 @@ class SpamGuard:
                                   "variants": len({e.text for e in cc["events"]}),
                                   "hops": dict(cc["hops"].most_common(6))})
             recent = []
-            for e in list(a["long"])[-80:][::-1]:
+            for e in [e for e in list(a["long"])[-80:][::-1] if e.ts >= getattr(self, "reset_at", 0)]:
                 recent.append({"ts": e.ts, "time": time.strftime("%H:%M:%S", time.localtime(e.ts)),
                                "path": ">".join(e.path) or "direct", "first_hop": e.first_hop,
                                "sender": e.sender, "text": e.text[:160], "channel": e.channel,
@@ -4007,13 +4044,15 @@ class SpamGuard:
                                                        and e.path and tuple(e.path[1:]) == tuple(b["value"])
                                                        and e.first_hop not in self.allowed_origins(b)}) if b["kind"] == "suffix" else None,
                                "describe": self.describe(b)})
-            caught_24h = sum(1 for t in self.catches if t > now - 86400)
+            since = max(now - 86400, getattr(self, "reset_at", 0))   # the page starts at a reset
+            shown = [t for t in self.catches if t >= since]
+            caught_24h = len(shown)
             by_hour = [0] * 24  # index 23 = the most recent hour
-            for t in self.catches:
+            for t in shown:
                 age = int((now - t) // 3600)
                 if 0 <= age < 24:
                     by_hour[23 - age] += 1
-            last_catch = max(self.catches) if self.catches else None
+            last_catch = max(shown) if shown else None
             settings = {m["key"]: c.get(m["key"]) for m in SETTINGS_META}
             return {
                 "version": VERSION,
@@ -4041,14 +4080,17 @@ class SpamGuard:
                 "metrics": self.metrics(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
-                         if h["ts"] > now - 86400 and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
+                         if h["ts"] > since and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
                 "lockdown": ({"left": round(self.blocks["lockdown"]["expires"] - now)} if "lockdown" in self.blocks else None),
                 "learnt": {"routes": len(self.routes), "relays": len(self.relays),
                            "origins": len({k.split(">", 1)[0] for k, v in self.routes.items() if v[2] > 0})},
                 "allow": {"hops": sorted(self.allow_hops), "senders": sorted(self.allow_senders),
                           "texts": sorted(self.allow_texts)},
                 "suppressed": {k: round(v - now) for k, v in self.suppressed.items()},
-                "activity": [{"ts": x["ts"], "msg": x["msg"]} for x in list(self.activity)[:80]],
+                "activity": [{"ts": x["ts"], "msg": x["msg"]} for x in list(self.activity)[:80]
+                             if x["ts"] >= getattr(self, "reset_at", 0)],
+                "reset_at": getattr(self, "reset_at", 0) or None,
+                "auto_protect": self.auto_protect_status(),
                 "window_seconds": c["window_seconds"],
                 "update": self.update_summary(),
                 "install": {"kind": install_kind(), "instance": self.instance_id,
@@ -4101,6 +4143,10 @@ class SpamGuard:
                     else:
                         raise ValueError(f"unknown setting {k}")
                     new[k] = v
+                if new.get("mode") == "monitor" and self.cfg.get("mode") == "protect":
+                    new["auto_protect"] = False   # you chose Monitor on purpose: don't switch back by yourself
+                if new.get("mode") == "monitor" or (new.get("mode") is None and "auto_protect" in new and new["auto_protect"]):
+                    self.monitor_since = time.time() if new.get("mode") == "monitor" else (self.monitor_since or time.time())
                 self.settings.update(new)
                 words = {"mode": {"monitor": "Monitor only", "protect": "Protect"},
                          "paused": {True: "Paused", False: "Resumed"}}
@@ -4174,6 +4220,7 @@ class SpamGuard:
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]))
                 msg = f"Blocking messages containing \"{text}\""
             elif op == "not_spam":
+                self.genuine_marks.append(now)
                 self.ev({"type": "label", "label": "not_spam", "sender": body.get("sender"), "text": body.get("text"),
                          "path": body.get("path"), "packet": body.get("packet"), "caught_by": body.get("matched")})
                 sender = str(body.get("sender", ""))
@@ -4296,7 +4343,8 @@ class SpamGuard:
                     raise ValueError("Type RESET to confirm starting again from scratch")
                 self.reset_all()
                 msg = ("SpamGuard is starting again from scratch: every block, setting and exception has been "
-                       "cleared, and it's watching for spam afresh. The page and evidence log start from now.")
+                       "cleared, and it's watching for spam afresh. The page shows what happens from now on; "
+                       "the evidence log keeps everything.")
             else:
                 raise ValueError("Unknown action")
             self._save_state(force=True)
