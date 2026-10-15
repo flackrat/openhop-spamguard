@@ -429,6 +429,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <ul class="rows" id="blocks"></ul>
   <p class="more" id="blocksMore"></p>
   <div class="foldbar" id="blocksFold"></div>
+  <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
 </section>
 <section class="adv">
   <h2>Block something yourself</h2>
@@ -885,6 +886,14 @@ $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
 $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
 $("#chFind").addEventListener("input",()=>{ if(S) renderAdvanced(S); });
+$("#ruleCopy").addEventListener("click",()=>{
+  const r=S&&S.rule_summary; if(!r||!r.rules.length){ toast("SpamGuard has no rules in openHop right now"); return; }
+  const act={drop:"block",log_only:"watch only",allow:"let through"};
+  const lines=r.rules.map(([id,name,a],i)=>`${String(i+1).padStart(3)}. rule ${id}  ${act[a]||a}  ${name}`);
+  const head=`SpamGuard rules in openHop: ${r.rules.length}, placed ${r.after_yours?"after":"before"} your own ${r.yours} rule${r.yours===1?"":"s"}`;
+  const t=head+"\n"+lines.join("\n"), done=()=>toast("Rule summary copied");
+  if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(t).then(done,()=>fallbackCopy(t,done)); } else fallbackCopy(t,done);
+});
 var chAll=false;
 $("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderAdvanced(S); });
 $("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });

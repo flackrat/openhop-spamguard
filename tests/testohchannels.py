@@ -38,5 +38,18 @@ g.last_sync=0; g.sync_pending=True; g.poll_once()
 b=[x for x in g.status()["blocks"] if x["kind"]=="text"][0]
 ids={r["id"] for r in m.policy["policy_engine"]["rules"] if "cheap antennas" in r.get("name","")}
 check(b["rules"] and set(b["rules"])==ids,"block shows the openHop rule number(s): "+str(b["rules"])+" "+str(ids))
+# Rule summary and placement after your own rules
+st=g.status(); rs=st["rule_summary"]
+check(rs and rs["rules"] and not rs["after_yours"] and rs["yours"]>=1,"summary lists SpamGuard's rules: "+str(rs and rs["rules"][:2]))
+names=[r.get("name") for r in m.policy["policy_engine"]["rules"]]
+check(names.index("my own rule") > min(i for i,n in enumerate(names) if n.startswith("spamguard:")),"by default SpamGuard's blocks come before yours")
+g.apply_settings({"rules_after_yours":True}); g.last_sync=0; g.sync_pending=True; g.poll_once()
+names=[r.get("name") for r in m.policy["policy_engine"]["rules"]]
+check(names[0]=="my own rule","with the setting on, your own rules come first: "+str(names[:3]))
+check(g.status()["rule_summary"]["after_yours"],"summary says so")
+check(m.decide("Someone","cheap antennas here today",["4C"])=="drop","blocks still work after your rules")
+g.apply_settings({"rules_after_yours":False}); g.last_sync=0; g.sync_pending=True; g.poll_once()
+names=[r.get("name") for r in m.policy["policy_engine"]["rules"]]
+check(names[0].startswith("spamguard:"),"and back again")
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
