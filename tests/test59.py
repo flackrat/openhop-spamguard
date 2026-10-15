@@ -30,7 +30,7 @@ check("unknown name via 76 held", m.decide("Stranger","hi all",["76","04","3B"])
 check("unknown name elsewhere allowed", m.decide("Newbie","hi all",["44","13"])=="allow")
 names=[r["name"] for r in m.policy["policy_engine"]["rules"]]
 check("known-people rule sits after your rules and before the 76 block",
-      names.index("my own rule") < names.index("spamguard:known-people:Public") < next(i for i,n in enumerate(names) if n.startswith("spamguard:hop:76")))
+      names.index("my own rule") < names.index("spamguard:known-people") < next(i for i,n in enumerate(names) if n.startswith("spamguard:hop:76")))
 check("mirror agrees: SpamGuard thinks known Dave not caught", not g.block_matches(g.blocks["hop:76"], sg.Event(time.time(),["76","04"],"Dave M","hi","Public")))
 check("not learnt from traffic via blocked repeater", (m.add("Eve","one",["76","04"],ago=300), m.add("Eve","two",["76","04"],ago=299), run(m,g), not g.is_known("Eve"))[-1])
 
