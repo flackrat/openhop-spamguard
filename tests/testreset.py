@@ -1,3 +1,4 @@
+import json
 import sys, logging
 from harness import *
 logging.disable(logging.WARNING)
@@ -30,6 +31,14 @@ check(g.cfg["mode"]=="protect", "Protect kept"); check(g.cfg["evidence_log"] is 
 check(g.cfg["sensitivity"]=="balanced" or g.cfg["sensitivity"]==sg.DEFAULT_CONFIG.get("sensitivity"), "sensitivity default: "+str(g.cfg["sensitivity"]))
 check(g.cfg["window_seconds"]==sg.PRESETS[g.cfg["sensitivity"]].get("window_seconds",sg.DEFAULT_CONFIG["window_seconds"]) , "window default")
 check("Hilltop Hiker" in g.known, "regular relearnt as known")
+st=g.status()
+check(not st["recent"], "messages list starts empty after reset")
+check(len(st["activity"])==1 and "from scratch" in st["activity"][0]["msg"], "activity starts at the reset: "+str(st["activity"][:2]))
+check(st["summary"]["caught_24h"]==0, "charts start again from the reset")
+if g.evidence:
+    g.evidence.add({"type":"note","msg":"after reset"})
+    out=g.evidence.export(30, False)
+    check("after reset" in out and all(json.loads(l)["ts"]>=g.reset_at for l in out.splitlines() if l.strip()), "evidence download only has what came after the reset")
 check(not any(n for n in g.known if len(n)==8 and n.isupper()), "random spam names not known")
 for i in range(8): m.add(rname(),"WIN A PRIZE again https://spam.example/"+rname(4),["76","04"])
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()

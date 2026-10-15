@@ -834,6 +834,7 @@ class EvidenceLog:
         self.buf: list[str] = []
         self.last_flush = time.time()
         self.lock = threading.Lock()
+        self.since = 0.0   # after "Start again from scratch", downloads only include what came after it
 
     def add(self, record: dict):
         record.setdefault("ts", round(time.time(), 2))
@@ -868,8 +869,13 @@ class EvidenceLog:
 
     def summary(self) -> dict:
         fs = self.files()
+        first = os.path.basename(fs[0])[:10] if fs else None
+        since_day = time.strftime("%Y-%m-%d", time.localtime(self.since)) if self.since else None
+        if since_day:
+            fs = [f for f in fs if os.path.basename(f)[:10] >= since_day]
+            first = (time.strftime("%Y-%m-%d %H:%M", time.localtime(self.since)) if fs else None)
         return {"days": len(fs), "bytes": sum(os.path.getsize(f) for f in fs),
-                "first": os.path.basename(fs[0])[:10] if fs else None, "pending": len(self.buf)}
+                "first": first, "pending": len(self.buf)}
 
     def export(self, days: int, scramble: bool) -> str:
         self.flush(force=True)
@@ -879,6 +885,13 @@ class EvidenceLog:
             if os.path.basename(fpath)[:10] >= cutoff:
                 with open(fpath, encoding="utf-8") as f:
                     lines.extend(l for l in f.read().splitlines() if l.strip())
+        if self.since:
+            def after(ln):
+                try:
+                    return float(json.loads(ln).get("ts") or 0) >= self.since
+                except ValueError:
+                    return False
+            lines = [ln for ln in lines if after(ln)]
         if not scramble:
             return "\n".join(lines) + ("\n" if lines else "")
         salt = secrets.token_hex(8)
@@ -984,6 +997,7 @@ class SpamGuard:
         self.last_sync: Optional[float] = None
         self.sync_pending = False
         self.evidence: Optional[EvidenceLog] = None
+        self.reset_at = 0.0   # when "Start again from scratch" was last used
         self.started = time.time()
         self.loop_beat: Optional[float] = None    # end of the last check loop, success or not
         self.loop_count = 0
@@ -1070,6 +1084,7 @@ class SpamGuard:
         if cfg.get("evidence_log"):
             if self.evidence is None or self.evidence.folder != cfg["evidence_dir"]:
                 self.evidence = EvidenceLog(cfg["evidence_dir"])
+            self.evidence.since = getattr(self, "reset_at", 0.0)
         elif self.evidence is not None:
             self.evidence.flush(force=True, keep_days=cfg["evidence_days"])
             self.evidence = None
@@ -1161,6 +1176,9 @@ class SpamGuard:
         self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
         self.hist = {k: v for k, v in (st.get("hist") or {}).items() if isinstance(v, dict) and int(k) > now - 8 * 86400}
         self.hist_mark = float(st.get("hist_mark") or 0)
+        self.reset_at = float(st.get("reset_at") or 0)
+        if self.evidence is not None:
+            self.evidence.since = self.reset_at
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
@@ -1215,15 +1233,22 @@ class SpamGuard:
                     "held": list(self.held),
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
+                    "reset_at": getattr(self, "reset_at", 0.0),
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                 }
 
     def reset_all(self):
-        """Back to a fresh install, keeping only Monitor/Protect, channels you added, the charts and the
-        evidence log. Removed blocks don't wait 24 hours: detection starts again straight away."""
+        """Back to a fresh install, keeping only Monitor/Protect and channels you added. The page starts
+        again from now too (charts, messages, activity, held list), and the evidence log only offers what
+        comes after the reset; older days stay on disk until they expire as usual, then go.
+        Removed blocks don't wait 24 hours: detection starts again straight away."""
         mode = self.cfg.get("mode", "monitor")
+        self.reset_at = time.time()
+        if self.evidence is not None:
+            self.evidence.flush(force=True)
+            self.evidence.since = self.reset_at
         n = len(self.blocks)
         self.blocks.clear()
         self.suppressed.clear()
@@ -1239,8 +1264,11 @@ class SpamGuard:
         self.clusters.clear()
         self.held.clear()
         self.rule_ids.clear()
-        for e in self.events:            # recent messages are judged again under the fresh rules
-            e.matched = None
+        self.events.clear()               # the page shows only what arrives from now on
+        self.activity.clear()
+        self.hist.clear()
+        self.catches.clear()
+        self.lag_samples.clear()
         self.rebuild_cfg()
         # Same starting point as a new install reading openHop's recent traffic: names heard in the
         # last day that don't look made-up count as known, so regulars aren't all held at first.
@@ -4268,7 +4296,7 @@ class SpamGuard:
                     raise ValueError("Type RESET to confirm starting again from scratch")
                 self.reset_all()
                 msg = ("SpamGuard is starting again from scratch: every block, setting and exception has been "
-                       "cleared, and it's watching for spam afresh.")
+                       "cleared, and it's watching for spam afresh. The page and evidence log start from now.")
             else:
                 raise ValueError("Unknown action")
             self._save_state(force=True)
