@@ -1,6 +1,7 @@
 # Changelog
 
 ## v5.28
+- **Your own companions are never blocked.** SpamGuard reads this repeater's own companions (and room servers) from openHop, with their names and IDs, and leaves their messages out of everything it detects. Every rule it writes into openHop also skips messages the repeater sends itself, which can't be faked over the air. Someone elsewhere using the same name is still treated like anyone else. The companions it found are listed on Health (Advanced).
 - **Clearer advice about openHop's rule-check bug.** As a plugin, Health now explains it as a recommendation: a known openHop bug (reported to openHop) that occasionally lets blocked spam through, fixed by one command that changes one line, keeps a backup and can be undone. The command sits in its own box with a **Copy command** button, so there's nothing to retype.
 ## v5.27
 - **Stops one name repeating the same message over and over.** If the same name sends the same message more than three times in ten minutes, further copies of that message from that name aren't passed on for an hour. Their first copies, and anything new they say, still go out, and other people quoting it are unaffected. You can adjust or turn this off under Advanced, Duplicate suppression.
