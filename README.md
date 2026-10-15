@@ -17,6 +17,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
 - **Lockdown button** for a heavy attack: for a while, only people it already knows get through.
+- **Spam, not opinions:** it stops how spam is sent, never what people say. Text blocks never stop people it knows, need a real chunk of a message (not a word or a name) and last at most a week, and a known person's message can't be marked as spam.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
 
 ![SpamGuard's web page (example data)](docs/screenshot-overview.png)
@@ -71,7 +72,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 |---|---|
 | Let a genuine person through | Press **Let through** under "Possibly genuine, held", or **Not spam** on their message |
 | Stop something it missed | Press **This is spam** on the message |
-| Ride out a heavy attack | Press **Lockdown** (30 min to 2 hours, ends by itself) |
+| Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
 | Start over with a clean slate | Advanced > Settings > **Start again from scratch** |
@@ -95,7 +96,7 @@ Click a heading to expand it.
 <details>
 <summary><b>The web page</b></summary>
 
-- **Menu**: a side menu like openHop's own (a slide-out menu on phones). **Overview**, **Protection** (blocks, possibly genuine, Lockdown), **Monitoring** (messages, spam sources) and **System** (health, updates, help). Advanced adds campaigns, activity, settings, exceptions and the evidence log.
+- **Menu**: a side menu like openHop's own (a slide-out menu on phones). **Overview**, **Protection** (blocks with the emergency Lockdown, possibly genuine, channels), **Monitoring** (messages, spam sources) and **System** (health, updates, help). Advanced adds campaigns, activity, settings (in collapsible groups with a search box), exceptions and the evidence log.
 - **Overview**: mode, sensitivity, and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives.
 - **Spam sources**: where spam enters the mesh, on a map and in a table with Block / Never block buttons. SpamGuard works out where each spam message most likely entered the mesh, learning from repeater adverts as it goes, so short repeater codes shared around the country don't scatter the map; it can optionally use the public MeshCore map to place far-away repeaters. By default the map only shows entry points it is sure of; tick "Show best guesses too" to add the rough ones. The map needs internet access on the device viewing the page; the table works without it.
 - **Long lists** (messages, blocks, activity) show 10 at a time with **Show more**.
@@ -110,7 +111,7 @@ SpamGuard keeps a list of names it has seen sending genuine messages. It writes 
 
 - **Repeater blocks** block *anything passing through* the spam repeater, except known people, and end a while after the spam through it stops (Advanced > Timing). People held this way who don't look like spammers are listed under **Possibly genuine, held** on the main page, with a **Let through** button. The older "Routes starting there" and "Anything passing through" choices are still in Advanced.
 - **Links from names it doesn't know** are held while a spam campaign is under way. Advanced > Known people can make this always or never.
-- **Lockdown** (button on the page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. It ends by itself.
+- **Lockdown** (at the bottom of the Blocks page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. It ends by itself.
 
 Replaying a day of real traffic, this caught more spam while holding only a handful of genuine messages.
 
@@ -247,7 +248,7 @@ Everything SpamGuard keeps has a limit: learnt routes, known names and the activ
 - Older install: openHop Repeater installed natively on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
 - Docker: any host running openHop in Docker. Images are published for 64-bit and 32-bit Pi and for PCs (see [docs/docker.md](docs/docker.md)).
 - Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, as the older install and as the plugin on openHop 1.1.5, and with openHop 1.1.5 on Ubuntu 24.04 (x86_64) as the plugin, the older install moved to the plugin, and a Docker container. Python 3.10 to 3.13.
-- Works with 1-, 2- and 3-byte path hashes, and with hashtag channels (add them by name in Advanced > Exceptions > Channels).
+- Works with 1-, 2- and 3-byte path hashes, and with hashtag channels (add them by name on the Channels page).
 
 </details>
 

@@ -42,5 +42,11 @@ check(any(x.get("reason")=="Marked as spam by you" for x in g.blocks.values()),"
 g.action("block_hop",{"hop":"9D"}); hk=[k for k,x in g.blocks.items() if x["kind"]=="hop"][0]
 g.action("extend",{"key":hk,"permanent":True})
 check(g.blocks[hk]["expires"]-time.time()>sg.TEXT_BLOCK_MAX_SECONDS,"repeater block can be kept")
+# a repeater block that stops everyone (known people too) can't be kept for ever either
+g.action("block_hop",{"hop":"7E","match":"contains","ttl_seconds":sg.PERMANENT_SECONDS})
+g.poll_once()
+check(g.blocks["hop:7E"]["expires"]-time.time()<=sg.TEXT_BLOCK_MAX_SECONDS+60,"'anything passing through' ends within a week")
+try: g.action("extend",{"key":"hop:7E","permanent":True}); check(False,"can't keep a block that stops everyone")
+except ValueError: check(True,"")
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
