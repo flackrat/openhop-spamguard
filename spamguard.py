@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.31"
+VERSION = "5.32"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -2222,6 +2222,10 @@ class SpamGuard:
         if len(self.known) > 5000:  # keep the 5,000 most recently heard
             self.known = dict(sorted(self.known.items(), key=lambda kv: -kv[1][1])[:5000])
 
+    def covers_everyone(self, b: dict) -> bool:
+        """Blocks that also stop people SpamGuard knows: these can't be kept for ever."""
+        return b["kind"] in ("text", "words") or (b["kind"] == "hop" and self.hop_mode(b) == "contains")
+
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
         return b["kind"] in ("links", "lockdown") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
@@ -2816,6 +2820,11 @@ class SpamGuard:
         if "links:new" in self.blocks:
             self.blocks["links:new"].setdefault("links_mode", hl)
 
+        # Blocks that stop everyone, people SpamGuard knows included, never last more than a week from now
+        # (a repeater block on 'anything passing through', or text). Others can be kept until removed.
+        for b in self.blocks.values():
+            if self.covers_everyone(b) and b["expires"] - now > TEXT_BLOCK_MAX_SECONDS + 60:
+                b["expires"] = now + TEXT_BLOCK_MAX_SECONDS
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
@@ -4379,9 +4388,10 @@ class SpamGuard:
                 b = self.blocks.get(body.get("key", ""))
                 if not b:
                     raise ValueError("That block no longer exists")
-                if b["kind"] in ("text", "words"):
+                if self.covers_everyone(b):
                     if body.get("permanent"):
-                        raise ValueError("Blocks on message text can't be kept for ever; they last at most 7 days")
+                        raise ValueError("Blocks that also stop people SpamGuard knows (on message text, or on anything "
+                                         "passing through a repeater) can't be kept for ever; they last at most 7 days")
                     b["expires"] = min(max(b["expires"], now) + int(body.get("seconds", 3600)), now + TEXT_BLOCK_MAX_SECONDS)
                 elif body.get("permanent"):
                     b["expires"] = now + PERMANENT_SECONDS
