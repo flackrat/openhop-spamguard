@@ -33,6 +33,15 @@ check(not any("speed fix" in w for w in g.health()["warnings"]),"no speed-fix na
 now=sg.time.time()
 for i in range(5): g.lag_samples.append((now-i, 120))
 check(any("speed fix" in w for w in g.health()["warnings"]),"speed fix suggested when openHop is minutes behind")
+# rule-check fix advice: friendly text plus a separate command for the Copy button
+g._rfix_cache=None
+g.openhop_rulecheck_fix=lambda: False
+h=g.health()
+i=next((n for n,w in enumerate(h["warnings"]) if "known bug" in w),None)
+check(i is not None and h["warnings"][i].startswith("Recommended:"),"rule-check advice reads as a recommendation")
+check(i is not None and h["commands"][i] and "tune-openhop.sh --rulefix" in h["commands"][i],"command given separately for copying")
+check(i is not None and "curl" not in h["warnings"][i],"no raw command in the sentence itself")
+check(len(h["commands"])==len(h["warnings"]),"one command slot per warning")
 sg.IN_PLUGIN=False
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
