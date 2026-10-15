@@ -507,7 +507,15 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="scroll"><table id="activity"></table></div>
   <div class="foldbar" id="activityMore"></div>
 </section></div>
-<div class="page" data-page="settings"><section id="settingsSec">
+<div class="page" data-page="settings"><section id="profSec">
+  <h2>Settings profiles</h2>
+  <p class="lead">A profile is a saved set of detection settings (the sensitivity and every value you changed) that you can put back, or share with other operators as a small file. It never holds your channels, keys, exceptions, the mode or the evidence log, and nothing switches by itself.</p>
+  <p class="explain" id="profState"></p>
+  <ul class="rows" id="profList"></ul>
+  <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
+  <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
+</section>
+<section id="settingsSec">
   <h2>Detection settings</h2>
   <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
@@ -862,6 +870,41 @@ function renderAdvanced(d){
 }
 
 function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit||""); }
+function profDiff(d,p){
+  const cur=d.profiles.current, meta=Object.fromEntries(d.meta.map(m=>[m.key,m])), out=[];
+  if(cur.sensitivity!==p.sensitivity) out.push(`Sensitivity: ${cur.sensitivity} → ${p.sensitivity}`);
+  const keys=new Set([...Object.keys(cur.values),...Object.keys(p.values||{})]);
+  keys.forEach(k=>{ const a=cur.values[k], b=(p.values||{})[k]; if(JSON.stringify(a)===JSON.stringify(b)) return;
+    const m=meta[k]; const f=v=>v===undefined?"default":(m?fmtDefault(m,v):String(v));
+    out.push(`${m?m.label:k}: ${f(a)} → ${f(b)}`); });
+  return out;
+}
+function renderProfiles(d){
+  const P=d.profiles||{list:[]};
+  $("#profState").textContent=P.in_use?`In use: ${P.in_use}${P.modified?", though some settings have changed since it was applied":""}.`:"No profile in use.";
+  $("#profList").innerHTML=P.list.map(p=>{
+    const n=Object.keys(p.values||{}).length;
+    return `<li><div><div class="what">${esc(p.name)}${p.name===P.in_use?" <span class='tag ok'>in use</span>":""}</div>
+      <div class="why">${esc(p.sensitivity)} sensitivity, ${n} changed value${n===1?"":"s"}</div></div>
+      <div class="acts"><button data-n="${esc(p.name)}" onclick="profApply(this.dataset.n)">Apply</button><button class="quiet" data-n="${esc(p.name)}" onclick="profExport(this.dataset.n)">Export</button>${btn("Delete","/profile_delete",{name:p.name},"quiet danger")}</div></li>`;
+  }).join("")||`<li><p class="empty">No profiles yet.</p></li>`;
+}
+function profApply(name){
+  const p=(S.profiles.list||[]).find(x=>x.name===name); if(!p) return;
+  const diff=profDiff(S,p);
+  if(!diff.length){ toast("Nothing would change: these settings are already in force"); return; }
+  if(!confirm(`Apply the profile "${name}"?\n\nThis changes:\n${diff.join("\n")}\n\nChannels, exceptions, the mode and the evidence log stay as they are.`)) return;
+  post("/profile_apply",{name});
+}
+function profExport(name){
+  const p=(S.profiles.list||[]).find(x=>x.name===name); if(!p) return;
+  const data={format:"spamguard-profile",version:1,name:p.name,sensitivity:p.sensitivity,values:p.values||{}};
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+  a.download="spamguard-profile-"+p.name.replace(/[^A-Za-z0-9_-]+/g,"-")+".json"; document.body.appendChild(a); a.click(); a.remove();
+}
+$("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
+$("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
+  f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
 function renderSettings(d){
   const groups={};
   d.meta.forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
@@ -1010,7 +1053,7 @@ function render(d, editing){
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
-  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")) renderAdvanced(d); }
+  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
   $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
