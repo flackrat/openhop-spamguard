@@ -67,6 +67,11 @@ RULE_PREFIX = "spamguard:"
 RULE_ID_BASE = 9000
 PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
 PERMANENT_SECONDS = 10 * 365 * 86400
+# SpamGuard stops how spam is sent, not what people say. Blocks on message text can't last for ever,
+# a text you block by hand must be long enough to be a spam message rather than a word or a name, and it
+# never stops people SpamGuard knows (they are only ever de-duplicated or slowed when they repeat).
+TEXT_BLOCK_MAX_SECONDS = 7 * 86400
+MANUAL_TEXT_MIN_CHARS = 12
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------------------------------- settings
@@ -2219,7 +2224,8 @@ class SpamGuard:
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
-        return b["kind"] in ("links", "lockdown") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known")
+        return b["kind"] in ("links", "lockdown") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
+            or (b["kind"] in ("text", "words") and b.get("source") == "manual")
 
     def block_matches(self, b: dict, e: Event) -> bool:
         if self.gated(b) and self.is_known(e.sender):
@@ -2502,6 +2508,8 @@ class SpamGuard:
                    action=None, match=None, sender=None, extra=None) -> bool:
         now = time.time()
         expires = (from_ts or now) + (ttl or self.cfg["block_ttl_seconds"])
+        if kind in ("text", "words"):
+            expires = min(expires, now + TEXT_BLOCK_MAX_SECONDS)
         if expires <= now:
             return False
         b = self.blocks.get(key)
@@ -2909,6 +2917,11 @@ class SpamGuard:
                 conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
             elif b["kind"] == "hop":
                 conds = [("", [{"field": "path_hashes", "op": "contains", "value": b["value"]}])]
+            elif b["kind"] in ("text", "words"):
+                secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
+                words = b["value"] if b["kind"] == "words" else [b["value"]]
+                conds = [("", [{"field": "channel_hash", "op": "equals", "value": secret}]
+                          + [{"field": "channel_message_body", "op": "contains", "value": w} for w in words])]
             else:  # lockdown
                 conds = [("", [])]
             for sub, extra in conds:
@@ -2942,7 +2955,8 @@ class SpamGuard:
 
     def rule_numbers(self, b: dict) -> list:
         """The openHop rule ids for a block. openHop's packet feed says "Policy blocked packet (rule N)"."""
-        ids = [b.get("id")] + list((b.get("ids") or {}).values()) + list((b.get("paths") or {}).values())
+        ids = list((b.get("ids") or {}).values()) if self.gated(b) else \
+            [b.get("id")] + list((b.get("paths") or {}).values())
         return sorted({i for i in ids if isinstance(i, int)})
 
     def _rule_label(self, b: dict) -> str:
@@ -4131,7 +4145,8 @@ class SpamGuard:
                                "path": ">".join(e.path) or "direct", "first_hop": e.first_hop,
                                "sender": e.sender, "text": e.text[:160], "channel": e.channel,
                                "random": e.random, "name_score": e.name_score, "obfuscated": e.obfuscated, "garbage": e.garbage,
-                               "trusted": e.sender in self.allow_senders, "campaign": e.campaign is not None,
+                               "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
+                               "campaign": e.campaign is not None,
                                "matched": e.matched, "packet": e.packet,
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
@@ -4325,6 +4340,13 @@ class SpamGuard:
                     text = middle_chunk(text, self.cfg["text_rule_chars"])
                 if len(text) < 5:
                     raise ValueError("The text must be at least 5 characters")
+                if op == "block_text" and len(text) < MANUAL_TEXT_MIN_CHARS:
+                    raise ValueError(f"Use at least {MANUAL_TEXT_MIN_CHARS} characters of the spam message. SpamGuard "
+                                     "blocks spam messages, not single words or names")
+                sender = str(body.get("sender") or "")
+                if op == "mark_spam" and sender and (sender in self.allow_senders or self.is_known(sender)):
+                    raise ValueError(f"{sender} is someone SpamGuard knows, so it won't block what they say. "
+                                     "If they keep repeating it, the repeat guard already slows that down")
                 key = text_key(text)
                 self.suppressed.pop(key, None)
                 self.blocks.pop(key, None)
@@ -4357,7 +4379,11 @@ class SpamGuard:
                 b = self.blocks.get(body.get("key", ""))
                 if not b:
                     raise ValueError("That block no longer exists")
-                if body.get("permanent"):
+                if b["kind"] in ("text", "words"):
+                    if body.get("permanent"):
+                        raise ValueError("Blocks on message text can't be kept for ever; they last at most 7 days")
+                    b["expires"] = min(max(b["expires"], now) + int(body.get("seconds", 3600)), now + TEXT_BLOCK_MAX_SECONDS)
+                elif body.get("permanent"):
                     b["expires"] = now + PERMANENT_SECONDS
                     msg = "Block kept permanently (until you remove it)"
                 else:

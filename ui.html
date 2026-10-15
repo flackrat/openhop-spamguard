@@ -433,7 +433,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section class="adv">
   <h2>Block something yourself</h2>
-  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals.</p>
+  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals. They are for spam messages: use at least 12 characters of the message, they last at most a week, and they never stop people SpamGuard knows.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
     <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
@@ -600,6 +600,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, the same message sent under different names, and one name posting the same message over and over. Messages from this repeater's own companions are never blocked.</p>
   <p>When it finds spam it adds a rule to openHop so your repeater stops passing it on. It never changes your own openHop rules, and every automatic block ends by itself once the spam stops.</p>
   <p>openHop's packet list marks a dropped packet “Policy blocked packet (rule N)”. Each block on this page shows its openHop rule number, so you can see which block stopped it. In openHop's policy settings SpamGuard's rules are named after what they stop, with <em>(yours)</em> on blocks you added and <em>(duplicate)</em>, <em>(campaign)</em>, <em>(repeating)</em> or <em>(auto)</em> on ones SpamGuard made.</p>
+  <h3>Spam, not opinions</h3>
+  <p>SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself) and never what people say. Blocks on message text only stop names SpamGuard doesn't know yet, last at most a week, and need at least 12 characters of a message. People it knows are never blocked for a message; if one of them copies or repeats something, only the extra copies are held back for a while. You can't mark a known person's message as spam.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
   <h3>If it blocks someone genuine</h3>
@@ -768,7 +770,7 @@ function renderBlocks(d){
     const except=b.sender?` <span class="why">except from ${esc(b.sender)}, who can re-send it</span>`:"";
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
       <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.${b.rules&&b.rules.length?` <span class="rulenum">openHop rule ${b.rules.length>3?b.rules.slice(0,3).join(", ")+"…":b.rules.join(", ")}</span>`:""}</div></div>
-      <div class="acts">${b.permanent?"":btn("Keep","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
+      <div class="acts">${b.permanent||b.kind==="text"||b.kind==="words"?"":btn("Keep","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
   });
   fold("blocks","blocksFold",items,`<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`);
   const ded=d.summary.dedupe_rules;
@@ -785,8 +787,8 @@ function renderRecent(d){
     if(m.trusted) tag+="<span class='tag ok'>Trusted</span>";
     const why=[]; if(m.garbage) why.push("unreadable random text"); else if(m.garbage) why.push("unreadable random text"); else if(m.random) why.push("made-up looking name"); if(m.obfuscated) why.push("hidden or look-alike characters"); if(m.campaign) why.push("same message as other names");
     const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
-      ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"quiet")+(m.matched?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"))
-      : (m.trusted?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"));
+      ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"quiet")+(m.matched||m.known?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"))
+      : (m.trusted||m.known?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"quiet danger"));
     return `<li><div><div><strong>${esc(m.sender)}</strong>${tag}</div><div class="msg-text">${esc(m.text)}</div>
       <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div></div>
       <div class="acts">${acts}</div></li>`;
@@ -878,8 +880,8 @@ $("#resetGo").onclick=()=>{ if($("#resetWord").value.trim().toUpperCase()!=="RES
 $("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the defaults for the current sensitivity?")){ clean(); post("/settings",{reset:true}); } };
 
 /* ---------- forms ---------- */
-function ttlOptions(sel){ sel.innerHTML=TTLS.map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
-ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"));
+function ttlOptions(sel,textBlock){ sel.innerHTML=TTLS.filter(([v])=>!textBlock||+v<=604800).map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
+ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"),true);
 $("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,channel:$("#hopChan").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
 $("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,channel:$("#textChan").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
 $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim()}).then(()=>$("#trustIn").value="");
