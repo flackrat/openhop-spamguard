@@ -436,11 +436,13 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
     <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
+    <select id="hopChan" aria-label="Which channel"><option value="">on every channel</option></select>
     <select id="hopTtl" aria-label="How long to block it"></select>
     <button class="go" id="hopBtn">Block repeater</button>
   </div>
   <div class="inline-form">
     <label for="textIn">Text</label><input id="textIn" size="34" placeholder="part of the spam message" autocomplete="off">
+    <select id="textChan" aria-label="Which channel"></select>
     <select id="textTtl" aria-label="How long to block the text"></select>
     <button class="go" id="textBtn">Block text</button>
   </div>
@@ -451,6 +453,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="explain">Messages SpamGuard held in the last 24 hours from names that don't look made-up. If someone here is genuine, press <strong>Let through</strong>: they're trusted from then on.</p>
   <ul class="rows" id="heldList"></ul>
   <div class="foldbar" id="heldMore"></div>
+  <p style="margin:10px 0 0"><button class="quiet" onclick="post('/clear_held',{})">Clear this list</button> <span class="explain">Hides what's here now; anything held from now on still shows up.</span></p>
 </section></div>
 <div class="page" data-page="lockdown"><section id="lockSec">
   <div class="health-head"><h2>Lockdown</h2><span id="lPill"></span></div>
@@ -462,6 +465,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">Mark anything SpamGuard missed as spam, or tell it when it got something wrong. Routes read left to right from where the message entered the mesh.</p>
   <ul class="rows" id="recent"></ul>
   <div class="foldbar" id="recentMore"></div>
+  <p style="margin:10px 0 0"><button class="quiet" onclick="post('/clear_recent',{})">Clear this list</button> <span class="explain">Only clears the page: the evidence log keeps everything.</span></p>
 </section></div>
 <div class="page" data-page="sources">
 <section>
@@ -535,7 +539,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="chips" id="trustTexts"></div>
   <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Channels SpamGuard can read</h3>
-  <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name.</p>
+  <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
+  <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search your channels" placeholder="Search your channels" autocomplete="off"><span class="explain" id="chCount"></span></div>
   <div class="chips" id="channels"></div>
   <div class="inline-form"><input id="chName" aria-label="Channel name" size="14" placeholder="#chat"><input id="chKey" aria-label="Channel key" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Not re-blocked</h3>
@@ -725,7 +730,7 @@ function renderBlocks(d){
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const items=list.map(b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
-    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)
+    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
       :b.kind==="links"?"Links from names SpamGuard doesn't know"
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`
@@ -796,7 +801,15 @@ function renderAdvanced(d){
   $("#trustSenders").innerHTML=chips(d.allow.senders,"/unallow_sender","sender");
   $("#trustHops").innerHTML=chips(d.allow.hops,"/unallow_hop","hop");
   $("#trustTexts").innerHTML=chips(d.allow.texts,"/unallow_text","text");
-  $("#channels").innerHTML=d.channels.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("");
+  for(const [id,first] of [["#hopChan","on every channel"],["#textChan",null]]){ const sel=$(id), keep=sel.value;
+    const opts=(first?[["",first]]:[]).concat(d.channels.map(c=>[c,"on "+c]));
+    if(sel.dataset.sig!==JSON.stringify(opts)){ sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.dataset.sig=JSON.stringify(opts); }
+    sel.value=opts.some(o=>o[0]===keep)?keep:opts[0][0]; }
+  const many=d.channels.length>15, q=($("#chFind").value||"").trim().toLowerCase();
+  $("#chFindRow").hidden=!many;
+  const chShown=d.channels.filter(c=>!many||!q||c.toLowerCase().includes(q)).slice(0,many&&!q?15:500);
+  $("#chCount").textContent=many?(q?`${chShown.length} of ${d.channels.length} match`:`${d.channels.length} channels; showing 15, search to find others`):"";
+  $("#channels").innerHTML=chShown.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("");
   const sup=Object.entries(d.suppressed);
   $("#suppressed").innerHTML=sup.length?sup.map(([k,s])=>`<span class="chip">${esc(k)} <span class="explain">${left(s)}</span></span>`).join("")+btn("Clear","/clear_suppressed",{},"quiet"):`<span class="explain">None</span>`;
   fold("activity","activityMore",d.activity.map(a=>`<tr><td class="msg-meta when">${new Date(a.ts*1000).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(a.msg)}</td></tr>`),`<tr><td class="empty">Nothing yet.</td></tr>`);
@@ -849,11 +862,12 @@ $("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the de
 /* ---------- forms ---------- */
 function ttlOptions(sel){ sel.innerHTML=TTLS.map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
 ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"));
-$("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
-$("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
+$("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,channel:$("#hopChan").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
+$("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,channel:$("#textChan").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
 $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim()}).then(()=>$("#trustIn").value="");
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
 $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
+$("#chFind").addEventListener("input",()=>{ if(S) renderAdvanced(S); });
 $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});
 
 async function download(scramble){
@@ -1083,7 +1097,7 @@ function srcRows(list,actions){
   return head+list.map(s=>`<tr><td class="lead-cell"><span class="route">${esc(s.hop==="DIRECT"?"direct":s.hop)}</span></td><td data-label="Likely repeater">${srcName(s)}</td>
     <td class="num" data-label="24 h">${s.d1}</td><td class="num" data-label="7 days">${s.d7}</td><td data-label="Last spam">${ago(s.last+3599)}</td>
     <td data-label="Status">${s.blocked?"<span class='tag stop'>blocked</span>":s.allowed?"<span class='tag ok'>never block</span>":"<span class='tag plain'>not blocked</span>"}</td>
-    ${actions?`<td class="act-cell">${s.hop==="DIRECT"?"":(s.blocked?"":btn("Block","/block_hop",{hop:s.hop},"quiet"))+(s.allowed?btn("Allow blocking","/unallow_hop",{hop:s.hop},"quiet"):btn("Never block","/allow_hop",{hop:s.hop},"quiet"))}</td>`:""}</tr>`).join("");
+    ${actions?`<td class="act-cell">${s.hop==="DIRECT"?"":(s.blocked?"":btn("Block","/block_hop",{hop:s.hop},"quiet"))+(s.allowed?btn("Allow blocking","/unallow_hop",{hop:s.hop},"quiet"):btn("Never block","/allow_hop",{hop:s.hop},"quiet"))}${btn("Remove","/hide_source",{hop:s.hop},"quiet")}</td>`:""}</tr>`).join("");
 }
 
 /* ---------- column charts (stacked: stopped + let through) ---------- */
