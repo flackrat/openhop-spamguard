@@ -23,7 +23,7 @@ The repeater stays protected the whole time, and the page carries on at the same
 2. In openHop's dashboard, go to **System > Plugins**, choose **Install wheel** and pick that file. openHop installs it switched off.
 3. Create an openHop API token (openHop dashboard > System > API Tokens). Back on the Plugins page, press **Config** in SpamGuard's row, paste the token into `api_key` and press **Save**. Leave the other settings as they are unless you need to change them.
 4. Press **Enable** in SpamGuard's row. openHop starts SpamGuard and restarts it if it ever stops unexpectedly. The row shows RUNNING, and **Logs** shows what it's doing.
-5. Press the **Open** button in SpamGuard's row (the arrow in a box) to go to SpamGuard's own page, which is on port 8091 of your repeater unless you change `listen_port`. You can also bookmark `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**.
+5. Press the **Open** button in SpamGuard's row (the arrow in a box) to go to SpamGuard's own page, which is on port 8091 of your repeater unless you change `listen_port`. You can also bookmark `http://<your-repeater>:8091/`. Leave it in **Monitor** for a day (it shows what it *would* stop), then switch to **Protect**. If you don't come back, it switches itself to Protect once it has watched for a day and seen enough spam (the Overview shows when, with a **Stay in Monitor** button).
 
 ## Settings in openHop's Plugins page
 
