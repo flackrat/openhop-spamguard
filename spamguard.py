@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.30"
+VERSION = "5.31"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -229,6 +229,9 @@ SETTINGS_META: list[dict] = [
     {"key": "live_feed", "risk": "Turned off, SpamGuard only looks for new packets on the timer above, so it reacts a second or two later.", "group": "Timing", "type": "bool",
      "label": "React as soon as openHop hears a packet",
      "help": "Listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting for the next timed check. The timed check carries on as a backup."},
+    {"key": "rules_after_yours", "risk": "On = your own openHop rules are checked first, so a broad 'allow' rule of yours (for example letting everything from one repeater through) also lets spam through before SpamGuard's blocks are reached. Off = SpamGuard's blocks are checked first; your own rules are never changed either way.", "group": "Timing", "type": "bool",
+     "label": "Put SpamGuard's rules after your own openHop rules",
+     "help": "Changes only the order in openHop's policy list. Off by default."},
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 500,
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
@@ -291,6 +294,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "live_feed": True,
     "fetch_limit": 500,
     "max_total_rules": 300,
+    "rules_after_yours": False,
     "min_sync_seconds": 2,
     "allow_hops": [],
     "allow_senders": [],
@@ -3088,6 +3092,8 @@ class SpamGuard:
         self.rules_seen = len(ours_now)
         main, tail = self.build_rule_sets()
         ours_new = main + tail
+        self.rule_summary = {"after_yours": bool(self.cfg.get("rules_after_yours")), "yours": len(user_rules),
+                             "rules": [[r.get("id"), r.get("name"), (r.get("then") or {}).get("action")] for r in ours_new]}
         needs_enable = bool(ours_new) and not pe.get("enabled")
         # The known-people list lives in openHop as an object (@spamguard.known_senders).
         objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
@@ -3114,14 +3120,18 @@ class SpamGuard:
             objects.pop("channel_hash_groups", None)
         objects[OWNER_KEY] = self.owner_marker() if refresh_owner else owner
         pe["objects"] = objects
+        # Where SpamGuard's rules sit: normally before your own (so a broad 'allow' of yours can't let spam
+        # past), or after them if you asked for that (Advanced, Timing).
+        want = (user_rules + main + tail) if self.cfg.get("rules_after_yours") else (main + user_rules + tail)
+        same_order = [r.get("id") for r in existing] == [r.get("id") for r in want]
         if not force and not needs_enable and obj_now == obj_new and keys_now == keys_new and not refresh_owner \
-                and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
+                and same_order and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
             self.sync_pending = False
             return False
         if not force and self.rules_expected is not None and len(ours_now) != self.rules_expected:
             self.self_heals += 1
             self.note(f"openHop had {len(ours_now)} SpamGuard rules instead of {self.rules_expected} - put them back")
-        pe["rules"] = main + user_rules + tail
+        pe["rules"] = want
         if ours_new:
             pe["enabled"] = True
             pe.setdefault("default_action", "allow")
@@ -4170,6 +4180,7 @@ class SpamGuard:
                 "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "channels": sorted(c["channels"]),
+                "rule_summary": getattr(self, "rule_summary", None),
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
