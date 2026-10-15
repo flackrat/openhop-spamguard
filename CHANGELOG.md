@@ -1,5 +1,10 @@
 # Changelog
 
+## v5.31
+Two more suggestions from the testers in the Dutch MeshCore community.
+- **Your own rules first, if you prefer.** A new setting, "Put SpamGuard's rules after your own openHop rules" (Advanced, Timing), keeps your own rules at the top of openHop's policy list and SpamGuard's below them. It is off by default, because a broad 'allow' rule of yours would then also let spam through before SpamGuard's blocks are reached. Your own rules are never changed either way.
+- **Copy rule summary.** Blocked right now (Advanced) has a **Copy rule summary** button: SpamGuard's rules in openHop, in order, with their openHop rule numbers, what each does and its name, ready to paste into a message or notes.
+
 ## v5.30
 More from the testers in the Dutch MeshCore community, thank you again.
 - **Pick channels from openHop's own list.** Channels already named in openHop's policy settings now appear under Channels SpamGuard can read as "not read yet", each with an **Add** button, and **Add all shown** adds several at once. Their keys come from openHop, so there's nothing to look up or type, and the keys never reach the page. The channels SpamGuard reads are listed separately above. With lots of channels, the search covers both lists and **Show all** lists everything.
