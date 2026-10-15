@@ -562,6 +562,10 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="explain">Never counted as spam names and never de-duplicated. Channel names are not verified, so a spammer can copy a trusted name. SpamGuard still blocks a campaign even if one of its names is trusted, and logs a warning when a trusted name turns up somewhere new.</p>
   <div class="chips" id="trustSenders"></div>
   <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:6px 0 0">Known people</h3>
+  <p class="explain">Names SpamGuard has learnt from genuine messages. They are let through repeater, link and lockdown blocks and never blocked for what they say. <b>Trust</b> keeps a name for good; <b>Forget</b> makes them count as new again.</p>
+  <div class="inline-form"><input id="knownFind" type="search" aria-label="Search known people" placeholder="Search known people" autocomplete="off"><span class="explain" id="knownCount"></span></div>
+  <ul class="rows" id="knownList"></ul>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Repeaters never blocked automatically</h3>
   <p class="explain">Covers every hash width, so 27 also covers 27AB. You can still block these by hand.</p>
   <div class="chips" id="trustHops"></div>
@@ -839,7 +843,17 @@ function renderChannels(d){
   const only=d.channels.length===1;
   $("#chHint").hidden=!only;
 }
+function renderKnown(d){
+  const P=(d.known&&d.known.people)||[], q=($("#knownFind").value||"").trim().toLowerCase();
+  const hit=P.filter(p=>!q||p.name.toLowerCase().includes(q)), shown=hit.slice(0,q?200:25);
+  $("#knownCount").textContent=`${d.known.count} known, ${d.known.learning} still being learnt`+(q?`; ${hit.length} match`:(hit.length>shown.length?`; showing the ${shown.length} heard most recently`:""));
+  $("#knownList").innerHTML=shown.map(p=>`<li><div><div class="what">${esc(p.name)}${p.trusted?"<span class='tag ok'>trusted</span>":p.known?"<span class='tag plain'>known</span>":"<span class='tag would'>learning</span>"}</div>
+    <div class="why">${p.msgs?`${p.msgs} genuine message${p.msgs===1?"":"s"}`:"added by you"}${p.last?", last heard "+ago(p.last):""}</div></div>
+    <div class="acts">${p.trusted?"":btn("Trust","/allow_sender",{sender:p.name},"quiet")}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></li>`).join("")
+    ||`<li><p class="empty">${q?"No known name matches.":"SpamGuard doesn't know anyone yet."}</p></li>`;
+}
 function renderAdvanced(d){
+  renderKnown(d);
   $("#hops").innerHTML=`<tr><th>Repeater</th><th class="num">Messages</th><th class="num">Names</th><th class="num">Made-up names</th><th class="num">New names</th><th class="num">Campaign names</th><th class="num">Caught</th><th></th></tr>`+
     (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
@@ -959,6 +973,7 @@ $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
 $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
 $("#chFind").addEventListener("input",()=>{ if(S) renderChannels(S); });
+$("#knownFind").addEventListener("input",()=>{ if(S) renderKnown(S); });
 $("#ruleCopy").addEventListener("click",()=>{
   const r=S&&S.rule_summary; if(!r||!r.rules.length){ toast("SpamGuard has no rules in openHop right now"); return; }
   const act={drop:"block",log_only:"watch only",allow:"let through"};
