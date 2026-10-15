@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.29"
+VERSION = "5.30"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -979,6 +979,7 @@ class SpamGuard:
         self.allow_senders: set[str] = set()
         self.allow_texts: set[str] = set()
         self.extra_channels: dict[str, str] = {}
+        self.openhop_channels: dict[str, str] = {}
         self.settings: dict[str, Any] = {}  # changes made on the web page
         self.next_rule_id = RULE_ID_BASE
         self.activity: collections.deque[dict] = collections.deque(maxlen=300)
@@ -2918,6 +2919,28 @@ class SpamGuard:
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto"}
 
+    @staticmethod
+    def _named_channels(objs: dict) -> dict[str, str]:
+        """Channels openHop's policy settings already name, with their keys (objects.channels, as a
+        name -> key map or a list of {name, secret}). Offered on the page so you can pick the ones
+        SpamGuard should read without looking keys up again. Keys never leave this machine's page."""
+        out: dict[str, str] = {}
+        ch = objs.get("channels") if isinstance(objs, dict) else None
+        items = ch.items() if isinstance(ch, dict) else ((None, x) for x in ch) if isinstance(ch, (list, tuple)) else ()
+        for name, v in items:
+            if isinstance(v, dict):
+                name = v.get("name") or name
+                v = v.get("secret") or v.get("key") or v.get("psk") or v.get("channel_secret")
+            if isinstance(name, str) and name.strip() and isinstance(v, str) \
+                    and re.fullmatch(r"[0-9a-f]{32}|[0-9a-f]{64}", v.strip().lower()):
+                out[name.strip()[:40]] = v.strip().lower()
+        return out
+
+    def rule_numbers(self, b: dict) -> list:
+        """The openHop rule ids for a block. openHop's packet feed says "Policy blocked packet (rule N)"."""
+        ids = [b.get("id")] + list((b.get("ids") or {}).values()) + list((b.get("paths") or {}).values())
+        return sorted({i for i in ids if isinstance(i, int)})
+
     def _rule_label(self, b: dict) -> str:
         """A readable tail for the rule name, so openHop's packet list says what stopped a packet and
         whether it was a block you added or one SpamGuard made. Rule ids don't change with it."""
@@ -3042,6 +3065,7 @@ class SpamGuard:
         data = res.get("data", res)
         pe = dict(data.get("policy_engine") or {})
         objs0 = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
+        self.openhop_channels = self._named_channels(objs0)
         owner = objs0.get(OWNER_KEY) if isinstance(objs0.get(OWNER_KEY), dict) else None
         if self._lease_blocks_me(owner):
             if not getattr(self, "standby", None):
@@ -4111,6 +4135,7 @@ class SpamGuard:
                                "match": b.get("match"), "mode": self.hop_mode(b) if b["kind"] == "hop" else None,
                                "sender": b.get("sender"),
                                "only_channel": b.get("only_channel"),
+                               "rules": self.rule_numbers(b),
                                "paths": sorted(b.get("paths") or {}) if b["kind"] == "hop" else None,
                                "allowed": sorted(self.allowed_origins(b)) if b["kind"] == "suffix" else None,
                                "user_allowed": b.get("user_allowed") if b["kind"] == "suffix" else None,
@@ -4145,6 +4170,8 @@ class SpamGuard:
                 "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "channels": sorted(c["channels"]),
+                "channel_choices": sorted(n for n, k in self.openhop_channels.items()
+                                          if n not in c["channels"] and k not in set(c["channels"].values())),
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
@@ -4406,6 +4433,15 @@ class SpamGuard:
                 self.extra_channels[name] = key
                 self.rebuild_cfg()
                 msg = f"SpamGuard can now read {name}"
+            elif op == "add_openhop_channel":
+                names = body.get("names") or [body.get("name")]
+                added = [n for n in names if isinstance(n, str) and n in self.openhop_channels]
+                if not added:
+                    raise ValueError("openHop doesn't list that channel any more")
+                for n in added:
+                    self.extra_channels[n] = self.openhop_channels[n]
+                self.rebuild_cfg()
+                msg = f"SpamGuard can now read {added[0]}" if len(added) == 1 else f"SpamGuard can now read {len(added)} more channels"
             elif op == "remove_channel":
                 self.extra_channels.pop(str(body.get("name", "")), None)
                 self.rebuild_cfg()
@@ -4466,7 +4502,7 @@ def load_page() -> str:
 
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
-           "unallow_text", "add_channel", "remove_channel", "clear_auto", "clear_suppressed",
+           "unallow_text", "add_channel", "add_openhop_channel", "remove_channel", "clear_auto", "clear_suppressed",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source"}
 
