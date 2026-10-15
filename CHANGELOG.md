@@ -1,5 +1,22 @@
 # Changelog
 
+## v5.32
+**Spam, not opinions.** SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself), never what people say, and it can no longer be set up to do otherwise.
+- A text you block by hand never stops people SpamGuard knows: in openHop it sits after the rule that lets them through. It only stops names SpamGuard doesn't know yet, such as bots and throwaway names.
+- A text block needs at least 12 characters of a message, so a single word or someone's name can't be blocked.
+- Blocks that also stop people SpamGuard knows (on message text, or on anything passing through a repeater) last at most a week and can't be kept for ever. Other repeater blocks can still be kept until you remove them.
+- A known person's message can't be marked as spam. If a real person copies or repeats something, only the extra copies are held back for a while; their first message always goes out.
+- The help page explains this under "Spam, not opinions", and `tests/testfreespeech.py` checks it against openHop's rule engine.
+
+**Easier to find your way around.**
+- **Channels** has its own page in the menu, in normal mode too, with the channels SpamGuard reads and the ones openHop knows that it doesn't yet. The Overview points there when only Public is being read.
+- **Lockdown** moves to the bottom of the Blocks page as an emergency option; the Blocks badge says when it is on.
+- **Settings** are grouped in sections you open one at a time, with a search box, and each section says how many of its settings you changed.
+- Advanced Blocks folds the short-lived duplicate blocks into one line you can open, so the real blocks stay in view. openHop rule numbers show in Advanced only.
+- "Keep" is now **Keep until I remove it**.
+- The Overview shows six number tiles in normal mode (Known people moves to Advanced), and labels no longer split "24 h" across lines.
+- **Not spam** and **This is spam** on messages are proper buttons, and "Clear this list" only shows when there's something to clear.
+
 ## v5.31
 Two more suggestions from the testers in the Dutch MeshCore community.
 - **Your own rules first, if you prefer.** A new setting, "Put SpamGuard's rules after your own openHop rules" (Advanced, Timing), keeps your own rules at the top of openHop's policy list and SpamGuard's below them. It is off by default, because a broad 'allow' rule of yours would then also let spam through before SpamGuard's blocks are reached. Your own rules are never changed either way.
