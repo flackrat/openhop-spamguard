@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.27"
+VERSION = "5.28"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -341,6 +341,14 @@ def fix_hint(which: str) -> Optional[str]:
                 + flag) if which == "rule" else "sudo bash /opt/openhop_spamguard/tune-openhop.sh"
     if IN_PLUGIN and not openhop_in_container():
         return f"run this on the Pi (or whatever computer runs openHop): curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
+    return None
+
+
+def fix_command(which: str) -> Optional[str]:
+    """Just the command to copy for a plugin running next to openHop on the same computer, else None."""
+    if IN_PLUGIN and not openhop_in_container():
+        flag = " --rulefix" if which == "rule" else ""
+        return f"curl -fsSL {TUNE_URL} -o tune-openhop.sh && sudo bash tune-openhop.sh{flag}"
     return None
 
 
@@ -3531,21 +3539,35 @@ class SpamGuard:
                             "sees new spam that much later and a few copies get through before a block starts. "
                             "SpamGuard's own checks are quick; the delay is in openHop saving packets. "
                             "Restarting openHop clears it for a while.")
+        commands: dict[int, str] = {}   # warning number -> a command to show with a Copy button
         rfix = self.openhop_rulecheck_fix()
         if rfix is False:
-            hint = fix_hint("rule")
-            warnings.append("openHop has a bug that can sometimes let blocked spam through. "
-                            + (f"openHop {OPENHOP_FIXED_IN} and later fix this, so updating openHop is the best cure. "
-                               if OPENHOP_FIXED_IN else "")
-                            + (f"SpamGuard has a one-line fix: {hint}" if hint else
-                               "openHop runs in a container here, so the fix can't be applied from outside it; "
-                               "it goes away once openHop releases its own fix."))
+            cmd = fix_command("rule")
+            lead = ("Recommended: openHop has a known bug (reported to openHop) that occasionally lets blocked spam "
+                    "through, or drops a genuine message. "
+                    + (f"openHop {OPENHOP_FIXED_IN} and later fix this, so updating openHop is the best cure. "
+                       if OPENHOP_FIXED_IN else ""))
+            if cmd:
+                commands[len(warnings)] = cmd
+                warnings.append(lead + "Running this one command on the Pi (or whichever computer runs openHop) fixes it. "
+                                "It changes one line, keeps a backup, and can be undone with --undo.")
+            elif install_kind() == "normal":
+                warnings.append(lead + "Press Apply openHop fix below. It changes one line, keeps a backup, and can be undone.")
+            else:
+                warnings.append(lead + "openHop runs in a container here, so the fix can't be applied from outside it; "
+                                "it goes away once openHop releases its own fix.")
         fix = self.openhop_speed_fix()
         hint = fix_hint("speed")
         if fix is False and hint and lag is not None and lag >= c.get("lag_warn_seconds", 30):
             # Only worth doing when openHop is actually falling behind; most repeaters keep up without it.
-            warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back), and it "
-                            f"would help openHop keep up. To apply it, {hint}")
+            cmd = fix_command("speed")
+            if cmd:
+                commands[len(warnings)] = cmd
+                warnings.append("openHop's speed fix isn't in place, and it would help openHop keep up. Run this on the "
+                                "Pi (or whichever computer runs openHop); it keeps a backup and can be undone.")
+            else:
+                warnings.append("openHop's speed fix isn't in place (an openHop upgrade puts the old setting back), and it "
+                                f"would help openHop keep up. To apply it, {hint}")
         quiet = c.get("quiet_warn_minutes", 20) * 60
         if self.heard_at and self.last_error is None and now - self.heard_at > quiet and now - self.started > quiet:
             warnings.append(f"openHop hasn't reported any new packets for {round((now - self.heard_at) / 60)} minutes. "
@@ -3572,6 +3594,7 @@ class SpamGuard:
             warnings.append("Automatic restart-on-hang is not active. Re-run the installer to enable it.")
         state = "bad" if problems else ("warn" if warnings else "ok")
         return {"state": state, "problems": problems, "warnings": warnings,
+                "commands": [commands.get(i) for i in range(len(warnings))],
                 "uptime": round(now - self.started), "restarts": int(restarts) if (restarts or "").isdigit() else None,
                 "watchdog": watchdog, "last_check": self.loop_beat, "checks": self.loop_count,
                 "check_ms": self.poll_ms, "openhop_ms": self.openhop_ms, "openhop_service": openhop_state,
