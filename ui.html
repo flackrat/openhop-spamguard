@@ -344,6 +344,8 @@ html[data-contrast=high][data-theme=dark]{--ink:#fff;--panel:#121b23;--paper:#0b
 html[data-contrast=high] main a{text-decoration:underline}
 html[data-contrast=high] :focus-visible{outline-width:3px}
 html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px solid var(--line)}
+.cmdbox{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 .25rem}
+.cmdbox code{flex:1 1 18rem;min-width:0;overflow-wrap:anywhere;padding:.4rem .55rem;border:1px solid var(--line);border-radius:6px;font-size:.85em}
 </style>
 <script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme");if(t==="light"||t==="dark")d.dataset.theme=t;if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
 </head>
@@ -667,13 +669,21 @@ $("#sensSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) re
 /* ---------- health ---------- */
 function dur(sec){ if(sec==null) return "–"; sec=Math.max(0,Math.round(sec)); const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60);
   if(d) return `${d} d ${h} h`; if(h) return `${h} h ${m} min`; if(m) return `${m} min`; return `${sec} s`; }
+function copyCmd(el){
+  const t=el.dataset.cmd, done=()=>toast("Copied. Paste it into a terminal on the Pi");
+  if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(t).then(done,()=>fallbackCopy(t,done)); } else fallbackCopy(t,done);
+}
+function fallbackCopy(t,done){ const a=document.createElement("textarea"); a.value=t; a.setAttribute("readonly",""); a.style.position="fixed"; a.style.opacity="0";
+  document.body.appendChild(a); a.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} a.remove();
+  if(ok) done(); else toast("Couldn't copy here: select the command and copy it by hand",true); }
 function renderHealth(d){
   const h=d.service||{}; const now=Date.now()/1000;
   const pill={ok:"<span class='tag ok'>Healthy</span>",warn:"<span class='tag would'>Needs a look</span>",bad:"<span class='tag stop'>Problem</span>"}[h.state]||"";
   $("#hPill").innerHTML=pill;
   $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
     +(h.watchdog?" If it ever stops responding it restarts itself automatically.":"");
-  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map(x=>`<li class="warn">${esc(x)}</li>`).join("")
+  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map((x,i)=>{const cmd=(h.commands||[])[i];
+      return `<li class="warn">${esc(x)}${cmd?`<div class="cmdbox"><code>${esc(cmd)}</code><button class="quiet" data-cmd="${esc(cmd)}" onclick="copyCmd(this)">Copy command</button></div>`:""}</li>`;}).join("")
     +(h.openhop_rulecheck_fix===false&&h.can_apply_fix?`<li class="warn">${btn("Apply openHop fix","/openhop_fix",{},"go")}</li>`:"");
   const st=(k,v)=>`<div><dt>${k}</dt><dd>${v}</dd></div>`;
   const rules=h.rules_expected==null?"–":(h.rules_seen===h.rules_expected?`${h.rules_expected}, all in place`:`${h.rules_seen} of ${h.rules_expected}`);
