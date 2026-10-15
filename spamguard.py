@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.34"
+VERSION = "5.35"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -4276,7 +4276,13 @@ class SpamGuard:
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "own": self.own_summary(),
                 "known": {"count": len(self.known_list()), "min_msgs": int(c.get("known_min_msgs", 1)),
-                          "learning": sum(1 for k in self.known if not self.is_known(k))},
+                          "learning": sum(1 for k in self.known if not self.is_known(k)),
+                          # who gets let through blocks, most recently heard first (names only, no messages)
+                          "people": [{"name": k, "msgs": v[2], "first": v[0], "last": v[1],
+                                      "known": self.is_known(k), "trusted": k in self.allow_senders}
+                                     for k, v in sorted(self.known.items(), key=lambda kv: -kv[1][1])[:1000]]
+                                    + [{"name": n, "msgs": 0, "first": None, "last": None, "known": True, "trusted": True}
+                                       for n in sorted(self.allow_senders) if n and n not in self.known]},
                 "metrics": self.metrics(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
@@ -4576,6 +4582,16 @@ class SpamGuard:
                 self.note(f"Repeater {hop} will never be blocked automatically")
             elif op == "unallow_hop":
                 self.allow_hops.discard(str(body.get("hop", "")).upper())
+            elif op == "forget_known":
+                name = str(body.get("name", ""))
+                was = self.known.pop(name, None) is not None
+                trusted = name in self.allow_senders
+                self.allow_senders.discard(name)
+                if not was and not trusted:
+                    raise ValueError("SpamGuard doesn't know that name")
+                self.note(f"Forgot '{name}' as a known person (by hand)")
+                msg = (f"Forgot '{name}'. They count as new again until they've sent "
+                       f"{int(self.cfg.get('known_min_msgs', 1))} genuine messages.")
             elif op == "allow_sender":
                 self.allow_senders.add(str(body.get("sender", "")))
             elif op == "unallow_sender":
@@ -4712,7 +4728,7 @@ def load_page() -> str:
 
 
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
-           "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "allow_text",
+           "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source"}
