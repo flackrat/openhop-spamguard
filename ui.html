@@ -540,8 +540,14 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Channels SpamGuard can read</h3>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
-  <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search your channels" placeholder="Search your channels" autocomplete="off"><span class="explain" id="chCount"></span></div>
+  <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
+  <p class="explain" style="margin:6px 0 0"><b>Reading now</b></p>
   <div class="chips" id="channels"></div>
+  <div id="chChoiceBox" hidden>
+    <p class="explain" style="margin:10px 0 0"><b>In openHop's policy settings, not read yet</b> <span id="chChoiceCount"></span>. Add the ones SpamGuard should protect; their keys come from openHop, so there's nothing to type.</p>
+    <div class="chips" id="chChoices"></div>
+    <div class="inline-form"><button id="chAddShown" class="quiet" type="button">Add all shown</button></div>
+  </div>
   <div class="inline-form"><input id="chName" aria-label="Channel name" size="14" placeholder="#chat"><input id="chKey" aria-label="Channel key" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Not re-blocked</h3>
   <p class="explain">Blocks you removed by hand. SpamGuard won't re-create these for 24 hours.</p>
@@ -592,6 +598,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h2>How SpamGuard works</h2>
   <p>SpamGuard reads the channel messages your repeater hears and looks for the signs of a spammer: made-up names that change every message, lots of brand-new names arriving through one repeater, the same message sent under different names, and one name posting the same message over and over. Messages from this repeater's own companions are never blocked.</p>
   <p>When it finds spam it adds a rule to openHop so your repeater stops passing it on. It never changes your own openHop rules, and every automatic block ends by itself once the spam stops.</p>
+  <p>openHop's packet list marks a dropped packet “Policy blocked packet (rule N)”. Each block on this page shows its openHop rule number, so you can see which block stopped it. In openHop's policy settings SpamGuard's rules are named after what they stop, with <em>(yours)</em> on blocks you added and <em>(duplicate)</em>, <em>(campaign)</em>, <em>(repeating)</em> or <em>(auto)</em> on ones SpamGuard made.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
   <h3>If it blocks someone genuine</h3>
@@ -759,7 +766,7 @@ function renderBlocks(d){
     }
     const except=b.sender?` <span class="why">except from ${esc(b.sender)}, who can re-send it</span>`:"";
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
-      <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.</div></div>
+      <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.${b.rules&&b.rules.length?` <span class="rulenum">openHop rule ${b.rules.length>3?b.rules.slice(0,3).join(", ")+"…":b.rules.join(", ")}</span>`:""}</div></div>
       <div class="acts">${b.permanent?"":btn("Keep","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
   });
   fold("blocks","blocksFold",items,`<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`);
@@ -805,11 +812,21 @@ function renderAdvanced(d){
     const opts=(first?[["",first]]:[]).concat(d.channels.map(c=>[c,"on "+c]));
     if(sel.dataset.sig!==JSON.stringify(opts)){ sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.dataset.sig=JSON.stringify(opts); }
     sel.value=opts.some(o=>o[0]===keep)?keep:opts[0][0]; }
-  const many=d.channels.length>15, q=($("#chFind").value||"").trim().toLowerCase();
+  const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
+  const many=d.channels.length+choices.length>15, hit=c=>!q||c.toLowerCase().includes(q);
   $("#chFindRow").hidden=!many;
-  const chShown=d.channels.filter(c=>!many||!q||c.toLowerCase().includes(q)).slice(0,many&&!q?15:500);
-  $("#chCount").textContent=many?(q?`${chShown.length} of ${d.channels.length} match`:`${d.channels.length} channels; showing 15, search to find others`):"";
-  $("#channels").innerHTML=chShown.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("");
+  const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
+  $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
+  $("#channels").innerHTML=chShown.map(c=>`<span class="chip">${esc(c)}${c==="Public"?"":btn("✕","/remove_channel",{name:c})}</span>`).join("")
+    +(d.channels.length>chShown.length&&!q?`<span class="explain">and ${d.channels.length-chShown.length} more (search, or Show all)</span>`:"");
+  $("#chChoiceBox").hidden=!choices.length;
+  const pick=choices.filter(hit), pickShown=chAll||q?pick.slice(0,300):pick.slice(0,12);
+  $("#chChoiceCount").textContent=`(${choices.length})`;
+  $("#chChoices").innerHTML=pickShown.map(c=>`<span class="chip">${esc(c)}${btn("Add","/add_openhop_channel",{name:c},"quiet")}</span>`).join("")
+    +(pick.length>pickShown.length?`<span class="explain">and ${pick.length-pickShown.length} more</span>`:"")
+    +(!pick.length?`<span class="explain">None match</span>`:"");
+  $("#chShowAll").textContent=chAll?"Show fewer":"Show all"; $("#chShowAll").setAttribute("aria-expanded",chAll?"true":"false");
+  $("#chAddShown").hidden=!pickShown.length; $("#chAddShown").dataset.names=JSON.stringify(pickShown);
   const sup=Object.entries(d.suppressed);
   $("#suppressed").innerHTML=sup.length?sup.map(([k,s])=>`<span class="chip">${esc(k)} <span class="explain">${left(s)}</span></span>`).join("")+btn("Clear","/clear_suppressed",{},"quiet"):`<span class="explain">None</span>`;
   fold("activity","activityMore",d.activity.map(a=>`<tr><td class="msg-meta when">${new Date(a.ts*1000).toLocaleString([], {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</td><td>${esc(a.msg)}</td></tr>`),`<tr><td class="empty">Nothing yet.</td></tr>`);
@@ -868,6 +885,9 @@ $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
 $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
 $("#chFind").addEventListener("input",()=>{ if(S) renderAdvanced(S); });
+var chAll=false;
+$("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderAdvanced(S); });
+$("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });
 $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});
 
 async function download(scramble){

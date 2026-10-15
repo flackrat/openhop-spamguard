@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.30
+More from the testers in the Dutch MeshCore community, thank you again.
+- **Pick channels from openHop's own list.** Channels already named in openHop's policy settings now appear under Channels SpamGuard can read as "not read yet", each with an **Add** button, and **Add all shown** adds several at once. Their keys come from openHop, so there's nothing to look up or type, and the keys never reach the page. The channels SpamGuard reads are listed separately above. With lots of channels, the search covers both lists and **Show all** lists everything.
+- **Which block dropped that packet?** openHop's packet list marks a policy drop with the rule's number ("Policy blocked packet (rule N)"), not its name. Each block on SpamGuard's page now shows its openHop rule number, so you can match them up. A correction to the v5.29 notes: the readable rule names show in openHop's policy settings and its log, but not yet in the packet list. We've asked openHop to add the rule name to the drop reason, so it would show in the packet feed and the packet history too (openhop-dev/openhop_repeater#528).
+- The help page explains both.
+- `tests/testohchannels.py` covers the channel offer and the rule numbers.
+
 ## v5.29
 Most of this release comes from detailed testing and feedback in the Dutch MeshCore community. A big thank you to everyone there who tested, reported and suggested.
 - **A spam wave can no longer flood openHop with rules.** The "Most rules at once" limit now covers every rule SpamGuard writes, including repeater blocks and the rules that let known people through, and it can't be set above 500. Too many rules can overload openHop, and a tester running a similar tool saw openHop's database lock up after a wave of identical spam on several channels. Repeater blocks get first claim on the space, and short-lived duplicate rules make way first.
