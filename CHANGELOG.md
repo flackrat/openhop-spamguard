@@ -1,5 +1,13 @@
 # Changelog
 
+## v5.33
+- **Removing a duplicate block no longer switches duplicate checking off for that message.** Before, removing one by hand (or pressing Clear automatic blocks) held that text off for 24 hours, so later copies weren't caught at all. Now the copies seen so far are simply forgiven: the next copy counts as a first copy again, and copies after it are held back as usual. Campaign and repeater blocks you remove are still held off for 24 hours.
+- **Low duplicate lengths now work.** With "Only for messages at least this long" and "Characters matched by a duplicate rule" set below the old minimum, short messages still got no duplicate rule. A duplicate rule now goes by those two settings only, and when the words in the middle of a message come out too short it takes the characters as they come.
+- **Messages with no name in front.** openHop calls their sender "Unknown"; SpamGuard's rules about such a sender now say the same, so they match, and "Unknown" is never treated as a known person.
+- **New licence: GNU AGPL-3.0.** SpamGuard stays free and open source, but anyone who shares a copy or a changed version, or runs a changed version for others over a network, must publish their source under the same licence and keep the copyright notice. Versions up to 5.32 remain under MIT.
+- Ideas for the first two fixes came from testers in the Dutch MeshCore community, and from a sister project that reworked SpamGuard's ideas for another app. Thank you.
+- `tests/testforgive.py` covers these.
+
 ## v5.32
 **Spam, not opinions.** SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself), never what people say, and it can no longer be set up to do otherwise.
 - A text you block by hand never stops people SpamGuard knows: in openHop it sits after the rule that lets them through. It only stops names SpamGuard doesn't know yet, such as bots and throwaway names.

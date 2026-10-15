@@ -31,7 +31,7 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
 
 LABEL org.opencontainers.image.source="https://github.com/flackrat/openhop-spamguard" \
       org.opencontainers.image.description="Spam protection for openHop MeshCore repeaters" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python3", "spamguard.py", "--config", "/data/config.yaml"]
