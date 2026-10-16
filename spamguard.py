@@ -519,7 +519,19 @@ def garbage_score(text: str) -> int:
     if any(0x40000 <= ord(c) < 0xE0000 for c in text):
         return 9
     chars = [c for c in text if not c.isspace()]
+    if len(chars) < 3:
+        return 0
     if len(chars) < 6:
+        # Short ones: a few characters from different writing systems and symbol sets, with no plain
+        # letters or digits at all ("ĔІブ", "Ï┤╫☙ɛ", "ᵐᦐ৺"). Real short messages ("ok", "73", "👍",
+        # "日本語", "♥♥") don't mix like that.
+        if any(c.isascii() and c.isalnum() for c in chars):
+            return 0
+        tags = {_script(c) for c in chars} - {None}
+        odd = sum(1 for c in chars if _script(c) in ("symbol", "bad") or (c.isdigit() and not c.isascii()))
+        letters = tags - {"symbol", "mark", "bad"}
+        if (len(tags) >= 2 and odd) or len(letters) >= 3:
+            return 3
         return 0
     tags = [_script(c) for c in chars]
     bad, odd = tags.count("bad"), tags.count("symbol") + tags.count("mark")
@@ -618,6 +630,14 @@ def name_score(name: str, patterns: list) -> int:
         return 3 if len(set(emoji_tokens(raw))) >= 3 else 1
     if any(p.fullmatch(plain) for p in patterns):
         score += 2
+    # A real-looking first name with a random tag stuck on ("Arno-q7k2d", "Henk203_k81zt",
+    # "Wim.rig.c9d1"): a generator making names look human. The tag mixes letters and digits.
+    m = re.fullmatch(r"[A-Z][a-z]{2,11}\d{0,4}[-_.](?:[a-z]{2,8}[-_.])?([a-z0-9]{4,6})", plain)
+    if m:
+        tag = m.group(1)
+        if re.search(r"\d", tag) and re.search(r"[a-z]", tag):
+            flips = sum(1 for a, b in zip(tag, tag[1:]) if a.isdigit() != b.isdigit())
+            return min(6, score + 2 + (1 if flips >= 2 else 0))
     # Only judge single-word, letters-and-digits names; "Dave M", "BOT-01-X", "Ohm🔌" are left alone.
     if not re.fullmatch(r"[A-Za-z0-9]{6,16}", plain):
         return min(score, 6)
