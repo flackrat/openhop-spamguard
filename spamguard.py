@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.35"
+VERSION = "5.36"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -111,6 +111,10 @@ SETTINGS_META: list[dict] = [
     {"key": "hop_random_senders_long", "risk": "Lower = catches slow, drip-fed spam, but over a long window a handful of genuine code-like names on a busy repeater can add up and trigger a block.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 500,
      "preset": True, "label": "Slow spam: random names over the long window",
      "help": "Catches a spammer who posts slowly to stay under the limits: block after this many random-looking names over the long window."},
+    {"key": "auto_lockdown", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "During a big flood, people SpamGuard doesn't know yet (newcomers) are held for 15 minutes too. Turning it off lets a flood through that comes from many repeaters at once with made-up names.",
+     "label": "Short automatic lockdown during a big flood",
+     "help": "When lots of made-up names flood in through many different repeaters at once, faster than blocks on single repeaters can follow, SpamGuard lets only people it knows through for 15 minutes, then stops by itself. It says so in Activity."},
     {"key": "enable_rotation_guard", "group": "Blocking by source repeater", "type": "bool",
      "risk": "While a rotation block is active, a genuine repeater that has never been heard before, sitting in the same place in the network as the spammer, is blocked until it builds up history or you allow it. Turning this off lets more spam through from a spammer who keeps changing his repeater's identity.",
      "label": "Catch a spam repeater that keeps changing its identity",
@@ -277,6 +281,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hold_links": "campaign",
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
+    "auto_lockdown": True,
     "route_memory_days": 7,
     "evidence_log": False,
     "evidence_days": 7,
@@ -1404,11 +1409,18 @@ class SpamGuard:
         b = self.blocks.get(e.matched) if e.matched else None
         return bool(b and b["kind"] == "hop" and self.gated(b) and e.path and e.path[0] != b["value"])
 
+    def _wrongly_caught_regular(self, e: Event) -> bool:
+        """Someone who has chatted for over an hour under a normal-looking name, caught only by a route
+        block or a campaign text: keep getting to know them, so one wrong block can't lock regulars out."""
+        b = self.blocks.get(e.matched) if e.matched else None
+        return bool(b) and b.get("source") in ("rotation", "campaign") and self.established(e.sender) \
+            and not (e.random or e.obfuscated or e.garbage)
+
     def learn_sender(self, e: Event, spam: bool):
         """Count a genuine message towards its sender becoming known."""
         if spam or e.random or e.obfuscated or not e.sender or e.sender in ("?", "Unknown"):
             return
-        if e.matched and not self._held_in_passing(e):
+        if e.matched and not self._held_in_passing(e) and not self._wrongly_caught_regular(e):
             return
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
             if b["kind"] == "hop" and e.path and e.path[0] == b["value"]:
@@ -2419,6 +2431,9 @@ class SpamGuard:
             if e.known_then is None:
                 e.known_then = self.is_known(e.sender)
             self._match_event(e, count=not again)
+            if not e.matched and not again:
+                home = h.setdefault("home", {})
+                home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
             e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
@@ -2704,13 +2719,22 @@ class SpamGuard:
                 out.add(first)
         return out
 
-    def rotation_candidates(self, window) -> dict:
-        """Routes receiving spam from several never-seen first repeaters."""
+    def established(self, name: str) -> bool:
+        """Someone who has been chatting for a while under this name (whether or not they're 'known' yet)."""
+        h = self.sender_history.get(name)
+        return bool(h) and h["count"] >= 5 and h["first"] <= time.time() - 3600
+
+    def rotation_candidates(self, window, campaigns=None) -> dict:
+        """Routes receiving spam from several never-seen first repeaters. Only messages that really look
+        like spam count: made-up or disguised names, or a campaign SpamGuard found suspicious (several
+        regulars saying "good evening" is a conversation, not a campaign)."""
+        campaigns = campaigns or {}
         out: dict[tuple, dict] = {}
         for e in window:
-            if not e.path or self.known_origin(e.first_hop):
+            if not e.path or self.known_origin(e.first_hop) or self.established(e.sender):
                 continue
-            if not (e.random or e.obfuscated or e.campaign is not None):
+            sus_campaign = e.campaign is not None and (campaigns.get(e.campaign) or {}).get("suspect")
+            if not (e.random or e.obfuscated or sus_campaign):
                 continue
             d = out.setdefault(tuple(e.path[1:]), {"origins": set(), "senders": set()})
             d["origins"].add(e.first_hop)
@@ -2837,6 +2861,34 @@ class SpamGuard:
                                    extra={"who": who}):
                     changed = True
 
+        # 2c. A campaign block that keeps catching regulars (people SpamGuard knows, heard from where they
+        # usually are) is ordinary chat, not spam: stop it. Someone copying a regular's name usually comes
+        # from somewhere else, so that doesn't count.
+        for key, b in list(self.blocks.items()):
+            if b.get("source") != "campaign":
+                continue
+            caught = {e.sender for e in a["long"] if e.matched == key and self.is_known(e.sender)
+                      and (self.sender_history.get(e.sender, {}).get("home") or {}).get(e.first_hop, 0) >= 3}
+            if len(caught) >= 3:
+                self.blocks.pop(key)
+                self.suppressed[key] = now + 86400
+                self.note(f"Stopped blocking {self.describe(b)}: it was catching {len(caught)} regulars, so it looks like ordinary chat")
+                changed = True
+
+        # 2d. A big flood of made-up names through many repeaters at once: a short automatic lockdown
+        # (only people SpamGuard knows get through) until single-repeater blocks can catch up.
+        if c.get("auto_lockdown", True) and "lockdown" not in self.blocks and self.suppressed.get("lockdown", 0) <= now:
+            recent = [e for e in a["window"] if e.ts >= now - 120 and e.random and not self.is_known(e.sender)]
+            names = {e.sender for e in recent}
+            entries = {e.first_hop for e in recent}
+            if len(names) >= 12 and len(entries) >= 6:
+                self._add_block("lockdown", "lockdown", None,
+                                f"Automatic 15-minute lockdown: {len(names)} made-up names through {len(entries)} repeaters in two minutes",
+                                "auto-lockdown", ttl=900)
+                self._important = True
+                self.note(f"Flood of {len(names)} made-up names through {len(entries)} repeaters: only people SpamGuard knows get through for 15 minutes")
+                changed = True
+
         # 3. Source repeater blocking.
         if c.get("enable_hop_rules", True):
             for hop, h in a["hops"].items():
@@ -2860,8 +2912,15 @@ class SpamGuard:
             for b in self.blocks.values():
                 if b["kind"] == "hop":
                     linked |= {tuple(p.split(">")[1:]) for p in (b.get("paths") or {})}
-            for suf, d in self.rotation_candidates(a["window"]).items():
+            for suf, d in self.rotation_candidates(a["window"], a["campaigns"]).items():
                 need = 2 if suf in linked else c["rotate_first_hops"]
+                if len(suf) <= 1 and suf not in linked:
+                    need *= 2   # a route of one repeater next to yours carries a lot of genuine traffic: be surer
+                # Never block a route that people who have been chatting for a while depend on.
+                regulars = {e.sender for e in a["long"] if e.path and tuple(e.path[1:]) == suf
+                            and self.established(e.sender) and not e.random}
+                if len(regulars) >= 3:
+                    continue
                 if len(d["origins"]) >= need and len(d["senders"]) >= 2:
                     route = ">".join(suf)
                     where = f"via {route}" if suf else "directly next to your repeater"
@@ -3024,7 +3083,8 @@ class SpamGuard:
         return rules
 
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "campaign": "campaign",
-                   "rotation": "changing identity", "hop": "auto"}
+                   "rotation": "changing identity", "hop": "auto",
+                   "auto-lockdown": "auto lockdown", "lockdown": "yours"}
 
     @staticmethod
     def _named_channels(objs: dict) -> dict[str, str]:
