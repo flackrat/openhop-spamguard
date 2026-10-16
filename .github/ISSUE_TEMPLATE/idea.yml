@@ -1,0 +1,15 @@
+name: Idea or request
+description: Suggest something SpamGuard could do better
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like SpamGuard to do?
+      description: Describe the situation on your mesh and what would help. Examples of the spam (with names changed) are very welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
