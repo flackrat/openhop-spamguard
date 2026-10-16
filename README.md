@@ -27,6 +27,20 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 
 _Example data: names and numbers are made up._
 
+## Requirements
+
+**Hardware.** Runs alongside openHop on a Raspberry Pi 3 or better (tested on a Pi 3). A Pi Zero 2 W should cope but hasn't been tested. Any always-on Pi benefits from a "High Endurance" or A2 SD card, mostly because of openHop's own packet database.
+
+**Software.** Python 3.9 or newer, which openHop's install already provides. The only libraries are pycryptodome and PyYAML, which openHop already uses, so the plugin adds nothing new. No internet connection is needed apart from the optional update check and map directory. Docker is an alternative if you'd rather keep it separate.
+
+**Space.** The plugin is about 125 KB to download and under 1 MB installed. Its working file is about 150 KB, saved at most every five minutes unless something important changes (about 33 MB of writes a day). The evidence log is off unless you turn it on; then it uses about 1 to 3 MB a day and keeps 7 days by default, so allow 10 to 20 MB. Everything else it remembers (known names, learnt routes, activity, history) has a fixed limit.
+
+**Memory and CPU.** About 50 MB of memory at its busiest in a three-hour attack simulation, a few milliseconds per check, and it checks at most about once a second however busy the mesh gets. On the older native install the service runs at a lower priority than openHop, with a soft memory limit of 250 MB and a hard limit of 400 MB.
+
+**Checks it runs on itself.** The Health page warns when the disk has under 200 MB free, memory is under 10% free, the Pi reaches 70 °C (a problem at 80 °C), a check takes longer than the gap between checks, openHop's packet list falls 30 seconds or more behind, openHop stops reporting packets, talking to openHop fails 20 or more times in an hour, or openHop's repeater service isn't running. If openHop's rules stop matching what SpamGuard wrote, it puts them back within a minute. On the native install systemd restarts SpamGuard if it hangs; as a plugin or in Docker its own watchdog makes it exit so it is restarted if its checks stall for five minutes.
+
+**Limits on what it writes into openHop.** "Most rules at once" defaults to 300, can't go above 500, and covers every rule SpamGuard writes. Blocks on message text last at most a week, and the automatic flood lockdown ends by itself after 15 minutes. Your own openHop rules are never changed.
+
 ## Install
 
 **SpamGuard runs as an openHop plugin**, installed from openHop's own dashboard. That works however openHop is installed (directly on a Pi, in Docker, on Unraid or as a Home Assistant add-on) and needs openHop 1.1.2 or later.
