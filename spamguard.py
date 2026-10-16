@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "5.36"
+VERSION = "5.37"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 

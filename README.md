@@ -16,7 +16,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Finds where spam enters the mesh** and blocks it there, while still letting your regulars through.
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
-- **Lockdown button** for a heavy attack: for a while, only people it already knows get through.
+- **Lockdown** for a heavy attack: for a while, only people it already knows get through. It starts by itself for 15 minutes during a big flood from many repeaters at once.
 - **Settings profiles:** save a set of tuned settings, put it back later, or share it with other operators as a small file (never your channels, keys or exceptions).
 - **Spam, not opinions:** it stops how spam is sent, never what people say. Text blocks never stop people it knows, need a real chunk of a message (not a word or a name) and last at most a week, and a known person's message can't be marked as spam.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
@@ -27,23 +27,9 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 
 _Example data: names and numbers are made up._
 
-## Requirements
-
-**Hardware.** Runs alongside openHop on a Raspberry Pi 3 or better (tested on a Pi 3). A Pi Zero 2 W should cope but hasn't been tested. Any always-on Pi benefits from a "High Endurance" or A2 SD card, mostly because of openHop's own packet database.
-
-**Software.** Python 3.9 or newer, which openHop's install already provides. The only libraries are pycryptodome and PyYAML, which openHop already uses, so the plugin adds nothing new. No internet connection is needed apart from the optional update check and map directory. Docker is an alternative if you'd rather keep it separate.
-
-**Space.** The plugin is about 125 KB to download and under 1 MB installed. Its working file is about 150 KB, saved at most every five minutes unless something important changes (about 33 MB of writes a day). The evidence log is off unless you turn it on; then it uses about 1 to 3 MB a day and keeps 7 days by default, so allow 10 to 20 MB. Everything else it remembers (known names, learnt routes, activity, history) has a fixed limit.
-
-**Memory and CPU.** About 50 MB of memory at its busiest in a three-hour attack simulation, a few milliseconds per check, and it checks at most about once a second however busy the mesh gets. On the older native install the service runs at a lower priority than openHop, with a soft memory limit of 250 MB and a hard limit of 400 MB.
-
-**Checks it runs on itself.** The Health page warns when the disk has under 200 MB free, memory is under 10% free, the Pi reaches 70 °C (a problem at 80 °C), a check takes longer than the gap between checks, openHop's packet list falls 30 seconds or more behind, openHop stops reporting packets, talking to openHop fails 20 or more times in an hour, or openHop's repeater service isn't running. If openHop's rules stop matching what SpamGuard wrote, it puts them back within a minute. On the native install systemd restarts SpamGuard if it hangs; as a plugin or in Docker its own watchdog makes it exit so it is restarted if its checks stall for five minutes.
-
-**Limits on what it writes into openHop.** "Most rules at once" defaults to 300, can't go above 500, and covers every rule SpamGuard writes. Blocks on message text last at most a week, and the automatic flood lockdown ends by itself after 15 minutes. Your own openHop rules are never changed.
-
 ## Install
 
-**SpamGuard runs as an openHop plugin**, installed from openHop's own dashboard. That works however openHop is installed (directly on a Pi, in Docker, on Unraid or as a Home Assistant add-on) and needs openHop 1.1.2 or later.
+**SpamGuard runs as an openHop plugin**, installed from openHop's own dashboard. That works however openHop is installed (directly on a Pi, in Docker, on Unraid or as a Home Assistant add-on) and needs openHop 1.1.2 or later. A Raspberry Pi 3 is plenty; see **Requirements** under Advanced for space, memory and what's been tested.
 
 1. Download `openhop_spamguard-<version>-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest).
 2. In openHop's dashboard go to **System > Plugins > Install wheel** and pick that file.
@@ -115,24 +101,25 @@ Click a heading to expand it.
 - **Overview**: mode, sensitivity, and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives.
 - **Spam sources**: where spam enters the mesh, on a map and in a table with Block / Never block buttons. SpamGuard works out where each spam message most likely entered the mesh, learning from repeater adverts as it goes, so short repeater codes shared around the country don't scatter the map; it can optionally use the public MeshCore map to place far-away repeaters. By default the map only shows entry points it is sure of; tick "Show best guesses too" to add the rough ones. The map needs internet access on the device viewing the page; the table works without it.
 - **Long lists** (messages, blocks, activity) show 10 at a time with **Show more**.
-- **Advanced** (switch at the bottom of the menu): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, repeaters, texts, channels), Known people settings, the evidence log and an activity log.
+- **Advanced** (switch at the bottom of the menu): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, the known people list with Trust and Forget, repeaters and texts never blocked), settings profiles, the evidence log and an activity log. Channels have their own page in the menu.
 
 </details>
 
 <details>
 <summary><b>Known people, links and Lockdown</b></summary>
 
-SpamGuard keeps a list of names it has seen sending genuine messages. It writes the list into openHop as a policy object, `@spamguard.known_senders`, with one "let known people through" rule per channel, placed after your own rules. Three kinds of block sit below that rule, so they never stop a known name:
+SpamGuard keeps a list of names it has seen sending genuine messages. It writes the list into openHop as a policy object, `@spamguard.known_senders`, with one "let known people through" rule, placed after your own rules. The blocks below that rule never stop a known name:
 
 - **Repeater blocks** block *anything passing through* the spam repeater, except known people, and end a while after the spam through it stops (Advanced > Timing). People held this way who don't look like spammers are listed under **Possibly genuine, held** on the main page, with a **Let through** button. The older "Routes starting there" and "Anything passing through" choices are still in Advanced.
 - **Links from names it doesn't know** are held while a spam campaign is under way. Advanced > Known people can make this always or never.
-- **Lockdown** (at the bottom of the Blocks page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. It ends by itself.
+- **Text blocks you add yourself** only ever stop names SpamGuard doesn't know yet.
+- **Lockdown** (at the bottom of the Blocks page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. It ends by itself. During a big flood from many repeaters at once SpamGuard starts a 15-minute lockdown itself (Advanced > Blocking by source repeater can turn that off).
 
 Replaying a day of real traffic, this caught more spam while holding only a handful of genuine messages.
 
 Things to know:
 
-- How quickly a name becomes known is adjustable (Advanced > Known people). Text and campaign blocks always apply to everyone, known or not.
+- How quickly a name becomes known is adjustable (Advanced > Known people), and Advanced > Exceptions lists everyone it knows, with **Trust** and **Forget**. Automatic campaign blocks apply to everyone, because spammers copy known names, but one that keeps catching regulars heard from their usual repeater removes itself.
 - Names are forgotten after a long silence. The list is in openHop's `policy.yaml`; channel names are public anyway, but bear it in mind if you share that file.
 
 </details>
@@ -149,7 +136,7 @@ SpamGuard looks after itself:
 - **Measures openHop's delay.** It shows how far behind real time openHop's packet list is, and warns when it is 30 seconds or more behind, because spam copies arriving in that gap get through before a block starts. Each evidence-log line also records how late SpamGuard saw the message.
 - **Notices a deaf radio.** If openHop reports no new packets of any kind for 20 minutes, the Health panel warns that its radio may have stopped receiving.
 - **Asks openHop for as little as possible.** It reads only packets newer than the last ones it saw, using a query openHop's database answers from its time index (older openHop versions fall back to the recent packet list).
-- **Stays out of the repeater's way.** It uses a few tens of MB of memory and very little CPU. The older install also runs at lower CPU priority than openHop and is capped at 400 MB.
+- **Warns early.** Health warns when the disk has under 200 MB free, memory is under 10% free, the Pi reaches 70 °C (a problem at 80 °C), a check takes longer than the gap between checks, talking to openHop fails 20 or more times in an hour, or openHop's repeater service isn't running.
 
 As a plugin, openHop's **System > Plugins** page shows whether SpamGuard is running, with a **Logs** button. On the older install, quick checks from the command line:
 ```
@@ -243,27 +230,22 @@ The more messages you label with the two buttons, the more useful the replay rep
 <summary><b>Rotating-identity protection</b></summary>
 
 - It needs history: SpamGuard learns normal routes as it runs (kept for 7 days by default). Right after installing, few repeaters are "known", so a rotation block may also hold back a genuine new repeater on that route until you allow it.
-- It only triggers on strong spam signs, never on ordinary traffic from new repeaters.
+- It only triggers on strong spam signs, never on ordinary traffic from new repeaters, and never blocks a route that people who've been chatting for a while depend on.
 - Its rules are placed after your own openHop rules, so its "let through" exceptions never override anything you set up.
 - Because of what openHop's rules can express, a rotation block can occasionally hold back a genuine message on a similar route. Anything that looks genuine shows under **Possibly genuine** with a **Let through** button.
 
 </details>
 
 <details>
-<summary><b>SD card and storage</b></summary>
-
-Everything SpamGuard keeps has a limit: learnt routes, known names and the activity list are all capped and forgotten after a while, and the evidence log (deleted after 7 days by default, about 1-3 MB a day; off unless you turn it on). Its working file (about 150 KB) is saved at most every 5 minutes unless something important changes, about 33 MB of writes a day. openHop's own packet database writes far more, which is why the installer offers to keep 7 days of packet history. A "High Endurance" or A2 SD card is a good idea for any always-on Pi.
-
-</details>
-
-<details>
 <summary><b>Requirements and tested systems</b></summary>
 
-- Plugin (recommended): openHop 1.1.2 or later with its plugin manager running, however openHop is installed.
-- Older install: openHop Repeater installed natively on Debian-style Linux with systemd; `curl` for updates. Both are standard on Raspberry Pi OS.
-- Docker: any host running openHop in Docker. Images are published for 64-bit and 32-bit Pi and for PCs (see [docs/docker.md](docs/docker.md)).
-- Tested on Raspberry Pi OS (32-bit, Pi 3) in daily use, as the older install and as the plugin on openHop 1.1.5, and with openHop 1.1.5 on Ubuntu 24.04 (x86_64) as the plugin, the older install moved to the plugin, and a Docker container. Python 3.10 to 3.13.
-- Works with 1-, 2- and 3-byte path hashes, and with hashtag channels (add them by name on the Channels page).
+- **Plugin (recommended):** openHop 1.1.2 or later with its plugin manager running, however openHop is installed. **Older install:** openHop installed natively on Debian-style Linux with systemd, plus `curl` for updates (both standard on Raspberry Pi OS). **Docker:** any host running openHop in Docker; images for 64-bit and 32-bit Pi and for PCs (see [docs/docker.md](docs/docker.md)).
+- **Hardware:** a Raspberry Pi 3 or better. A Pi Zero 2 W should cope but hasn't been tested.
+- **Software:** Python 3.9 or newer, which openHop already provides. The only libraries are pycryptodome and PyYAML, which openHop already uses. No internet needed apart from the optional update check and map directory.
+- **Space:** about 125 KB to download and under 1 MB installed. Its working file (about 150 KB) is saved at most every 5 minutes unless something important changes, about 33 MB of writes a day; openHop's own packet database writes far more, which is why the installer offers to keep 7 days of packet history. The evidence log is off unless you turn it on, then about 1 to 3 MB a day kept 7 days (allow 10 to 20 MB). Everything else it remembers is capped and forgotten after a while. A "High Endurance" or A2 SD card is a good idea for any always-on Pi.
+- **Memory and CPU:** about 50 MB of memory at its busiest in a three-hour attack simulation, a few milliseconds per check, at most about one check a second however busy the mesh gets. The older install runs at lower priority than openHop, with memory limits of 250 MB (soft) and 400 MB (hard).
+- **Limits on what it writes into openHop:** "Most rules at once" defaults to 300 and can't go above 500, covering every rule SpamGuard writes. Text blocks last at most a week; your own rules are never changed.
+- **Tested** on Raspberry Pi OS (32-bit, Pi 3) in daily use, as the older install and as the plugin on openHop 1.1.5, and with openHop 1.1.5 on Ubuntu 24.04 (x86_64) as the plugin, the older install moved to the plugin, and a Docker container. Python 3.10 to 3.13. Works with 1-, 2- and 3-byte path hashes and with hashtag channels (add them on the Channels page).
 
 </details>
 
@@ -282,7 +264,7 @@ The web page is built to WCAG 2.1 AA and works fully with a keyboard and screen 
 
 ## For developers
 
-`bash tests/run_all.sh` runs the test suite against a fake openHop (add `--slow` for the Pi-sized stress test); nothing in it talks to a real repeater, and all its data is made up. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). It only ever reads the log with names scrambled, and never the lists of people in the status.
+`bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine (add `--slow` for the Pi-sized stress test). It includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). It only ever reads the log with names scrambled, and never the lists of people in the status.
 
 ## Licence
 

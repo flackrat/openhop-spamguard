@@ -1,5 +1,9 @@
 # Changelog
 
+## v5.37
+- The Overview's number tiles line up in even rows (three across in normal mode, four in Advanced, two on a phone), and "24 h" no longer splits across lines in the small print either.
+- README: requirements (hardware, software, space, memory and CPU, limits) moved into Advanced next to the tested systems, the storage details merged into it, Health lists the warnings it gives, and outdated lines about known people and lockdown corrected. New screenshots, and GitHub issue forms for bug reports and ideas.
+
 ## v5.36
 Found with a new red-team simulation (`tests/redteam.py`): six hours of ordinary chat, then three hours of fourteen overlapping kinds of spam attack, every message judged by openHop's real rule engine. Before these fixes it stopped 60% of the spam and wrongly held a third of regulars' messages; now it stops about 96% and wrongly holds under 1.5%, across several runs.
 - **No more lock-outs on a busy mesh.** Several regulars saying the same everyday thing ("good evening mesh") could look like a campaign to a freshly installed SpamGuard, and that could snowball into a block on a whole route next to your repeater, after which nobody could become known. Now everyday phrases from people who have been chatting for a while don't count as spam, a route that regulars depend on is never blocked for "changing identity", and SpamGuard keeps getting to know regulars even if one of its blocks wrongly catches them.
