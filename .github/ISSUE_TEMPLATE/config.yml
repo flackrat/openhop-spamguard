@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Install guide and troubleshooting
+    url: https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md
+    about: Step-by-step plugin install, including openHop in Docker
