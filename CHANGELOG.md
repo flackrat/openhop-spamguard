@@ -2,7 +2,8 @@
 
 ## v5.35
 - **See and edit who SpamGuard knows.** Exceptions (Advanced) now lists the known people: everyone SpamGuard has learnt from genuine messages, most recently heard first, with how many genuine messages they've sent and when they were last heard, plus names still being learnt. A search box finds a name among hundreds. **Trust** keeps a name for good, and **Forget** makes someone count as new again and takes them off the list openHop lets through. The list shows names only, never messages. Suggested by a tester in the Dutch MeshCore community.
-- `tests/testknownlist.py` covers it.
+- **Catches a newer kind of flood.** Floods now use real-looking first names with a random tag added and very short unreadable messages, and SpamGuard now recognises both, so these floods are spotted from the first few messages. Ordinary names and short genuine messages ("ok", "73", emoji) are unaffected. Thanks to the operator who shared a screenshot of one.
+- `tests/testknownlist.py` and `tests/testnamedflood.py` cover these.
 
 ## v5.34
 - **Settings profiles.** Settings (Advanced) has a new Profiles card. A profile is a saved set of detection settings: the sensitivity and every value you changed. **Save current settings as a profile** stores what's in force now, and **Apply** puts a profile back, first listing every value it will change. The card shows which profile is in use and when settings have changed since.
