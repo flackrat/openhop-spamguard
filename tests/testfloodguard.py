@@ -43,13 +43,20 @@ for i,t in enumerate(["Morning all from the hill","Nice and clear today","Anyone
     m.add("Quarry Pete",t,["4C","2F"],ago=600-i*60)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(g.is_known("Quarry Pete"),"regular is known")
-check(not g._build_flood(),"FloodGuard off by default: no rules")
+check(g.cfg["floodguard"],"FloodGuard is on by default")
+g.fg_decide(time.time())
+st=g.fg_status()
+check(st["learning"] and st["learn_until"]-time.time()>2.9*86400, "and starts by learning for three days")
+check(any("learns how busy" in a["msg"] for a in g.activity),"says so in Activity")
+r=g._build_flood()
+check(r and all(x["then"]["action"]=="log_only" for x in r),"while learning its rules only count, even in Protect")
+g.fg.update(ready=time.time(), learnt_at=time.time())   # the rest of this test: learning already done
 
 check(g.fg_reach() in (5,6,7), f"learns how far flood packets normally come: {g.fg_reach()}")
 check(not g.fg.get("limit"),"no limit on an ordinary day")
 
 # ---- turn FloodGuard on, then a flood: 25 packets a minute from 20-40 hops away for 6 minutes
-g.apply_settings({"floodguard":True,"flood_hop_floor":4})
+g.apply_settings({"flood_hop_floor":4})
 t0=time.time()
 flood=[pkt(t0-360+i*2.4, random.randint(20,40)) for i in range(150)]
 g.ingest(flood)
@@ -144,6 +151,59 @@ check(g2.fg_hops and g2.fg_reach()==g.fg_reach(),"what it learnt about normal ro
 check(g2.fg["mark"]==g.fg["mark"],"and which packets it has already counted")
 before=g2.metrics()["d1"]["fc"]; g2.ingest(flood); after=g2.metrics()["d1"]["fc"]
 check(before==after,"packets read again after a restart aren't counted twice")
+
+# ---- learning: three days of this repeater's own traffic set the automatic values
+g5=guard(mock()); g5.radio=dict(RADIO); g5.refresh_openhop_info=lambda *a,**k: None
+T=time.time(); g5.fg["learn_start"]=T-2*86400
+check(not g5.fg_learn(T) and not g5.fg.get("ready"),"not before three days")
+g5.fg["learn_start"]=T-3.1*86400
+for k in range(80):
+    hr=str(int((T-k*3600)//3600*3600))
+    g5.hist[hr]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":round(random.uniform(2,5),1)}
+    g5.fg_hops[hr]={h:random.randint(1,4) for h in range(1,8)}
+    g5.fg_adv[hr]={h:1 for h in range(1,7)}
+check(g5.fg_learn(T) and g5.fg.get("ready"),"after three days with enough traffic it starts acting")
+L=dict(g5.fg["learnt"])
+check(10<=L.get("flood_busy_percent",0)<=15 and L.get("flood_max_unscoped")==16 and L.get("flood_max_advert")==8, f"learnt values from this mesh, inside their safe ranges: {L}")
+check(g5.cfg["flood_max_unscoped"]==16 and g5.cfg["flood_busy_percent"]==L["flood_busy_percent"],"and they're in force")
+check(any("has learnt this repeater's traffic" in a["msg"] for a in g5.activity),"says so in Activity")
+g5.apply_settings({"flood_max_unscoped":24})
+for k in range(80):   # the mesh gets busier and routes longer
+    hr=str(int((T-k*3600)//3600*3600)); g5.hist[hr]["bz"]=9.0; g5.fg_hops[hr]={h:3 for h in range(1,15)}
+check(not g5.fg_learn(T+3600),"checks again only once a day")
+g5.fg_learn(T+86400+60); L2=g5.fg["learnt"]
+check(L2["flood_busy_percent"]==L["flood_busy_percent"]+5,f"adjusts a little at a time: {L['flood_busy_percent']} -> {L2['flood_busy_percent']}")
+check(g5.cfg["flood_max_unscoped"]==24,"a value you set yourself is never changed")
+g5.action("fg_auto",{"key":"flood_max_unscoped"})
+check(g5.cfg["flood_max_unscoped"]==L2["flood_max_unscoped"],"Back to automatic puts the learnt value back")
+g5._save_state(force=True); g6=sg.SpamGuard(dict(g5.file_cfg))
+check(g6.fg.get("ready") and g6.cfg["flood_max_unscoped"]==L2["flood_max_unscoped"],"what it learnt survives a restart")
+# Reset and learn again: everything back to FloodGuard's own values, learnt afresh, still protecting meanwhile
+g5.apply_settings({"flood_max_advert":12,"flood_hop_floor":6})
+g5.action("fg_relearn",{})
+check(not any(k in g5.settings for k in ("flood_max_advert","flood_hop_floor","flood_max_unscoped")),"reset clears values you set")
+check(g5.cfg["flood_max_unscoped"]==32 and g5.cfg["flood_max_advert"]==8 and g5.cfg["flood_hop_floor"]==8,"back to the recommended values while it learns")
+st=g5.fg_status(); check(st["learning"] and st["relearning"],"status says it is learning again")
+g5.apply_settings({"mode":"protect"})
+check(all(r["then"]["action"]=="drop" for r in g5._build_flood()),"and it keeps protecting while it re-learns")
+T2=T+86400+120
+check(not g5.fg_learn(T2+86400),"waits three days again")
+for k in range(80):   # new traffic after the reset: a long-haul mesh now
+    hr=str(int((T2+3*86400-k*3600)//3600*3600))
+    g5.hist[hr]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":3.0}
+    g5.fg_hops[hr]={h:2 for h in range(1,14)}; g5.fg_adv[hr]={h:1 for h in range(1,7)}
+CLK=T2+3.1*86400
+real=time.time; time.time=lambda: CLK
+try:
+    check(g5.fg_learn(CLK) and not g5.fg.get("relearn"),"after three days it switches to what it learnt again")
+finally:
+    time.time=real
+check(g5.cfg["flood_max_unscoped"]>=24,f"learnt from the new traffic only: unscoped {g5.cfg['flood_max_unscoped']}")
+g7=guard(mock()); g7.radio=dict(RADIO); g7.refresh_openhop_info=lambda *a,**k: None; g7.fg_decide(time.time())
+g7.action("fg_start_now",{})
+check(g7.fg.get("ready") and g7.cfg["flood_max_unscoped"]==32,"Start protecting now: acts straight away with the recommended values")
+g7.apply_settings({"floodguard":False}); g7.last_sync=0
+check(not g7._build_flood(),"turned off: no FloodGuard rules")
 
 # ---- radio settings unknown: does nothing
 g3=guard(mock(), floodguard=True); g3.ingest(flood)
