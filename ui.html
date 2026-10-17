@@ -40,7 +40,9 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .brand small{font-weight:400;color:var(--soft);font-size:0.8125rem}
 .brand-fg{display:flex;align-items:center;gap:10px;font-size:0.875rem;font-weight:600;color:var(--ink);padding:0 8px 14px;margin-top:-8px}
 .brand-fg svg{flex:none}
-.brand-fg .tag{margin-left:auto}
+.brand-fg .tag{margin-left:auto;font-size:0.6875rem;padding:1px 6px}
+.brand-fg{gap:8px;padding-right:0}
+.brand-fg small{font-weight:400;color:var(--soft);font-size:0.8125rem}
 .brand-fg span{white-space:nowrap}
 .switch{display:flex;align-items:center;gap:8px;font-size:0.875rem;color:var(--soft);cursor:pointer;user-select:none}
 .switch input{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--field);position:relative;margin:0;cursor:pointer;transition:background .15s}
@@ -381,7 +383,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="app">
 <nav class="side" id="side" aria-label="SpamGuard menu">
   <div class="brand"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg><span>SpamGuard <small id="ver"></small></span></div>
-  <div class="brand-fg"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="var(--c-flood)" stroke-width="2"/><path d="M8 11.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0M8 15.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0" fill="none" stroke="var(--c-flood)" stroke-width="1.8" stroke-linecap="round"/></svg><span>FloodGuard</span><span class="tag plain" id="fgBrandTag"></span></div>
+  <div class="brand-fg"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="var(--c-flood)" stroke-width="2"/><path d="M8 11.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0M8 15.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0" fill="none" stroke="var(--c-flood)" stroke-width="1.8" stroke-linecap="round"/></svg><span>FloodGuard <small id="fgVer"></small></span><span class="tag plain" id="fgBrandTag"></span></div>
   <a href="#/overview" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/></svg><span>Overview</span><b class="badge" id="nb-overview"></b></a>
   <div class="grp"><button class="grp-h" aria-expanded="true">Protection</button><div class="grp-b">
     <a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/held" data-nav="held"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16v.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></svg><span>Possibly genuine</span><b class="badge" id="nb-held"></b></a><a href="#/channels" data-nav="channels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg><span>Channels</span><b class="badge" id="nb-channels"></b></a><a href="#/floodguard" data-nav="floodguard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0M3 15c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0"/></svg><span>FloodGuard</span><b class="badge" id="nb-floodguard"></b></a></div></div>
@@ -555,6 +557,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section class="howto">
   <h2>How FloodGuard works</h2>
+  <p class="explain"><span id="fgPageVer"></span> <a href="https://github.com/flackrat/openhop-spamguard/blob/main/CHANGELOG.md" target="_blank" rel="noopener" class="quietlink">What's changed</a></p>
   <p>Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes until a message arrives dozens of times. Nothing in them can be blocked by name or text, and routes can be faked. What a sender can't fake is how busy this repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.</p>
   <p>It starts by learning for three days how busy this radio normally gets and how far packets normally travel, counting only, then sets its own limits from that and checks them once a day; anything you set yourself is kept. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, tightening two hops at a time while the radio stays busy, never below the floor. It lifts by itself once the radio has been quiet for a while and notes each step in Activity. In Monitor it only counts.</p>
   <p>It never looks at who sent a packet or what it says. Channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so ordinary messaging keeps working during a flood. Each repeater protects its own airtime, so a flood is held to the area it is swamping.</p>
@@ -595,7 +598,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div class="inline-form"><input id="histWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="histGo" disabled>Yes, clear it</button><button class="quiet" id="histNo">Cancel</button></div>
   </div>
 </section></div>
-<div class="page" data-page="channels"><section id="wdSec"></section><section>
+<div class="page" data-page="channels"><section>
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
@@ -607,7 +610,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div class="inline-form"><button id="chAddShown" class="quiet" type="button">Add all shown</button></div>
   </div>
   <div class="inline-form"><input id="chName" aria-label="Channel name" size="14" placeholder="#chat"><input id="chKey" aria-label="Channel key" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
-</section></div>
+</section><section id="wdSec"></section></div>
 <div class="page" data-page="exceptions"><section>
   <h2>Exceptions</h2>
   <p class="lead">Things SpamGuard should leave alone.</p>
@@ -682,6 +685,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
   <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (on by default; it can be turned off on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. It first spends three days learning how busy this radio normally gets and how far packets normally travel, and only counts meanwhile; then it sets its own limits from that and checks them once a day. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
   <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. While it's on, FloodGuard also keeps fixed hop limits for unscoped flood packets (32 hops) and adverts (8 hops), the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. You can change both on its page, and 0 turns one off. In Monitor, FloodGuard only counts what it would have stopped.</p>
+  <h3>Wardriving pings</h3>
+  <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
   <h3>Wardriving pings</h3>
   <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
   <h3>Getting started</h3>
@@ -1146,7 +1151,8 @@ function render(d, editing){
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
-  $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
+  $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
+  if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
   $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
     + (editing?" (some sections wait while you edit)":"");
@@ -1273,7 +1279,7 @@ function renderFloodNav(d){
   const fg=(d.metrics||{}).floodguard||{};
   const st=!fg.enabled?["Off","plain"]:fg.limit?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];
   const bt=$("#fgBrandTag"); bt.textContent=st[0]; bt.className="tag "+st[1];
-  badge("floodguard",fg.limit?"Flood":fg.learning?"Learning":"",fg.limit?"warn":"plain");
+  badge("floodguard",fg.limit?"Flood":"",fg.limit?"warn":"plain");   // learning/on/off shows next to its name above
   const c=$("#fgCallout"); if(!c) return;
   c.innerHTML=fg.limit?`<div class="callout"><span><strong>FloodGuard is containing a flood${d.mode!=="protect"||d.paused?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`:"";
 }
