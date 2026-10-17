@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import base64
 import collections
+import statistics
 import glob
 import secrets
 import shutil
@@ -64,10 +65,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.3"
+VERSION = "6.4"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.1"
+FLOODGUARD_VERSION = "1.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -156,6 +157,14 @@ SETTINGS_META: list[dict] = [
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
      "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt)."},
+    {"key": "interference_watch", "group": "FloodGuard", "type": "bool",
+     "risk": "Turned off, SpamGuard won't tell you when something nearby is drowning the channel, so a repeater that has gone half-deaf can go unnoticed for days.",
+     "label": "Watch for interference on the channel",
+     "help": "openHop measures the noise on the radio channel every 30 seconds. FloodGuard learns what's normal for this site and says so (here, on Health and in Activity) when the noise stays well above it, as happens with a nearby transmitter that never stops (faulty or non-compliant equipment) or deliberate jamming. Nothing can be blocked, but each episode is recorded with times and levels, which is the evidence a radio regulator asks for."},
+    {"key": "interference_db", "group": "FloodGuard", "type": "int", "min": 3, "max": 40, "unit": "dB",
+     "risk": "Lower = reports smaller rises, which weather, nearby electronics or a change of antenna can also cause. Higher = only strong interference is reported.",
+     "label": "Report noise this far above normal",
+     "help": "How much the noise on the channel has to rise above this site's normal level, for five minutes, before it counts as interference. Each 6 dB roughly halves how far away this repeater can hear."},
     # -- Privacy
     {"key": "wardrive_block", "group": "Privacy", "type": "bool",
      "risk": "This repeater stops appearing on wardriving coverage maps, which many people use to plan where repeaters are needed. Pings sent by this repeater's own companions still go out.",
@@ -331,6 +340,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "flood_max_unscoped": 32,             # recommended; a value you saved yourself (including 0) is kept
     "flood_max_advert": 8,
     "route_memory_days": 7,
+    "interference_watch": True,
+    "interference_db": 10,
     "wardrive_block": False,
     "wardrive_channels": ["#wardriving"],
     "evidence_log": False,
@@ -1148,6 +1159,12 @@ class SpamGuard:
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
         self._air_mark = 0.0
+        # Interference watch: openHop's noise-floor samples (time, dBm) for the last hour, the hours' medians
+        # live in hist ("nf"), and the current episode / past episodes in self.jam.
+        self.nf: collections.deque = collections.deque()
+        self._nf_hour: dict[str, list] = {}
+        self.jam: dict = {"mark": 0.0, "since": None, "peak": 0.0, "above_since": 0.0, "below_since": 0.0,
+                          "episodes": [], "backfilled": 0.0, "fetched": 0.0}
         self._hop_pending: collections.deque = collections.deque(maxlen=20000)
         self.fg: dict = {"limit": None, "since": 0.0, "last_step": 0.0, "mark": 0.0, "peak": 0.0, "episodes": 0,
                          "busy_since": 0.0, "calm_since": 0.0, "v61": 1}
@@ -1329,6 +1346,10 @@ class SpamGuard:
                                           "so the FloodGuard values set in 6.0 were cleared. You can set them again on the "
                                           "FloodGuard page once it has learnt."})
         self.fg["v61"] = 1
+        jm = st.get("interference") or {}
+        if isinstance(jm, dict):
+            self.jam.update({k: v for k, v in jm.items() if k in ("mark", "since", "peak", "episodes", "backfilled")})
+            self.jam["episodes"] = [e for e in (self.jam.get("episodes") or []) if isinstance(e, dict)][-50:]
         self.reset_at = float(st.get("reset_at") or 0)
         self.monitor_since = float(st.get("monitor_since") or 0)
         self.view_marks = {k: float(v) for k, v in (st.get("view_marks") or {}).items()}
@@ -1391,6 +1412,7 @@ class SpamGuard:
                     "held": list(self.held),
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
+                    "interference": {k: self.jam.get(k) for k in ("mark", "since", "peak", "episodes", "backfilled")},
                     "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61")},
                                    "hops": self.fg_hops, "adv": self.fg_adv},
                     "reset_at": getattr(self, "reset_at", 0.0),
@@ -1611,6 +1633,8 @@ class SpamGuard:
         hour = str(int(ts // 3600 * 3600))
         h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
         h["ar"] = round(h.get("ar", 0) + on_air, 1)
+        if not local:
+            h["pk"] = h.get("pk", 0) + 1
         if flood:
             h["af"] = round(h.get("af", 0) + on_air, 1)
         if wd_heard or wd_stopped:
@@ -1825,6 +1849,151 @@ class SpamGuard:
         self._important = True
         return True
 
+    # ---- Interference watch ----
+    JAM_SUSTAIN = 300      # the rise has to last five minutes
+    JAM_CLEAR = 600        # and be gone for ten before an episode ends
+
+    def nf_ingest(self, rows: list):
+        """openHop's noise-floor samples (oldest first). On a node with several radios, only the busiest
+        radio's samples are used, so two receivers on two bands aren't mixed."""
+        rids = collections.Counter(r.get("radio_id") for r in rows if isinstance(r, dict))
+        rid = rids.most_common(1)[0][0] if rids else None
+        for r in rows:
+            try:
+                ts, v = float(r["timestamp"]), float(r["noise_floor_dbm"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if r.get("radio_id") != rid or ts <= self.jam["mark"] or not -160 < v < -20:
+                continue
+            self.jam["mark"] = ts
+            self.nf.append((ts, v))
+            hour = str(int(ts // 3600 * 3600))
+            raw = self._nf_hour.setdefault(hour, [])
+            raw.append(v)
+            h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
+            h["nf"] = round(statistics.median(raw), 1)
+            h["nfx"] = round(max(float(h.get("nfx", -999)), v), 1)
+        cut = time.time() - 3600
+        while self.nf and self.nf[0][0] < cut:
+            self.nf.popleft()
+        for k in [k for k in self._nf_hour if int(k) < cut - 3600]:
+            del self._nf_hour[k]
+
+    def fetch_noise(self):
+        """New samples every two minutes; once at start, the last week in the background (for the baseline)."""
+        now = time.time()
+        if not self.cfg.get("interference_watch", True) or now - self.jam.get("fetched", 0) < 120:
+            return
+        self.jam["fetched"] = now
+        if now - float(self.jam.get("backfilled") or 0) > 6 * 86400 and not getattr(self, "_nf_busy", False):
+            self._nf_busy = True
+            def work():
+                try:
+                    res = self._api("GET", "/api/noise_floor_history?hours=168&limit=25000", timeout=60)
+                    rows = res.get("data", res) if isinstance(res, dict) else res
+                    if isinstance(rows, dict):
+                        rows = rows.get("history") or rows.get("data") or []
+                    with self.lock:
+                        self.nf_ingest(rows or [])
+                        self.jam["backfilled"] = time.time()
+                except Exception as e:
+                    log.debug("noise floor history not available: %s", e)
+                finally:
+                    self._nf_busy = False
+            threading.Thread(target=work, daemon=True).start()
+            return
+        try:
+            res = self._api("GET", "/api/noise_floor_history?hours=1&limit=400", timeout=15)
+            rows = res.get("data", res) if isinstance(res, dict) else res
+            if isinstance(rows, dict):
+                rows = rows.get("history") or rows.get("data") or []
+            with self.lock:
+                self.nf_ingest(rows or [])
+        except Exception as e:
+            log.debug("noise floor not available: %s", e)
+
+    def nf_baseline(self, now: float) -> Optional[float]:
+        """This site's normal noise level: the median of the hourly medians over the last week, leaving out
+        hours with interference and the current hour. None until there are at least six hours."""
+        this_hour = int(now // 3600 * 3600)
+        vals = [float(v["nf"]) for k, v in self.hist.items()
+                if v.get("nf") is not None and not v.get("ie") and now - 7 * 86400 <= int(k) < this_hour]
+        return round(statistics.median(vals), 1) if len(vals) >= 6 else None
+
+    def nf_now(self, now: float) -> Optional[float]:
+        vals = [v for ts, v in self.nf if now - 300 <= ts <= now]
+        return round(statistics.median(vals), 1) if len(vals) >= 5 else None
+
+    @staticmethod
+    def range_share(db: float) -> int:
+        """Roughly how much of its normal hearing range a receiver keeps with this much extra noise."""
+        return max(1, min(100, round(100 * 10 ** (-max(0.0, db) / 20))))
+
+    def jam_decide(self, now: Optional[float] = None) -> None:
+        now = now or time.time()
+        j, c = self.jam, self.cfg
+        if not c.get("interference_watch", True):
+            return
+        base, cur = self.nf_baseline(now), self.nf_now(now)
+        j["baseline"], j["current"] = base, cur
+        if base is None or cur is None:
+            return
+        rise, level = cur - base, float(c.get("interference_db") or 10)
+        freq = (self.radio or {}).get("frequency")
+        on = f" on {float(freq) / 1e6:.3f} MHz" if isinstance(freq, (int, float)) and freq > 1e6 else \
+            (f" on {float(freq):.3f} MHz" if isinstance(freq, (int, float)) and freq else "")
+        hour = str(int(now // 3600 * 3600))
+        # A flood also lifts the measured noise (packets on air), but then the radio is busy with traffic it
+        # can decode; a carrier drowns traffic instead. So a flood being contained doesn't count.
+        flooding = bool(self.fg.get("limit")) or float(self.fg.get("busy_now") or 0) >= float(c.get("flood_busy_percent") or 15)
+        if not j.get("since"):
+            if rise >= level and not flooding:
+                j["above_since"] = j.get("above_since") or now
+                if now - j["above_since"] >= self.JAM_SUSTAIN:
+                    j.update(since=j["above_since"], peak=rise, below_since=0.0)
+                    self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})["ie"] = 1
+                    self.note(f"Interference: the noise{on} has been {rise:.0f} dB above normal for five minutes "
+                              f"({cur:.0f} dBm against a normal {base:.0f} dBm). This repeater can only hear about "
+                              f"{self.range_share(rise)}% as far as usual. A nearby transmitter that never stops, such as "
+                              "faulty or non-compliant equipment, or jamming, usually causes this.")
+                    self._important = True
+            else:
+                j["above_since"] = 0.0
+            return
+        # during an episode
+        self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})["ie"] = 1
+        j["peak"] = max(float(j.get("peak") or 0), rise)
+        if rise < level / 2:
+            j["below_since"] = j.get("below_since") or now
+            if now - j["below_since"] >= self.JAM_CLEAR:
+                start, end = float(j["since"]), float(j["below_since"])
+                ep = {"start": round(start), "end": round(end), "peak_db": round(float(j["peak"]), 1),
+                      "baseline": base, "freq": freq}
+                # packets heard during the episode against the same hours on other days
+                heard = sum(v.get("pk", 0) for k, v in self.hist.items() if start - 3600 < int(k) <= end)
+                hours = max(1, len([k for k in self.hist if start - 3600 < int(k) <= end]))
+                usual = [v.get("pk", 0) for k, v in self.hist.items() if not v.get("ie") and v.get("pk") is not None]
+                if usual:
+                    ep["heard_vs_usual"] = round(100 * (heard / hours) / max(1e-9, statistics.median(usual)))
+                j["episodes"] = (j.get("episodes") or [])[-49:] + [ep]
+                mins = max(1, round((end - start) / 60))
+                self.note(f"Interference over: the noise{on} was raised for {mins} minutes, at most {ep['peak_db']:.0f} dB "
+                          f"above normal. Recorded with its times on the FloodGuard page.")
+                j.update(since=None, peak=0.0, above_since=0.0, below_since=0.0)
+                self._important = True
+        else:
+            j["below_since"] = 0.0
+
+    def jam_status(self) -> dict:
+        j, now = self.jam, time.time()
+        base, cur = j.get("baseline"), j.get("current")
+        rise = round(cur - base, 1) if base is not None and cur is not None else None
+        return {"enabled": bool(self.cfg.get("interference_watch", True)), "baseline": base, "current": cur, "rise": rise,
+                "range": self.range_share(rise) if rise is not None else None, "level": self.cfg.get("interference_db"),
+                "since": j.get("since"), "peak": round(float(j.get("peak") or 0), 1) if j.get("since") else None,
+                "learning": base is None, "episodes": list(reversed(j.get("episodes") or []))[:20],
+                "freq": (self.radio or {}).get("frequency")}
+
     def fg_status(self) -> dict:
         c, f = self.cfg, self.fg
         reach = self.fg_reach()
@@ -1935,6 +2104,7 @@ class SpamGuard:
             v = hist.get(str(this_hour - i * 3600), {})
             hourly.append({"t": this_hour - i * 3600, "c": v.get("c", 0), "x": v.get("x", 0), "m": v.get("m", 0),
                            "fc": v.get("fc", 0), "fx": v.get("fx", 0), "bz": v.get("bz"),
+                           "nf": v.get("nf"), "nfx": v.get("nfx"), "ie": bool(v.get("ie")),
                            "af": round(100 * v["af"] / v["ar"]) if v.get("ar") else None})
         daily = []
         for i in range(6, -1, -1):
@@ -2018,6 +2188,7 @@ class SpamGuard:
                 "me": self.me, "radio_known": bool(self.airtime_ms(40)),
                 "since": min((int(k) for k in hist), default=None),
                 "channels": per_ch, "channels_since": ch_since, "floodguard": self.fg_status(),
+                "interference": self.jam_status(),
                 "wardrive": {"enabled": bool(self.cfg.get("wardrive_block")), "channels": sorted(self.wardrive_channels()),
                              "checked_text": sorted(self.wardrive_collisions()),
                              "rules": sorted(self.wardrive_rule_ids()) if self.cfg.get("wardrive_block") else []}}
@@ -3938,6 +4109,7 @@ class SpamGuard:
             self.refresh_own_identities()
             self.refresh_public_map()
             self.backfill_adverts()
+            self.fetch_noise()
         except Exception:
             pass
         if getattr(self, "retired", False):
@@ -3958,6 +4130,7 @@ class SpamGuard:
                 self.sync_pending = True
             if self.fg_decide():
                 self.sync_pending = True
+            self.jam_decide()
         self.last_poll_ok = time.time()
         self.last_error = None
         due = self.last_sync is None or time.time() - self.last_sync >= self.cfg["min_sync_seconds"]
@@ -4482,6 +4655,12 @@ class SpamGuard:
                             "sees new spam that much later and a few copies get through before a block starts. "
                             "SpamGuard's own checks are quick; the delay is in openHop saving packets. "
                             "Restarting openHop clears it for a while.")
+        jam = self.jam if self.cfg.get("interference_watch", True) else {}
+        if jam.get("since") and jam.get("baseline") is not None and jam.get("current") is not None:
+            rise = jam["current"] - jam["baseline"]
+            warnings.append(f"Interference on the radio channel for {self.fmt_secs(now - float(jam['since']))}: the noise is "
+                            f"{rise:.0f} dB above this site's normal, so the repeater hears only about {self.range_share(rise)}% "
+                            "as far as usual. The FloodGuard page has the details.")
         commands: dict[int, str] = {}   # warning number -> a command to show with a Copy button
         rfix = self.openhop_rulecheck_fix()
         if rfix is False:
