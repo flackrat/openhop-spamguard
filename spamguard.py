@@ -1091,6 +1091,9 @@ class SpamGuard:
         self.counted_packets: collections.OrderedDict[str, None] = collections.OrderedDict()  # already counted
         self.last_packet_ts: Optional[float] = None    # newest packet of any kind openHop reported
         self.heard_at: Optional[float] = None          # when that last moved forward
+        # openHop's transmit failures (packet times) and its newest successful transmit, to spot a dead radio
+        self.tx_fails: collections.deque[float] = collections.deque(maxlen=50)
+        self.tx_ok_at: Optional[float] = None
         # How far behind real time openHop's packet list is: (when measured, seconds behind)
         self.lag_samples: collections.deque[tuple] = collections.deque(maxlen=200)
         self.use_filtered: Optional[bool] = None   # openHop's /api/filtered_packets available?
@@ -1617,6 +1620,10 @@ class SpamGuard:
         self._air_mark = max(self._air_mark, ts)
         ms = self.airtime_ms(length) if length > 0 else 0.0
         sent = bool(p.get("transmitted"))
+        if "tx failed" in str(p.get("drop_reason") or "").lower():
+            self.tx_fails.append(ts)       # openHop tried to send and the radio didn't
+        elif sent:
+            self.tx_ok_at = max(self.tx_ok_at or 0.0, ts)
         local = "rssi" in p and not p.get("rssi") and not p.get("snr") and not p.get("rx_radio_id")
         on_air = ms if local else ms * (2 if sent else 1)
         flood = route in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD)
@@ -4666,6 +4673,14 @@ class SpamGuard:
             pause = min(pause * 2, 600)
 
     # ---- health ----
+    def radio_failing(self, now: float) -> int:
+        """How many transmits failed in the last 15 minutes with none succeeding since the first of them
+        (0 when the radio looks fine). Three or more in a row means the radio is gone, not a busy channel."""
+        fails = [t for t in self.tx_fails if t > now - 900]
+        if len(fails) < 3 or (self.tx_ok_at and self.tx_ok_at >= fails[0]):
+            return 0
+        return len(fails)
+
     def health(self) -> dict:
         now = time.time()
         c = self.cfg
@@ -4732,6 +4747,14 @@ class SpamGuard:
         if self.heard_at and self.last_error is None and now - self.heard_at > quiet and now - self.started > quiet:
             warnings.append(f"openHop hasn't reported any new packets for {round((now - self.heard_at) / 60)} minutes. "
                             "If its own packet list has stopped too, its radio may have stopped receiving: "
+                            + ("restart openHop's container." if IN_DOCKER else
+                               "restart openHop (sudo systemctl restart openhop-repeater)."))
+        radio = self.radio_failing(now)
+        if radio:
+            problems.append(f"openHop's radio isn't transmitting: {radio} sends failed in the last 15 minutes and none "
+                            "got out. Messages from your own companion won't leave the repeater, and nothing is "
+                            "being repeated. If the radio is a USB board, it has probably dropped off the Pi: check "
+                            "the cable and the power supply (a weak supply often makes USB radios disconnect), then "
                             + ("restart openHop's container." if IN_DOCKER else
                                "restart openHop (sudo systemctl restart openhop-repeater)."))
         if self.rules_expected is not None and self.rules_seen is not None and self.rules_seen != self.rules_expected:
