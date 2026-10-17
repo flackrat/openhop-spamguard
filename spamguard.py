@@ -65,6 +65,9 @@ except ImportError:  # pragma: no cover
         AES = None
 
 VERSION = "6.2"
+# FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
+# but has its own history in the changelog. It only goes up when FloodGuard itself changes.
+FLOODGUARD_VERSION = "1.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -4810,7 +4813,7 @@ class SpamGuard:
             last_catch = max(shown) if shown else None
             settings = {m["key"]: c.get(m["key"]) for m in SETTINGS_META}
             return {
-                "version": VERSION,
+                "version": VERSION, "floodguard_version": FLOODGUARD_VERSION,
                 "mode": c["mode"], "paused": bool(c.get("paused")), "sensitivity": c["sensitivity"],
                 "service": self.health(),
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,

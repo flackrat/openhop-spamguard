@@ -1,5 +1,5 @@
 name: Something isn't working
-description: SpamGuard blocked something it shouldn't, missed spam, or misbehaved
+description: SpamGuard or FloodGuard blocked something it shouldn't, missed spam or a flood, or misbehaved
 labels: ["bug"]
 body:
   - type: markdown
@@ -9,8 +9,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: SpamGuard version
-      description: Shown next to the name at the top of SpamGuard's page, for example 5.36
+      label: SpamGuard and FloodGuard versions
+      description: Shown next to each name at the top of SpamGuard's menu and at the bottom of every page, for example SpamGuard 6.2 with FloodGuard 1.1
     validations:
       required: true
   - type: dropdown
