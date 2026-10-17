@@ -65,7 +65,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.4.1"
+VERSION = "6.4.2"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.1"
@@ -152,11 +152,11 @@ SETTINGS_META: list[dict] = [
     {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Unscoped flood packets (sent without a region) that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
      "label": "Hop limit for unscoped flood packets (0 = off)",
-     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Automatic: about twice the longest routes this repeater normally hears, between 16 and 32 (32 until it has learnt). Genuine traffic usually takes 5 to 7 hops, so a padded flood can't run to openHop's 64-hop ceiling."},
+     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Automatic: about twice the longest routes this repeater normally hears, between 16 and 32 (32 until it has learnt). Genuine traffic usually takes 5 to 7 hops, so a padded flood can't run to openHop's 64-hop ceiling. openHop's own Max flood hops setting also applies to flood packets, so whichever limit is lower is the one that bites."},
     {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
-     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt)."},
+     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt). openHop's own Max flood hops setting also applies to adverts, and the lower of the two is the one that counts."},
     {"key": "interference_watch", "group": "FloodGuard", "type": "bool",
      "risk": "Turned off, SpamGuard won't tell you when something nearby is drowning the channel, so a repeater that has gone half-deaf can go unnoticed for days.",
      "label": "Watch for interference on the channel",
@@ -296,7 +296,7 @@ SETTINGS_META: list[dict] = [
     {"key": "live_feed", "risk": "Turned off, SpamGuard only looks for new packets on the timer above, so it reacts a second or two later.", "group": "Timing", "type": "bool",
      "label": "React as soon as openHop hears a packet",
      "help": "Listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting for the next timed check. The timed check carries on as a backup."},
-    {"key": "rules_after_yours", "risk": "On = your own openHop rules are checked first, so a broad 'allow' rule of yours (for example letting everything from one repeater through) also lets spam through before SpamGuard's blocks are reached. Off = SpamGuard's blocks are checked first; your own rules are never changed either way.", "group": "Timing", "type": "bool",
+    {"key": "rules_after_yours", "risk": "On = your own openHop rules are checked first, so a broad 'allow' rule of yours (for example letting everything from one repeater through) also lets spam through before SpamGuard's blocks are reached. Off = SpamGuard's text and campaign blocks are checked first. Route blocks, links, lockdown and blocks set to let known people through are checked after your own rules, so one of your allow rules can let them through. Your own rules are never changed either way.", "group": "Timing", "type": "bool",
      "label": "Put SpamGuard's rules after your own openHop rules",
      "help": "Changes only the order in openHop's policy list. Off by default."},
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 500,
@@ -1094,6 +1094,9 @@ class SpamGuard:
         # openHop's transmit failures (packet times) and its newest successful transmit, to spot a dead radio
         self.tx_fails: collections.deque[float] = collections.deque(maxlen=50)
         self.tx_ok_at: Optional[float] = None
+        # Bytes per hop openHop is sending (its path.hash.mode: 1, 2 or 3), from the newest routed packets
+        self.hash_size = 1
+        self.hops_stale = 0          # route blocks not written this time because they were learnt at another size
         # How far behind real time openHop's packet list is: (when measured, seconds behind)
         self.lag_samples: collections.deque[tuple] = collections.deque(maxlen=200)
         self.use_filtered: Optional[bool] = None   # openHop's /api/filtered_packets available?
@@ -1534,7 +1537,7 @@ class SpamGuard:
         """Held only because it passed THROUGH a blocked repeater partway along its route
         (spam starts at the blocked repeater itself)."""
         b = self.blocks.get(e.matched) if e.matched else None
-        return bool(b and b["kind"] == "hop" and self.gated(b) and e.path and e.path[0] != b["value"])
+        return bool(b and b["kind"] == "hop" and self.gated(b) and e.path and not self._same_hop(e.path[0], b["value"]))
 
     def _wrongly_caught_regular(self, e: Event) -> bool:
         """Someone who has chatted for over an hour under a normal-looking name, caught only by a route
@@ -1550,7 +1553,7 @@ class SpamGuard:
         if e.matched and not self._held_in_passing(e) and not self._wrongly_caught_regular(e):
             return
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
-            if b["kind"] == "hop" and e.path and e.path[0] == b["value"]:
+            if b["kind"] == "hop" and e.path and self._same_hop(e.path[0], b["value"]):
                 return
         was = self.is_known(e.sender)
         v = self.known.get(e.sender)
@@ -3006,6 +3009,7 @@ class SpamGuard:
             except (TypeError, ValueError):
                 continue
             self.fg_observe(p)
+            self._note_hash_size(p)
             if ptype == PAYLOAD_TYPE_ADVERT:
                 self.learn_advert(p)
                 continue
@@ -3641,21 +3645,28 @@ class SpamGuard:
         """(rules placed before your own openHop rules, rules placed after them).
         Rotation blocks contain 'allow' exceptions, so they go after your rules and never
         override anything you have set up yourself."""
+        self.hops_stale = 0
         if self.cfg.get("paused"):
             return [], []
         tail: list[dict] = []
         for key, b in sorted(self.blocks.items(), key=lambda kv: kv[1]["id"]):
             if b["kind"] != "suffix":
                 continue
-            suf = b["value"]
+            suf = [self._hop_at(h) for h in b["value"]]
+            if None in suf:
+                self.hops_stale += 1
+                continue
             ids = b.setdefault("allow_ids", {})
             for o in sorted(self.allowed_origins(b))[: int(self.cfg["max_origins_per_route"])]:
+                oh = self._hop_at(o)
+                if oh is None:
+                    continue
                 if o not in ids:
                     ids[o] = self._new_id()
                 tail.append({"id": ids[o], "name": f"{RULE_PREFIX}{key}:allow:{o}", "enabled": True,
                              "if": {"all": [
                                  {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                                 {"field": "path_hashes", "op": "equals", "value": [o] + suf}]},
+                                 {"field": "path_hashes", "op": "equals", "value": [oh] + suf}]},
                              "then": {"action": "allow"}})
             tail.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
                          "if": {"all": [
@@ -3819,7 +3830,11 @@ class SpamGuard:
             if b["kind"] == "links":
                 conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
             elif b["kind"] == "hop":
-                conds = [("", [{"field": "path_hashes", "op": "contains", "value": b["value"]}])]
+                hv = self._hop_at(b["value"])
+                if hv is None:
+                    self.hops_stale += 1
+                    continue
+                conds = [("", [{"field": "path_hashes", "op": "contains", "value": hv}])]
             elif b["kind"] in ("text", "words"):
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
@@ -3899,17 +3914,25 @@ class SpamGuard:
                 break
             if b["kind"] == "hop" and self.hop_mode(b) == "exact_paths":
                 for ps, pid in sorted((b.get("paths") or {}).items(), key=lambda kv: kv[1]):
+                    hops_now = [self._hop_at(h) for h in ps.split(">")]
+                    if None in hops_now:
+                        self.hops_stale += 1
+                        continue
                     rules.append({"id": pid, "name": f"{RULE_PREFIX}{key}:{ps}" + self._rule_label(b), "enabled": True,
                                   "if": {"all": [
                                       {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                                      {"field": "path_hashes", "op": "equals", "value": ps.split(">")}]
+                                      {"field": "path_hashes", "op": "equals", "value": hops_now}]
                                       + self._channel_cond(b)},
                                   "then": {"action": self.rule_action(b)}})
                 continue
             if b["kind"] == "hop":
+                hv = self._hop_at(b["value"])
+                if hv is None:
+                    self.hops_stale += 1
+                    continue
                 cond = {"all": [
                     {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                    {"field": "path_hashes", "op": "contains", "value": b["value"]}] + self._channel_cond(b)}
+                    {"field": "path_hashes", "op": "contains", "value": hv}] + self._channel_cond(b)}
             elif b["kind"] == "words":
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 cond = {"all": [
@@ -4681,6 +4704,27 @@ class SpamGuard:
             return 0
         return len(fails)
 
+    def _note_hash_size(self, p: dict):
+        """openHop sends each hop as 1, 2 or 3 bytes (its path.hash.mode). Remember the size the newest
+        routed packets use, so the route rules are written at that size."""
+        first = parse_path(p.get("original_path"))[:1]
+        if first and len(first[0]) in (2, 4, 6):
+            self.hash_size = len(first[0]) // 2
+
+    def _hop_at(self, value: str) -> Optional[str]:
+        """A learnt hop written at the size openHop sends now: its first bytes when it was learnt longer,
+        None when it was learnt shorter (it can't match, and learning writes it again)."""
+        n = 2 * self.hash_size
+        if len(value) == n:
+            return value
+        return value[:n] if len(value) > n else None
+
+    @staticmethod
+    def _same_hop(a: str, b: str) -> bool:
+        """Two hops match when they agree on the bytes both have (a 2-byte hop starts with its 1-byte form)."""
+        m = min(len(a or ""), len(b or ""))
+        return m > 0 and a[:m] == b[:m]
+
     def health(self) -> dict:
         now = time.time()
         c = self.cfg
@@ -4757,6 +4801,10 @@ class SpamGuard:
                             "the cable and the power supply (a weak supply often makes USB radios disconnect), then "
                             + ("restart openHop's container." if IN_DOCKER else
                                "restart openHop (sudo systemctl restart openhop-repeater)."))
+        if self.hops_stale:
+            warnings.append(f"{self.hops_stale} route block(s) were learnt when openHop sent hops of another size. They stay "
+                            f"off until that route is seen again at the current size ({self.hash_size}-byte hops). "
+                            "Check openHop's path hash mode if this doesn't clear.")
         if self.rules_expected is not None and self.rules_seen is not None and self.rules_seen != self.rules_expected:
             warnings.append("openHop's rules don't match SpamGuard's. They will be put back within a minute.")
         if openhop_state and openhop_state not in ("active", "reloading", "activating"):

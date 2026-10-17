@@ -2,6 +2,13 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.4.2 (FloodGuard 1.2.1, unchanged)
+### SpamGuard 6.4.2
+- **Route blocks follow openHop's hop size.** openHop can send each hop as 1, 2 or 3 bytes (its `path.hash.mode`). Route blocks used to be matched against the size they were learnt at, so changing the mode quietly stopped them. They are now written at the size openHop sends now: a 2-byte hop learnt earlier counts as its 1-byte form when 1-byte hops are in use. A 1-byte block can't match 2-byte hops, so it stays off until that route is seen again, and Health says so. Allow exceptions for known origins follow the same rule.
+- **Settings wording.** The "Your own openHop rules first" setting now says exactly which blocks sit after your own rules (route blocks, links, lockdown and blocks set to let known people through). Those are written after your rules so that a known person's exemption can't skip your own drop rules; that is unchanged.
+- **Hop limits.** FloodGuard's hop-limit help now says openHop's own Max flood hops setting also applies, and that the lower limit is the one that counts.
+- Limit: if one mesh mixes hop sizes at once, only the most recent size is written. `tests/testhashsize.py` checks the rules with openHop's own policy engine.
+
 ## v6.4.1 (FloodGuard 1.2.1)
 ### SpamGuard 6.4.1
 - **Standing rules always stay in openHop, inside the rule limit.** The wardriving rule was already never dropped, but it was added on top of the limit ("Most rules at once"), so a heavy spam wave could take SpamGuard one or two rules over it. It now counts towards the limit, and the blocks share what's left.
