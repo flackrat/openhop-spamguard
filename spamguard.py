@@ -137,7 +137,7 @@ SETTINGS_META: list[dict] = [
      "risk": "Lower = steps in sooner, but a genuinely busy evening on a big mesh could trigger it. Higher = a flood has to fill more of the airtime before anything happens.",
      "label": "Step in when the radio is busier than",
      "help": "How much of the time, over five minutes, this repeater's radio is receiving or sending packets. Ordinary traffic is usually a few percent. Only counts when most of it is flood traffic."},
-    {"key": "flood_hop_floor", "group": "FloodGuard", "type": "int", "min": 2, "max": 32,
+    {"key": "flood_hop_floor", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 2, "max": 32,
      "risk": "Lower = a flood is squeezed harder, but more genuine traffic from further away misses this repeater while it lasts. Higher = gentler, but a flood with short routes isn't contained.",
      "label": "Never limit flood packets to fewer hops than",
      "help": "FloodGuard starts just above the longest routes it normally hears and tightens two hops at a time while the radio stays busy, but never below this."},
@@ -145,11 +145,11 @@ SETTINGS_META: list[dict] = [
      "risk": "Shorter = genuine long-distance traffic comes back sooner, but a flood that pauses and restarts gets a few minutes through each time. Longer = steadier during on-off floods.",
      "label": "Lift once the radio has been quiet for",
      "help": "The limit is removed when the radio has been well below the busy level for this long."},
-    {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "min": 0, "max": 64,
+    {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Unscoped flood packets (sent without a region) that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
      "label": "Hop limit for unscoped flood packets (0 = off)",
      "help": "Always on while set, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Works even with FloodGuard's flood containment off."},
-    {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "min": 0, "max": 64,
+    {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
      "help": "Always on while set. The same as MeshCore's flood.max.advert (8 in MeshCore): adverts that have already had this many hops are dropped. Works even with FloodGuard's flood containment off."},
@@ -361,7 +361,7 @@ KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
 PROFILE_FORMAT = "spamguard-profile"
-PROFILE_EXCLUDE = KEEP_ON_RESET | {"auto_protect", "poll_seconds", "live_feed", "rules_after_yours"}
+PROFILE_EXCLUDE = KEEP_ON_RESET | {"auto_protect", "poll_seconds", "live_feed", "rules_after_yours", "floodguard"}
 MAX_PROFILES = 50
 
 

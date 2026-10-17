@@ -5,9 +5,13 @@
 - **Steps in only during a real flood.** When the radio is busier than the level you set (15% over five minutes by default) for a minute, and most of that is flood traffic, flood packets that have already come further than this mesh's normal routes are not passed on. It learns how far flood packets normally travel from quiet hours.
 - **Tightens while it lasts, lifts by itself.** Two hops tighter every two minutes while the radio stays busy, never below a floor you set (8 hops by default), and removed once the radio has been quiet for ten minutes. Each step is noted in Activity.
 - **The mesh keeps working.** Direct (routed) messages, replies and acknowledgements are never touched, and channel messages from people SpamGuard knows always get through. FloodGuard never looks at who sent a packet or what it says. Each repeater protects its own airtime, so a flood is held to the area it is swamping.
-- **Same graphs, same data.** The Overview graphs show the flood packets FloodGuard stopped next to the spam, in their own colour, with a switch between spam, floods or both. A new chart shows how busy the radio was each hour, with the level FloodGuard steps in at, and a FloodGuard card on the Overview turns it on or off and says what it's doing.
+- **Its own switch and page.** FloodGuard sits under the SpamGuard name in the menu, with its own purple shield and an on/off switch, and has its own page (in normal mode too): what it's doing now, flood packets per hour, how busy the radio was each hour against the level it steps in at, and its settings. While it's containing a flood the Overview says so, the menu shows "Flood", and its limit is listed on the Blocks page with the other blocks.
+- **Same graphs, same data.** The Overview graphs can show the flood packets FloodGuard stopped next to the spam, in their own colour: a switch picks Spam (the default), Spam and floods, or Floods.
 - **Hop limits like MeshCore's.** Settings has fixed hop limits for unscoped flood packets and for adverts, the same as MeshCore's `flood.max.unscoped` and `flood.max.advert` (openhop_repeater#426). They work with or without flood containment.
-- Off until you turn it on. In Monitor it only counts what it would have stopped. `tests/testfloodguard.py` checks it against openHop's own rule engine.
+- Off until you turn it on, and never switched on by applying a settings profile. In Monitor it only counts what it would have stopped. `tests/testfloodguard.py` checks it against openHop's own rule engine.
+
+**Also in 6.0**
+- Quieter buttons (such as Keep until I remove it, and the lockdown times) now have a visible edge, so they read as buttons on touch screens too.
 - Based on the flood-control proposal from the Dutch MeshCore community (MeshCore #3278). Thank you.
 
 ## v5.37
