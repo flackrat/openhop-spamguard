@@ -2,6 +2,13 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.4.1 (FloodGuard 1.2.1)
+### SpamGuard 6.4.1
+- **Standing rules always stay in openHop, inside the rule limit.** The wardriving rule was already never dropped, but it was added on top of the limit ("Most rules at once"), so a heavy spam wave could take SpamGuard one or two rules over it. It now counts towards the limit, and the blocks share what's left.
+### FloodGuard 1.2.1
+- FloodGuard's rules (the flood limit and the hop limits) and the known-people rule they rely on can no longer be pushed out by a heavy wave of other blocks, such as a spammer changing repeater identity many times. The newest other blocks are left out instead, as before.
+- `tests/testrulecap.py` checks the limit with a wave of 50 blocks.
+
 ## v6.4 (FloodGuard 1.2)
 ### FloodGuard 1.2: interference on the channel
 - **Interference watch.** openHop measures the noise on the radio channel every 30 seconds; FloodGuard now reads those measurements (and the last week of them at start), learns what's normal for this site over about six hours, and reports when the noise stays 10 dB or more above normal for five minutes. That's what a nearby transmitter that never stops looks like (faulty or non-compliant equipment, such as temporary traffic lights with an always-on carrier), or jamming.
