@@ -5,6 +5,7 @@ SpamGuard and FloodGuard ship together as one openHop plugin with one release nu
 ## v6.4.1 (FloodGuard 1.2.1)
 ### SpamGuard 6.4.1
 - **Standing rules always stay in openHop, inside the rule limit.** The wardriving rule was already never dropped, but it was added on top of the limit ("Most rules at once"), so a heavy spam wave could take SpamGuard one or two rules over it. It now counts towards the limit, and the blocks share what's left.
+- **Health says when the radio stops transmitting.** If openHop's sends keep failing (three or more in 15 minutes with none getting out), Health shows a problem: messages from your own companion aren't leaving the repeater and nothing is being repeated. The usual cause is a USB radio board dropping off the Pi, often from a weak power supply. It clears as soon as a send gets out again. `tests/testradio.py` covers it.
 ### FloodGuard 1.2.1
 - FloodGuard's rules (the flood limit and the hop limits) and the known-people rule they rely on can no longer be pushed out by a heavy wave of other blocks, such as a spammer changing repeater identity many times. The newest other blocks are left out instead, as before.
 - `tests/testrulecap.py` checks the limit with a wave of 50 blocks.
