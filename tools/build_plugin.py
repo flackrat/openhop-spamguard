@@ -40,7 +40,7 @@ def build(out_dir: str) -> str:
             "id": PLUGIN_ID,
             "name": "SpamGuard",
             "version": v,
-            "description": "Stops MeshCore channel spam at this repeater, while regulars keep getting through. "
+            "description": "Stops MeshCore channel spam at this repeater, while regulars keep getting through, and with FloodGuard contains airtime floods of any packet type. "
                            "Paste an openHop API token into api_key, then press Open to reach SpamGuard's own page "
                            "(port 8091 unless you change listen_port).",
             # A small doorway page, so openHop's Plugins page has an Open button. openHop also lists any plugin
@@ -65,7 +65,7 @@ def build(out_dir: str) -> str:
 setup(
     name="openhop-spamguard",
     version="{v}",
-    description="SpamGuard: spam protection for openHop MeshCore repeaters (openHop plugin)",
+    description="SpamGuard with FloodGuard: spam and flood protection for openHop MeshCore repeaters (openHop plugin)",
     url="https://github.com/flackrat/openhop-spamguard",
     license="AGPL-3.0-or-later",
     packages=["openhop_spamguard"],

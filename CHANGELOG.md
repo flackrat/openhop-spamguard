@@ -1,5 +1,15 @@
 # Changelog
 
+## v6.0: SpamGuard with FloodGuard
+**FloodGuard: floods of any kind, contained by airtime.** Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes, until a message arrives dozens of times and people give up on the channel. Nothing in them can be blocked by name or text, and their routes can be faked. What a sender can't fake is how busy your repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.
+- **Steps in only during a real flood.** When the radio is busier than the level you set (15% over five minutes by default) for a minute, and most of that is flood traffic, flood packets that have already come further than this mesh's normal routes are not passed on. It learns how far flood packets normally travel from quiet hours.
+- **Tightens while it lasts, lifts by itself.** Two hops tighter every two minutes while the radio stays busy, never below a floor you set (8 hops by default), and removed once the radio has been quiet for ten minutes. Each step is noted in Activity.
+- **The mesh keeps working.** Direct (routed) messages, replies and acknowledgements are never touched, and channel messages from people SpamGuard knows always get through. FloodGuard never looks at who sent a packet or what it says. Each repeater protects its own airtime, so a flood is held to the area it is swamping.
+- **Same graphs, same data.** The Overview graphs show the flood packets FloodGuard stopped next to the spam, in their own colour, with a switch between spam, floods or both. A new chart shows how busy the radio was each hour, with the level FloodGuard steps in at, and a FloodGuard card on the Overview turns it on or off and says what it's doing.
+- **Hop limits like MeshCore's.** Settings has fixed hop limits for unscoped flood packets and for adverts, the same as MeshCore's `flood.max.unscoped` and `flood.max.advert` (openhop_repeater#426). They work with or without flood containment.
+- Off until you turn it on. In Monitor it only counts what it would have stopped. `tests/testfloodguard.py` checks it against openHop's own rule engine.
+- Based on the flood-control proposal from the Dutch MeshCore community (MeshCore #3278). Thank you.
+
 ## v5.37
 - The Overview's number tiles line up in even rows (three across in normal mode, four in Advanced, two on a phone), and "24 h" no longer splits across lines in the small print either.
 - README: requirements (hardware, software, space, memory and CPU, limits) moved into Advanced next to the tested systems, the storage details merged into it, Health lists the warnings it gives, and outdated lines about known people and lockdown corrected. New screenshots, and GitHub issue forms for bug reports and ideas.
