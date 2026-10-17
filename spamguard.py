@@ -1125,7 +1125,7 @@ class SpamGuard:
         self._air_mark = 0.0
         self._hop_pending: collections.deque = collections.deque(maxlen=20000)
         self.fg: dict = {"limit": None, "since": 0.0, "last_step": 0.0, "mark": 0.0, "peak": 0.0, "episodes": 0,
-                         "busy_since": 0.0, "calm_since": 0.0}
+                         "busy_since": 0.0, "calm_since": 0.0, "v61": 1}
         self.fg_hops: dict[str, dict[int, int]] = {}   # hour -> {hop count: flood packets} outside floods
         self.fg_adv: dict[str, dict[int, int]] = {}    # the same for adverts only
         self.fg["learnt"] = {}
@@ -1285,13 +1285,25 @@ class SpamGuard:
         self.hist_mark = float(st.get("hist_mark") or 0)
         fg = st.get("floodguard") or {}
         if isinstance(fg, dict):
-            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn")})
+            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61")})
             if not isinstance(self.fg.get("learnt"), dict):
                 self.fg["learnt"] = {}
             self.fg_hops = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("hops") or {}).items()
                             if isinstance(v, dict) and int(k) > now - 8 * 86400}
             self.fg_adv = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("adv") or {}).items()
                            if isinstance(v, dict) and int(k) > now - 8 * 86400}
+        if not fg.get("v61") if isinstance(fg, dict) else True:
+            # 6.1 learns FloodGuard's values from this repeater's own traffic: values set by hand in 6.0
+            # are cleared once, so it starts from its own. Whether FloodGuard is on or off is kept.
+            fg_keys = [m["key"] for m in SETTINGS_META if m["group"] == "FloodGuard" and m["key"] != "floodguard"]
+            cleared = [k for k in fg_keys if k in self.settings]
+            for k in cleared:
+                self.settings.pop(k, None)
+            if cleared:
+                self.activity.appendleft({"ts": now, "msg": "FloodGuard now learns its own settings from this repeater's traffic, "
+                                          "so the FloodGuard values set in 6.0 were cleared. You can set them again on the "
+                                          "FloodGuard page once it has learnt."})
+        self.fg["v61"] = 1
         self.reset_at = float(st.get("reset_at") or 0)
         self.monitor_since = float(st.get("monitor_since") or 0)
         self.view_marks = {k: float(v) for k, v in (st.get("view_marks") or {}).items()}
@@ -1354,7 +1366,7 @@ class SpamGuard:
                     "held": list(self.held),
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
-                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn")},
+                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61")},
                                    "hops": self.fg_hops, "adv": self.fg_adv},
                     "reset_at": getattr(self, "reset_at", 0.0),
                     "monitor_since": getattr(self, "monitor_since", 0.0),
