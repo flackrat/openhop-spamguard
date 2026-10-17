@@ -1,4 +1,4 @@
-# openHop SpamGuard
+# openHop SpamGuard, with FloodGuard
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 
@@ -14,19 +14,24 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 
 ## What it does
 
+**SpamGuard: channel spam**
 - **Catches spam campaigns:** the same text sent under made-up, rotating names, even when it's disguised.
 - **Finds where spam enters the mesh** and blocks it there, while still letting your regulars through.
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
-- **Stops replays:** a device re-sending other people's old messages (usually broken firmware with a wrong clock or cut-short names) has its further copies held back, while the original message and anything new still go out.
+- **Stops replays:** a device re-sending other people's old messages (usually broken firmware with a wrong clock or cut-short names) has its further copies held back, while the original and anything new still go out.
 - **Lockdown** for a heavy attack: for a while, only people it already knows get through. It starts by itself for 15 minutes during a big flood from many repeaters at once.
-- **FloodGuard (new in 6.0, on by default from 6.1):** contains floods of any packet type by airtime, not identity. When flood traffic keeps the radio too busy, flood packets that have already come further than this mesh's normal routes aren't passed on, tightening a step at a time and lifting by itself when the radio is quiet. Known people's channel messages and all direct (routed) traffic still get through. It spends its first three days learning how busy your radio normally gets and how far packets normally travel (only counting meanwhile), then sets its own limits and keeps them in step with your mesh; anything you set yourself is kept. It has its own page, with an off switch and a reset that learns afresh, with a chart of how busy the radio was, and the flood packets it stops can be shown on the same Overview graphs as the spam, in their own colour.
-- **Interference watch (FloodGuard 1.2):** learns this site's normal noise on the channel from openHop's measurements and tells you, on its page, on Health and in Activity, when something nearby is drowning it, such as equipment that transmits all the time or jamming. It shows how much hearing range is left and records each episode with times and levels to pass on to whoever can fix it.
-- **Hop limits like MeshCore's `flood.max.unscoped` and `flood.max.advert`** for openHop ([openhop_repeater#426](https://github.com/openhop-dev/openhop_repeater/issues/426)): learnt from your own traffic (unscoped flood packets between 16 and 32 hops, adverts between 6 and 16, starting from 32 and 8), which stops padded floods running to openHop's 64-hop ceiling. Both can be changed or turned off.
-- **Wardriving privacy (new in 6.2, off by default):** stop this repeater echoing wardriving pings (MeshMapper's `#wardriving` channel), so it isn't logged on precise coverage maps. Everything else is repeated as normal, and your own companions' pings still go out. It helps keep the repeater's exact location private; it doesn't hide it from direction-finding, adverts or route logs.
-- **Wardriving privacy (new in 6.2, off by default):** stop this repeater echoing wardriving pings (MeshMapper's `#wardriving` channel), so it isn't logged on precise coverage maps. Everything else is repeated as normal, and your own companions' pings still go out. It helps keep the repeater's exact location private; it doesn't hide it from direction-finding, adverts or route logs.
-- **Settings profiles:** save a set of tuned settings, put it back later, or share it with other operators as a small file (never your channels, keys or exceptions).
-- **Spam, not opinions:** it stops how spam is sent, never what people say. Text blocks never stop people it knows, need a real chunk of a message (not a word or a name) and last at most a week, and a known person's message can't be marked as spam.
+
+**FloodGuard: the airtime and the radio** (inside SpamGuard since 6.0, with its own version number)
+- **Contains floods of any packet type**, including encrypted ones with a new identity every time, by how busy your radio is rather than who sent them. Flood packets that have already come further than your mesh's normal routes aren't passed on while the flood lasts; it tightens a step at a time and lifts by itself. Direct messages and known people's channel messages always get through.
+- **Learns your mesh first:** three days of counting only, then it sets its own limits and keeps them in step, a little at a time. Anything you set yourself is kept, and **Reset and learn again** starts afresh.
+- **Hop limits like MeshCore's `flood.max.unscoped` and `flood.max.advert`** ([openhop_repeater#426](https://github.com/openhop-dev/openhop_repeater/issues/426)), learnt from your traffic, so padded floods can't run to openHop's 64-hop ceiling.
+- **Interference watch:** tells you when something nearby is drowning the channel (equipment that transmits all the time, or jamming), how much hearing range is left, and records each episode with times and levels to pass on.
+
+**Privacy and principles**
+- **Wardriving privacy** (off by default): stop the repeater echoing wardriving pings, so it isn't logged on precise coverage maps. Everything else is repeated as normal.
+- **Spam, not opinions:** it stops how spam is sent, never what people say. Text blocks never stop people it knows, need a real chunk of a message and last at most a week, and a known person's message can't be marked as spam.
+- **Settings profiles:** save tuned settings, put them back later, or share them with other operators as a small file (never your channels, keys or exceptions).
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
 
 ![SpamGuard's web page (example data)](docs/screenshot-overview.png)
@@ -108,8 +113,9 @@ Click a heading to expand it.
 <details>
 <summary><b>The web page</b></summary>
 
-- **Menu**: a side menu like openHop's own (a slide-out menu on phones). **Overview**, **Protection** (blocks with the emergency Lockdown, possibly genuine, channels), **Monitoring** (messages, spam sources) and **System** (health, updates, help). Advanced adds campaigns, activity, settings (in collapsible groups with a search box), exceptions and the evidence log.
-- **Overview**: mode, sensitivity, and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives.
+- **Menu**: a side menu like openHop's own (a slide-out menu on phones), with SpamGuard's and FloodGuard's versions at the top and FloodGuard's state (Learning, On, Flood, Off) next to its name. **Overview**, **Protection** (blocks with the emergency Lockdown, possibly genuine, channels with the wardriving option, FloodGuard), **Monitoring** (messages, spam sources) and **System** (health, updates, help).
+- **FloodGuard page**: what it's doing now and what it has learnt, flood packets per hour, how busy the radio was, interference on the channel with recorded episodes, its off switch, and (in Advanced) its settings. Advanced adds campaigns, activity, settings (in collapsible groups with a search box), exceptions and the evidence log.
+- **Overview**: mode, sensitivity, and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives, with a switch to show FloodGuard's flood packets alongside.
 - **Spam sources**: where spam enters the mesh, on a map and in a table with Block / Never block buttons. SpamGuard works out where each spam message most likely entered the mesh, learning from repeater adverts as it goes, so short repeater codes shared around the country don't scatter the map; it can optionally use the public MeshCore map to place far-away repeaters. By default the map only shows entry points it is sure of; tick "Show best guesses too" to add the rough ones. The map needs internet access on the device viewing the page; the table works without it.
 - **Long lists** (messages, blocks, activity) show 10 at a time with **Show more**.
 - **Advanced** (switch at the bottom of the menu): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, the known people list with Trust and Forget, repeaters and texts never blocked), settings profiles, the evidence log and an activity log. Channels have their own page in the menu.

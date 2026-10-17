@@ -49,7 +49,19 @@ If you'd rather not change openHop's container, run SpamGuard in its own contain
 
 ## Updating
 
-SpamGuard's page tells you when a new version is out (Updates in its menu). Press **Update**: SpamGuard fetches the new plugin file, hands it to openHop, and openHop restarts it on the new version. Settings and everything it has learnt are kept. You can also install a newer wheel by hand: download it from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest), choose System > Plugins > Install wheel in openHop, then press Disable and Enable on SpamGuard's row so it restarts on the new version. If your plugin is 5.21, update it this way once: 5.21's page sends you to openHop's Plugins page, which has no update button of its own. From 5.22 on, the Update button does it all.
+SpamGuard's page tells you when a new version is out (Updates in its menu). Press **Update**: SpamGuard fetches the new plugin file, hands it to openHop, and openHop restarts it on the new version. Settings and everything it has learnt are kept. FloodGuard is part of the same plugin, so it updates with it; its own version is shown next to its name. You can also install a newer wheel by hand: download it from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest), choose System > Plugins > Install wheel in openHop, then press Disable and Enable on SpamGuard's row so it restarts on the new version. If your plugin is 5.21, update it this way once: 5.21's page sends you to openHop's Plugins page, which has no update button of its own. From 5.22 on, the Update button does it all.
+
+## SpamGuard won't start after an update ("Exec format error")
+
+If enabling SpamGuard fails with `Exec format error` (or `entrypoint not found`) after an update, the install was cut short and left a broken file in that version's folder. Installing the same file again doesn't help, because openHop sees that version as already installed and leaves the broken file in place. Remove that version's folder and install it again (replace `6.4.0` with the version in the error):
+
+```
+sudo systemctl stop openhop-plugin-manager
+sudo rm -rf /var/lib/openhop_repeater/plugins/openhop-spamguard/releases/6.4.0
+sudo systemctl start openhop-plugin-manager
+```
+
+Then install the wheel from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest) with System > Plugins > Install wheel and press Enable. Settings and everything SpamGuard has learnt are kept outside that folder. If the Plugins page then says "Plugin manager unavailable", see the next section.
 
 ## Plugin manager isn't running
 
