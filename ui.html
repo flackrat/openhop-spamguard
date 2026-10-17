@@ -539,7 +539,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <section>
   <h2>Flood packets, last 24 hours</h2>
   <p class="lead">Per hour. Flood packets FloodGuard stopped, and ones over a limit that were still passed on.</p>
-  <div class="legend"><span><i class="sw sw-f"></i>Stopped by FloodGuard</span><span><i class="sw sw-x"></i>Over the limit but let through (Monitor mode, or before the limit started)</span></div>
+  <div class="legend"><span><i class="sw sw-f"></i>Stopped by FloodGuard</span><span><i class="sw sw-x"></i>Over the limit but let through (while learning, in Monitor, or before the limit started)</span></div>
   <div class="chart" id="chartFlood" role="img"></div>
 </section>
 <section id="busySec">
@@ -589,7 +589,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <section>
   <h2>Start again from scratch</h2>
   <p class="lead">Puts SpamGuard back as if it had just been installed and starts filtering spam afresh. It removes every block (including ones you added or removed by hand, with no 24-hour wait), resets every setting and the sensitivity, and clears trusted senders, repeaters and texts, learnt routes and the people it knows. It then relearns regulars from the last day's normal-looking names.</p>
-  <p class="explain">Kept: Monitor or Protect, channels you added, and whether the evidence log is on. Nothing recorded is thrown away, but the page starts again from now: charts, messages, activity and the held list only show what happens after the reset. The evidence log keeps everything, before and after. Your own openHop rules are never touched.</p>
+  <p class="explain">Kept: Monitor or Protect, channels you added, whether the evidence log is on, and the wardriving choice. FloodGuard forgets what it learnt and learns this repeater's traffic again for three days (recorded interference is kept). Nothing recorded is thrown away, but the page starts again from now: charts, messages, activity and the held list only show what happens after the reset. The evidence log keeps everything, before and after. Your own openHop rules are never touched.</p>
   <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
   <div id="resetBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
     <span><strong>Are you sure?</strong> This can't be undone. Type <b>RESET</b> below to confirm.</span>
@@ -868,7 +868,7 @@ function renderBlocks(d){
       <div class="acts">${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
   };
   const items=list.map(item);
-  const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":d.mode==="protect"?"<span class='tag stop'>blocking</span>":"<span class='tag would'>watching only</span>";
+  const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":fg.acting?"<span class='tag stop'>blocking</span>":fg.learning?"<span class='tag would'>counting while learning</span>":"<span class='tag would'>watching only</span>";
   const fgRow=(title,why)=>`<li><div><div class="what">${title}${fgEff}<span class="tag fg">FloodGuard</span></div><div class="why">${why}${adv&&fg.rules&&fg.rules.length?` <span class="rulenum">openHop rule ${fg.rules.join(", ")}</span>`:""}</div></div><div class="acts"><a href="#/floodguard" class="quietlink">FloodGuard</a></div></li>`;
   const fgItems=[fg.limit?fgRow(`Flood packets from ${fg.limit} or more hops away`,`The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy with flood traffic. Direct messages and people SpamGuard knows still get through. Lifts by itself once the radio is quiet.`):"",
     fg.unscoped?fgRow(`Unscoped flood packets from ${fg.unscoped} or more hops away`,"A fixed hop limit while FloodGuard is on, like MeshCore's flood.max.unscoped."):"",
@@ -1051,7 +1051,7 @@ $("#resetAll").onclick=()=>{ if(!confirm("Start SpamGuard again from scratch?\n\
 $("#resetWord").oninput=()=>{ $("#resetGo").disabled=$("#resetWord").value.trim().toUpperCase()!=="RESET"; };
 $("#resetNo").onclick=()=>{ $("#resetBox").hidden=true; $("#resetAll").hidden=false; };
 $("#resetGo").onclick=()=>{ if($("#resetWord").value.trim().toUpperCase()!=="RESET") return; $("#resetBox").hidden=true; $("#resetAll").hidden=false; clean(); post("/reset_all",{confirm:"RESET"}); };
-$("#resetSet").onclick=()=>{ if(confirm("Reset every detection setting to the defaults for the current sensitivity?")){ clean(); post("/settings",{reset:true}); } };
+$("#resetSet").onclick=()=>{ if(confirm("Reset every setting you changed (FloodGuard's too) to its default for the current sensitivity?\n\nWhat FloodGuard has learnt about this repeater stays. To make it learn again, use Reset and learn again on the FloodGuard page.")){ clean(); post("/settings",{reset:true}); } };
 
 /* ---------- forms ---------- */
 function ttlOptions(sel,textBlock){ sel.innerHTML=TTLS.filter(([v])=>!textBlock||+v<=604800).map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
@@ -1313,19 +1313,20 @@ function renderWardrive(d){
 }
 function renderFloodNav(d){
   const fg=(d.metrics||{}).floodguard||{};
-  const st=!fg.enabled?["Off","plain"]:fg.limit?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];
+  const st=!fg.enabled?["Off","plain"]:fg.limit&&fg.acting?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];
   const bt=$("#fgBrandTag"); bt.textContent=st[0]; bt.className="tag "+st[1];
   const jm=(d.metrics||{}).interference||{};
-  badge("floodguard",fg.limit?"Flood":jm.since?"Noise":"",fg.limit||jm.since?"warn":"plain");   // learning/on/off shows next to its name above
+  badge("floodguard",fg.limit?"Flood":jm.since?"Noise":"",(fg.limit&&fg.acting)||jm.since?"warn":"plain");   // learning/on/off shows next to its name above
   const c=$("#fgCallout"); if(!c) return;
-  c.innerHTML=fg.limit?`<div class="callout"><span><strong>FloodGuard is containing a flood${d.mode!=="protect"||d.paused?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`:"";
+  c.innerHTML=!fg.limit?"":fg.acting?`<div class="callout"><span><strong>FloodGuard is containing a flood.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`
+    :`<div class="callout info"><span><strong>FloodGuard sees a flood but is only counting${fg.learning?" while it learns":" (Monitor)"}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; nothing is held back.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`;
 }
 function renderFloodPage(d){
   const m=d.metrics; if(!m) return;
   const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   const fixed=[fg.unscoped?`unscoped flood packets stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
   const monitor=d.mode!=="protect"||d.paused;
-  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?"<span class='tag would'>containing a flood</span>":!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
+  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?"<span class='tag would'>containing a flood</span>":"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
   if(fg.enabled&&fg.learning&&fg.radio_known){
     const day=fg.learn_start?Math.min(fg.learn_days,Math.floor((Date.now()/1000-fg.learn_start)/86400)+1):1;
     const until=fg.learn_until?new Date(fg.learn_until*1000).toLocaleString([],{weekday:"long",hour:"2-digit",minute:"2-digit"}):"";
@@ -1335,8 +1336,10 @@ function renderFloodPage(d){
   }
   if(!fg.radio_known){
     h+=`<p class="lead">FloodGuard needs openHop's radio settings to measure airtime, and SpamGuard hasn't been able to read them yet.</p>`;
+  } else if(fg.limit&&!fg.acting){
+    h+=`<div class="callout info"><span><strong>A flood, but FloodGuard is only counting.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. Flood packets from ${fg.limit} or more hops would be held back, but ${fg.learning?"FloodGuard is still learning":"SpamGuard is in Monitor"}, so everything is still passed on and only counted.</span></div>`;
   } else if(fg.limit){
-    h+=`<div class="callout"><span><strong>Containing a flood${monitor?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.</span></div>`;
+    h+=`<div class="callout"><span><strong>Containing a flood.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.</span></div>`;
   } else {
     h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}% when most of that is flood traffic.${monitor?" SpamGuard is in Monitor, so FloodGuard only counts.":""}`
       :"Contains floods of any kind of packet, not just channel messages, by watching how busy this repeater's radio is. It's off on this repeater; turn it on below."}</p>`;
@@ -1346,7 +1349,7 @@ function renderFloodPage(d){
   const src=k=>(fg.auto||[]).includes(k)?(fg.learnt&&fg.learnt[k]!=null?"learnt":"recommended"):"yours";
   const srcs=Object.keys(nm).map(src), same=srcs.every(x=>x===srcs[0]);
   if(fg.enabled) h+=`<p class="explain"><b>Its limits now:</b> ${Object.keys(nm).map(k=>esc(nm[k](cur[k]))+(same?"":` (${src(k)})`)).join(", ")}${same?` (${srcs[0]==="recommended"?"recommended values until it has learnt":srcs[0]==="learnt"?"learnt from this repeater's traffic":"set by you"})`:""}.</p>`;
-  const facts=[fg.reach!=null?`Flood packets normally reach this repeater within ${fg.reach} hops.`:"",fg.episodes?`Floods contained so far: ${fg.episodes}.`:"",
+  const facts=[fg.reach!=null?`Flood packets normally reach this repeater within ${fg.reach} hops.`:"",fg.episodes?`Floods so far: ${fg.episodes}.`:"",
     fg.learnt_at?`Last checked against this mesh's traffic ${ago(fg.learnt_at)}; it checks again once a day.`:""].filter(Boolean);
   if(facts.length) h+=`<p class="explain">${esc(facts.join(" "))}</p>`;
   h+=`<div class="switchrow">${fg.enabled?btn("Turn FloodGuard off","/settings",{floodguard:false},"quiet"):btn("Turn FloodGuard on","/settings",{floodguard:true},"go")}${fg.enabled?`<button class="quiet" data-p="/fg_relearn" data-b="{}" data-confirm="Put every FloodGuard setting back to FloodGuard's own values and learn this repeater's traffic again from scratch? Values you set yourself are cleared. Learning takes ${fg.learn_days} days${fg.learning&&!fg.relearning?"":"; it keeps protecting with the recommended values meanwhile"}." onclick="act(this)">Reset and learn again</button>`:""}</div>`;
@@ -1396,7 +1399,7 @@ function renderOverview(d){
     ?{c:r.c,x:r.x,f:r.fc||0,tip:`${when}: ${r.c} spam stopped, ${r.x} let through, ${r.fc||0} flood packets stopped by FloodGuard`}
     :{c:r.c,x:r.x,tip:`${when}: ${r.c} stopped, ${r.x} let through${r.m!=null?`, ${r.m} messages`:""}`};
   $("#h24").textContent=view==="floods"?"Flood packets, last 24 hours":view==="both"?"Spam and floods, last 24 hours":"Spam, last 24 hours";
-  const leg=view==="floods"?sw("f","Stopped by FloodGuard")+sw("x","Over the limit but let through (Monitor mode, or before the limit started)")
+  const leg=view==="floods"?sw("f","Stopped by FloodGuard")+sw("x","Over the limit but let through (while learning, in Monitor, or before the limit started)")
     :sw("c","Spam stopped")+sw("x","Spam let through (before a block started, or in Monitor mode)")+(view==="both"?sw("f","Flood packets stopped by FloodGuard"):"");
   $("#leg24").innerHTML=leg; $("#leg7").innerHTML=leg.replace(/ \([^)]*\)/g,"");
   const cols=view==="floods"?[["f","Flood packets stopped"],["x","Let through"]]:null, segs=view==="floods"?["f","x"]:null;

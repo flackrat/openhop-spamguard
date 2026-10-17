@@ -10,8 +10,14 @@ SpamGuard and FloodGuard ship together as one openHop plugin with one release nu
 - Short bursts (someone transmitting nearby for a minute or two), small drifts of a few dB, and floods (which raise the measured noise with traffic the radio can still decode) aren't reported. Hours with interference don't change what counts as normal.
 - On by default; the level is in FloodGuard's settings (Advanced). `tests/testinterference.py` covers it with a simulated always-on carrier.
 
+- **While FloodGuard is learning, a flood is shown as counted, not contained.** The FloodGuard page, the Overview, the Blocks page, the menu and Activity used to say "containing a flood" during the learning days even though nothing was held back; they now say it is only counting, and why.
+- **Start again from scratch now resets FloodGuard too:** it forgets what it learnt and learns this repeater's traffic again for three days. Recorded interference is kept.
+- Kinder to SD cards: FloodGuard's record of normal routes is folded into one entry per day after the first day (about a fifth of the size, same learnt values), hourly airtime totals are kept in whole milliseconds, and a flood limit tightening a step no longer forces an immediate save (starting and lifting still do).
+
 ### SpamGuard 6.4
 - The Help page showed the wardriving section twice; now once.
+- **Settings reset** explains that FloodGuard's settings are reset too, and that what FloodGuard has learnt is kept (Reset and learn again on the FloodGuard page relearns).
+- Kinder to SD cards: the state file is written compactly, about a sixth smaller, so each save writes less.
 
 ## v6.3 (FloodGuard 1.1, unchanged)
 ### SpamGuard 6.3

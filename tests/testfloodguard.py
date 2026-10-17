@@ -221,6 +221,27 @@ gf.apply_settings({"flood_max_advert":10}); gf._save_state(force=True)
 gf2=sg.SpamGuard({"openhop_url":U,"state_file":os.path.join(TMP,"fresh61.json")})
 check(gf2.settings.get("flood_max_advert")==10,"a fresh 6.1 install keeps its values across restarts")
 
+# ---- resets: settings back to defaults (FloodGuard's too); Start again from scratch makes FloodGuard learn again
+gr=guard(mock()); gr.radio=dict(RADIO); gr.refresh_openhop_info=lambda *a,**k: None
+gr.fg.update(ready=time.time(), learnt={"flood_max_unscoped":20}, learn_start=time.time()-5*86400, episodes=3); gr.rebuild_cfg()
+gr.apply_settings({"flood_busy_percent":25,"flood_hop_floor":6})
+gr.apply_settings({"reset":True})
+check(gr.cfg["flood_busy_percent"]==15 and gr.cfg["flood_hop_floor"]==8,"Reset puts FloodGuard settings you changed back too")
+check(gr.cfg["flood_max_unscoped"]==20,"and keeps what it learnt")
+gr.reset_all()
+check(not gr.fg.get("ready") and not gr.fg.get("learnt") and gr.cfg["flood_max_unscoped"]==32 and not gr.fg.get("episodes"),
+      "Start again from scratch: FloodGuard forgets what it learnt")
+gr.fg_decide(time.time())
+check(gr.fg_status()["learning"] and not gr.fg_status()["acting"],"and learns again, only counting")
+# a flood while learning is only counted, and says so
+gq=guard(mock(), mode="protect"); gq.radio=dict(RADIO); gq.refresh_openhop_info=lambda *a,**k: None
+t=time.time(); gq.fg_decide(t)
+gq.ingest([pkt(t+i*2.4, random.randint(20,40)) for i in range(150)])
+gq.fg_decide(t+360); gq.fg_decide(t+430)
+check(gq.fg.get("limit") and not gq.fg_status()["acting"],"learning: a flood is seen but FloodGuard isn't acting")
+check(any("only counts them" in a["msg"] for a in gq.activity),"and Activity says it's only counting")
+check(all(r["then"]["action"]=="log_only" for r in gq._build_flood()),"and its rules only log")
+
 # ---- radio settings unknown: does nothing
 g3=guard(mock(), floodguard=True); g3.ingest(flood)
 check(not g3.fg_decide(time.time()) and not g3.fg.get("limit"),"no radio settings: FloodGuard waits")

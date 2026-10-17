@@ -1383,7 +1383,7 @@ class SpamGuard:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
             with open(tmp, "w") as f:
-                json.dump(self.state_dict(), f)
+                json.dump(self.state_dict(), f, separators=(",", ":"))   # compact: less to write each time
             os.replace(tmp, path)
         except Exception as e:
             log.warning("Could not save state: %s", e)
@@ -1448,6 +1448,11 @@ class SpamGuard:
         self.clusters.clear()
         self.held.clear()
         self.rule_ids.clear()
+        # FloodGuard starts again too: what it learnt, its flood limit and its learning days. (The noise
+        # measurements and recorded interference stay: they're a record, not a setting.)
+        self.fg.update(limit=None, learnt={}, learnt_at=None, ready=None, relearn=None, learn_start=None,
+                       episodes=0, peak=0.0, start_now=None, welcomed=None)
+        self.fg_hops.clear(); self.fg_adv.clear(); self._hop_pending.clear()
         for e in self.events:            # recent messages are judged again under the fresh rules
             e.matched = None
         self.rebuild_cfg()
@@ -1632,18 +1637,18 @@ class SpamGuard:
         self.fg["mark"] = ts
         hour = str(int(ts // 3600 * 3600))
         h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
-        h["ar"] = round(h.get("ar", 0) + on_air, 1)
+        h["ar"] = round(h.get("ar", 0) + on_air)
         if not local:
             h["pk"] = h.get("pk", 0) + 1
         if flood:
-            h["af"] = round(h.get("af", 0) + on_air, 1)
+            h["af"] = round(h.get("af", 0) + on_air)
         if wd_heard or wd_stopped:
             h["wh"] = h.get("wh", 0) + 1
         if wd_stopped:
             h["ws"] = h.get("ws", 0) + 1
         if stopped:
             h["fc"] = h.get("fc", 0) + 1
-            h["fs"] = round(h.get("fs", 0) + ms, 1)
+            h["fs"] = round(h.get("fs", 0) + ms)
         elif flood and sent and not local and self.fg_over(hops, ptype, route):
             h["fx"] = h.get("fx", 0) + 1   # over a limit but passed on: Monitor, or before the rule landed
         if flood and not local:
@@ -1664,6 +1669,20 @@ class SpamGuard:
                     n += 1
         return min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)), (fl / tot if tot else 0.0), n
 
+    def _fg_compact(self, now: float):
+        """Route counts older than a day and a bit are folded into one entry per day (the last day stays
+        hourly for fg_reach). Only calm traffic is ever stored, so the learnt values come out the same, and
+        the state file written to the SD card stays small."""
+        cut = now - 26 * 3600
+        for store in (self.fg_hops, self.fg_adv):
+            for k in [k for k in store if int(k) < cut and int(k) % 86400]:
+                day = str(int(k) // 86400 * 86400)
+                merged = store.setdefault(day, {})
+                for h, n in store.pop(k).items():
+                    merged[h] = merged.get(h, 0) + n
+            for k in [k for k in store if int(k) < now - 8 * 86400]:
+                del store[k]
+
     def fg_reach(self) -> Optional[int]:
         """How many hops nearly all (95%) flood packets have travelled when they reach this repeater on an
         ordinary day, from the last 24 hours outside floods. None until it has heard enough to say."""
@@ -1671,6 +1690,7 @@ class SpamGuard:
         cut = now - 86400
         quiet = 0.7 * float(self.cfg.get("flood_busy_percent") or 15)
         counts: dict[int, int] = {}
+        self._fg_compact(now)
         for k, v in list(self.fg_hops.items()):
             if int(k) < now - 8 * 86400:
                 del self.fg_hops[k]
@@ -1731,13 +1751,19 @@ class SpamGuard:
                 if now - f["busy_since"] >= self.FG_SUSTAIN:
                     # Starts just past the routes it normally hears, then tightens a step at a time.
                     f.update(limit=start, since=now, last_step=now, peak=busy, episodes=int(f.get("episodes") or 0) + 1)
-                    self.note(f"FloodGuard: the radio is {busy:.0f}% busy, {share:.0%} of it flood traffic. Flood packets "
-                              f"that have already come {start} or more hops are not passed on until it calms down"
-                              + ("" if c["mode"] == "protect" else " (Monitor: only counted, nothing is stopped)") + ".")
+                    acting = c["mode"] == "protect" and not c.get("paused") and f.get("ready")
+                    self.note(f"FloodGuard: the radio is {busy:.0f}% busy, {share:.0%} of it flood traffic. "
+                              + (f"Flood packets that have already come {start} or more hops are not passed on until it calms down."
+                                 if acting else
+                                 f"Flood packets from {start} or more hops would be held back, but "
+                                 + ("FloodGuard is still learning" if not f.get("ready") else "SpamGuard is in Monitor")
+                                 + ", so it only counts them and passes everything on."))
                     changed = True
             elif target < f["limit"] and now - f["last_step"] >= self.FG_STEP_SECONDS:
                 f.update(limit=max(target, f["limit"] - 2), last_step=now)
-                self.note(f"FloodGuard: still {busy:.0f}% busy, so flood packets from {f['limit']} or more hops away are now held back too.")
+                acting = c["mode"] == "protect" and not c.get("paused") and f.get("ready")
+                self.note(f"FloodGuard: still {busy:.0f}% busy, so flood packets from {f['limit']} or more hops away are now "
+                          + ("held back too." if acting else "counted too (nothing is held back yet)."))
                 changed = True
             if f.get("limit"):
                 f["peak"] = max(float(f.get("peak") or 0), busy)
@@ -1754,8 +1780,8 @@ class SpamGuard:
                         changed = True
                 else:
                     f["calm_since"] = 0.0
-        if changed:
-            self._important = True
+        if changed and (not f.get("limit") or f.get("since") == now):
+            self._important = True   # started or lifted: save now. A step tighter waits for the next 5-minute save.
         return changed
 
     # ---- FloodGuard learning: how busy this radio normally gets and how far packets normally come
@@ -2001,6 +2027,7 @@ class SpamGuard:
         return {"enabled": bool(c.get("floodguard")), "radio_known": bool(self.airtime_ms(40)),
                 "learning": bool(c.get("floodguard")) and (not f.get("ready") or bool(f.get("relearn"))),
                 "relearning": bool(f.get("relearn")),
+                "acting": bool(c.get("floodguard")) and bool(f.get("ready")) and c["mode"] == "protect" and not c.get("paused"),
                 "learn_start": ls or None, "learn_until": ls + FG_LEARN_DAYS * 86400 if ls else None,
                 "learn_days": FG_LEARN_DAYS, "learnt": dict(f.get("learnt") or {}), "learnt_at": f.get("learnt_at"),
                 "auto": sorted(k for k in FG_AUTO_KEYS if k not in self.settings and k not in self.file_cfg),
