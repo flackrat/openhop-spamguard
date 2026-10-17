@@ -595,7 +595,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div class="inline-form"><input id="histWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="histGo" disabled>Yes, clear it</button><button class="quiet" id="histNo">Cancel</button></div>
   </div>
 </section></div>
-<div class="page" data-page="channels"><section>
+<div class="page" data-page="channels"><section id="wdSec"></section><section>
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
@@ -682,6 +682,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
   <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (on by default; it can be turned off on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. It first spends three days learning how busy this radio normally gets and how far packets normally travel, and only counts meanwhile; then it sets its own limits from that and checks them once a day. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
   <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. While it's on, FloodGuard also keeps fixed hop limits for unscoped flood packets (32 hops) and adverts (8 hops), the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. You can change both on its page, and 0 turns one off. In Monitor, FloodGuard only counts what it would have stopped.</p>
+  <h3>Wardriving pings</h3>
+  <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
   <h3>If it blocks someone genuine</h3>
@@ -1142,7 +1144,7 @@ function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
-  renderNav(d); renderFloodNav(d); renderFloodPage(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
+  renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
@@ -1257,6 +1259,16 @@ document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closes
   fgView=b.dataset.v; try{ localStorage.setItem("sg.fgview",fgView); }catch(e){} if(S) renderOverview(S); });
 function fmtMins(t){ const m=Math.max(1,Math.round((Date.now()/1000-t)/60)); return m<90?`${m} min`:`${Math.round(m/60)} h`; }
 /* FloodGuard: the menu switch, the Overview callout, and its own page */
+/* Wardriving pings: on the Channels page */
+function renderWardrive(d){
+  const m=d.metrics||{}, w=m.wardrive||{}, a=m.d1||{}, wk=m.d7||{};
+  let h=`<div class="health-head"><h2>Wardriving pings</h2>${w.enabled?"<span class='tag ok'>not repeated</span>":"<span class='tag plain'>repeated</span>"}</div>`;
+  h+=`<p class="lead">Wardriving apps such as MeshMapper send a ping with the phone's GPS position on ${esc((w.channels||["#wardriving"]).join(", "))} and log every repeater that echoes it, which builds a precise map of where this repeater can be heard. Not repeating those pings keeps this repeater off those maps. Everything else works as normal, and pings from this repeater's own companions still go out.</p>`;
+  if(w.enabled) h+=`<p class="explain">${d.mode==="protect"&&!d.paused?"":"Monitor mode or paused: pings are still repeated for now. "}Last 24 hours: ${fmtN(a.wh||0)} ping${(a.wh||0)===1?"":"s"} heard, ${fmtN(a.ws||0)} not repeated (${fmtN(wk.ws||0)} in 7 days).${(w.checked_text||[]).length?` ${esc(w.checked_text.join(", "))} shares its channel code with a channel openHop reads, so only messages that look like MeshMapper pings are held back there.`:""}</p>`;
+  h+=`<p class="explain">The trade-off: this repeater no longer shows up on community coverage maps, which people use to plan where repeaters are needed.</p>`;
+  h+=`<div class="switchrow">${w.enabled?btn("Repeat wardriving pings again","/settings",{wardrive_block:false},"quiet"):btn("Don't repeat wardriving pings","/settings",{wardrive_block:true},"go")}<a href="#/settings" class="quietlink adv-only">Wardriving channels</a></div>`;
+  $("#wdSec").innerHTML=h;
+}
 function renderFloodNav(d){
   const fg=(d.metrics||{}).floodguard||{};
   const st=!fg.enabled?["Off","plain"]:fg.limit?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];

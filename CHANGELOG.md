@@ -1,5 +1,13 @@
 # Changelog
 
+## v6.2
+- **Don't repeat wardriving pings** (Channels page, off by default). Wardriving apps such as MeshMapper send a ping with the phone's GPS position on `#wardriving` and log every repeater that echoes it, which maps precisely where each repeater can be heard. When on, this repeater still hears the pings but doesn't pass them on, so it isn't logged. Other channels, direct messages, adverts and path searches are untouched, and pings from this repeater's own companions still go out. The Channels page shows how many pings were heard and not repeated. More wardriving channels can be added by name or key (Advanced, Settings, Privacy).
+- If another channel openHop reads happens to share the wardriving channel's one-byte code, only messages that look like MeshMapper pings are held back on it, so chat there is never caught.
+- It's a privacy choice, so it's kept through Start again from scratch and is never part of a settings profile.
+- The trade-off is that the repeater drops off community coverage maps. It doesn't hide the repeater from direction-finding (fox hunting), its own adverts or route logs; the Help page explains.
+- Fixed: saving a list setting (such as extra name patterns) could fail while writing its Activity note.
+- `tests/testwardrive.py` checks it against openHop's rule engine.
+
 ## v6.1: FloodGuard learns your mesh
 - **On by default, learning first.** FloodGuard is now on for every repeater, but it spends its first three days learning: how busy this repeater's radio normally gets, and how far flood packets and adverts normally travel. Meanwhile it only counts what it would stop, even in Protect, and the FloodGuard page shows "Learning, day 1 of 3". Activity says when it starts and when it begins acting. **Start protecting now** skips the wait.
 - **Sets its own limits, and keeps them in step.** After learning it sets the level it steps in at (about twice a normal busy hour, and above the busiest genuine five minutes), the hop limit for unscoped flood packets (about twice the longest normal routes, 16 to 32 hops) and the hop limit for adverts (just past the furthest normal adverts, 6 to 16 hops). It checks them once a day against the last week of calm traffic and moves them a little at a time. Hours with a flood in them are never learnt from.
