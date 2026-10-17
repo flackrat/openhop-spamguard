@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.2"
+VERSION = "6.3"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.1"
@@ -208,6 +208,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Turned off, one name can post the same line over and over and it all goes out, because SpamGuard never blocks a person for what they say.",
      "label": "Stop one name repeating the same message",
      "help": "When the same name sends the same message again and again in a short time, further copies of that message from that name are not passed on for a while. Their first copies, and anything new they say, still go out."},
+    {"key": "replay_guard", "group": "Duplicate suppression", "type": "bool",
+     "risk": "Turned off, a device that keeps re-sending other people's old messages (usually broken firmware) fills the channel with repeats, often dozens of copies of each. While on, someone whose device clock is badly wrong and who sends the same long message twice may have the second copy held back.",
+     "label": "Stop old messages being sent again (replays)",
+     "help": "Some devices pick up channel messages and send them out again later, with their own clock (often months or years wrong) and sometimes with the sender's name cut short. When a message turns up again that was first heard a while ago, either with a clock that's badly off or under a cut-short copy of the original name, further copies of it from that name are held back. The original message always went out first, and anything new from anyone is untouched."},
     {"key": "repeat_max", "group": "Duplicate suppression", "type": "int", "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
      "label": "Copies allowed before repeats are stopped",
@@ -337,6 +341,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "min_rule_chars": 14,
     "dedupe_enabled": True,
     "repeat_guard": True,
+    "replay_guard": True,
     "repeat_max": 3,
     "repeat_window_seconds": 600,
     "repeat_block_seconds": 3600,
@@ -499,7 +504,7 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
             # [timestamp 4][flags 1]["sender: text"][zero padding]
             msg = pt[5:].split(b"\x00", 1)[0].decode("utf-8", "replace")
             sender, text = (msg.split(": ", 1) if ": " in msg else ("", msg))
-            return {"channel": name, "sender": sender.strip(), "text": text}
+            return {"channel": name, "sender": sender.strip(), "text": text, "sent": int.from_bytes(pt[:4], "little")}
         except Exception:
             continue
     return None
@@ -1030,7 +1035,7 @@ class EvidenceLog:
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length", "leaked", "known_then", "in_passing", "local")
+                 "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -1052,6 +1057,8 @@ class Event:
         self.campaign: Optional[int] = None
         self.exempt = False
         self.local = False   # sent by this repeater itself (one of its own companions)
+        self.sent_ts = 0     # the time the sender's device put in the message (its own clock)
+        self.replay = False  # an old message sent again by another device
         self.recorded = False
         self.logged = False
         self.packet = ""
@@ -1136,6 +1143,9 @@ class SpamGuard:
         self.hist_mark = 0.0          # newest message already counted (so restarts don't count twice)
         # FloodGuard: every packet heard or sent in the last 15 minutes as (time, airtime ms, flood?, hops,
         # sent by us?, stopped by FloodGuard?), the current limit, and the hops flood packets normally take.
+        # Replay guard: recent channel messages, (channel, text) -> (first heard, sender, the sender's own clock)
+        self._texts: collections.OrderedDict = collections.OrderedDict()
+        self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
         self._air_mark = 0.0
         self._hop_pending: collections.deque = collections.deque(maxlen=20000)
@@ -2729,6 +2739,33 @@ class SpamGuard:
                     and e.first_hop not in self.allowed_origins(b))
         return b["value"] in e.text
 
+    REPLAY_MIN_GAP = 30          # a copy within seconds is the mesh's own echo, not a replay
+    REPLAY_MEMORY = 86400        # how long messages are remembered
+    REPLAY_CLOCK_OFF = 6 * 3600  # a device clock this far out counts as wrong
+
+    def replay_of(self, e: Event) -> bool:
+        """Is this an old message sent again by another device? It must match a message first heard at
+        least half a minute earlier (same channel, same text) from the same name or a cut-short copy of it,
+        carry a different send time, and either have a badly wrong clock or the cut-short name. A person
+        re-sending their own message gets a new, correct time and their full name, so isn't caught."""
+        content = longest_piece(strip_mentions(e.text)).strip()
+        if len(content) < 12:
+            return False
+        k = (e.channel, normalise(content))
+        prev = self._texts.get(k)
+        if prev is None or e.ts - prev[0] > self.REPLAY_MEMORY:
+            self._texts[k] = (e.ts, e.sender, e.sent_ts)
+            self._texts.move_to_end(k)
+            while len(self._texts) > 5000:
+                self._texts.popitem(last=False)
+            return False
+        first, who, sent = prev
+        if e.ts - first < self.REPLAY_MIN_GAP or e.sent_ts == sent:
+            return False
+        cut_short = e.sender != who and len(e.sender.encode()) >= 12 and who.startswith(e.sender)
+        clock_off = abs(e.ts - e.sent_ts) > self.REPLAY_CLOCK_OFF
+        return (e.sender == who and clock_off) or cut_short
+
     def _caught_by_text(self, e) -> bool:
         b = self.blocks.get(e.matched) if e.matched else None
         return bool(b) and b["kind"] in ("text", "words", "repeat")
@@ -2799,7 +2836,9 @@ class SpamGuard:
             except (TypeError, ValueError):
                 e.length = len(payload)
             e.seen_at = now
+            e.sent_ts = int(dec.get("sent") or 0)
             e.exempt = self.text_allowed(e.text) or self.is_own(e)
+            e.replay = bool(self.cfg.get("replay_guard", True)) and not e.local and not e.exempt and self.replay_of(e)
             trusted = e.sender in self.allow_senders
             e.name_score = name_score(e.sender, self.name_res)
             # Unreadable text only counts from names SpamGuard doesn't know: a regular whose radio sends
@@ -2813,7 +2852,10 @@ class SpamGuard:
                 self.note(f"Trusted name '{e.sender}' arrived from a new place (first hop {e.first_hop}) - "
                           "names can be faked, so check this is really them")
             again = key in self.counted_packets  # read again after a restart: don't count it twice
-            if not again:
+            if not again and e.replay:
+                self.stats["replays"] = self.stats.get("replays", 0) + 1
+                self.replays.append(e.ts)
+            if not again and not e.replay:   # a replayed copy says nothing about who is genuine
                 h["count"] += 1
                 self.counted_packets[key] = None
                 while len(self.counted_packets) > 3000:
@@ -2822,7 +2864,7 @@ class SpamGuard:
             if e.known_then is None:
                 e.known_then = self.is_known(e.sender)
             self._match_event(e, count=not again)
-            if not e.matched and not again:
+            if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
             e.in_passing = self._held_in_passing(e)
@@ -3252,6 +3294,20 @@ class SpamGuard:
                                    extra={"who": who}):
                     changed = True
 
+        # 2b'. Replays: further copies of an old message being sent again, from that name only.
+        if c.get("replay_guard", True):
+            for e in a["long"]:
+                if not e.replay or e.matched:
+                    continue
+                content = longest_piece(strip_mentions(e.text)).strip()
+                snip = middle_chunk(content, c["text_rule_chars"])
+                key = "replay:" + hashlib.sha1(f"{e.sender}|{snip}".encode()).hexdigest()[:10]
+                if self.suppressed.get(key, 0) > now:
+                    continue
+                if self._add_block(key, "repeat", snip, "An old message being sent again by another device", "replay",
+                                   channel=e.channel, ttl=6 * 3600, from_ts=e.ts, extra={"who": e.sender}):
+                    changed = True
+
         # 2c. A campaign block that keeps catching regulars (people SpamGuard knows, heard from where they
         # usually are) is ordinary chat, not spam: stop it. Someone copying a regular's name usually comes
         # from somewhere else, so that doesn't count.
@@ -3564,7 +3620,7 @@ class SpamGuard:
                               "then": {"action": self.rule_action(b)}})
         return rules
 
-    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "campaign": "campaign",
+    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "replay": "replayed", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours"}
 

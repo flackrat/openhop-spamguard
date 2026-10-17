@@ -2,6 +2,14 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.3 (FloodGuard 1.1, unchanged)
+### SpamGuard 6.3
+- **Replay guard: old messages sent again.** Some devices pick up channel messages and send them out again later, with their own clock (in one case measured on a Dutch mesh, about 823 days slow) and sometimes with the sender's name cut short, so one message arrives many times over. When a message turns up again that was first heard at least half a minute earlier, under the same name with a badly wrong clock or under a cut-short copy of the name, further copies of it from that name are held back for six hours. The original always went out first, the same text from anyone else is untouched, and anything new from that name still goes out.
+- A person re-sending their own message isn't caught (their device gives it a new, correct time and their full name), nor are the mesh's own echoes seconds apart, nor short replies like "ok thanks".
+- Replayed copies don't count towards SpamGuard getting to know a name, so a replaying device can't make names "known".
+- On by default; Advanced, Settings, Duplicate suppression turns it off. Its blocks show on the Blocks page marked *replay*, and in openHop as *(replayed)*.
+- `tests/testreplay.py` covers it.
+
 ## v6.2 (FloodGuard 1.1, unchanged)
 ### SpamGuard 6.2
 - **Don't repeat wardriving pings** (Channels page, off by default). Wardriving apps such as MeshMapper send a ping with the phone's GPS position on `#wardriving` and log every repeater that echoes it, which maps precisely where each repeater can be heard. When on, this repeater still hears the pings but doesn't pass them on, so it isn't logged. Other channels, direct messages, adverts and path searches are untouched, and pings from this repeater's own companions still go out. The Channels page shows how many pings were heard and not repeated. More wardriving channels can be added by name or key (Advanced, Settings, Privacy).
