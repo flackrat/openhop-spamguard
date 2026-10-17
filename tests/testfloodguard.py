@@ -205,6 +205,22 @@ check(g7.fg.get("ready") and g7.cfg["flood_max_unscoped"]==32,"Start protecting 
 g7.apply_settings({"floodguard":False}); g7.last_sync=0
 check(not g7._build_flood(),"turned off: no FloodGuard rules")
 
+# ---- upgrading from 6.0: FloodGuard values set by hand there are cleared once, the on/off choice is kept
+st6=os.path.join(TMP,"state_v60.json"); m8=mock(); U=f"http://127.0.0.1:{m8.srv.server_address[1]}"
+json.dump({"settings":{"floodguard":True,"flood_busy_percent":25,"flood_max_unscoped":20,"flood_hop_floor":6,"mode":"protect"},
+           "floodguard":{"episodes":1}},open(st6,"w"))
+g8=sg.SpamGuard({"openhop_url":U,"state_file":st6})
+check(not any(k in g8.settings for k in ("flood_busy_percent","flood_max_unscoped","flood_hop_floor")),"6.0 FloodGuard values cleared on upgrade")
+check(g8.settings.get("floodguard") is True and g8.settings.get("mode")=="protect","FloodGuard on/off and other settings kept")
+check(any("values set in 6.0 were cleared" in a["msg"] for a in g8.activity),"says so in Activity")
+g8.apply_settings({"flood_max_unscoped":24}); g8._save_state(force=True)
+g9=sg.SpamGuard({"openhop_url":U,"state_file":st6})
+check(g9.settings.get("flood_max_unscoped")==24,"only once: values set after upgrading are kept")
+gf=sg.SpamGuard({"openhop_url":U,"state_file":os.path.join(TMP,"fresh61.json")})
+gf.apply_settings({"flood_max_advert":10}); gf._save_state(force=True)
+gf2=sg.SpamGuard({"openhop_url":U,"state_file":os.path.join(TMP,"fresh61.json")})
+check(gf2.settings.get("flood_max_advert")==10,"a fresh 6.1 install keeps its values across restarts")
+
 # ---- radio settings unknown: does nothing
 g3=guard(mock(), floodguard=True); g3.ingest(flood)
 check(not g3.fg_decide(time.time()) and not g3.fg.get("limit"),"no radio settings: FloodGuard waits")
