@@ -65,10 +65,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.4"
+VERSION = "6.4.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2"
+FLOODGUARD_VERSION = "1.2.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -3668,15 +3668,26 @@ class SpamGuard:
         if flood:
             gated = (gated[:1] if gated else [self._known_rule()]) + flood + gated[1:]
         tail = self._not_own(tail + gated)
-        if len(tail) > cap:
-            tail = tail[:cap]
+        # Standing rules are never pushed out by the limit, however many blocks a spam wave creates: the
+        # wardriving rule, FloodGuard's rules and the known-people rule they rely on. They count towards
+        # the limit; the blocks share what is left.
+        wd = self._not_own(self._build_wardrive())
+        keep_ids = {r["id"] for r in flood}
+        if flood:
+            keep_ids.add(self._rid("known:*"))
+        budget = max(0, cap - len(wd))
+        if len(tail) > budget:
+            while len(tail) > budget:
+                drop = next((i for i in range(len(tail) - 1, -1, -1) if tail[i]["id"] not in keep_ids), None)
+                if drop is None:
+                    break
+                del tail[drop]
             if len(tail) == 1 and "known-people" in str(tail[0].get("name")):
                 tail = []
             if not self.stats.get("rule_limit_warned"):
                 self.stats["rule_limit_warned"] = 1
                 self.note(f"Rule limit ({cap}) reached - the newest blocks were left out of openHop")
-        wd = self._build_wardrive()
-        main = self._not_own(wd + self._build_main(max(0, cap - len(tail) - len(wd))))
+        main = wd + self._not_own(self._build_main(max(0, cap - len(tail) - len(wd))))
         return main, tail
 
     @staticmethod
