@@ -2,6 +2,17 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.4 (FloodGuard 1.2)
+### FloodGuard 1.2: interference on the channel
+- **Interference watch.** openHop measures the noise on the radio channel every 30 seconds; FloodGuard now reads those measurements (and the last week of them at start), learns what's normal for this site over about six hours, and reports when the noise stays 10 dB or more above normal for five minutes. That's what a nearby transmitter that never stops looks like (faulty or non-compliant equipment, such as temporary traffic lights with an always-on carrier), or jamming.
+- **Says what it means.** The FloodGuard page, Health and Activity say how far above normal the noise is and roughly how much of its normal hearing range the repeater still has (each 6 dB roughly halves it). The menu shows "Noise" next to FloodGuard while it lasts.
+- **Records the evidence.** Each episode is kept with its start, length, peak level and how many packets were still heard, and **Copy the record** gives a plain summary with times in UTC and the frequency, to send to whoever looks after the equipment or to a radio regulator.
+- Short bursts (someone transmitting nearby for a minute or two), small drifts of a few dB, and floods (which raise the measured noise with traffic the radio can still decode) aren't reported. Hours with interference don't change what counts as normal.
+- On by default; the level is in FloodGuard's settings (Advanced). `tests/testinterference.py` covers it with a simulated always-on carrier.
+
+### SpamGuard 6.4
+- The Help page showed the wardriving section twice; now once.
+
 ## v6.3 (FloodGuard 1.1, unchanged)
 ### SpamGuard 6.3
 - **Replay guard: old messages sent again.** Some devices pick up channel messages and send them out again later, with their own clock (in one case measured on a Dutch mesh, about 823 days slow) and sometimes with the sender's name cut short, so one message arrives many times over. When a message turns up again that was first heard at least half a minute earlier, under the same name with a badly wrong clock or under a cut-short copy of the name, further copies of it from that name are held back for six hours. The original always went out first, the same text from anyone else is untouched, and anything new from that name still goes out.

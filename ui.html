@@ -547,6 +547,13 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">The busiest five minutes of each hour, last 24 hours: how much of the time this repeater's radio was receiving or sending packets. <span id="busyLead"></span></p>
   <div class="chart short" id="chartBusy" role="img"></div>
 </section>
+<section id="jamSec">
+  <div class="health-head"><h2>Interference on the channel</h2><span id="jamTag"></span></div>
+  <p class="lead" id="jamLead"></p>
+  <div class="legend"><span><i class="sw sw-c"></i>Noise above normal</span><span><i class="sw sw-x"></i>During interference</span></div>
+  <div class="chart short" id="chartJam" role="img"></div>
+  <div id="jamEps"></div>
+</section>
 <p class="explain norm-only" id="fgSetHint">FloodGuard sets its own limits from this repeater's traffic. To see or change them, switch on Advanced at the bottom of the menu.</p>
 <section id="fgSetSec" class="adv-block">
   <h2>FloodGuard settings</h2>
@@ -685,8 +692,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
   <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (on by default; it can be turned off on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. It first spends three days learning how busy this radio normally gets and how far packets normally travel, and only counts meanwhile; then it sets its own limits from that and checks them once a day. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
   <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. While it's on, FloodGuard also keeps fixed hop limits for unscoped flood packets (32 hops) and adverts (8 hops), the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. You can change both on its page, and 0 turns one off. In Monitor, FloodGuard only counts what it would have stopped.</p>
-  <h3>Wardriving pings</h3>
-  <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
+  <h3>Interference on the channel</h3>
+  <p>openHop measures the noise on the radio channel every 30 seconds. FloodGuard learns what's normal for this site over the first six hours and, when the noise stays well above it for five minutes, says so on its page, on Health and in Activity, with how much of its normal hearing range the repeater still has. A nearby transmitter that never stops (faulty or non-compliant equipment; some temporary traffic lights have done this on 868 MHz) or jamming are the usual causes. Nothing can be blocked, but every episode is recorded with its times and levels, and <strong>Copy the record</strong> gives you a summary to send to whoever looks after the equipment or to your radio regulator.</p>
   <h3>Wardriving pings</h3>
   <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
   <h3>Getting started</h3>
@@ -1149,7 +1156,7 @@ function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
-  renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
+  renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
@@ -1176,7 +1183,7 @@ function route(keepMenu){
   if(changed) window.scrollTo(0,0);
   if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
   route.ready=true;
-  if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); if(p==="floodguard") renderFloodPage(S); }
+  if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); if(p==="floodguard"){ renderFloodPage(S); renderJam(S); } }
 }
 window.addEventListener("hashchange",()=>route());
 document.querySelectorAll(".grp-h").forEach((b,i)=>{
@@ -1265,6 +1272,35 @@ document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closes
   fgView=b.dataset.v; try{ localStorage.setItem("sg.fgview",fgView); }catch(e){} if(S) renderOverview(S); });
 function fmtMins(t){ const m=Math.max(1,Math.round((Date.now()/1000-t)/60)); return m<90?`${m} min`:`${Math.round(m/60)} h`; }
 /* FloodGuard: the menu switch, the Overview callout, and its own page */
+/* Interference watch: on the FloodGuard page */
+function renderJam(d){
+  const m=d.metrics||{}, j=m.interference||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const dt=t=>new Date(t*1000).toLocaleString([],{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+  const mhz=j.freq?(j.freq>1e6?(j.freq/1e6).toFixed(3):Number(j.freq).toFixed(3))+" MHz":"the channel";
+  $("#jamTag").innerHTML=!j.enabled?"<span class='tag plain'>off</span>":j.since?"<span class='tag would'>interference now</span>":j.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>normal</span>";
+  let lead;
+  if(!j.enabled) lead="Switched off in FloodGuard's settings.";
+  else if(j.since) lead=`<strong>Something is drowning ${esc(mhz)}.</strong> The noise is ${Math.round(j.rise)} dB above this site's normal (${Math.round(j.current)} dBm against ${Math.round(j.baseline)} dBm) and has been for ${fmtMins(j.since)}, so this repeater hears only about ${j.range}% as far as usual. A nearby transmitter that never stops (faulty or non-compliant equipment, such as some temporary traffic lights) or jamming usually causes this. Nothing can be blocked; the episode is being recorded below.`;
+  else if(j.learning) lead="openHop measures the noise on the channel every 30 seconds. FloodGuard is learning what's normal for this site, which takes about six hours.";
+  else lead=`Normal noise here is about ${Math.round(j.baseline)} dBm${j.current!=null?`; now ${Math.round(j.current)} dBm`:""}. FloodGuard reports it when the noise stays ${j.level} dB or more above normal for five minutes, as a nearby transmitter that never stops would cause.`;
+  $("#jamLead").innerHTML=lead;
+  const base=j.baseline;
+  const rows=(m.hourly||[]).map(r=>{ const up=base!=null&&r.nf!=null?Math.max(0,Math.round(r.nf-base)):0;
+    return {f:r.ie?up:0,c:r.ie?0:up,label:hh(r.t),full:hh(r.t),db:r.nf==null?null:Math.round(r.nf),
+      tip:r.nf==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: noise ${Math.round(r.nf)} dBm${base!=null?`, ${up} dB above normal`:""}${r.ie?" (interference)":""}`}; });
+  if(PAGE==="floodguard"){
+    columns($("#chartJam"),rows.map(r=>({...r,x:r.f,f:0,up:r.c+r.f})),{every:6,col:"Hour",unit:" dB",segs:["c","x"],level:j.enabled&&base!=null?j.level:0,
+      cols:[["up","dB above normal"],["db","Noise (dBm)"]]});
+    $("#chartJam").setAttribute("aria-label",`Noise on the channel above this site's normal, per hour, last 24 hours. The numbers are in the table below.`);
+  }
+  const eps=j.episodes||[];
+  $("#jamEps").innerHTML=eps.length?`<h3>Recorded episodes</h3><div class="scroll"><table><tr><th>Started</th><th>Lasted</th><th class="num">At most above normal</th><th class="num">Packets heard</th></tr>`+
+    eps.map(e=>`<tr><td>${esc(dt(e.start))}</td><td>${Math.max(1,Math.round((e.end-e.start)/60))} min</td><td class="num">${e.peak_db} dB</td><td class="num">${e.heard_vs_usual!=null?e.heard_vs_usual+"% of usual":"–"}</td></tr>`).join("")+
+    `</table></div><div class="inline-form"><button class="quiet" type="button" id="jamCopy">Copy the record</button><span class="explain" style="margin-left:10px">Times, levels and frequency, to send to whoever looks after the equipment or to your radio regulator.</span></div>`:"";
+  const cp=$("#jamCopy"); if(cp) cp.onclick=()=>{ const t=`Interference recorded by a MeshCore repeater on ${mhz} (normal noise about ${Math.round(base)} dBm):\n`+
+    eps.map(e=>`${new Date(e.start*1000).toISOString().replace("T"," ").slice(0,16)} UTC, ${Math.max(1,Math.round((e.end-e.start)/60))} min, up to ${e.peak_db} dB above normal`).join("\n");
+    navigator.clipboard.writeText(t).then(()=>toast("Copied"),()=>toast("Couldn't copy",true)); };
+}
 /* Wardriving pings: on the Channels page */
 function renderWardrive(d){
   const m=d.metrics||{}, w=m.wardrive||{}, a=m.d1||{}, wk=m.d7||{};
@@ -1279,7 +1315,8 @@ function renderFloodNav(d){
   const fg=(d.metrics||{}).floodguard||{};
   const st=!fg.enabled?["Off","plain"]:fg.limit?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];
   const bt=$("#fgBrandTag"); bt.textContent=st[0]; bt.className="tag "+st[1];
-  badge("floodguard",fg.limit?"Flood":"",fg.limit?"warn":"plain");   // learning/on/off shows next to its name above
+  const jm=(d.metrics||{}).interference||{};
+  badge("floodguard",fg.limit?"Flood":jm.since?"Noise":"",fg.limit||jm.since?"warn":"plain");   // learning/on/off shows next to its name above
   const c=$("#fgCallout"); if(!c) return;
   c.innerHTML=fg.limit?`<div class="callout"><span><strong>FloodGuard is containing a flood${d.mode!=="protect"||d.paused?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`:"";
 }
