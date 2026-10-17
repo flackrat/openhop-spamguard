@@ -132,11 +132,11 @@ SETTINGS_META: list[dict] = [
     {"key": "floodguard", "group": "FloodGuard", "type": "bool",
      "risk": "While a flood is being contained, flood packets that have already travelled more hops than the limit are not passed on by this repeater, whoever sent them, except channel messages from people SpamGuard knows. A genuine long-distance message or path search can miss this repeater for those minutes. Direct (routed) messages, replies and acknowledgements are never touched.",
      "label": "FloodGuard: contain floods when the radio gets too busy",
-     "help": "Some floods aren't channel messages at all: encrypted packets with a new identity every time, sent over and over with long, padded routes. Nothing in them can be blocked by name or text. FloodGuard watches how busy this repeater's radio is instead, which a sender can't fake. When flood traffic keeps the radio busier than the limit below, it stops passing on flood packets that have already come a long way, tightening a step at a time while the flood lasts, and lifts by itself once the radio is quiet again. Off by default."},
+     "help": "Some floods aren't channel messages at all: encrypted packets with a new identity every time, sent over and over with long, padded routes. Nothing in them can be blocked by name or text. FloodGuard watches how busy this repeater's radio is instead, which a sender can't fake. When flood traffic keeps the radio busier than the limit below, it stops passing on flood packets that have already come a long way, tightening a step at a time while the flood lasts, and lifts by itself once the radio is quiet again. On by default; it spends its first three days learning this repeater's traffic and only counts meanwhile."},
     {"key": "flood_busy_percent", "group": "FloodGuard", "type": "int", "min": 5, "max": 90, "unit": "%",
      "risk": "Lower = steps in sooner, but a genuinely busy evening on a big mesh could trigger it. Higher = a flood has to fill more of the airtime before anything happens.",
      "label": "Step in when the radio is busier than",
-     "help": "How much of the time, over five minutes, this repeater's radio is receiving or sending packets. Ordinary traffic is usually a few percent. Only counts when most of it is flood traffic."},
+     "help": "How much of the time, over five minutes, this repeater's radio is receiving or sending packets. Ordinary traffic is usually a few percent. Only counts when most of it is flood traffic. Automatic: learnt as about twice this repeater's normal busy hour, and above the busiest genuine five minutes it has heard."},
     {"key": "flood_hop_floor", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 2, "max": 32,
      "risk": "Lower = a flood is squeezed harder, but more genuine traffic from further away misses this repeater while it lasts. Higher = gentler, but a flood with short routes isn't contained.",
      "label": "Never limit flood packets to fewer hops than",
@@ -148,11 +148,11 @@ SETTINGS_META: list[dict] = [
     {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Unscoped flood packets (sent without a region) that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
      "label": "Hop limit for unscoped flood packets (0 = off)",
-     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Recommended: 32, which genuine traffic never gets near (it usually takes 5 to 7 hops) but halves how far a padded flood can travel."},
+     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Automatic: about twice the longest routes this repeater normally hears, between 16 and 32 (32 until it has learnt). Genuine traffic usually takes 5 to 7 hops, so a padded flood can't run to openHop's 64-hop ceiling."},
     {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
-     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Recommended: 8, the same as MeshCore's own default."},
+     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt)."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
      "risk": "Stores channel messages (names and text) on the Pi for the days below. Public channel messages can be heard by anyone with a radio, but think before sharing the file: use 'names scrambled' when sending it to anyone.",
      "label": "Keep an evidence log",
@@ -308,7 +308,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
     "auto_lockdown": True,
-    "floodguard": False,
+    "floodguard": True,                   # on, but only counts until it has learnt this mesh (FG_LEARN_DAYS)
     "flood_busy_percent": 15,
     "flood_hop_floor": 8,
     "flood_calm_minutes": 10,
@@ -354,6 +354,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "state_file": "/var/lib/openhop_spamguard/state.json",
     **PRESETS["balanced"],
 }
+# FloodGuard settings it learns from this repeater's own traffic, and the range a learnt value stays in.
+FG_AUTO_KEYS = {"flood_busy_percent": (10, 40), "flood_max_unscoped": (16, 32), "flood_max_advert": (6, 16)}
+FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
@@ -1124,6 +1127,8 @@ class SpamGuard:
         self.fg: dict = {"limit": None, "since": 0.0, "last_step": 0.0, "mark": 0.0, "peak": 0.0, "episodes": 0,
                          "busy_since": 0.0, "calm_since": 0.0}
         self.fg_hops: dict[str, dict[int, int]] = {}   # hour -> {hop count: flood packets} outside floods
+        self.fg_adv: dict[str, dict[int, int]] = {}    # the same for adverts only
+        self.fg["learnt"] = {}
         self.radio: dict = {}         # openHop's radio settings, for airtime
         self.me: dict = {}            # this repeater: name, hash, location
         self.repeaters: dict = {"ts": 0, "list": []}   # repeaters openHop has heard adverts from
@@ -1167,6 +1172,10 @@ class SpamGuard:
         cfg.update(self.file_cfg)
         cfg.update(self.settings)
         cfg["sensitivity"] = sens
+        # FloodGuard's learnt values, for the settings you haven't set yourself
+        for k, v in ((getattr(self, "fg", None) or {}).get("learnt") or {}).items():
+            if k in FG_AUTO_KEYS and k not in self.settings and k not in self.file_cfg:
+                cfg[k] = v
         if cfg.get("mode") not in ("monitor", "protect"):
             cfg["mode"] = "monitor"
         channels = dict(cfg.get("channels") or {})
@@ -1276,9 +1285,13 @@ class SpamGuard:
         self.hist_mark = float(st.get("hist_mark") or 0)
         fg = st.get("floodguard") or {}
         if isinstance(fg, dict):
-            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes")})
+            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn")})
+            if not isinstance(self.fg.get("learnt"), dict):
+                self.fg["learnt"] = {}
             self.fg_hops = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("hops") or {}).items()
-                            if isinstance(v, dict) and int(k) > now - 2 * 86400}
+                            if isinstance(v, dict) and int(k) > now - 8 * 86400}
+            self.fg_adv = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("adv") or {}).items()
+                           if isinstance(v, dict) and int(k) > now - 8 * 86400}
         self.reset_at = float(st.get("reset_at") or 0)
         self.monitor_since = float(st.get("monitor_since") or 0)
         self.view_marks = {k: float(v) for k, v in (st.get("view_marks") or {}).items()}
@@ -1341,8 +1354,8 @@ class SpamGuard:
                     "held": list(self.held),
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
-                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes")},
-                                   "hops": self.fg_hops},
+                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn")},
+                                   "hops": self.fg_hops, "adv": self.fg_adv},
                     "reset_at": getattr(self, "reset_at", 0.0),
                     "monitor_since": getattr(self, "monitor_since", 0.0),
                     "view_marks": getattr(self, "view_marks", {}),
@@ -1562,7 +1575,7 @@ class SpamGuard:
             h["fx"] = h.get("fx", 0) + 1   # over a limit but passed on: Monitor, or before the rule landed
         if flood and not local:
             # Learnt only once it's clear the radio wasn't flooded at the time (see fg_decide).
-            self._hop_pending.append((ts, hour, hops))
+            self._hop_pending.append((ts, hour, hops, ptype == PAYLOAD_TYPE_ADVERT))
 
     def fg_load(self, now: float) -> tuple[float, float, int]:
         """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
@@ -1586,7 +1599,7 @@ class SpamGuard:
         quiet = 0.7 * float(self.cfg.get("flood_busy_percent") or 15)
         counts: dict[int, int] = {}
         for k, v in list(self.fg_hops.items()):
-            if int(k) < cut - 86400:
+            if int(k) < now - 8 * 86400:
                 del self.fg_hops[k]
             # Hours with a flood in them (or this hour, which may be starting one) don't say what's normal.
             elif int(k) >= cut - 3600 and float((self.hist.get(k) or {}).get("bz") or 0) < quiet:
@@ -1619,23 +1632,25 @@ class SpamGuard:
         # only while the radio is quiet, so a flood's padded routes never count as normal.
         calm = busy < 0.7 * float(c.get("flood_busy_percent") or 15) and not f.get("limit")
         while self._hop_pending and self._hop_pending[0][0] < now - self.FG_WINDOW:
-            _, hour, hops = self._hop_pending.popleft()
+            _, hour, hops, advert = self._hop_pending.popleft()
             if calm:
-                hh = self.fg_hops.setdefault(hour, {})
-                hh[hops] = hh.get(hops, 0) + 1
+                for store in (self.fg_hops, self.fg_adv) if advert else (self.fg_hops,):
+                    hh = store.setdefault(hour, {})
+                    hh[hops] = hh.get(hops, 0) + 1
         if not c.get("floodguard"):
             if f.get("limit"):
                 f["limit"] = None
                 self.note("FloodGuard is off, so its flood limit was removed")
                 return True
             return False
+        learnt = self.fg_learn(now)   # may set this mesh's own level and limits
         level, floor = float(c["flood_busy_percent"]), int(c["flood_hop_floor"])
         flooding = busy >= level and share >= self.FG_MIN_FLOOD_SHARE and n >= self.FG_MIN_PACKETS
         # The busier the radio, the tighter: two hops less for every five points above the level.
         reach = self.fg_reach()
         start = max(floor, (reach if reach is not None else self.FG_DEFAULT_REACH) + 1)
         target = max(floor, start - 2 * int((busy - level) // 5)) if flooding else None
-        changed = False
+        changed = learnt
         if flooding:
             f["calm_since"] = 0.0
             f["busy_since"] = f.get("busy_since") or now
@@ -1670,10 +1685,107 @@ class SpamGuard:
             self._important = True
         return changed
 
+    # ---- FloodGuard learning: how busy this radio normally gets and how far packets normally come
+    @staticmethod
+    def _quantile(counts: dict, q: float) -> Optional[int]:
+        total = sum(counts.values())
+        run = 0
+        for h in sorted(counts):
+            run += counts[h]
+            if run >= q * total:
+                return h
+        return max(counts) if counts else None
+
+    def fg_learnt_values(self, now: float) -> dict:
+        """What the last week of calm traffic says the automatic settings should be (only those it has
+        heard enough to judge), each kept inside its safe range."""
+        c = self.cfg
+        cut = max(now - 7 * 86400, float(self.fg.get("learn_start") or 0))   # nothing from before a re-learn
+        level = float(c.get("flood_busy_percent") or 15)
+        calm = lambda k: float((self.hist.get(k) or {}).get("bz") or 0) < 0.7 * level and not (self.hist.get(k) or {}).get("fc")
+        busy = sorted(float(v["bz"]) for k, v in self.hist.items()
+                      if int(k) >= cut and v.get("bz") is not None and float(v["bz"]) < level and not v.get("fc"))
+        def merged(store):
+            out: dict[int, int] = {}
+            for k, v in store.items():
+                if int(k) >= cut and calm(k):
+                    for h, n in v.items():
+                        out[h] = out.get(h, 0) + n
+            return out
+        hops, adv = merged(self.fg_hops), merged(self.fg_adv)
+        new = {}
+        if len(busy) >= 48:   # two days of hours, busiest five minutes of each
+            # Twice a normal busy hour, and comfortably above the busiest genuine five minutes it heard.
+            new["flood_busy_percent"] = round(max(2 * busy[int(0.9 * (len(busy) - 1))], 1.25 * busy[int(0.99 * (len(busy) - 1))]))
+        if sum(hops.values()) >= 500:
+            new["flood_max_unscoped"] = 2 * self._quantile(hops, 0.99)
+        if sum(adv.values()) >= 50:
+            new["flood_max_advert"] = self._quantile(adv, 0.99) + 2
+        return {k: max(FG_AUTO_KEYS[k][0], min(FG_AUTO_KEYS[k][1], int(v))) for k, v in new.items()}
+
+    FG_DAILY_STEP = {"flood_busy_percent": 5, "flood_max_unscoped": 4, "flood_max_advert": 2}
+
+    def fg_learn(self, now: float) -> bool:
+        """Three days of learning first (FloodGuard only counts meanwhile), then the automatic settings
+        are set from what this repeater heard, and checked again once a day, moving a little at a time.
+        A setting you set yourself is never changed. True when openHop's rules need to change."""
+        f, c = self.fg, self.cfg
+        if not f.get("learn_start"):
+            f["learn_start"] = now
+            if not f.get("welcomed"):
+                f["welcomed"] = 1
+                self.note(f"FloodGuard is on. For the next {FG_LEARN_DAYS} days it learns how busy this repeater's radio "
+                          "normally gets and how far packets normally travel, and only counts what it would stop. Then it "
+                          "sets its limits from that and starts acting. You can turn it off on the FloodGuard page.")
+        relearn = bool(f.get("relearn"))
+        if (not f.get("ready") or relearn) and now - float(f["learn_start"]) < FG_LEARN_DAYS * 86400:
+            return False
+        if f.get("learnt_at") and now - float(f["learnt_at"]) < 86400:
+            return False
+        new = self.fg_learnt_values(now)
+        first = not f.get("ready") or relearn
+        if first and not new and now - float(f["learn_start"]) < 7 * 86400 and not f.get("start_now"):
+            return False   # heard too little to judge yet: keep learning, for up to a week
+        learnt = f.setdefault("learnt", {})
+        if not first:   # after the first time (or a fresh start), small daily steps only
+            for k, v in list(new.items()):
+                old = learnt.get(k, DEFAULT_CONFIG[k])
+                step = self.FG_DAILY_STEP[k]
+                new[k] = max(old - step, min(old + step, v))
+        auto = {k: v for k, v in new.items() if k not in self.settings}
+        changed = {k: v for k, v in auto.items() if learnt.get(k) != v}
+        learnt.update(new)
+        f["learnt_at"] = now
+        f.pop("start_now", None)
+        words = {"flood_busy_percent": lambda v: f"steps in above {v}% busy",
+                 "flood_max_unscoped": lambda v: f"unscoped flood packets stop after {v} hops",
+                 "flood_max_advert": lambda v: f"adverts stop after {v} hops"}
+        if first and relearn:
+            f.pop("relearn", None)
+            what = "; ".join(words[k](auto.get(k, self.cfg.get(k))) for k in FG_AUTO_KEYS if k in auto)
+            self.note(f"FloodGuard has learnt this repeater's traffic again: {what or 'too little traffic to learn from, so it keeps the recommended values'}.")
+        elif first:
+            f["ready"] = now
+            what = "; ".join(words[k](self.cfg.get(k) if k in self.settings else auto.get(k, c.get(k)))
+                             + ("" if k in auto else " (yours)") for k in FG_AUTO_KEYS)
+            self.note(f"FloodGuard has learnt this repeater's traffic and now acts: {what}. Settings you set yourself are kept"
+                      + ("." if new else ". It heard too little to learn from, so it uses the recommended values."))
+        elif changed:
+            self.note("FloodGuard adjusted to this mesh's recent traffic: " + "; ".join(words[k](v) for k, v in changed.items()) + ".")
+        self.rebuild_cfg()
+        self._important = True
+        return True
+
     def fg_status(self) -> dict:
         c, f = self.cfg, self.fg
         reach = self.fg_reach()
+        ls = float(f.get("learn_start") or 0)
         return {"enabled": bool(c.get("floodguard")), "radio_known": bool(self.airtime_ms(40)),
+                "learning": bool(c.get("floodguard")) and (not f.get("ready") or bool(f.get("relearn"))),
+                "relearning": bool(f.get("relearn")),
+                "learn_start": ls or None, "learn_until": ls + FG_LEARN_DAYS * 86400 if ls else None,
+                "learn_days": FG_LEARN_DAYS, "learnt": dict(f.get("learnt") or {}), "learnt_at": f.get("learnt_at"),
+                "auto": sorted(k for k in FG_AUTO_KEYS if k not in self.settings and k not in self.file_cfg),
                 "busy": f.get("busy_now"), "flood_share": f.get("share_now"), "level": c.get("flood_busy_percent"),
                 "limit": f.get("limit") if c.get("floodguard") else None, "since": f.get("since") if f.get("limit") else None,
                 "peak": f.get("peak") if f.get("limit") else None, "episodes": int(f.get("episodes") or 0),
@@ -3302,7 +3414,7 @@ class SpamGuard:
         c = self.cfg
         if not c.get("floodguard"):
             return []
-        act = "drop" if c["mode"] == "protect" else "log_only"
+        act = "drop" if c["mode"] == "protect" and self.fg.get("ready") else "log_only"
         flood = {"field": "route_type", "op": "in", "value": [ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD]}
         rules = []
         lim = self.fg.get("limit")
@@ -4999,6 +5111,40 @@ class SpamGuard:
             elif op == "remove_channel":
                 self.extra_channels.pop(str(body.get("name", "")), None)
                 self.rebuild_cfg()
+            elif op == "fg_start_now":
+                if self.fg.get("ready"):
+                    raise ValueError("FloodGuard has already finished learning")
+                self.fg["start_now"] = True
+                self.fg_learn(time.time() if not self.fg.get("learn_start") else max(time.time(), float(self.fg["learn_start"])))
+                if not self.fg.get("ready"):   # fg_learn waits for enough data; you asked to start now
+                    self.fg.update(ready=time.time(), learnt_at=time.time())
+                    self.note("FloodGuard started acting before it finished learning, with the recommended values.")
+                self.sync_pending = True
+                msg = "FloodGuard now acts on floods"
+            elif op == "fg_relearn":
+                # Every FloodGuard setting back to FloodGuard's own, and three days of learning from scratch.
+                # It keeps protecting meanwhile (with the recommended values) if it was already acting.
+                for k in [m["key"] for m in SETTINGS_META if m["group"] == "FloodGuard" and m["key"] != "floodguard"]:
+                    self.settings.pop(k, None)
+                f = self.fg
+                f.update(learnt={}, learnt_at=None, learn_start=time.time(), limit=None)
+                if f.get("ready"):
+                    f["relearn"] = True
+                self.fg_hops.clear(); self.fg_adv.clear(); self._hop_pending.clear()
+                self.rebuild_cfg()
+                self.sync_pending = True
+                self.note(f"FloodGuard settings reset to its own values. It is learning this repeater's traffic again for "
+                          f"{FG_LEARN_DAYS} days" + (", and keeps protecting with the recommended values meanwhile." if f.get("relearn") else "."))
+                msg = f"FloodGuard is learning again for {FG_LEARN_DAYS} days"
+            elif op == "fg_auto":
+                k = str(body.get("key") or "")
+                if k not in FG_AUTO_KEYS:
+                    raise ValueError("that setting isn't learnt automatically")
+                self.settings.pop(k, None)
+                self.rebuild_cfg()
+                self.sync_pending = True
+                self.note(f"{META_BY_KEY[k]['label']}: back to automatic")
+                msg = "Back to automatic"
             elif op == "clear_auto":
                 # Hold each cleared block off, or the next decide() rebuilds it from the same evidence
                 # and it looks like the clear did nothing.
@@ -5089,7 +5235,7 @@ def load_page() -> str:
 
 ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
-           "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed",
+           "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source"}
 
