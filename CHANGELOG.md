@@ -1,5 +1,17 @@
 # Changelog
 
+SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
+
+## v6.2 (FloodGuard 1.1, unchanged)
+### SpamGuard 6.2
+- **Don't repeat wardriving pings** (Channels page, off by default). Wardriving apps such as MeshMapper send a ping with the phone's GPS position on `#wardriving` and log every repeater that echoes it, which maps precisely where each repeater can be heard. When on, this repeater still hears the pings but doesn't pass them on, so it isn't logged. Other channels, direct messages, adverts and path searches are untouched, and pings from this repeater's own companions still go out. The Channels page shows how many pings were heard and not repeated. More wardriving channels can be added by name or key (Advanced, Settings, Privacy).
+- If another channel openHop reads happens to share the wardriving channel's one-byte code, only messages that look like MeshMapper pings are held back on it, so chat there is never caught.
+- It's a privacy choice, so it's kept through Start again from scratch and is never part of a settings profile.
+- The trade-off is that the repeater drops off community coverage maps. It doesn't hide the repeater from direction-finding (fox hunting), its own adverts or route logs; the Help page explains.
+- **FloodGuard has its own version number,** shown next to its name in the menu, at the bottom of every page and on the FloodGuard page. Bug reports ask for both.
+- Fixed: saving a list setting (such as extra name patterns) could fail while writing its Activity note.
+- `tests/testwardrive.py` checks it against openHop's rule engine.
+
 ## v6.2
 - **Don't repeat wardriving pings** (Channels page, off by default). Wardriving apps such as MeshMapper send a ping with the phone's GPS position on `#wardriving` and log every repeater that echoes it, which maps precisely where each repeater can be heard. When on, this repeater still hears the pings but doesn't pass them on, so it isn't logged. Other channels, direct messages, adverts and path searches are untouched, and pings from this repeater's own companions still go out. The Channels page shows how many pings were heard and not repeated. More wardriving channels can be added by name or key (Advanced, Settings, Privacy).
 - If another channel openHop reads happens to share the wardriving channel's one-byte code, only messages that look like MeshMapper pings are held back on it, so chat there is never caught.
@@ -8,7 +20,8 @@
 - Fixed: saving a list setting (such as extra name patterns) could fail while writing its Activity note.
 - `tests/testwardrive.py` checks it against openHop's rule engine.
 
-## v6.1: FloodGuard learns your mesh
+## v6.1 (FloodGuard 1.1)
+### FloodGuard 1.1: learns your mesh
 - **On by default, learning first.** FloodGuard is now on for every repeater, but it spends its first three days learning: how busy this repeater's radio normally gets, and how far flood packets and adverts normally travel. Meanwhile it only counts what it would stop, even in Protect, and the FloodGuard page shows "Learning, day 1 of 3". Activity says when it starts and when it begins acting. **Start protecting now** skips the wait.
 - **Sets its own limits, and keeps them in step.** After learning it sets the level it steps in at (about twice a normal busy hour, and above the busiest genuine five minutes), the hop limit for unscoped flood packets (about twice the longest normal routes, 16 to 32 hops) and the hop limit for adverts (just past the furthest normal adverts, 6 to 16 hops). It checks them once a day against the last week of calm traffic and moves them a little at a time. Hours with a flood in them are never learnt from.
 - **Your values win.** A setting you change yourself is never touched again; **Back to automatic** hands it back. **Reset and learn again** puts every FloodGuard setting back to its own values and learns from scratch for three days, protecting with the recommended values meanwhile.
@@ -17,8 +30,9 @@
 - **Soak test** (`tests/soakfloodguard.py`, part of the test suite): days of simulated traffic, minute by minute, through FloodGuard and openHop's rule engine: a quiet rural mesh, a busy town mesh with an evening net, padded floods, short-route floods, on-off floods, a flood during the learning days, a long-distance mesh, a small flood on a busy mesh and an advert storm. No direct messages are ever held, genuine traffic held stays well under 1%, and padded floods are cut by 96 to 100%. Floods that start only a hop or two away are the one kind hop limits can't tell apart, and the test shows that too.
 - **Upgrading from 6.0:** FloodGuard values set by hand in 6.0 are cleared once, so every repeater starts learning from FloodGuard's own values (Activity says so). Whether FloodGuard is on or off is kept: anyone who turned it on learns for three days, anyone who turned it off keeps it off. Values set after upgrading are kept as usual.
 
-## v6.0: SpamGuard with FloodGuard
-**FloodGuard: floods of any kind, contained by airtime.** Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes, until a message arrives dozens of times and people give up on the channel. Nothing in them can be blocked by name or text, and their routes can be faked. What a sender can't fake is how busy your repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.
+## v6.0: SpamGuard with FloodGuard (FloodGuard 1.0)
+### FloodGuard 1.0: floods of any kind, contained by airtime
+Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes, until a message arrives dozens of times and people give up on the channel. Nothing in them can be blocked by name or text, and their routes can be faked. What a sender can't fake is how busy your repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.
 - **Steps in only during a real flood.** When the radio is busier than the level you set (15% over five minutes by default) for a minute, and most of that is flood traffic, flood packets that have already come further than this mesh's normal routes are not passed on. It learns how far flood packets normally travel from quiet hours.
 - **Tightens while it lasts, lifts by itself.** Two hops tighter every two minutes while the radio stays busy, never below a floor you set (8 hops by default), and removed once the radio has been quiet for ten minutes. Each step is noted in Activity.
 - **The mesh keeps working.** Direct (routed) messages, replies and acknowledgements are never touched, and channel messages from people SpamGuard knows always get through. FloodGuard never looks at who sent a packet or what it says. Each repeater protects its own airtime, so a flood is held to the area it is swamping.
@@ -27,7 +41,7 @@
 - **Hop limits like MeshCore's.** Settings has fixed hop limits for unscoped flood packets and for adverts, the same as MeshCore's `flood.max.unscoped` and `flood.max.advert` (openhop_repeater#426). They work with or without flood containment.
 - Off until you turn it on, and never switched on by applying a settings profile. In Monitor it only counts what it would have stopped. `tests/testfloodguard.py` checks it against openHop's own rule engine.
 
-**Also in 6.0**
+### SpamGuard 6.0
 - Quieter buttons (such as Keep until I remove it, and the lockdown times) now have a visible edge, so they read as buttons on touch screens too.
 - Based on the flood-control proposal from the Dutch MeshCore community (MeshCore #3278). Thank you.
 

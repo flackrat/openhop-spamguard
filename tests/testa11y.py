@@ -113,7 +113,7 @@ async def main():
     await pg.goto("http://127.0.0.1:18171/#/display"); await pg.wait_for_timeout(600); pass
     check("no script errors", not errs and not errs2, errs+errs2)
     # automated scan, every page, both themes, desktop and phone
-    PAGES=["overview","blocks","held","lockdown","floodguard","channels","messages","sources","health","updates","help","settings","evidence","display","exceptions","campaigns","activity"]
+    PAGES=["overview","blocks","held","lockdown","floodguard","channels","channels","messages","sources","health","updates","help","settings","evidence","display","exceptions","campaigns","activity"]
     for scheme in ("light","dark"):
       for vw,vh,mob in ((1280,900,False),(390,844,True)):
         ctx=await b.new_context(viewport={"width":vw,"height":vh},color_scheme=scheme,is_mobile=mob,has_touch=mob); pg,_=await setup(ctx)
