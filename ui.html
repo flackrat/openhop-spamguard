@@ -83,7 +83,7 @@ button,select,input,textarea{font:inherit;color:inherit}
 button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer;font-size:0.875rem}
 button:hover{border-color:var(--soft)}
 button.go{background:var(--signal);border-color:var(--signal);color:var(--signal-ink);font-weight:600}
-button.quiet{border-color:transparent;color:var(--soft);padding:5px 8px}
+button.quiet{border-color:var(--line);color:var(--ink);padding:5px 10px}
 button.quiet:hover{color:var(--ink);border-color:var(--line)}
 button.danger{color:var(--stop)}
 select,input,textarea{background:var(--panel);border:1px solid var(--field);border-radius:6px;padding:5px 8px;font-size:0.875rem}
@@ -105,6 +105,7 @@ textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;
 .tag.sus{background:var(--amber-tint);color:var(--amber-text)}
 .tag.ok{background:var(--signal-tint);color:var(--signal-text)}
 .tag.plain{background:var(--paper);color:var(--soft)}
+.tag.fg{background:color-mix(in srgb,var(--c-flood) 14%,transparent);color:var(--ink)}
 .msg-text{word-break:break-word}
 .msg-meta{color:var(--soft);font-size:0.8125rem}
 .route{font-family:ui-monospace,Consolas,monospace;font-size:0.78125rem}
@@ -460,7 +461,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <ul class="rows" id="blocks"></ul>
   <p class="more" id="blocksMore"></p>
   <div class="foldbar" id="blocksFold"></div>
-  <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
+  <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain" style="margin-left:10px">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
 </section>
 <section id="lockSec">
   <div class="health-head"><h2>Emergency: lockdown</h2><span id="lPill"></span></div>
@@ -676,7 +677,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3>Spam, not opinions</h3>
   <p>SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself) and never what people say. Blocks on message text only stop names SpamGuard doesn't know yet, last at most a week, and need at least 12 characters of a message. People it knows are never blocked for a message; if one of them copies or repeats something, only the extra copies are held back for a while. You can't mark a known person's message as spam.</p>
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
-  <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (off until you turn it on with the switch under the SpamGuard name in the menu, or on the <a href="#/floodguard">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. When flood traffic keeps it busier than the level in Settings for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
+  <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (off until you turn it on with the switch under the SpamGuard name in the menu, or on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. When flood traffic keeps it busier than the level in Settings for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
   <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. Settings also has fixed hop limits for unscoped flood packets and adverts, the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. In Monitor, FloodGuard only counts what it would have stopped.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
@@ -850,6 +851,12 @@ function renderBlocks(d){
       <div class="acts">${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
   };
   const items=list.map(item);
+  const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":d.mode==="protect"?"<span class='tag stop'>blocking</span>":"<span class='tag would'>watching only</span>";
+  const fgRow=(title,why)=>`<li><div><div class="what">${title}${fgEff}<span class="tag fg">FloodGuard</span></div><div class="why">${why}${adv&&fg.rules&&fg.rules.length?` <span class="rulenum">openHop rule ${fg.rules.join(", ")}</span>`:""}</div></div><div class="acts"><a href="#/floodguard" class="quietlink">FloodGuard</a></div></li>`;
+  const fgItems=[fg.limit?fgRow(`Flood packets from ${fg.limit} or more hops away`,`The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy with flood traffic. Direct messages and people SpamGuard knows still get through. Lifts by itself once the radio is quiet.`):"",
+    fg.unscoped?fgRow(`Unscoped flood packets from ${fg.unscoped} or more hops away`,"A fixed hop limit you set, like MeshCore's flood.max.unscoped."):"",
+    fg.advert?fgRow(`Adverts from ${fg.advert} or more hops away`,"A fixed hop limit you set, like MeshCore's flood.max.advert."):""].filter(Boolean);
+  items.unshift(...fgItems);
   fold("blocks","blocksFold",items,`<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`);
   const ded=d.summary.dedupe_rules;
   const wasOpen=!!document.querySelector("#blocksMore details[open]");
@@ -936,7 +943,7 @@ function renderAdvanced(d){
   if(!Object.keys(dirty).length) renderSettings(d);
 }
 
-function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit||""); }
+function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit?(/^[a-z]{2,}/.test(m.unit)?" "+m.unit:m.unit):""); }
 function profDiff(d,p){
   const cur=d.profiles.current, meta=Object.fromEntries(d.meta.map(m=>[m.key,m])), out=[];
   if(cur.sensitivity!==p.sensitivity) out.push(`Sensitivity: ${cur.sensitivity} → ${p.sensitivity}`);
@@ -1005,7 +1012,7 @@ function renderSettings(d){
     const vis=ms.filter(hit); shown+=vis.length; if(!vis.length) return "";
     const ch=ms.filter(m=>d.overridden.includes(m.key)).length;
     return `<details class="set-group" data-g="${esc(g)}" ${q||setOpen.has(g)?"open":""}><summary><h3>${esc(g)}</h3> <span class="explain">${ms.length} setting${ms.length===1?"":"s"}${ch?`, ${ch} changed by you`:""}</span></summary>`+vis.map(m=>settingRow(d,m)).join("")+`</details>`;}).join("")
-    +(!q||"floodguard flood".includes(q)||fgMeta.some(hit)?`<p class="explain set-more">FloodGuard's settings are on the <a href="#/floodguard">FloodGuard</a> page.</p>`:"")
+    +(!q||"floodguard flood".includes(q)||fgMeta.some(hit)?`<p class="explain set-more">FloodGuard's settings are on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page.</p>`:"")
     ||`<p class="empty">No setting matches “${esc(q)}”.</p>`;
   $("#setCount").textContent=q?`${shown} match`:"";
   document.querySelectorAll("#settings details.set-group").forEach(el=>el.addEventListener("toggle",()=>{ if(!q){ el.open?setOpen.add(el.dataset.g):setOpen.delete(el.dataset.g); } }));
@@ -1281,7 +1288,7 @@ function renderFloodPage(d){
   const rows=m.hourly.map(r=>({c:r.bz==null?0:Math.round(r.bz),label:hh(r.t),full:hh(r.t),af:r.af,
     tip:r.bz==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: busiest five minutes ${Math.round(r.bz)}%${r.af!=null?`, ${r.af}% of the hour's airtime was flood traffic`:""}`}));
   $("#busyLead").textContent=fg.enabled?`The dashed line is where FloodGuard steps in (${fg.level}%).`:"Measured whether FloodGuard is on or not.";
-  columns($("#chartBusy"),rows,{every:6,col:"Hour",unit:"%",level:fg.enabled?fg.level:0,cols:[["c","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
+  columns($("#chartBusy"),rows.map(r=>({...r,f:r.c,c:0})),{every:6,col:"Hour",unit:"%",segs:["f"],level:fg.enabled?fg.level:0,cols:[["f","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
   const pk=rows.reduce((b,r)=>r.c>b.c?r:b,rows[0]);
   $("#chartBusy").setAttribute("aria-label",m.hourly.some(r=>r.bz!=null)?`How busy the radio was, per hour, last 24 hours. Busiest: ${pk.c}% at ${pk.full}. The numbers are in the table below.`:"How busy the radio was: not measured yet.");
 }
