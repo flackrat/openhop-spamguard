@@ -38,6 +38,11 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:1.0625rem;letter-spacing:-.01em}
 .brand svg{flex:none}
 .brand small{font-weight:400;color:var(--soft);font-size:0.8125rem}
+.brand-fg{display:flex;align-items:center;gap:10px;font-size:0.875rem;font-weight:600;color:var(--ink);padding:0 8px 14px;margin-top:-8px}
+.brand-fg svg{flex:none}
+.brand-fg .fg-switch{margin-left:auto;font-weight:400}
+.brand-fg .fg-switch input:checked{background:var(--c-flood)}
+.brand-fg span{white-space:nowrap}
 .switch{display:flex;align-items:center;gap:8px;font-size:0.875rem;color:var(--soft);cursor:pointer;user-select:none}
 .switch input{appearance:none;width:38px;height:22px;border-radius:11px;background:var(--field);position:relative;margin:0;cursor:pointer;transition:background .15s}
 .switch input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--panel);transition:left .15s}
@@ -255,7 +260,7 @@ main{min-width:0}
 /* KPI tiles */
 .kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 0}
 body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
-@media (min-width:1300px){.kpis{grid-template-columns:repeat(6,minmax(0,1fr))}body.advanced .kpis{grid-template-columns:repeat(7,minmax(0,1fr))}}
+@media (min-width:1300px){.kpis,body.advanced .kpis{grid-template-columns:repeat(var(--n,6),minmax(0,1fr))}}
 @media (max-width:560px){.kpis,body.advanced .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .kpis a,.callout a,.quietlink{color:var(--signal)}
 .kpis div{background:var(--paper);border-radius:8px;padding:10px 12px;min-width:0}
@@ -301,7 +306,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
   .app{grid-template-columns:1fr}
   .side{position:fixed;left:0;top:0;z-index:20;width:260px;transform:translateX(-105%);transition:transform .18s;box-shadow:0 0 30px rgba(0,0,0,.25)}
   .side{height:100vh;height:100dvh;padding-bottom:calc(16px + env(safe-area-inset-bottom));overscroll-behavior:contain}
-  .side .brand{order:-2}
+  .side .brand{order:-3}
+  .side .brand-fg{order:-2}
   .side-adv{order:-1;margin:0 0 6px;border-bottom:1px solid var(--line);padding:2px 10px 12px}
   .callout .quietlink,.kpis a{display:inline-block;padding:8px 4px;margin:-8px -4px}
   .topbar .adv-pill{margin-left:auto;font-size:0.75rem;font-weight:650;padding:2px 8px;border-radius:9px;background:var(--signal-tint);color:var(--signal-text);display:none}
@@ -372,9 +378,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="app">
 <nav class="side" id="side" aria-label="SpamGuard menu">
   <div class="brand"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg><span>SpamGuard <small id="ver"></small></span></div>
+  <div class="brand-fg"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="var(--c-flood)" stroke-width="2"/><path d="M8 11.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0M8 15.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0" fill="none" stroke="var(--c-flood)" stroke-width="1.8" stroke-linecap="round"/></svg><span>FloodGuard</span>
+    <label class="switch fg-switch" title="Turn FloodGuard on or off"><input type="checkbox" id="fgToggle" aria-label="FloodGuard"><span id="fgToggleTxt" class="sr-only">Off</span></label></div>
   <a href="#/overview" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/></svg><span>Overview</span><b class="badge" id="nb-overview"></b></a>
   <div class="grp"><button class="grp-h" aria-expanded="true">Protection</button><div class="grp-b">
-    <a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/held" data-nav="held"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16v.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></svg><span>Possibly genuine</span><b class="badge" id="nb-held"></b></a><a href="#/channels" data-nav="channels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg><span>Channels</span><b class="badge" id="nb-channels"></b></a></div></div>
+    <a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/held" data-nav="held"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16v.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"/></svg><span>Possibly genuine</span><b class="badge" id="nb-held"></b></a><a href="#/channels" data-nav="channels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg><span>Channels</span><b class="badge" id="nb-channels"></b></a><a href="#/floodguard" data-nav="floodguard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0M3 15c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0"/></svg><span>FloodGuard</span><b class="badge" id="nb-floodguard"></b></a></div></div>
   <div class="grp"><button class="grp-h" aria-expanded="true">Monitoring</button><div class="grp-b">
     <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a href="#/campaigns" data-nav="campaigns" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span>Campaigns</span><b class="badge" id="nb-campaigns"></b></a><a href="#/activity" data-nav="activity" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Activity</span><b class="badge" id="nb-activity"></b></a></div></div>
   <div class="grp"><button class="grp-h" aria-expanded="true">System</button><div class="grp-b">
@@ -391,6 +399,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div id="moveCallout" aria-live="polite"></div>
 <div id="leakCallout"></div>
 <div id="heldCallout"></div>
+<div id="fgCallout"></div>
 <div class="callout" id="chHint" hidden><div><b>SpamGuard is only reading the Public channel.</b> Spam on other channels isn't caught until you add them. <a href="#/channels">Add channels</a></div></div>
 <div class="controls">
   <section>
@@ -412,7 +421,6 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
   <dl class="kpis" id="kpis"></dl>
 </section>
-<section class="fgcard" id="fgCard" hidden></section>
 <div class="chpick" id="chPick" hidden>
   <label for="chSel">Show the graphs for</label>
   <select id="chSel"></select>
@@ -422,7 +430,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h2 id="h24">Spam, last 24 hours</h2>
   <p class="lead">Per hour. Tap or hover a column for the numbers.</p>
   <div class="viewpick" id="viewPick" role="group" aria-label="What the graphs show" hidden>
-    <button type="button" data-v="both" aria-pressed="true">Spam and floods</button><button type="button" data-v="spam" aria-pressed="false">Spam</button><button type="button" data-v="floods" aria-pressed="false">Floods</button>
+    <button type="button" data-v="spam" aria-pressed="true">Spam</button><button type="button" data-v="both" aria-pressed="false">Spam and floods</button><button type="button" data-v="floods" aria-pressed="false">Floods</button>
   </div>
   <div class="legend" id="leg24"></div>
   <div class="chart" id="chart24" role="img"></div>
@@ -439,11 +447,6 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="chart short" id="chartHour" role="img"></div>
 </section>
 </div>
-<section id="busySec" hidden>
-  <h2>How busy the radio was</h2>
-  <p class="lead">The busiest five minutes of each hour, last 24 hours: how much of the time this repeater's radio was receiving or sending packets. <span id="busyLead"></span></p>
-  <div class="chart short" id="chartBusy" role="img"></div>
-</section>
 <section>
   <div class="health-head"><h2>Where the spam enters the mesh</h2><a href="#/sources" class="quietlink">Map and details</a></div>
   <p class="lead">The first repeater on each spam message's route, last 7 days.</p>
@@ -527,6 +530,32 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="scroll"><table id="activity"></table></div>
   <div class="foldbar" id="activityMore"></div>
 </section></div>
+<div class="page" data-page="floodguard">
+<section class="fgcard" id="fgCard"></section>
+<section>
+  <h2>Flood packets, last 24 hours</h2>
+  <p class="lead">Per hour. Flood packets FloodGuard stopped, and ones over a limit that were still passed on.</p>
+  <div class="legend"><span><i class="sw sw-f"></i>Stopped by FloodGuard</span><span><i class="sw sw-x"></i>Over the limit but let through (Monitor mode, or before the limit started)</span></div>
+  <div class="chart" id="chartFlood" role="img"></div>
+</section>
+<section id="busySec">
+  <h2>How busy the radio was</h2>
+  <p class="lead">The busiest five minutes of each hour, last 24 hours: how much of the time this repeater's radio was receiving or sending packets. <span id="busyLead"></span></p>
+  <div class="chart short" id="chartBusy" role="img"></div>
+</section>
+<section id="fgSetSec">
+  <h2>FloodGuard settings</h2>
+  <p class="lead">The defaults suit most repeaters. Each setting lists its side-effects; try changes in Monitor mode first.</p>
+  <div id="fgSettings"></div>
+  <div class="savebar"><button class="go saveSet">Save settings</button><button class="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
+</section>
+<section class="howto">
+  <h2>How FloodGuard works</h2>
+  <p>Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes until a message arrives dozens of times. Nothing in them can be blocked by name or text, and routes can be faked. What a sender can't fake is how busy this repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.</p>
+  <p>When flood traffic keeps the radio busier than the level above for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, tightening two hops at a time while the radio stays busy, never below the floor. It lifts by itself once the radio has been quiet for a while and notes each step in Activity. In Monitor it only counts.</p>
+  <p>It never looks at who sent a packet or what it says. Channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so ordinary messaging keeps working during a flood. Each repeater protects its own airtime, so a flood is held to the area it is swamping.</p>
+</section>
+</div>
 <div class="page" data-page="settings"><section id="profSec">
   <h2>Settings profiles</h2>
   <p class="lead">A profile is a saved set of detection settings (the sensitivity and every value you changed) that you can put back, or share with other operators as a small file. It never holds your channels, keys, exceptions, the mode or the evidence log, and nothing switches by itself.</p>
@@ -540,7 +569,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
   <div id="settings"></div>
-  <div class="savebar"><button class="go" id="saveSet">Save settings</button><button id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
+  <div class="savebar"><button class="go saveSet" id="saveSet">Save settings</button><button class="cancelSet" id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
   <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset settings to defaults</button> <span class="explain">Detection settings only; blocks, exceptions and the evidence log stay.</span></p>
 </section>
 <section>
@@ -647,7 +676,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3>Spam, not opinions</h3>
   <p>SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself) and never what people say. Blocks on message text only stop names SpamGuard doesn't know yet, last at most a week, and need at least 12 characters of a message. People it knows are never blocked for a message; if one of them copies or repeats something, only the extra copies are held back for a while. You can't mark a known person's message as spam.</p>
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
-  <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (off until you turn it on, on the Overview) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. When flood traffic keeps it busier than the level in Settings for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
+  <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (off until you turn it on with the switch under the SpamGuard name in the menu, or on the <a href="#/floodguard">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. When flood traffic keeps it busier than the level in Settings for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
   <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. Settings also has fixed hop limits for unscoped flood packets and adverts, the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. In Monitor, FloodGuard only counts what it would have stopped.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
@@ -943,39 +972,50 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
-function renderSettings(d){
-  const groups={};
-  d.meta.forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
-  const q=($("#setFind").value||"").trim().toLowerCase(), hit=m=>!q||(m.label+" "+m.help+" "+m.risk+" "+m.group).toLowerCase().includes(q);
-  let shown=0;
-  $("#settings").innerHTML=Object.entries(groups).map(([g,ms])=>{
-    const vis=ms.filter(hit); shown+=vis.length; if(!vis.length) return "";
-    const ch=ms.filter(m=>d.overridden.includes(m.key)).length;
-    return `<details class="set-group" data-g="${esc(g)}" ${q||setOpen.has(g)?"open":""}><summary><h3>${esc(g)}</h3> <span class="explain">${ms.length} setting${ms.length===1?"":"s"}${ch?`, ${ch} changed by you`:""}</span></summary>`+vis.map(m=>{
-    const v=d.settings[m.key], id="set_"+m.key; let ctl;
-    if(m.type==="bool") ctl=`<label class="switch"><input type="checkbox" id="${id}" data-k="${m.key}" ${v?"checked":""}> ${v?"On":"Off"}</label>`;
-    else if(m.type==="choice") ctl=`<select id="${id}" data-k="${m.key}">${m.choices.map(c=>`<option value="${c[0]}" ${c[0]===v?"selected":""}>${esc(c[1])}</option>`).join("")}</select>`;
-    else if(m.type==="list") ctl=`<textarea id="${id}" data-k="${m.key}" rows="2">${esc((v||[]).join("\n"))}</textarea>`;
-    else ctl=`<input type="number" id="${id}" data-k="${m.key}" value="${v}" min="${m.min}" max="${m.max}"> <span class="def">${m.unit==="s"?"seconds":(m.unit||"")}</span>`;
-    const changed=d.overridden.includes(m.key);
-    return `<div class="setting ${changed?"changed":""}" ${m.type==="list"?'style="grid-template-columns:1fr"':""}><div><label for="${id}">${esc(m.label)}${m.preset?" *":""}</label>
-      <p class="help">${esc(m.help)}</p><p class="risk"><b>Watch out:</b> ${esc(m.risk)}</p>
-      ${m.unit==="s"?`<p class="def">Currently ${esc(fmtDefault(m,v))}</p>`:""}</div><div class="ctl">${ctl}</div></div>`;
-  }).join("")+`</details>`;}).join("")||`<p class="empty">No setting matches “${esc(q)}”.</p>`;
-  $("#setCount").textContent=q?`${shown} match`:"";
-  document.querySelectorAll("#settings details.set-group").forEach(el=>el.addEventListener("toggle",()=>{ if(!q){ el.open?setOpen.add(el.dataset.g):setOpen.delete(el.dataset.g); } }));
-  document.querySelectorAll("#settings [data-k]").forEach(el=>el.addEventListener(el.type==="checkbox"?"change":"input",()=>{
+const FG_GROUP="FloodGuard";
+function settingRow(d,m){
+  const v=d.settings[m.key], id="set_"+m.key; let ctl;
+  if(m.type==="bool") ctl=`<label class="switch"><input type="checkbox" id="${id}" data-k="${m.key}" ${v?"checked":""}> ${v?"On":"Off"}</label>`;
+  else if(m.type==="choice") ctl=`<select id="${id}" data-k="${m.key}">${m.choices.map(c=>`<option value="${c[0]}" ${c[0]===v?"selected":""}>${esc(c[1])}</option>`).join("")}</select>`;
+  else if(m.type==="list") ctl=`<textarea id="${id}" data-k="${m.key}" rows="2">${esc((v||[]).join("\n"))}</textarea>`;
+  else ctl=`<input type="number" id="${id}" data-k="${m.key}" value="${v}" min="${m.min}" max="${m.max}"> <span class="def">${m.unit==="s"?"seconds":(m.unit||"")}</span>`;
+  const changed=d.overridden.includes(m.key);
+  return `<div class="setting ${changed?"changed":""}" ${m.type==="list"?'style="grid-template-columns:1fr"':""}><div><label for="${id}">${esc(m.label)}${m.preset?" *":""}</label>
+    <p class="help">${esc(m.help)}</p><p class="risk"><b>Watch out:</b> ${esc(m.risk)}</p>
+    ${m.unit==="s"?`<p class="def">Currently ${esc(fmtDefault(m,v))}</p>`:""}</div><div class="ctl">${ctl}</div></div>`;
+}
+function watchSettings(box,d){
+  box.querySelectorAll("[data-k]").forEach(el=>el.addEventListener(el.type==="checkbox"?"change":"input",()=>{
     const m=d.meta.find(x=>x.key===el.dataset.k);
     dirty[m.key]=el.type==="checkbox"?el.checked:m.type==="int"?Number(el.value):el.value;
     if(el.type==="checkbox") el.parentElement.lastChild.textContent=el.checked?" On":" Off";
     document.body.classList.add("dirty");
   }));
 }
+function renderSettings(d){
+  // FloodGuard's own settings live on its page; the on/off switch is in the menu and on that page.
+  const fgMeta=d.meta.filter(m=>m.group===FG_GROUP&&m.key!=="floodguard");
+  $("#fgSettings").innerHTML=fgMeta.map(m=>settingRow(d,m)).join("");
+  watchSettings($("#fgSettings"),d);
+  const groups={};
+  d.meta.filter(m=>m.group!==FG_GROUP).forEach(m=>(groups[m.group]=groups[m.group]||[]).push(m));
+  const q=($("#setFind").value||"").trim().toLowerCase(), hit=m=>!q||(m.label+" "+m.help+" "+m.risk+" "+m.group).toLowerCase().includes(q);
+  let shown=0;
+  $("#settings").innerHTML=Object.entries(groups).map(([g,ms])=>{
+    const vis=ms.filter(hit); shown+=vis.length; if(!vis.length) return "";
+    const ch=ms.filter(m=>d.overridden.includes(m.key)).length;
+    return `<details class="set-group" data-g="${esc(g)}" ${q||setOpen.has(g)?"open":""}><summary><h3>${esc(g)}</h3> <span class="explain">${ms.length} setting${ms.length===1?"":"s"}${ch?`, ${ch} changed by you`:""}</span></summary>`+vis.map(m=>settingRow(d,m)).join("")+`</details>`;}).join("")
+    +(!q||"floodguard flood".includes(q)||fgMeta.some(hit)?`<p class="explain set-more">FloodGuard's settings are on the <a href="#/floodguard">FloodGuard</a> page.</p>`:"")
+    ||`<p class="empty">No setting matches “${esc(q)}”.</p>`;
+  $("#setCount").textContent=q?`${shown} match`:"";
+  document.querySelectorAll("#settings details.set-group").forEach(el=>el.addEventListener("toggle",()=>{ if(!q){ el.open?setOpen.add(el.dataset.g):setOpen.delete(el.dataset.g); } }));
+  watchSettings($("#settings"),d);
+}
 var setOpen=new Set();
 $("#setFind").addEventListener("input",()=>{ if(S&&!Object.keys(dirty).length) renderSettings(S); else if(S) toast("Save or discard your changes first",true); });
 function clean(){ dirty={}; document.body.classList.remove("dirty"); }
-$("#saveSet").onclick=()=>{ const b=dirty; clean(); post("/settings",b); };
-$("#cancelSet").onclick=()=>{ clean(); renderSettings(S); toast("Changes discarded"); };
+document.querySelectorAll(".saveSet").forEach(b=>b.onclick=()=>{ const x=dirty; clean(); post("/settings",x); });
+document.querySelectorAll(".cancelSet").forEach(b=>b.onclick=()=>{ clean(); renderSettings(S); toast("Changes discarded"); });
 $("#histBtn").onclick=()=>{ if(!confirm("Clear the spam history?\n\nThe charts, Spam sources and Possibly genuine list start again from now. Blocks and settings are kept.")) return;
   $("#histBox").hidden=false; $("#histBtn").hidden=true; $("#histWord").value=""; $("#histGo").disabled=true; $("#histWord").focus(); };
 $("#histWord").oninput=()=>{ $("#histGo").disabled=$("#histWord").value.trim().toUpperCase()!=="RESET"; };
@@ -1032,7 +1072,7 @@ adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classLi
 $("#mapGuess").checked=store.get("sgguess")==="1";
 $("#mapGuess").onchange=e=>{ store.set("sgguess",e.target.checked?"1":"0"); if(S) renderSources(S); };
 
-function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
+function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle" && a.id!=="fgToggle"; }
 function renderUpdate(d){
   const u=d.update||{}; const st=u.status||{};
   let pill="", line="", issues="", btns="";
@@ -1091,8 +1131,8 @@ function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
-  renderNav(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
-  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } }
+  renderNav(d); renderFloodNav(d); renderFloodPage(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
+  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version;
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
   $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
@@ -1101,7 +1141,7 @@ function render(d, editing){
 /* ---------- menu and pages ---------- */
 const isDark=()=>{ const t=document.documentElement.dataset.theme; return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches); };
 const reduceMotion=()=>document.documentElement.dataset.motion==="reduce"||matchMedia("(prefers-reduced-motion: reduce)").matches;
-const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",channels:"Channels",messages:"Messages",sources:"Spam sources",
+const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",channels:"Channels",floodguard:"FloodGuard",messages:"Messages",sources:"Spam sources",
   campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help",display:"Display and accessibility"};
 const ADV_PAGES=["campaigns","activity","settings","exceptions","evidence"];
 let PAGE="overview";
@@ -1117,7 +1157,7 @@ function route(keepMenu){
   if(changed) window.scrollTo(0,0);
   if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
   route.ready=true;
-  if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); }
+  if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); if(p==="floodguard") renderFloodPage(S); }
 }
 window.addEventListener("hashchange",()=>route());
 document.querySelectorAll(".grp-h").forEach((b,i)=>{
@@ -1201,37 +1241,49 @@ function renderMove(d){
   else if(i.kind!=="plugin"&&mv.why_not&&/too old/.test(mv.why_not)) h=`<div class="callout"><span><strong>SpamGuard now runs as an openHop plugin.</strong> ${esc(mv.why_not)} This install keeps working in the meantime.</span></div>`;
   el.innerHTML=h;
 }
-var fgView=(()=>{ try{ return localStorage.getItem("sg.fgview")||"both"; }catch(e){ return "both"; } })();
+var fgView=(()=>{ try{ return localStorage.getItem("sg.fgview")||"spam"; }catch(e){ return "spam"; } })();
 document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#viewPick button"); if(!b) return;
   fgView=b.dataset.v; try{ localStorage.setItem("sg.fgview",fgView); }catch(e){} if(S) renderOverview(S); });
 function fmtMins(t){ const m=Math.max(1,Math.round((Date.now()/1000-t)/60)); return m<90?`${m} min`:`${Math.round(m/60)} h`; }
-/* FloodGuard: its card on the Overview and the radio busy chart */
-function renderFlood(m, hh){
-  const fg=m.floodguard||{}, card=$("#fgCard"), busySec=$("#busySec");
+/* FloodGuard: the menu switch, the Overview callout, and its own page */
+function renderFloodNav(d){
+  const fg=(d.metrics||{}).floodguard||{}, t=$("#fgToggle");
+  if(document.activeElement!==t) t.checked=!!fg.enabled;
+  $("#fgToggleTxt").textContent=t.checked?"On":"Off";
+  badge("floodguard",fg.limit?"Flood":fg.enabled?"On":"",fg.limit?"warn":"ok");
+  const c=$("#fgCallout"); if(!c) return;
+  c.innerHTML=fg.limit?`<div class="callout"><span><strong>FloodGuard is containing a flood${d.mode!=="protect"||d.paused?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`:"";
+}
+$("#fgToggle").onchange=e=>{ $("#fgToggleTxt").textContent=e.target.checked?"On":"Off"; post("/settings",{floodguard:e.target.checked}); };
+function renderFloodPage(d){
+  const m=d.metrics; if(!m) return;
+  const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   const fixed=[fg.unscoped?`unscoped flood packets stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
-  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.enabled?"<span class='tag ok'>on</span>":"<span class='tag plain'>off</span>"}</div>`;
+  const monitor=d.mode!=="protect"||d.paused;
+  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?"<span class='tag would'>containing a flood</span>":fg.enabled?"<span class='tag ok'>on</span>":"<span class='tag plain'>off</span>"}</div>`;
   if(!fg.radio_known){
     h+=`<p class="lead">FloodGuard needs openHop's radio settings to measure airtime, and SpamGuard hasn't been able to read them yet.</p>`;
   } else if(fg.limit){
-    h+=`<div class="callout"><span><strong>Containing a flood${S&&(S.mode!=="protect"||S.paused)?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.</span></div>`;
+    h+=`<div class="callout"><span><strong>Containing a flood${monitor?" (Monitor: only counting)":""}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.</span></div>`;
   } else {
-    h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}%, when most of that is flood traffic.`
-      :"Contains floods of any kind of packet, not just channel messages, by watching how busy this repeater's radio is. Off until you turn it on."}
-      ${fg.reach!=null?` Flood packets normally reach this repeater within ${fg.reach} hops.`:""}${fg.episodes?` Floods contained so far: ${fg.episodes}.`:""}</p>`;
+    h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}% when most of that is flood traffic.${monitor?" SpamGuard is in Monitor, so FloodGuard only counts.":""}`
+      :"Contains floods of any kind of packet, not just channel messages, by watching how busy this repeater's radio is. Off until you turn it on."}</p>`;
   }
-  if(fixed.length) h+=`<p class="explain">Hop limits in force all the time: ${esc(fixed.join("; "))}.</p>`;
-  h+=`<div class="switchrow">${fg.enabled?btn("Turn FloodGuard off","/settings",{floodguard:false},"quiet"):btn("Turn FloodGuard on","/settings",{floodguard:true},"go")}<a href="#/help" class="quietlink" onclick="setTimeout(()=>{const x=document.getElementById('help-floodguard'); if(x) x.scrollIntoView();},50)">How FloodGuard works</a><a href="#/settings" class="quietlink adv-only">FloodGuard settings</a></div>`;
-  card.innerHTML=h; card.hidden=false;
-  const rows=m.hourly.map(r=>({c:r.bz==null?0:Math.round(r.bz),label:hh(r.t),full:hh(r.t),
-    tip:r.bz==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: busiest five minutes ${Math.round(r.bz)}%${r.af!=null?`, ${r.af}% of the hour's airtime was flood traffic`:""}`,af:r.af}));
-  const any=m.hourly.some(r=>r.bz!=null);
-  busySec.hidden=!(any&&(fg.enabled||m.hourly.some(r=>r.fc)));
-  if(!busySec.hidden){
-    $("#busyLead").textContent=fg.enabled?`The dashed line is where FloodGuard steps in (${fg.level}%).`:"";
-    columns($("#chartBusy"),rows,{every:6,col:"Hour",unit:"%",level:fg.enabled?fg.level:0,cols:[["c","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
-    const pk=rows.reduce((b,r)=>r.c>b.c?r:b,rows[0]);
-    $("#chartBusy").setAttribute("aria-label",`How busy the radio was, per hour, last 24 hours. Busiest: ${pk.c}% at ${pk.full}. The numbers are in the table below.`);
-  }
+  const facts=[fg.reach!=null?`Flood packets normally reach this repeater within ${fg.reach} hops.`:"",fg.episodes?`Floods contained so far: ${fg.episodes}.`:"",
+    fixed.length?`Hop limits in force all the time: ${fixed.join("; ")}.`:""].filter(Boolean);
+  if(facts.length) h+=`<p class="explain">${esc(facts.join(" "))}</p>`;
+  h+=`<div class="switchrow">${fg.enabled?btn("Turn FloodGuard off","/settings",{floodguard:false},"quiet"):btn("Turn FloodGuard on","/settings",{floodguard:true},"go")}</div>`;
+  $("#fgCard").innerHTML=h;
+  if(PAGE!=="floodguard") return;   // charts are drawn at their real width, so only while the page is showing
+  columns($("#chartFlood"),m.hourly.map(r=>({f:r.fc||0,x:r.fx||0,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.fc||0} flood packets stopped, ${r.fx||0} over the limit let through`})),
+    {every:6,col:"Hour",segs:["f","x"],cols:[["f","Stopped"],["x","Let through"]]});
+  $("#chartFlood").setAttribute("aria-label",`Flood packets per hour, last 24 hours: ${m.d1.fc||0} stopped by FloodGuard. The numbers are in the table below.`);
+  const rows=m.hourly.map(r=>({c:r.bz==null?0:Math.round(r.bz),label:hh(r.t),full:hh(r.t),af:r.af,
+    tip:r.bz==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: busiest five minutes ${Math.round(r.bz)}%${r.af!=null?`, ${r.af}% of the hour's airtime was flood traffic`:""}`}));
+  $("#busyLead").textContent=fg.enabled?`The dashed line is where FloodGuard steps in (${fg.level}%).`:"Measured whether FloodGuard is on or not.";
+  columns($("#chartBusy"),rows,{every:6,col:"Hour",unit:"%",level:fg.enabled?fg.level:0,cols:[["c","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
+  const pk=rows.reduce((b,r)=>r.c>b.c?r:b,rows[0]);
+  $("#chartBusy").setAttribute("aria-label",m.hourly.some(r=>r.bz!=null)?`How busy the radio was, per hour, last 24 hours. Busiest: ${pk.c}% at ${pk.full}. The numbers are in the table below.`:"How busy the radio was: not measured yet.");
 }
 function renderOverview(d){
   renderMove(d);
@@ -1246,7 +1298,9 @@ function renderOverview(d){
     tile("Possibly genuine held, 24 h",fmtN((d.held||[]).length),(d.held||[]).length?`<a href="#/held">review</a>`:"none")+
     tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks","adv-tile")+
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`)+
-    ((m.floodguard||{}).enabled?tile("Flood packets stopped, 24 h",fmtN(a.fc||0),m.radio_known&&a.fs?`${fmtAir(a.fs)} of airtime saved`:`${fmtN(w.fc||0)} in 7 days`):"");
+    ((m.floodguard||{}).enabled?tile("Flood packets stopped, 24 h",fmtN(a.fc||0),m.radio_known&&a.fs?`${fmtAir(a.fs)} of airtime saved`:`${fmtN(w.fc||0)} in 7 days`,"adv-tile"):"");
+  // all tiles in one row on wide screens, however many there are
+  $("#kpis").style.setProperty("--n",String($("#kpis").querySelectorAll(":scope > div").length-(document.body.classList.contains("advanced")?0:$("#kpis").querySelectorAll(".adv-tile").length)));
   $("#kpiSince").textContent=m.since&&Date.now()/1000-m.since<7*86400?"Counting since "+new Date(m.since*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}):"";
   const hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   const g=chView(m), fg=m.floodguard||{};
@@ -1260,18 +1314,18 @@ function renderOverview(d){
   const sw=(k,t)=>`<span><i class="sw sw-${k}"></i>${t}</span>`;
   const day=t=>new Date(t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"});
   const pick=(r,when)=>view==="floods"
-    ?{c:r.fc||0,x:r.fx||0,tip:`${when}: ${r.fc||0} flood packets stopped, ${r.fx||0} over the limit let through`}
+    ?{f:r.fc||0,x:r.fx||0,tip:`${when}: ${r.fc||0} flood packets stopped, ${r.fx||0} over the limit let through`}
     :view==="both"
     ?{c:r.c,x:r.x,f:r.fc||0,tip:`${when}: ${r.c} spam stopped, ${r.x} let through, ${r.fc||0} flood packets stopped by FloodGuard`}
     :{c:r.c,x:r.x,tip:`${when}: ${r.c} stopped, ${r.x} let through${r.m!=null?`, ${r.m} messages`:""}`};
   $("#h24").textContent=view==="floods"?"Flood packets, last 24 hours":view==="both"?"Spam and floods, last 24 hours":"Spam, last 24 hours";
-  const leg=view==="floods"?sw("c","Stopped by FloodGuard")+sw("x","Over the limit but let through (Monitor mode, or before the limit started)")
+  const leg=view==="floods"?sw("f","Stopped by FloodGuard")+sw("x","Over the limit but let through (Monitor mode, or before the limit started)")
     :sw("c","Spam stopped")+sw("x","Spam let through (before a block started, or in Monitor mode)")+(view==="both"?sw("f","Flood packets stopped by FloodGuard"):"");
   $("#leg24").innerHTML=leg; $("#leg7").innerHTML=leg.replace(/ \([^)]*\)/g,"");
-  const cols=view==="floods"?[["c","Flood packets stopped"],["x","Let through"]]:null;
-  columns($("#chart24"),g.hourly.map(r=>({...pick(r,hh(r.t)),label:hh(r.t),full:hh(r.t)})),{every:6,col:"Hour",cols});
-  columns($("#chart7"),g.daily.map(r=>({...pick(r,day(r.t)),label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:day(r.t)})),{every:1,col:"Day",cols});
-  renderFlood(m, hh);
+  const cols=view==="floods"?[["f","Flood packets stopped"],["x","Let through"]]:null, segs=view==="floods"?["f","x"]:null;
+  columns($("#chart24"),g.hourly.map(r=>({...pick(r,hh(r.t)),label:hh(r.t),full:hh(r.t)})),{every:6,col:"Hour",cols,segs});
+  columns($("#chart7"),g.daily.map(r=>({...pick(r,day(r.t)),label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:day(r.t)})),{every:1,col:"Day",cols,segs});
+
   columns($("#chartHour"),g.by_hour.map((v,i)=>({c:v,x:0,label:String(i).padStart(2,"0"),full:`${String(i).padStart(2,"0")}:00 to ${String(i).padStart(2,"0")}:59`,tip:`${String(i).padStart(2,"0")}:00–${String(i).padStart(2,"0")}:59: ${v} spam`})),{every:6,col:"Time of day"});
   const f1=m.d1.fc||0, f7=m.d7.fc||0, fl=view==="both"?` FloodGuard stopped ${f1} flood packets in 24 hours, ${f7} in 7 days.`:"";
   $("#chart24").setAttribute("aria-label",view==="floods"?`Flood packets per hour, last 24 hours: ${f1} stopped by FloodGuard. The numbers are in the table below.`
@@ -1302,7 +1356,7 @@ function srcRows(list,actions){
 function niceMax(v){ if(v<=4) return 4; const p=Math.pow(10,Math.floor(Math.log10(v))); for(const k of [1,2,2.5,5,10]) if(k*p>=v) return k*p; return 10*p; }
 function barPath(x,y,w,h,r){ if(h<=0) return ""; r=Math.min(r,h,w/2); return `M${x},${y+h}V${y+r}Q${x},${y} ${x+r},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h}Z`; }
 function columns(el,rows,opt){
-  const W=el.clientWidth||600, H=el.clientHeight||140, L=30, B=18, T=8, base=H-B, segs=["c","x","f"];
+  const W=el.clientWidth||600, H=el.clientHeight||140, L=30, B=18, T=8, base=H-B, segs=opt.segs||["c","x","f"];
   const top=niceMax(Math.max(1,opt.level||0,...rows.map(r=>segs.reduce((t,k)=>t+(r[k]||0),0))));
   const band=(W-L)/rows.length, w=Math.max(2,Math.min(24,band*0.66));
   const y=v=>base-(v/top)*(base-T), u=opt.unit||"";
