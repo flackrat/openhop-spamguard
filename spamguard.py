@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.0"
+VERSION = "6.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -148,11 +148,11 @@ SETTINGS_META: list[dict] = [
     {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Unscoped flood packets (sent without a region) that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
      "label": "Hop limit for unscoped flood packets (0 = off)",
-     "help": "Always on while set, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Works even with FloodGuard's flood containment off."},
+     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Recommended: 32, which genuine traffic never gets near (it usually takes 5 to 7 hops) but halves how far a padded flood can travel."},
     {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
-     "help": "Always on while set. The same as MeshCore's flood.max.advert (8 in MeshCore): adverts that have already had this many hops are dropped. Works even with FloodGuard's flood containment off."},
+     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Recommended: 8, the same as MeshCore's own default."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
      "risk": "Stores channel messages (names and text) on the Pi for the days below. Public channel messages can be heard by anyone with a radio, but think before sharing the file: use 'names scrambled' when sending it to anyone.",
      "label": "Keep an evidence log",
@@ -312,8 +312,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "flood_busy_percent": 15,
     "flood_hop_floor": 8,
     "flood_calm_minutes": 10,
-    "flood_max_unscoped": 0,
-    "flood_max_advert": 0,
+    "flood_max_unscoped": 32,             # recommended; a value you saved yourself (including 0) is kept
+    "flood_max_advert": 8,
     "route_memory_days": 7,
     "evidence_log": False,
     "evidence_days": 7,
@@ -1120,6 +1120,7 @@ class SpamGuard:
         # sent by us?, stopped by FloodGuard?), the current limit, and the hops flood packets normally take.
         self.air: collections.deque = collections.deque()
         self._air_mark = 0.0
+        self._hop_pending: collections.deque = collections.deque(maxlen=20000)
         self.fg: dict = {"limit": None, "since": 0.0, "last_step": 0.0, "mark": 0.0, "peak": 0.0, "episodes": 0,
                          "busy_since": 0.0, "calm_since": 0.0}
         self.fg_hops: dict[str, dict[int, int]] = {}   # hour -> {hop count: flood packets} outside floods
@@ -1517,7 +1518,9 @@ class SpamGuard:
     def fg_over(self, hops: int, ptype: int, route: int) -> bool:
         """Whether one of FloodGuard's rules, as they stand now, covers a flood packet."""
         c = self.cfg
-        lim = self.fg.get("limit") if c.get("floodguard") else None
+        if not c.get("floodguard"):
+            return False
+        lim = self.fg.get("limit")
         u, a = int(c.get("flood_max_unscoped") or 0), int(c.get("flood_max_advert") or 0)
         return bool((lim and hops >= lim) or (u and route == ROUTE_FLOOD and hops >= u)
                     or (a and ptype == PAYLOAD_TYPE_ADVERT and hops >= a))
@@ -1557,9 +1560,9 @@ class SpamGuard:
             h["fs"] = round(h.get("fs", 0) + ms, 1)
         elif flood and sent and not local and self.fg_over(hops, ptype, route):
             h["fx"] = h.get("fx", 0) + 1   # over a limit but passed on: Monitor, or before the rule landed
-        if flood and not local and not self.fg.get("limit"):
-            hh = self.fg_hops.setdefault(hour, {})
-            hh[hops] = hh.get(hops, 0) + 1
+        if flood and not local:
+            # Learnt only once it's clear the radio wasn't flooded at the time (see fg_decide).
+            self._hop_pending.append((ts, hour, hops))
 
     def fg_load(self, now: float) -> tuple[float, float, int]:
         """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
@@ -1579,14 +1582,14 @@ class SpamGuard:
         """How many hops nearly all (95%) flood packets have travelled when they reach this repeater on an
         ordinary day, from the last 24 hours outside floods. None until it has heard enough to say."""
         now = time.time()
-        cut, this_hour = now - 86400, int(now // 3600 * 3600)
+        cut = now - 86400
         quiet = 0.7 * float(self.cfg.get("flood_busy_percent") or 15)
         counts: dict[int, int] = {}
         for k, v in list(self.fg_hops.items()):
             if int(k) < cut - 86400:
                 del self.fg_hops[k]
             # Hours with a flood in them (or this hour, which may be starting one) don't say what's normal.
-            elif int(k) >= cut - 3600 and int(k) != this_hour and float((self.hist.get(k) or {}).get("bz") or 0) < quiet:
+            elif int(k) >= cut - 3600 and float((self.hist.get(k) or {}).get("bz") or 0) < quiet:
                 for hops, n in v.items():
                     counts[hops] = counts.get(hops, 0) + n
         total = sum(counts.values())
@@ -1612,6 +1615,14 @@ class SpamGuard:
         if self.air:
             h = self.hist.setdefault(str(int(now // 3600 * 3600)), {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
             h["bz"] = max(float(h.get("bz") or 0), round(busy, 1))
+        # How far flood packets normally come: learnt from packets heard at least five minutes ago, and
+        # only while the radio is quiet, so a flood's padded routes never count as normal.
+        calm = busy < 0.7 * float(c.get("flood_busy_percent") or 15) and not f.get("limit")
+        while self._hop_pending and self._hop_pending[0][0] < now - self.FG_WINDOW:
+            _, hour, hops = self._hop_pending.popleft()
+            if calm:
+                hh = self.fg_hops.setdefault(hour, {})
+                hh[hops] = hh.get(hops, 0) + 1
         if not c.get("floodguard"):
             if f.get("limit"):
                 f["limit"] = None
@@ -1667,8 +1678,9 @@ class SpamGuard:
                 "limit": f.get("limit") if c.get("floodguard") else None, "since": f.get("since") if f.get("limit") else None,
                 "peak": f.get("peak") if f.get("limit") else None, "episodes": int(f.get("episodes") or 0),
                 "reach": reach, "floor": c.get("flood_hop_floor"),
-                "unscoped": int(c.get("flood_max_unscoped") or 0), "advert": int(c.get("flood_max_advert") or 0),
-                "rules": sorted(self.fg_rule_ids()) if (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
+                "unscoped": int(c.get("flood_max_unscoped") or 0) if c.get("floodguard") else 0,
+                "advert": int(c.get("flood_max_advert") or 0) if c.get("floodguard") else 0,
+                "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
 
     def _people_block(self, b: Optional[dict]) -> bool:
         return bool(b) and b["kind"] in ("hop", "suffix", "links", "lockdown")
@@ -3288,10 +3300,12 @@ class SpamGuard:
         They look only at how a packet travels (flood or direct, hops so far, adverts), never at who
         sent it or what it says. Direct (routed) packets are never touched."""
         c = self.cfg
+        if not c.get("floodguard"):
+            return []
         act = "drop" if c["mode"] == "protect" else "log_only"
         flood = {"field": "route_type", "op": "in", "value": [ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD]}
         rules = []
-        lim = self.fg.get("limit") if c.get("floodguard") else None
+        lim = self.fg.get("limit")
         if lim:
             rules.append({"id": self._rid("flood:limit"), "name": f"{RULE_PREFIX}flood-limit (floodguard, {lim}+ hops)",
                           "enabled": True, "if": {"all": [flood, {"field": "hop_count", "op": "gte", "value": int(lim)}]},
