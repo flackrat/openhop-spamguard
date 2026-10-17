@@ -64,7 +64,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.1"
+VERSION = "6.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -153,6 +153,15 @@ SETTINGS_META: list[dict] = [
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Hop limit for adverts (0 = off)",
      "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt)."},
+    # -- Privacy
+    {"key": "wardrive_block", "group": "Privacy", "type": "bool",
+     "risk": "This repeater stops appearing on wardriving coverage maps, which many people use to plan where repeaters are needed. Pings sent by this repeater's own companions still go out.",
+     "label": "Don't repeat wardriving pings",
+     "help": "Wardriving apps such as MeshMapper send a ping with the phone's GPS position on a wardriving channel and log every repeater that echoes it, building a precise map of where each repeater can be heard. When on, this repeater still hears those pings but doesn't pass them on, so it isn't logged. Nothing else is affected: other channels, direct messages, adverts and path searches work as normal. Off by default."},
+    {"key": "wardrive_channels", "group": "Privacy", "type": "list",
+     "risk": "Any channel listed here is no longer repeated at all, including chat on it.",
+     "label": "Wardriving channels",
+     "help": "One per line: a hashtag channel name (such as #wardriving) or a channel key. #wardriving is the one MeshMapper uses."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
      "risk": "Stores channel messages (names and text) on the Pi for the days below. Public channel messages can be heard by anyone with a radio, but think before sharing the file: use 'names scrambled' when sending it to anyone.",
      "label": "Keep an evidence log",
@@ -315,6 +324,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "flood_max_unscoped": 32,             # recommended; a value you saved yourself (including 0) is kept
     "flood_max_advert": 8,
     "route_memory_days": 7,
+    "wardrive_block": False,
+    "wardrive_channels": ["#wardriving"],
     "evidence_log": False,
     "evidence_days": 7,
     "evidence_dir": "/var/lib/openhop_spamguard/evidence",
@@ -360,7 +371,8 @@ FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix"}
+KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix",
+                 "wardrive_block", "wardrive_channels"}
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
 PROFILE_FORMAT = "spamguard-profile"
@@ -1571,6 +1583,14 @@ class SpamGuard:
         hops = len(parse_path(p.get("original_path")))
         m = self.FG_RULE_RE.match(str(p.get("drop_reason") or ""))
         stopped = bool(m) and int(m.group(1)) in self.fg_rule_ids()
+        wd_stopped = bool(m) and int(m.group(1)) in self.wardrive_rule_ids()
+        wd_heard = False
+        if ptype == PAYLOAD_TYPE_GRP_TXT and self.cfg.get("wardrive_block") and not local:
+            try:
+                first = int(str(p.get("payload") or "")[:2], 16)
+                wd_heard = any(channel_hash_byte(k) == first for k in self.wardrive_channels().values())
+            except ValueError:
+                pass
         self.air.append((ts, on_air, flood))
         if counted:
             return
@@ -1580,6 +1600,10 @@ class SpamGuard:
         h["ar"] = round(h.get("ar", 0) + on_air, 1)
         if flood:
             h["af"] = round(h.get("af", 0) + on_air, 1)
+        if wd_heard or wd_stopped:
+            h["wh"] = h.get("wh", 0) + 1
+        if wd_stopped:
+            h["ws"] = h.get("ws", 0) + 1
         if stopped:
             h["fc"] = h.get("fc", 0) + 1
             h["fs"] = round(h.get("fs", 0) + ms, 1)
@@ -1882,7 +1906,7 @@ class SpamGuard:
         hist = {k: v for k, v in self.hist.items() if int(k) >= shown_from} if shown_from else self.hist
         cut24, cut7 = now - 86400, now - 7 * 86400
         def tot(cut):
-            t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "l": 0, "fc": 0, "fx": 0, "fs": 0.0}
+            t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "l": 0, "fc": 0, "fx": 0, "fs": 0.0, "wh": 0, "ws": 0}
             for k, v in hist.items():
                 if int(k) >= cut - 3600:
                     for f in t:
@@ -1980,7 +2004,10 @@ class SpamGuard:
                 "public_error": self.public_reps.get("error"),
                 "me": self.me, "radio_known": bool(self.airtime_ms(40)),
                 "since": min((int(k) for k in hist), default=None),
-                "channels": per_ch, "channels_since": ch_since, "floodguard": self.fg_status()}
+                "channels": per_ch, "channels_since": ch_since, "floodguard": self.fg_status(),
+                "wardrive": {"enabled": bool(self.cfg.get("wardrive_block")), "channels": sorted(self.wardrive_channels()),
+                             "checked_text": sorted(self.wardrive_collisions()),
+                             "rules": sorted(self.wardrive_rule_ids()) if self.cfg.get("wardrive_block") else []}}
 
     LINK_KM = 130        # longest plausible single LoRa link between repeaters
     UNKNOWN_COST = 60    # cost of leaving a hop unplaced (no repeater with that code nearby)
@@ -3391,7 +3418,8 @@ class SpamGuard:
             if not self.stats.get("rule_limit_warned"):
                 self.stats["rule_limit_warned"] = 1
                 self.note(f"Rule limit ({cap}) reached - the newest blocks were left out of openHop")
-        main = self._not_own(self._build_main(cap - len(tail)))
+        wd = self._build_wardrive()
+        main = self._not_own(wd + self._build_main(max(0, cap - len(tail) - len(wd))))
         return main, tail
 
     @staticmethod
@@ -3410,6 +3438,55 @@ class SpamGuard:
         if key not in self.rule_ids:
             self.rule_ids[key] = self._new_id()
         return self.rule_ids[key]
+
+    # ---- wardriving pings
+    MAPPER_PREFIX = "@[MapperBot]"   # how MeshMapper pings start
+
+    def wardrive_channels(self) -> dict[str, str]:
+        """The wardriving channels to leave unrepeated, name -> key."""
+        out = {}
+        for v in self.cfg.get("wardrive_channels") or []:
+            v = str(v).strip()
+            if re.fullmatch(r"[0-9a-fA-F]{32}|[0-9a-fA-F]{64}", v):
+                out[v[:8].lower() + "..."] = v.lower()
+            elif v:
+                name = v if v.startswith("#") else "#" + v
+                out[name] = hashtag_secret(name)
+        return out
+
+    def wardrive_collisions(self) -> list[str]:
+        """Wardriving channels whose one-byte channel code is shared with a channel openHop can read. A packet
+        only carries that byte, so for those the rule also checks the message looks like a MeshMapper ping."""
+        known = dict(self.cfg.get("channels") or {})
+        known.update(getattr(self, "openhop_channels", {}) or {})
+        out = []
+        for name, key in self.wardrive_channels().items():
+            hb = channel_hash_byte(key)
+            if any(channel_hash_byte(k) == hb and k.lower() != key for k in known.values() if isinstance(k, str)):
+                out.append(name)
+        return out
+
+    def _build_wardrive(self) -> list[dict]:
+        """Don't repeat wardriving pings (off by default). Only readable messages on those channels; this
+        repeater's own companions are never affected (_not_own)."""
+        c = self.cfg
+        if not c.get("wardrive_block"):
+            return []
+        act = "drop" if c["mode"] == "protect" else "log_only"
+        clash = set(self.wardrive_collisions())
+        rules = []
+        for name, key in sorted(self.wardrive_channels().items()):
+            conds = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                     {"field": "channel_hash", "op": "equals", "value": key},
+                     {"field": "channel_decryptable", "op": "equals", "value": True}]
+            if name in clash:
+                conds.append({"field": "channel_message_body", "op": "starts_with", "value": self.MAPPER_PREFIX})
+            rules.append({"id": self._rid(f"wardrive:{key}"), "name": f"{RULE_PREFIX}wardriving pings on {name}",
+                          "enabled": True, "if": {"all": conds}, "then": {"action": act}})
+        return rules
+
+    def wardrive_rule_ids(self) -> set:
+        return {v for k, v in self.rule_ids.items() if k.startswith("wardrive:")}
 
     def _known_rule(self) -> dict:
         return {"id": self._rid("known:*"), "name": f"{RULE_PREFIX}known-people", "enabled": True,
@@ -4904,7 +4981,9 @@ class SpamGuard:
                 words = {"mode": {"monitor": "Monitor only", "protect": "Protect"},
                          "paused": {True: "Paused", False: "Resumed"}}
                 self.note("Changed: " + ", ".join(
-                    words.get(k, {}).get(v, f"{META_BY_KEY[k]['label'] if k in META_BY_KEY else k} = {v}") for k, v in new.items()))
+                    (words.get(k, {}).get(v) if not isinstance(v, (list, dict)) else None)
+                    or f"{META_BY_KEY[k]['label'] if k in META_BY_KEY else k} = {', '.join(map(str, v)) if isinstance(v, list) else v}"
+                    for k, v in new.items()))
             self.rebuild_cfg()
             self.snapshot_settings("changed on the page")
             self._save_state(force=True)
