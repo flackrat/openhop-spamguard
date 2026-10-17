@@ -59,6 +59,7 @@ check(busy>=15 and share>0.9, f"measures the radio as busy ({busy:.0f}%, {share:
 changed=g.fg_decide(t0+61)
 lim=g.fg.get("limit")
 check(changed and lim and 8<=lim<=8+8, f"steps in after a minute, just above normal reach (limit {lim})")
+check(g.fg_reach() in (5,6,7), f"the flood's padded routes don't count as normal: {g.fg_reach()}")
 g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(verdict(m,1,30)=="drop","a flood packet from 30 hops away is not passed on")
 check(verdict(m,0,30)=="drop","nor a scoped (transport) flood packet from 30 hops")
@@ -114,8 +115,14 @@ g.ingest([pkt(time.time()-5+i*0.1, 30) for i in range(5)])
 check(g.metrics()["hourly"][-1]["fx"]>=5,"and over-limit packets passed on are counted as let through")
 g.apply_settings({"mode":"protect"}); g.fg.update(limit=None)
 
-# ---- fixed hop limits (MeshCore's flood.max.unscoped and flood.max.advert), with containment off
-g.apply_settings({"floodguard":False,"flood_max_unscoped":16,"flood_max_advert":8})
+# ---- fixed hop limits (MeshCore's flood.max.unscoped and flood.max.advert)
+check(g.cfg["flood_max_unscoped"]==32 and g.cfg["flood_max_advert"]==8,"recommended hop limits come set: 32 unscoped, 8 adverts")
+g.apply_settings({"floodguard":False})
+g.last_sync=0; g.sync_pending=True; g.poll_once()
+check(not any("floodguard" in r["name"] for r in m.policy["policy_engine"]["rules"]),"FloodGuard off: no hop limits either")
+check(verdict(m,1,40)=="allow" and verdict(m,1,9,4)=="allow","nothing dropped by hops with FloodGuard off")
+g.apply_settings({"floodguard":True,"flood_max_unscoped":16})
+g.fg.update(limit=None)
 g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(verdict(m,1,16)=="drop","unscoped flood packet that has had 16 hops is dropped")
 check(verdict(m,1,15)=="allow","15 hops is fine")
@@ -125,6 +132,11 @@ check(verdict(m,1,7,4)=="allow","an advert from 7 hops gets through")
 check(verdict(m,2,40,4)=="allow","a direct packet is never touched")
 check(verdict(m,1,20,5,"Quarry Pete","Evening from the far valley")=="allow","known people's channel messages still pass the unscoped limit")
 
+# a value you saved yourself is kept, also 0 (off), and survives a restart
+g.apply_settings({"flood_max_advert":0}); g._save_state(force=True)
+gk=sg.SpamGuard(dict(g.file_cfg)); gk.refresh_openhop_info=lambda *a,**k: None
+check(gk.cfg["flood_max_advert"]==0 and gk.cfg["flood_max_unscoped"]==16,"your own values (including 0) are kept, not reset to the recommended ones")
+g.apply_settings({"flood_max_advert":8})
 # ---- saved across a restart
 g._save_state(force=True)
 g2=sg.SpamGuard(dict(g.file_cfg)); g2.radio=dict(RADIO); g2.refresh_openhop_info=lambda *a,**k: None

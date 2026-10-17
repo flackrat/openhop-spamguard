@@ -1,5 +1,9 @@
 # Changelog
 
+## v6.1
+- **FloodGuard's hop limits now come set to recommended values:** unscoped flood packets stop after 32 hops and adverts after 8 (MeshCore's own default for adverts). Genuine traffic usually takes 5 to 7 hops, so it's unaffected, but a flood padded with fake hops can no longer run to openHop's 64-hop ceiling. Any value you already saved yourself, including 0 for off, is kept.
+- The hop limits now apply while FloodGuard is on, like the rest of FloodGuard, so nothing changes on a repeater until you turn FloodGuard on. Change them, or set 0 to turn one off, on the FloodGuard page.
+
 ## v6.0: SpamGuard with FloodGuard
 **FloodGuard: floods of any kind, contained by airtime.** Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes, until a message arrives dozens of times and people give up on the channel. Nothing in them can be blocked by name or text, and their routes can be faked. What a sender can't fake is how busy your repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.
 - **Steps in only during a real flood.** When the radio is busier than the level you set (15% over five minutes by default) for a minute, and most of that is flood traffic, flood packets that have already come further than this mesh's normal routes are not passed on. It learns how far flood packets normally travel from quiet hours.
