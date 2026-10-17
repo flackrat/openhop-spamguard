@@ -3,8 +3,10 @@
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 
 > **Spam on your mesh, stopped at the door.** SpamGuard is anti-spam for MeshCore that works it out for itself. It spots spam floods as they happen and stops your repeater passing them on, so the rest of the mesh never hears them. No block lists to keep up, and your regulars keep chatting.
+>
+> **New in 6.0: FloodGuard.** Some floods aren't channel spam at all, just encrypted packets with a new identity every time and padded routes, repeated until the mesh is unusable. FloodGuard watches the one thing a flood can't fake, how busy your repeater's radio is, and holds back flood packets from far away until the airtime is back to normal. Direct messages are never touched.
 
-It runs inside [openHop](https://docs.openhop.dev/) as a plugin, watches the channel messages your repeater hears, and tells openHop not to pass spam on. It blocks spam *behaviour*, never people or opinions.
+It runs inside [openHop](https://docs.openhop.dev/) as a plugin, watches the channel messages and airtime your repeater hears, and tells openHop not to pass spam and floods on. It blocks spam *behaviour*, never people or opinions.
 
 ## Why it's different
 
@@ -17,6 +19,8 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
 - **Lockdown** for a heavy attack: for a while, only people it already knows get through. It starts by itself for 15 minutes during a big flood from many repeaters at once.
+- **FloodGuard (new in 6.0, off until you turn it on):** contains floods of any packet type by airtime, not identity. When flood traffic keeps the radio too busy, flood packets that have already come further than this mesh's normal routes aren't passed on, tightening a step at a time and lifting by itself when the radio is quiet. Known people's channel messages and all direct (routed) traffic still get through. The flood packets it stops appear on the same Overview graphs as the spam, in their own colour, with a chart of how busy the radio was.
+- **Hop limits like MeshCore's `flood.max.unscoped` and `flood.max.advert`** for openHop, set from SpamGuard's Settings ([openhop_repeater#426](https://github.com/openhop-dev/openhop_repeater/issues/426)).
 - **Settings profiles:** save a set of tuned settings, put it back later, or share it with other operators as a small file (never your channels, keys or exceptions).
 - **Spam, not opinions:** it stops how spam is sent, never what people say. Text blocks never stop people it knows, need a real chunk of a message (not a word or a name) and last at most a week, and a known person's message can't be marked as spam.
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
@@ -86,6 +90,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 A repeater is shared: anything it refuses to pass on disappears for everyone downstream, and they can't see why. So SpamGuard judges **behaviour, never opinions or people**.
 
 - **It blocks:** the same text sent under several names, made-up or disguised names, floods of repeats (including one name posting the same message again and again), and repeaters injecting spam campaigns.
+- **FloodGuard looks only at how packets travel:** flood or direct, how many hops they've come, and how busy the radio is. Never at who sent them or what they say, and only while a flood is actually swamping the airtime.
 - **It doesn't block** what someone says, or a named person for their views. Even the repeat guard only holds back *further copies of the repeated message*, for an hour; anything new that person says still goes out.
 - **Blocking a particular person is your app's job, not the repeater's.** There's deliberately no "block this person" button. MeshCore apps and sites such as MeshOS and MeshRank let each user block or hide a sender, repeater or channel for themselves. That only changes what *you* see, and the mesh still carries it, so it's the right place for "I don't want to read this person". SpamGuard deals with behaviour that harms everyone's channel, at the repeater, so it never travels further.
 - **"This is spam" and text blocks are for spam content**, not for silencing a point of view. Every automatic block expires once the spam stops.
