@@ -65,7 +65,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.4.3"
+VERSION = "6.5.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.1"
@@ -1094,6 +1094,13 @@ class SpamGuard:
         # Bytes per hop openHop is sending (its path.hash.mode: 1, 2 or 3), from the newest routed packets
         self.hash_size = 1
         self.hops_stale = 0          # route blocks not written this time because they were learnt at another size
+        # A mesh can mix hop sizes (each sender picks its own), so every size seen lately is remembered.
+        self.hop_sizes: dict[int, float] = {}
+        # Repeaters and room servers heard in adverts (full key -> when), to spot hop bytes they share
+        self.node_ids: collections.OrderedDict[str, float] = collections.OrderedDict()
+        self.hops_narrowed = 0       # route blocks whose shorter form was left out: another repeater shares it
+        self.hops_shared = 0         # 1-byte route blocks on a byte more than one known repeater uses
+        self._route_sig = None
         # How far behind real time openHop's packet list is: (when measured, seconds behind)
         self.lag_samples: collections.deque[tuple] = collections.deque(maxlen=200)
         self.use_filtered: Optional[bool] = None   # openHop's /api/filtered_packets available?
@@ -1477,6 +1484,7 @@ class SpamGuard:
             used.update((b.get("paths") or {}).values())
             used.update((b.get("allow_ids") or {}).values())
             used.update((b.get("ids") or {}).values())
+            used.update((b.get("size_ids") or {}).values())
         used.update(self.rule_ids.values())
         while self.next_rule_id in used:
             self.next_rule_id += 1
@@ -2262,6 +2270,14 @@ class SpamGuard:
             adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
         except ValueError:
             return
+        if adv and adv["type"] in (2, 3) and re.fullmatch(r"[0-9A-F]{64}", adv["key"] or ""):
+            try:
+                ts = float(p.get("timestamp") or time.time())
+            except (TypeError, ValueError):
+                ts = time.time()
+            self.node_ids[adv["key"]] = max(self.node_ids.pop(adv["key"], 0.0), ts)
+            while len(self.node_ids) > 5000:
+                self.node_ids.popitem(last=False)
         if not adv or adv["type"] not in (2, 3) or adv["lat"] is None:
             return
         if not (adv["lat"] or adv["lon"]) or abs(adv["lat"]) > 90 or abs(adv["lon"]) > 180:
@@ -2660,6 +2676,7 @@ class SpamGuard:
             e["blocked"] = any(f"hop:{c}" in self.blocks for c in e["codes"] + [e["code"]])
             e["typical_before"] = e["before"].most_common(1)[0][0] if e["before"] else 0
             del e["before"]
+            e["shared"] = self.code_share(e["code"], e["key"])
             out.append(e)
         names = {e["key"]: e for e in out}
         likely = {}
@@ -2671,6 +2688,24 @@ class SpamGuard:
                                 "exact": e["kind"] == "id" and e["code"] == code}
         return {"entries": out, "unplaced": unplaced, "likely": likely,
                 "learned": len(self._learned()), "advert_routes": len(self.adv_routes)}
+
+    def code_share(self, code: str, key: Optional[str] = None, now: Optional[float] = None) -> dict:
+        """Other repeaters heard here (in adverts, or in openHop's list) whose ID starts with this route
+        code, and how many of them have no location, so the map can say when a pin could be one of
+        several. Only repeaters this one has heard count: a short code is shared by many repeaters
+        across the country, but only those in radio range could have carried the spam. Works offline."""
+        if not code or code == "DIRECT":
+            return {"others": 0, "unlocated": 0}
+        now = time.time() if now is None else now
+        code = code.upper()
+        heard = {k for k, t in list(self.node_ids.items()) if t > now - self.NODE_ID_WINDOW and k.startswith(code)}
+        heard |= {str(r.get("key") or "") for r in list(self.repeaters.get("list") or [])
+                  if str(r.get("key") or "").startswith(code)}
+        heard.discard("")
+        if key:
+            heard.discard(key)
+        located = {r["key"] for r in self._cands(code)}
+        return {"others": len(heard), "unlocated": len(heard - located)}
 
     def repeaters_for(self, hop: str) -> list:
         """Repeaters openHop has heard adverts from whose key starts with this route code.
@@ -3644,34 +3679,45 @@ class SpamGuard:
         Rotation blocks contain 'allow' exceptions, so they go after your rules and never
         override anything you have set up yourself."""
         self.hops_stale = 0
+        self._route_prep()
         if self.cfg.get("paused"):
             return [], []
         tail: list[dict] = []
         for key, b in sorted(self.blocks.items(), key=lambda kv: kv[1]["id"]):
             if b["kind"] != "suffix":
                 continue
-            suf = [self._hop_at(h) for h in b["value"]]
-            if None in suf:
-                self.hops_stale += 1
-                continue
+            per = [self._hop_forms(h) for h in b["value"]]
+            sizes = [z for z in self._sizes_now if all(z in f for f, _, _ in per)]
+            self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
             ids = b.setdefault("allow_ids", {})
-            for o in sorted(self.allowed_origins(b))[: int(self.cfg["max_origins_per_route"])]:
-                oh = self._hop_at(o)
-                if oh is None:
-                    continue
-                if o not in ids:
-                    ids[o] = self._new_id()
-                tail.append({"id": ids[o], "name": f"{RULE_PREFIX}{key}:allow:{o}", "enabled": True,
+            origins = sorted(self.allowed_origins(b))[: int(self.cfg["max_origins_per_route"])]
+            for size in sizes:
+                suf = [f[size] for f, _, _ in per]
+                first = size == sizes[0]
+                tag = "" if first else f"@{size}"
+                for o in origins:
+                    # an exception only ever lets more through, so it is shortened freely
+                    oh = o.upper()[: 2 * size] if len(o) >= 2 * size else None
+                    if oh is None:
+                        continue
+                    if first:
+                        if o not in ids:
+                            ids[o] = self._new_id()
+                        aid = ids[o]
+                    else:
+                        aid = self._size_id(b, f"allow:{o}{tag}")
+                    tail.append({"id": aid, "name": f"{RULE_PREFIX}{key}:allow:{o}{tag}", "enabled": True,
+                                 "if": {"all": [
+                                     {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                                     {"field": "path_hashes", "op": "equals", "value": [oh] + suf}]},
+                                 "then": {"action": "allow"}})
+                tail.append({"id": b["id"] if first else self._size_id(b, str(size)),
+                             "name": f"{RULE_PREFIX}{key}{tag}" + self._rule_label(b), "enabled": True,
                              "if": {"all": [
                                  {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                                 {"field": "path_hashes", "op": "equals", "value": [oh] + suf}]},
-                             "then": {"action": "allow"}})
-            tail.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
-                         "if": {"all": [
-                             {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                             {"field": "hop_count", "op": "equals", "value": len(suf) + 1}]
-                             + [{"field": "path_hashes", "op": "contains", "value": h} for h in suf]},
-                         "then": {"action": self.rule_action(b)}})
+                                 {"field": "hop_count", "op": "equals", "value": len(suf) + 1}]
+                                 + [{"field": "path_hashes", "op": "contains", "value": h} for h in suf]},
+                             "then": {"action": self.rule_action(b)}})
         # Hard ceiling on everything SpamGuard writes, however many blocks a spam wave creates: too many
         # rules can overload openHop (a tester saw its database lock up at ~740 rules from a similar tool).
         # Repeater, links and lockdown blocks (and their known-people rule) come first; the main list,
@@ -3830,11 +3876,13 @@ class SpamGuard:
             if b["kind"] == "links":
                 conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
             elif b["kind"] == "hop":
-                hv = self._hop_at(b["value"])
-                if hv is None:
-                    self.hops_stale += 1
+                forms, nw, sh = self._hop_forms(b["value"])
+                self._route_count(nw, sh, bool(forms))
+                if not forms:
                     continue
-                conds = [("", [{"field": "path_hashes", "op": "contains", "value": hv}])]
+                first = min(forms)
+                conds = [("" if z == first else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": forms[z]}])
+                         for z in sorted(forms)]
             elif b["kind"] in ("text", "words"):
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
@@ -3875,7 +3923,7 @@ class SpamGuard:
     def rule_numbers(self, b: dict) -> list:
         """The openHop rule ids for a block. openHop's packet feed says "Policy blocked packet (rule N)"."""
         ids = list((b.get("ids") or {}).values()) if self.gated(b) else \
-            [b.get("id")] + list((b.get("paths") or {}).values())
+            [b.get("id")] + list((b.get("paths") or {}).values()) + list((b.get("size_ids") or {}).values())
         return sorted({i for i in ids if isinstance(i, int)})
 
     def _rule_label(self, b: dict) -> str:
@@ -3914,25 +3962,34 @@ class SpamGuard:
                 break
             if b["kind"] == "hop" and self.hop_mode(b) == "exact_paths":
                 for ps, pid in sorted((b.get("paths") or {}).items(), key=lambda kv: kv[1]):
-                    hops_now = [self._hop_at(h) for h in ps.split(">")]
-                    if None in hops_now:
-                        self.hops_stale += 1
-                        continue
-                    rules.append({"id": pid, "name": f"{RULE_PREFIX}{key}:{ps}" + self._rule_label(b), "enabled": True,
+                    per = [self._hop_forms(h) for h in ps.split(">")]
+                    sizes = [z for z in self._sizes_now if all(z in f for f, _, _ in per)]
+                    self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
+                    for size in sizes:
+                        first = size == sizes[0]
+                        tag = "" if first else f"@{size}"
+                        rules.append({"id": pid if first else self._size_id(b, f"{ps}{tag}"),
+                                      "name": f"{RULE_PREFIX}{key}:{ps}{tag}" + self._rule_label(b), "enabled": True,
+                                      "if": {"all": [
+                                          {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                                          {"field": "path_hashes", "op": "equals", "value": [f[size] for f, _, _ in per]}]
+                                          + self._channel_cond(b)},
+                                      "then": {"action": self.rule_action(b)}})
+                continue
+            if b["kind"] == "hop":
+                forms, nw, sh = self._hop_forms(b["value"])
+                self._route_count(nw, sh, bool(forms))
+                first = min(forms) if forms else None
+                for size in sorted(forms):
+                    tag = "" if size == first else f"@{size}"
+                    rules.append({"id": b["id"] if size == first else self._size_id(b, str(size)),
+                                  "name": f"{RULE_PREFIX}{key}{tag}" + self._rule_label(b), "enabled": True,
                                   "if": {"all": [
                                       {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                                      {"field": "path_hashes", "op": "equals", "value": hops_now}]
+                                      {"field": "path_hashes", "op": "contains", "value": forms[size]}]
                                       + self._channel_cond(b)},
                                   "then": {"action": self.rule_action(b)}})
                 continue
-            if b["kind"] == "hop":
-                hv = self._hop_at(b["value"])
-                if hv is None:
-                    self.hops_stale += 1
-                    continue
-                cond = {"all": [
-                    {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                    {"field": "path_hashes", "op": "contains", "value": hv}] + self._channel_cond(b)}
             elif b["kind"] == "words":
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 cond = {"all": [
@@ -4197,6 +4254,11 @@ class SpamGuard:
             if self.decide():
                 self.sync_pending = True
             if self.fg_decide():
+                self.sync_pending = True
+            sig = self.route_sig()
+            if sig != self._route_sig:
+                # hop sizes in use or shared hop bytes changed: rebuild (only written if the rules differ)
+                self._route_sig = sig
                 self.sync_pending = True
             self.jam_decide()
         self.last_poll_ok = time.time()
@@ -4734,14 +4796,88 @@ class SpamGuard:
         first = parse_path(p.get("original_path"))[:1]
         if first and len(first[0]) in (2, 4, 6):
             self.hash_size = len(first[0]) // 2
+            try:
+                ts = float(p.get("timestamp") or time.time())
+            except (TypeError, ValueError):
+                ts = time.time()
+            self.hop_sizes[self.hash_size] = max(self.hop_sizes.get(self.hash_size, 0.0), ts)
 
-    def _hop_at(self, value: str) -> Optional[str]:
-        """A learnt hop written at the size openHop sends now: its first bytes when it was learnt longer,
-        None when it was learnt shorter (it can't match, and learning writes it again)."""
-        n = 2 * self.hash_size
-        if len(value) == n:
-            return value
-        return value[:n] if len(value) > n else None
+    HOP_SIZE_WINDOW = 86400          # a hop size counts as in use for a day after it was last seen
+    NODE_ID_WINDOW = 14 * 86400      # a repeater heard in an advert counts for two weeks
+
+    def hop_sizes_in_use(self, now: Optional[float] = None) -> list[int]:
+        """Hop sizes routed packets used in the last day, plus the newest one. Each sender picks its own
+        size, so one mesh can carry 1-byte and 2-byte hops at once; route blocks are written at each."""
+        now = time.time() if now is None else now
+        sizes = {s for s, t in self.hop_sizes.items() if t > now - self.HOP_SIZE_WINDOW}
+        sizes.add(self.hash_size)
+        return sorted(sizes)
+
+    def _route_prep(self, now: Optional[float] = None):
+        """Before writing route rules: the sizes in use, and how many known repeaters start with each
+        1, 2 and 3-byte prefix (from their adverts)."""
+        now = time.time() if now is None else now
+        self._sizes_now = self.hop_sizes_in_use(now)
+        idx: collections.Counter = collections.Counter()
+        for k, t in self.node_ids.items():
+            if t > now - self.NODE_ID_WINDOW:
+                for n in (2, 4, 6):
+                    idx[k[:n]] += 1
+        self._id_index = idx
+        self.hops_narrowed = 0
+        self.hops_shared = 0
+
+    def route_sig(self, now: Optional[float] = None) -> tuple:
+        """What route rules depend on besides the blocks: the sizes in use and the hop bytes known repeaters use.
+        When it changes the rules are rebuilt (openHop's policy is only written if they differ)."""
+        now = time.time() if now is None else now
+        idx: collections.Counter = collections.Counter()
+        for k, t in self.node_ids.items():
+            if t > now - self.NODE_ID_WINDOW:
+                for n in (2, 4, 6):
+                    idx[k[:n]] += 1
+        return tuple(self.hop_sizes_in_use(now)), frozenset(idx)
+
+    def _hop_forms(self, value: str) -> tuple[dict[int, str], bool, bool]:
+        """A learnt hop at each size in use, as {size: hop}, plus (narrowed, shared).
+        A hop learnt longer is shortened, unless another repeater heard in adverts starts with those
+        same bytes: the short form would stop that repeater's traffic too, so it is left out (narrowed).
+        A hop already at a size that two or more known repeaters share is still written, being the only
+        form there is, and reported (shared). Nothing here ever makes a block match more repeaters."""
+        idx = getattr(self, "_id_index", None)
+        if idx is None:
+            idx = collections.Counter()
+        sizes = getattr(self, "_sizes_now", None) or [self.hash_size]
+        value = (value or "").upper()
+        forms: dict[int, str] = {}
+        narrowed = shared = False
+        for size in sizes:
+            n = 2 * size
+            if len(value) < n:
+                continue
+            form = value[:n]
+            if len(value) > n:
+                if idx[form] - idx[value[:6]] > 0:
+                    narrowed = True
+                    continue
+            elif idx[form] >= 2:
+                shared = True
+            forms[size] = form
+        return forms, narrowed, shared
+
+    def _route_count(self, narrowed: bool, shared: bool, written: bool):
+        if narrowed:
+            self.hops_narrowed += 1
+        if shared:
+            self.hops_shared += 1
+        if not written and not narrowed:
+            self.hops_stale += 1
+
+    def _size_id(self, b: dict, key: str) -> int:
+        sids = b.setdefault("size_ids", {})
+        if key not in sids:
+            sids[key] = self._new_id()
+        return sids[key]
 
     @staticmethod
     def _same_hop(a: str, b: str) -> bool:
@@ -4839,9 +4975,17 @@ class SpamGuard:
                             "Messages from your companion and some relayed packets are being lost. Check the Pi's power "
                             "and the radio's USB cable, and see if the radio is busy with interference.")
         if self.hops_stale:
-            warnings.append(f"{self.hops_stale} route block(s) were learnt when openHop sent hops of another size. They stay "
-                            f"off until that route is seen again at the current size ({self.hash_size}-byte hops). "
-                            "Check openHop's path hash mode if this doesn't clear.")
+            in_use = " and ".join(f"{z}-byte" for z in self.hop_sizes_in_use())
+            warnings.append(f"{self.hops_stale} route block(s) were learnt from shorter hops than the mesh is using now "
+                            f"({in_use} hops). They stay off until that route is seen again at a size in use.")
+        if self.hops_narrowed:
+            warnings.append(f"{self.hops_narrowed} route block(s) were not written in their shorter form, because another "
+                            "repeater this one has heard starts with the same bytes and would have been blocked too. "
+                            "They still apply to the longer hops they were learnt from.")
+        if self.hops_shared:
+            warnings.append(f"{self.hops_shared} route block(s) are on a 1-byte hop that more than one repeater heard here "
+                            "uses, so they may also stop traffic through those other repeaters. Blocks learnt from "
+                            "2-byte hops don't have this problem.")
         if self.rules_expected is not None and self.rules_seen is not None and self.rules_seen != self.rules_expected:
             warnings.append("openHop's rules don't match SpamGuard's. They will be put back within a minute.")
         if openhop_state and openhop_state not in ("active", "reloading", "activating"):
