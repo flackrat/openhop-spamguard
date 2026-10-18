@@ -1308,7 +1308,7 @@ function renderWardrive(d){
   h+=`<p class="lead">Wardriving apps such as MeshMapper send a ping with the phone's GPS position on ${esc((w.channels||["#wardriving"]).join(", "))} and log every repeater that echoes it, which builds a precise map of where this repeater can be heard. Not repeating those pings keeps this repeater off those maps. Everything else works as normal, and pings from this repeater's own companions still go out.</p>`;
   if(w.enabled) h+=`<p class="explain">${d.mode==="protect"&&!d.paused?"":"Monitor mode or paused: pings are still repeated for now. "}Last 24 hours: ${fmtN(a.wh||0)} ping${(a.wh||0)===1?"":"s"} heard, ${fmtN(a.ws||0)} not repeated (${fmtN(wk.ws||0)} in 7 days).${(w.checked_text||[]).length?` ${esc(w.checked_text.join(", "))} shares its channel code with a channel openHop reads, so only messages that look like MeshMapper pings are held back there.`:""}</p>`;
   h+=`<p class="explain">The trade-off: this repeater no longer shows up on community coverage maps, which people use to plan where repeaters are needed.</p>`;
-  h+=`<div class="switchrow">${w.enabled?btn("Repeat wardriving pings again","/settings",{wardrive_block:false},"quiet"):btn("Don't repeat wardriving pings","/settings",{wardrive_block:true},"go")}<a href="#/settings" class="quietlink adv-only">Wardriving channels</a></div>`;
+  h+=`<div class="switchrow">${w.enabled?btn("Repeat wardriving pings again","/settings",{wardrive_block:false},"quiet"):btn("Don't repeat wardriving pings","/settings",{wardrive_block:true},"go")}</div>`;
   $("#wdSec").innerHTML=h;
 }
 function renderFloodNav(d){
