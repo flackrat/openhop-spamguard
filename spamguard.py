@@ -65,7 +65,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.4.2"
+VERSION = "6.4.3"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.1"
@@ -169,11 +169,7 @@ SETTINGS_META: list[dict] = [
     {"key": "wardrive_block", "group": "Privacy", "type": "bool",
      "risk": "This repeater stops appearing on wardriving coverage maps, which many people use to plan where repeaters are needed. Pings sent by this repeater's own companions still go out.",
      "label": "Don't repeat wardriving pings",
-     "help": "Wardriving apps such as MeshMapper send a ping with the phone's GPS position on a wardriving channel and log every repeater that echoes it, building a precise map of where each repeater can be heard. When on, this repeater still hears those pings but doesn't pass them on, so it isn't logged. Nothing else is affected: other channels, direct messages, adverts and path searches work as normal. Off by default."},
-    {"key": "wardrive_channels", "group": "Privacy", "type": "list",
-     "risk": "Any channel listed here is no longer repeated at all, including chat on it.",
-     "label": "Wardriving channels",
-     "help": "One per line: a hashtag channel name (such as #wardriving) or a channel key. #wardriving is the one MeshMapper uses."},
+     "help": "Wardriving apps such as MeshMapper send a ping with the phone's GPS position on the #wardriving channel and log every repeater that echoes it, building a precise map of where each repeater can be heard. When on, this repeater still hears those pings but doesn't pass them on, so it isn't logged. Nothing else is affected: other channels, direct messages, adverts and path searches work as normal. Off by default."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
      "risk": "Stores channel messages (names and text) on the Pi for the days below. Public channel messages can be heard by anyone with a radio, but think before sharing the file: use 'names scrambled' when sending it to anyone.",
      "label": "Keep an evidence log",
@@ -343,7 +339,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "interference_watch": True,
     "interference_db": 10,
     "wardrive_block": False,
-    "wardrive_channels": ["#wardriving"],
     "evidence_log": False,
     "evidence_days": 7,
     "evidence_dir": "/var/lib/openhop_spamguard/evidence",
@@ -391,7 +386,7 @@ FG_LEARN_DAYS = 3
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
 KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix",
-                 "wardrive_block", "wardrive_channels"}
+                 "wardrive_block"}
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
 PROFILE_FORMAT = "spamguard-profile"
@@ -1094,6 +1089,8 @@ class SpamGuard:
         # openHop's transmit failures (packet times) and its newest successful transmit, to spot a dead radio
         self.tx_fails: collections.deque[float] = collections.deque(maxlen=50)
         self.tx_ok_at: Optional[float] = None
+        self.tx_oks: collections.deque[float] = collections.deque(maxlen=200)
+        self._power: tuple[float, Optional[dict]] = (0.0, None)   # (when checked, result of vcgencmd)
         # Bytes per hop openHop is sending (its path.hash.mode: 1, 2 or 3), from the newest routed packets
         self.hash_size = 1
         self.hops_stale = 0          # route blocks not written this time because they were learnt at another size
@@ -1627,6 +1624,7 @@ class SpamGuard:
             self.tx_fails.append(ts)       # openHop tried to send and the radio didn't
         elif sent:
             self.tx_ok_at = max(self.tx_ok_at or 0.0, ts)
+            self.tx_oks.append(ts)
         local = "rssi" in p and not p.get("rssi") and not p.get("snr") and not p.get("rx_radio_id")
         on_air = ms if local else ms * (2 if sent else 1)
         flood = route in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD)
@@ -3727,18 +3725,13 @@ class SpamGuard:
 
     # ---- wardriving pings
     MAPPER_PREFIX = "@[MapperBot]"   # how MeshMapper pings start
+    MAPPER_PREFIXES = ("@[MapperBot]", "MM:")   # MeshRank shows current MeshMapper pings as "MM:..."
+
+    WARDRIVE_CHANNEL = "#wardriving"   # the channel MeshMapper uses; not configurable
 
     def wardrive_channels(self) -> dict[str, str]:
-        """The wardriving channels to leave unrepeated, name -> key."""
-        out = {}
-        for v in self.cfg.get("wardrive_channels") or []:
-            v = str(v).strip()
-            if re.fullmatch(r"[0-9a-fA-F]{32}|[0-9a-fA-F]{64}", v):
-                out[v[:8].lower() + "..."] = v.lower()
-            elif v:
-                name = v if v.startswith("#") else "#" + v
-                out[name] = hashtag_secret(name)
-        return out
+        """The wardriving channel to leave unrepeated, name -> key."""
+        return {self.WARDRIVE_CHANNEL: hashtag_secret(self.WARDRIVE_CHANNEL)}
 
     def wardrive_collisions(self) -> list[str]:
         """Wardriving channels whose one-byte channel code is shared with a channel openHop can read. A packet
@@ -3765,10 +3758,17 @@ class SpamGuard:
             conds = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
                      {"field": "channel_hash", "op": "equals", "value": key},
                      {"field": "channel_decryptable", "op": "equals", "value": True}]
-            if name in clash:
-                conds.append({"field": "channel_message_body", "op": "starts_with", "value": self.MAPPER_PREFIX})
-            rules.append({"id": self._rid(f"wardrive:{key}"), "name": f"{RULE_PREFIX}wardriving pings on {name}",
-                          "enabled": True, "if": {"all": conds}, "then": {"action": act}})
+            if name not in clash:
+                rules.append({"id": self._rid(f"wardrive:{key}"), "name": f"{RULE_PREFIX}wardriving pings on {name}",
+                              "enabled": True, "if": {"all": conds}, "then": {"action": act}})
+                continue
+            # The engine only nests one level, so a shared channel code gets one rule per ping form.
+            for i, pre in enumerate(self.MAPPER_PREFIXES):
+                rid_key = f"wardrive:{key}" if i == 0 else f"wardrive:{key}:{i}"
+                rules.append({"id": self._rid(rid_key), "name": f"{RULE_PREFIX}wardriving pings on {name}",
+                              "enabled": True, "if": {"all": conds + [{"field": "channel_message_body",
+                                                                      "op": "starts_with", "value": pre}]},
+                              "then": {"action": act}})
         return rules
 
     def wardrive_rule_ids(self) -> set:
@@ -4696,6 +4696,30 @@ class SpamGuard:
             pause = min(pause * 2, 600)
 
     # ---- health ----
+    def send_counts(self, now: float) -> tuple[int, int]:
+        """(failed, sent) transmits in the last 15 minutes, as openHop reported them."""
+        return (sum(1 for t in self.tx_fails if t > now - 900),
+                sum(1 for t in self.tx_oks if t > now - 900))
+
+    def power_status(self, now: float) -> Optional[dict]:
+        """The Pi's power, from vcgencmd get_throttled (checked at most once a minute). None when this
+        isn't a Raspberry Pi or vcgencmd can't be run."""
+        when, res = self._power
+        if now - when < 60:
+            return res
+        res = None
+        try:
+            out = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=3).stdout
+            m = re.search(r"0x([0-9a-fA-F]+)", out)
+            if m:
+                bits = int(m.group(1), 16)
+                res = {"now": bool(bits & 0x1), "throttled_now": bool(bits & 0x4),
+                       "since_boot": bool(bits & 0x10000), "throttled_since_boot": bool(bits & 0x40000)}
+        except (OSError, subprocess.SubprocessError):
+            res = None
+        self._power = (now, res)
+        return res
+
     def radio_failing(self, now: float) -> int:
         """How many transmits failed in the last 15 minutes with none succeeding since the first of them
         (0 when the radio looks fine). Three or more in a row means the radio is gone, not a busy channel."""
@@ -4801,6 +4825,19 @@ class SpamGuard:
                             "the cable and the power supply (a weak supply often makes USB radios disconnect), then "
                             + ("restart openHop's container." if IN_DOCKER else
                                "restart openHop (sudo systemctl restart openhop-repeater)."))
+        power = self.power_status(now)
+        if power and power["now"]:
+            warnings.append("The Pi's power is too low right now (under-voltage). That makes USB devices drop off and "
+                            "transmits fail, so check the power supply first: use the official 5.1 V 3 A supply, "
+                            "a short good-quality USB cable, or a powered USB hub for the radio and any SDR dongle.")
+        elif power and power["since_boot"]:
+            warnings.append("The Pi's power dipped too low at some point since it booted. Radio drop-outs and failed "
+                            "transmits can come from that, so check the power supply if they keep happening.")
+        failed, sent = self.send_counts(now)
+        if not radio and failed >= 3 and failed * 5 >= failed + sent:
+            warnings.append(f"{failed} of {failed + sent} transmits failed in the last 15 minutes, though some got out. "
+                            "Messages from your companion and some relayed packets are being lost. Check the Pi's power "
+                            "and the radio's USB cable, and see if the radio is busy with interference.")
         if self.hops_stale:
             warnings.append(f"{self.hops_stale} route block(s) were learnt when openHop sent hops of another size. They stay "
                             f"off until that route is seen again at the current size ({self.hash_size}-byte hops). "

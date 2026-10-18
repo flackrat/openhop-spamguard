@@ -47,10 +47,14 @@ g.action("add_channel",{"name":nm}); sync(g)
 check(nm in "".join(g.cfg["channels"]) and "#wardriving" in g.wardrive_collisions(),f"spots the shared channel code ({nm})")
 check(act(m,sg.hashtag_secret(nm),"Chat on a channel that happens to share the code")=="allow","chat on the clashing channel still goes out")
 check(act(m,WD,PING)=="drop","pings are still held back")
+MM="MM:1BA-UDlxKQ"   # how MeshRank shows current MeshMapper pings (6.4.3)
+check(act(m,WD,MM)=="drop","on a clashing channel, the MM: form is held back too")
+check(act(m,sg.hashtag_secret("#chat"),MM)=="allow","an MM: message on an unrelated channel is not touched")
 
-# extra channels by name or key
-g.apply_settings({"wardrive_channels":["#wardriving","#wardrive"]}); sync(g)
-check(act(m,sg.hashtag_secret("#wardrive"),PING)=="drop","an extra wardriving channel by name works")
+# one fixed channel: no setting for others, and a saved list from an older version is ignored
+check("wardrive_channels" not in [m["key"] for m in sg.SETTINGS_META],"no channel list setting")
+check(list(g.wardrive_channels())==["#wardriving"],"only #wardriving is covered")
+check(act(m,sg.hashtag_secret("#wardrive"),PING)=="allow","an old extra channel is no longer covered")
 
 # counting
 rid=g.rule_ids[f"wardrive:{WD}"]

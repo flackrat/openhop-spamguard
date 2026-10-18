@@ -2,6 +2,14 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.4.3 (FloodGuard 1.2.1, unchanged)
+### SpamGuard 6.4.3
+- **Power warning.** Health now reads the Pi's power status with `vcgencmd get_throttled`. If the supply is dropping below its safe voltage right now, Health says so. If it has dipped since boot, Health says that instead. Low power is a common cause of a radio that drops out, which looks like missed sends. On a machine without `vcgencmd` nothing is shown.
+- **Intermittent transmit failures.** The radio warning only fired when every recent send failed. Health now also warns when a real share of transmits failed in the last 15 minutes, even if some got out, for example 3 failed out of 10. A few failures among many sends are not reported.
+- `tests/testradio.py` covers both warnings and the power readings.
+- **Wardriving on a shared channel code.** When a wardriving channel shares its one-byte code with another channel, the rule only held back pings that start with `@[MapperBot]`. Current MeshMapper pings also show up as `MM:...`, so those got through. The rule now holds back both forms. `tests/testwardrive.py` covers both.
+- **Wardriving is one switch.** The wardriving channel is fixed to #wardriving, the one MeshMapper uses, so the channel list setting is gone. A channel listed in an older version is no longer covered.
+
 ## v6.4.2 (FloodGuard 1.2.1, unchanged)
 ### SpamGuard 6.4.2
 - **Route blocks follow openHop's hop size.** openHop can send each hop as 1, 2 or 3 bytes (its `path.hash.mode`). Route blocks used to be matched against the size they were learnt at, so changing the mode quietly stopped them. They are now written at the size openHop sends now: a 2-byte hop learnt earlier counts as its 1-byte form when 1-byte hops are in use. A 1-byte block can't match 2-byte hops, so it stays off until that route is seen again, and Health says so. Allow exceptions for known origins follow the same rule.
