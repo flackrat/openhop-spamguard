@@ -2,6 +2,14 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
 
+## v6.5.0 (FloodGuard 1.2.1, unchanged)
+### SpamGuard 6.5.0
+- **Route blocks on a mesh that mixes hop sizes.** Each sender picks its own hop size, so a mesh can carry 1-byte and 2-byte hops at once (roughly half of UK repeaters now send 2-byte hops). Route blocks used to be written only at the size of the newest packet, so they missed traffic at the other size and were rewritten whenever the size flipped. They are now written at every size seen in the last day.
+- **Shared-ID check.** A 1-byte hop can belong to more than one repeater. SpamGuard now remembers the repeaters it hears in adverts, and a block learnt from a 2-byte hop is only shortened to 1 byte when no other repeater heard here shares that byte. Otherwise the short form is left out, so the block can't stop that other repeater's traffic, and it still applies to the 2-byte hops it was learnt from. A 1-byte block on a byte that more than one known repeater uses is kept, as it is the only form there is, and Health says so. This only ever makes blocks match fewer repeaters, never more. Works offline: it only uses adverts this repeater hears.
+- Health explains blocks left out for either reason. Rules are rebuilt when the hop sizes in use or the known repeaters change, and openHop's policy is only written when the rules differ.
+- `tests/testsharedid.py` checks all of this with openHop's own policy engine.
+- **Confidence on the spam map.** Each pin now says whether any other repeater heard here uses the same route code, and how many of those have no location. A pin with a shared code gets a dotted outer ring, and its popup says the spam may have come through one of the others instead. A pin with a unique code says so. Screen readers hear the same. Like the rest of the map, this only uses repeaters this one has heard. `tests/testmappins.py` checks it in a browser.
+
 ## v6.4.3 (FloodGuard 1.2.1, unchanged)
 ### SpamGuard 6.4.3
 - **Power warning.** Health now reads the Pi's power status with `vcgencmd get_throttled`. If the supply is dropping below its safe voltage right now, Health says so. If it has dipped since boot, Health says that instead. Low power is a common cause of a radio that drops out, which looks like missed sends. On a machine without `vcgencmd` nothing is shown.

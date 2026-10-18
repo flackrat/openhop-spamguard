@@ -1499,6 +1499,7 @@ function renderSources(d){
   else if(!placed.length) note="Spam routes recorded before this version, or routes through repeaters that haven't advertised a location, can't be placed yet. New spam will appear here.";
   else if(guesses) note=`Each circle is where spam entered the mesh, sized by spam in the last 7 days; red with a white centre means it is currently blocked. A dashed outline is a best guess: the first repeater on the route couldn't be identified, so the circle marks the nearest repeater SpamGuard could place.${un?` ${un} of ${tot} spam messages couldn't be placed at all.`:""} The teal dot is your repeater.`;
   else note=`${ents.length?"Each circle is where SpamGuard is sure spam entered the mesh: a repeater it has identified, or the area around a repeater that isn't on any list, placed from the known repeaters it hands the spam to. Sized by spam in the last 7 days; red with a white centre means it is currently blocked.":"SpamGuard isn't sure of any entry point yet."}${hidN+un?` ${hidN+un} of ${tot} spam messages came in through repeaters it couldn't place for certain, so they aren't shown. Turn on “Show best guesses too” to see roughly where those came from.`:""}${m.learned!=null?` Route codes learnt so far: ${m.learned} (from ${m.advert_routes} advert routes); this grows as adverts arrive.`:""} The teal dot is your repeater.`;
+  if(ents.some(e=>(e.shared||{}).others)) note+=" A dotted outer ring means another repeater heard here uses the same route code, so the spam could have come through that one instead.";
   if(m.sources.length&&meOk&&!m.map_directory) note+=" For repeaters too far away for your openHop to hear, turn on “Use the public MeshCore map for repeater locations” under Advanced > Settings.";
   else if(m.map_directory&&m.public_error&&!m.public_repeaters) note+=" The public MeshCore map couldn't be downloaded yet; SpamGuard will try again.";
   $("#mapNote").textContent=note;
@@ -1506,7 +1507,7 @@ function renderSources(d){
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false,keyboard:true,zoomAnimation:!reduceMotion(),fadeAnimation:!reduceMotion(),markerZoomAnimation:!reduceMotion()}); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
-    const sig=JSON.stringify([guesses,ents.map(e=>[e.key,e.d1,e.d7,e.blocked]),meOk?[me.lat,me.lon]:0]);
+    const sig=JSON.stringify([guesses,ents.map(e=>[e.key,e.d1,e.d7,e.blocked,(e.shared||{}).others||0,(e.shared||{}).unlocated||0]),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
@@ -1520,12 +1521,16 @@ function renderSources(d){
       const where=e.kind==="area"?`Spam entered the mesh around here. The first repeater isn't on any list (often the spammer's own), but it handed the spam to ${near}${e.spread_km!=null?`, typically ${e.spread_km} km from this point`:""}.${exact?"":" Only one known neighbour so far, so this is a best guess."}`
         :exact?"Spam entered the mesh at this repeater (learnt from the routes repeater adverts take)."
         :e.typical_before?`Best guess: spam entered the mesh about ${e.typical_before} hop${e.typical_before===1?"":"s"} before this repeater.`:"Best guess: spam entered the mesh at this repeater, but its route code is shared with others.";
+      const sh=e.shared||{}, shN=sh.others||0, shU=sh.unlocated||0;
+      const share=shN?`<br><i>Code ${esc(e.code)} is also used by ${shN} other repeater${shN===1?"":"s"} heard here${shU?`, ${shU} with no location`:""}, so the spam may have come through ${shN===1?"that one":"one of them"} instead.</i>`
+        :(e.kind!=="area"&&exact?"<br>No other repeater heard here uses this code.":"");
       const claim=(e.claims||[]).length?`<br><i>Also advertises as “${(e.claims||[]).map(esc).join("”, “")}” with a location its neighbours contradict.</i>`:"";
       const rot=e.codes.length>=3?`<br><i>The first repeater's code keeps changing (${e.codes.map(esc).join(", ")}): probably one sender changing identity.</i>`:`<br>First repeater code${e.codes.length>1?"s":""}: ${e.codes.map(esc).join(", ")}`;
       const mk=L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":(e.blocked?red:org),weight:2,dashArray:exact?null:"4 4",fillColor:e.blocked?red:org,fillOpacity:exact?.85:.45})
-       .bindPopup(`<b>${title}</b><br>${where}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${rot}<br>${e.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
+       .bindPopup(`<b>${title}</b><br>${where}${share}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${rot}<br>${e.blocked?"Blocked now":"Not blocked"}`).addTo(MAPLAYER);
+      if(shN) L.circleMarker([e.lat,e.lon],{radius:r+5,color:org,weight:2,dashArray:"2 5",fill:false,interactive:false}).addTo(MAPLAYER);
       if(e.blocked) L.circleMarker([e.lat,e.lon],{radius:Math.max(3,r/3.2),stroke:false,fillColor:"#fff",fillOpacity:1,interactive:false}).addTo(MAPLAYER);
-      keyMarker(mk,`${e.kind==="area"?"Unlisted repeater using code "+e.code:(e.name||"Repeater "+e.code)}: ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${exact?"":", best guess"}`);
+      keyMarker(mk,`${e.kind==="area"?"Unlisted repeater using code "+e.code:(e.name||"Repeater "+e.code)}: ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${exact?"":", best guess"}${shN?`, code also used by ${shN} other repeater${shN===1?"":"s"} heard here`:""}`);
       bounds.push([e.lat,e.lon]);
     });
     if(meOk){ const meMk=L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); keyMarker(meMk,"Your repeater"); bounds.push([me.lat,me.lon]); }
