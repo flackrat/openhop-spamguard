@@ -65,7 +65,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.0"
+VERSION = "6.5.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.1"
@@ -717,6 +717,11 @@ def name_score(name: str, patterns: list) -> int:
     # A device's default name is the start of its own key ("198EC9D5"): a person who hasn't
     # renamed their node. Counted less than a made-up name, but not ignored.
     if re.fullmatch(r"[0-9A-F]{8}|[0-9a-f]{8}", plain) and re.search(r"\d", plain) and re.search(r"[A-Fa-f]", plain):
+        score_cap = 2
+    elif score == 0 and plain.isalpha() and plain.isupper():
+        # Capital letters only, no digits ("BTCRWETN", "RCTMARK"): how people abbreviate a node or a
+        # club name. Few vowels and a run of consonants are normal there, so it counts a little, not as
+        # made-up. Generated names mix in digits or lower case, which still score fully.
         score_cap = 2
     else:
         score_cap = 6

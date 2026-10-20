@@ -14,6 +14,10 @@ for n in ["3FA9C2E1","b07e4d9a"]:
     s=sg.name_score(n,P); check(s==2,f"default device name {n} counts a little: {s}")
 for n in ["UD6DWREK","X7KQ2ZPW","QZL33NZ4","RWHRF8Y9","M7QJ42XV","QZ1ABC77"]:
     check(sg.name_score(n,P)>=3,f"made-up name {n} still counts: {sg.name_score(n,P)}")
+# Capital-letter abbreviations from a real #test conversation were being counted as spam let through
+for n in ["BTCRWETN","RCTMARK","BTCRWHMP","RCTMARK🐺","🛰BTCRWETN"]:
+    s=sg.name_score(n,P); check(s<3,f"capital-letter abbreviation {n} is not a made-up name: {s}")
+check(sg.name_score("BTCRWETN",[re.compile("BTCRWETN")])>=2,"a name you list as a pattern still counts")
 random.seed(5); A=string.ascii_uppercase+string.digits
 R=["".join(random.choice(A) for _ in range(8)) for _ in range(5000)]
 rate=sum(sg.name_score(n,P)>=3 for n in R)/len(R)

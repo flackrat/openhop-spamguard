@@ -1,6 +1,12 @@
 # Changelog
 
-SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes.
+SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
+
+## v6.5.1 (FloodGuard 1.2.1, unchanged)
+### SpamGuard 6.5.1
+- **Fewer false alarms from capital-letter names.** A sender name written in capital letters only, with no digits, such as a node or club abbreviation (BTCRWETN, RCTMARK), was being scored as made-up, so ordinary conversation from that name showed up as spam let through on the charts. Such names now count a little, not as made-up. Names with digits or mixed case, and any pattern you add yourself, are scored as before. `tests/testnames.py` covers it.
+- **Clearer chart legend.** The orange bars now read "Looked like spam but not blocked (no block in place yet, or Monitor mode)", which is what they count.
+- The release notes of v6.0, v6.1, v6.3, v6.4, v6.4.1, v6.4.2, v6.4.3 and v6.5.0 on GitHub were one-line stubs because the notes were looked up by an exact heading. They now show these full notes, and a stale duplicate v6.2 section was removed.
 
 ## v6.5.0 (FloodGuard 1.2.1, unchanged)
 ### SpamGuard 6.5.0
