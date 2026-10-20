@@ -16,12 +16,12 @@ if [ ! -d .openhop_core/src ]; then
     || { echo "could not fetch openhop_core source"; exit 2; }
 fi
 python3 -c "import Crypto" 2>/dev/null || pip install -q pycryptodome 2>/dev/null || pip install -q --break-system-packages pycryptodome
-TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testwardrive testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testnames testdocker testplugin testmigrate testpluginops"
+TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testwardrive testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testnames testdocker testplugin testmigrate testpluginops testupdsh"
 [ "${1:-}" = "--slow" ] && TESTS="$TESTS teststress"
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   [ -d .leaflet/node_modules/leaflet ] || (mkdir -p .leaflet && cd .leaflet && npm i -s leaflet@1.9.4 >/dev/null 2>&1)
   [ -d .axe/node_modules/axe-core ] || (mkdir -p .axe && cd .axe && npm i -s axe-core@4.10.2 >/dev/null 2>&1)
-  TESTS="$TESTS testguess testmappins testhist testa11y testchpick"
+  TESTS="$TESTS testguess testmappins testupdprog testhist testa11y testchpick"
 else
   echo "(skipping the browser test: Playwright or npm not available)"
 fi

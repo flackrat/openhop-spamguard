@@ -43,17 +43,26 @@ sys.path.insert(0, os.path.join(REPO, "tools")); import build_plugin
 d=os.path.join(TMP,"dist"); old=build_plugin.build(d)
 os.environ["SPAMGUARD_BUILD_VERSION"]="5.22.1"; new=build_plugin.build(d); del os.environ["SPAMGUARD_BUILD_VERSION"]
 storage=PluginStorage(os.path.join(TMP,"plugins")); storage.ensure_root(); rt=PluginRuntime(storage)
+PROG={"lines":[],"done":False}
 def plugins(h, method, path, q):
     def send(code,obj):
         b=json.dumps(obj).encode(); h.send_response(code); h.send_header("Content-Type","application/json"); h.end_headers(); h.wfile.write(b)
     try:
         n=int(h.headers.get("Content-Length") or 0); raw=h.rfile.read(n) if method=="POST" else b""
         if path=="/api/plugins": return send(200,{"success":True,"plugins":[{"id":i} for i in storage.list_plugin_ids()]})
+        if path=="/api/plugins/progress":
+            since=int(q.get("since",0)); body=b""
+            for ln in PROG["lines"][since:]: body+=b"data: "+json.dumps({"type":"line","line":ln}).encode()+b"\n\n"
+            if PROG["done"]: body+=b"data: "+json.dumps({"type":"done","state":"complete"}).encode()+b"\n\n"
+            h.send_response(200); h.send_header("Content-Type","text/event-stream"); h.send_header("Content-Length",str(len(body))); h.end_headers(); h.wfile.write(body); return
         if path=="/api/plugins/install":
+            for ln in ["Processing /tmp/up/openhop_spamguard.whl","Collecting pycryptodome>=3.20","  Downloading pycryptodome-3.20.0-cp37-abi3-manylinux.whl (2.1 MB)",
+                       "Installing collected packages: pycryptodome, openhop-spamguard","Successfully installed openhop-spamguard-5.22.1 pycryptodome-3.20.0"]:
+                PROG["lines"].append(ln); time.sleep(0.9)
             msg=email.message_from_bytes(b"Content-Type: "+h.headers["Content-Type"].encode()+b"\r\n\r\n"+raw)
             part=[p for p in msg.walk() if p.get_param("name",header="content-disposition")=="wheel"][0]
             dest=Path(TMP)/"up"/part.get_filename(); dest.parent.mkdir(exist_ok=True); dest.write_bytes(part.get_payload(decode=True))
-            rt.install_wheel(dest, load_manifest_from_wheel(dest)); return send(200,{"success":True})
+            rt.install_wheel(dest, load_manifest_from_wheel(dest)); PROG["done"]=True; return send(200,{"success":True})
         if path=="/api/plugins/restart":
             send(200,{"success":True}); threading.Thread(target=rt.restart,args=(json.loads(raw)["id"],),daemon=True).start(); return
         return send(404,{"success":False})
@@ -73,11 +82,26 @@ for _ in range(40):
     time.sleep(0.5)
 check(st and st["update"]["installer_ready"] and not st["update"]["managed_update"],"plugin offers its own Update button")
 pid0=rt._handles[man.id].process.pid
+samples=[]; sampling=threading.Event()
+def sampler():
+    while not sampling.is_set():
+        st=status()
+        if st and (st.get("update") or {}).get("status"): samples.append(dict(st["update"]["status"]))
+        time.sleep(0.25)
+threading.Thread(target=sampler,daemon=True).start()
 req=urllib.request.Request(f"http://127.0.0.1:{port}/install_update",data=json.dumps({"version":"5.22.1"}).encode(),method="POST",headers={"Content-Type":"application/json"})
 res=json.loads(urllib.request.urlopen(req,timeout=10).read()); check(res.get("ok"),"update accepted: "+str(res)[:80])
 t0=time.time()
 while time.time()-t0<300 and storage.current_version(man.id)!="5.22.1": time.sleep(2)
+sampling.set()
 check(storage.current_version(man.id)=="5.22.1","openHop installed the new version")
+pcts=[x.get("pct") for x in samples if x.get("pct") is not None]
+seen_lines=[l for x in samples for l in (x.get("lines") or [])]
+check(len(pcts)>=3 and pcts==sorted(pcts),"the percentage only goes up while updating: "+str(pcts[:20]))
+check(pcts and max(pcts)>=70 and max(pcts)<=99,"and gets well past halfway before the restart: "+str(max(pcts or [0])))
+check(any("Installing collected packages" in l for l in seen_lines),"the installer's own lines reach the page: "+str(seen_lines[:4]))
+check(all(len(x.get("lines") or [])<=2 for x in samples),"never more than the last two lines")
+check(any(x.get("state")=="running" and "installing the new version" in (x.get("message") or "") for x in samples),"the message says openHop is installing")
 up=None
 for _ in range(90):
     h=rt._handles.get(man.id)

@@ -33,14 +33,32 @@ while [ $# -gt 0 ]; do
 done
 [ "$(id -u)" = 0 ] || { echo "Run with sudo." >&2; exit 1; }
 
-status() {  # status STATE MESSAGE [FROM] [TO]
+LOG=$STATE/update-install.log
+status() {  # status STATE MESSAGE [FROM] [TO] [PERCENT]
   install -d -o repeater -g repeater "$STATE" 2>/dev/null || true
-  "$PY" - "$STATUS" "$1" "$2" "${3:-}" "${4:-}" <<'PY'
-import json, sys, time, os
-path, state, msg, frm, to = sys.argv[1:6]
+  "$PY" - "$STATUS" "$1" "$2" "${3:-}" "${4:-}" "${5:-}" "$LOG" <<'PY'
+import json, sys, time, os, re
+path, state, msg, frm, to, pct, log = sys.argv[1:8]
+out = {"state": state, "message": msg, "from": frm, "to": to, "ts": time.time()}
+if pct.isdigit():
+    out["pct"] = min(int(pct), 100)
+# The last two lines the installer printed, cleaned, so the page can show what it is doing.
+lines = []
+try:
+    if state in ("running", "failed") and os.path.exists(log):
+        with open(log, errors="replace") as f:
+            for raw in f.read().splitlines()[-40:]:
+                t = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", raw)
+                t = re.sub(r"\s+", " ", re.sub(r"[\x00-\x1f\x7f]+", " ", t)).strip()[:140]
+                if t:
+                    lines.append(t)
+except OSError:
+    pass
+if lines:
+    out["lines"] = lines[-2:]
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
-    json.dump({"state": state, "message": msg, "from": frm, "to": to, "ts": time.time()}, f)
+    json.dump(out, f)
 os.replace(tmp, path)
 PY
   chown repeater:repeater "$STATUS" 2>/dev/null || true
@@ -110,7 +128,8 @@ if [ "${TAG#v}" = "$CURRENT" ] && [ -z "$WANT" ]; then
   status done "Already up to date (v$CURRENT)." "$CURRENT" "$CURRENT"; exit 0
 fi
 
-status running "Downloading $TAG..." "$CURRENT" "${TAG#v}"
+rm -f "$LOG"
+status running "Downloading $TAG..." "$CURRENT" "${TAG#v}" 5
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 # The release's own download file first (GitHub counts these, so the author can see roughly
 # how many updates are installed; nothing else is sent), then GitHub's automatic archive.
@@ -131,22 +150,31 @@ rm -rf "$BACKUP"; mkdir -p "$BACKUP"
 cp -a "$APP/." "$BACKUP/" 2>/dev/null || true
 cp -a /etc/systemd/system/openhop-spamguard.service "$STATE/previous-version.service" 2>/dev/null || true
 
-status running "Installing $TAG..." "$CURRENT" "$NEWVER"
-if ! (cd "$WORK/src" && bash install.sh </dev/null >"$STATE/update-install.log" 2>&1); then
+status running "Installing $TAG..." "$CURRENT" "$NEWVER" 30
+(cd "$WORK/src" && exec bash install.sh </dev/null >"$LOG" 2>&1) &
+IPID=$!
+while kill -0 "$IPID" 2>/dev/null; do
+  # A guide, not a measurement: the installer doesn't say how many steps it has. Creeps up with its output.
+  n=$(wc -l < "$LOG" 2>/dev/null || echo 0); p=$((30 + n / 2)); [ "$p" -gt 85 ] && p=85
+  status running "Installing $TAG..." "$CURRENT" "$NEWVER" "$p" >/dev/null
+  sleep 3
+done
+if ! wait "$IPID"; then
   status failed "The installer for $TAG failed (see $STATE/update-install.log). Putting v$CURRENT back." "$CURRENT" "$NEWVER"
   cp -a "$BACKUP/." "$APP/"; systemctl restart openhop-spamguard; exit 1
 fi
 
 # Give the new version a moment, then make sure it is running and answering.
 for i in $(seq 1 30); do
+  status running "Starting v$NEWVER..." "$CURRENT" "$NEWVER" $((88 + i / 5)) >/dev/null
   sleep 2
   if systemctl is-active --quiet openhop-spamguard && curl -fs --max-time 3 http://127.0.0.1:8091/health >/dev/null 2>&1; then
-    status done "Updated from v$CURRENT to v$NEWVER." "$CURRENT" "$NEWVER"; exit 0
+    status done "Updated from v$CURRENT to v$NEWVER." "$CURRENT" "$NEWVER" 100; exit 0
   fi
 done
 # /health answers 503 when it has a warning, so a running service also counts as started.
 if systemctl is-active --quiet openhop-spamguard; then
-  status done "Updated from v$CURRENT to v$NEWVER." "$CURRENT" "$NEWVER"; exit 0
+  status done "Updated from v$CURRENT to v$NEWVER." "$CURRENT" "$NEWVER" 100; exit 0
 fi
 status failed "v$NEWVER didn't start, so v$CURRENT was put back." "$CURRENT" "$NEWVER"
 cp -a "$BACKUP/." "$APP/"
