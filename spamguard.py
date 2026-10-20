@@ -65,7 +65,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.1"
+VERSION = "6.5.2"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.1"
@@ -5108,33 +5108,117 @@ class SpamGuard:
                 self._update_checking = False
         threading.Thread(target=go, daemon=True).start()
 
+    # ---- progress shown while an update installs ----
+    # Stage words in the installer's output, and how far through the update each one means (a guide, not
+    # a measurement: openHop doesn't say how many steps there will be).
+    UPDATE_STAGES = (("collecting", 38), ("downloading", 46), ("building wheel", 55),
+                     ("installing collected packages", 72), ("successfully installed", 86))
+
+    @staticmethod
+    def clean_output_line(raw: Any) -> str:
+        """One line of installer output made safe to show: no escape codes or control characters."""
+        t = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", str(raw or ""))
+        t = re.sub(r"[\x00-\x1f\x7f]+", " ", t)
+        return re.sub(r"\s+", " ", t).strip()[:140]
+
+    def _update_step(self, message: Optional[str] = None, pct: Optional[float] = None,
+                     line: Optional[str] = None, state: str = "running"):
+        """Record how far the update has got. The percentage only ever goes up; the last two lines of the
+        installer's output are kept."""
+        cur = dict(getattr(self, "plugin_update", None) or {})
+        lines = list(cur.get("lines") or [])
+        line = self.clean_output_line(line) if line else ""
+        if line:
+            lines = (lines + [line])[-2:]
+        done = int(cur.get("pct") or 0)
+        if pct is not None:
+            done = max(done, int(pct))
+        self.plugin_update = {"state": state, "ts": time.time(),
+                              "message": cur.get("message", "") if message is None else message,
+                              "pct": min(done, 99 if state == "running" else 100), "lines": lines}
+
+    def _on_install_line(self, raw: Any):
+        line = self.clean_output_line(raw)
+        if not line:
+            return
+        self._install_lines = getattr(self, "_install_lines", 0) + 1
+        low = line.lower()
+        pct = min(36 + self._install_lines // 3, 70)       # creeps up while pip works through its steps
+        for word, at in self.UPDATE_STAGES:
+            if word in low:
+                pct = max(pct, at)
+        self._update_step(pct=pct, line=line)
+
+    def _follow_install_progress(self, stop: threading.Event):
+        """Read openHop's live feed of the plugin install (its /api/plugins/progress stream) and keep the
+        last lines of it. Reconnects until the upload has finished; it never changes anything in openHop."""
+        seen, fresh = 0, "&fresh=1"
+        while not stop.is_set():
+            try:
+                req = urllib.request.Request(
+                    self.cfg["openhop_url"].rstrip("/") + f"/api/plugins/progress?id={PLUGIN_ID}&since={seen}{fresh}")
+                if self.cfg.get("api_key"):
+                    req.add_header("X-API-Key", self.cfg["api_key"])
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    for raw in r:
+                        if stop.is_set():
+                            return
+                        raw = raw.decode("utf-8", "replace").strip()
+                        if not raw.startswith("data:"):
+                            continue
+                        ev = json.loads(raw[5:])
+                        if ev.get("type") == "line":
+                            seen += 1
+                            self._on_install_line(ev.get("line"))
+                        elif ev.get("type") == "done" and ev.get("state") in ("complete", "error"):
+                            return
+            except Exception as e:
+                log.debug("install progress feed: %s", e)
+            fresh = ""
+            stop.wait(1.0)
+
     def start_plugin_update(self, want: str) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
         restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
         if (getattr(self, "plugin_update", None) or {}).get("state") == "running":
             return {"ok": True, "message": "Already updating."}
-        self.plugin_update = {"state": "running", "message": f"Getting version {want}...", "ts": time.time()}
+        self._install_lines = 0
+        self.plugin_update = {"state": "running", "message": f"Getting version {want}...", "ts": time.time(),
+                              "pct": 2, "lines": []}
 
         def work():
+            stop = threading.Event()
             try:
                 name = f"openhop_spamguard-{plugin_version(want)}-py3-none-any.whl"
                 url = (self.cfg.get("plugin_wheel_url") or
                        f"https://github.com/{self._repo()}/releases/download/v{{version}}/{{name}}")
                 with urllib.request.urlopen(url.format(version=want, name=name), timeout=120) as r:
-                    wheel = r.read()
-                self.plugin_update = {"state": "running", "ts": time.time(),
-                                      "message": "openHop is installing the new version (this can take a minute)..."}
-                self._upload_wheel(name, wheel)
-                self.plugin_update = {"state": "running", "ts": time.time(),
-                                      "message": f"Restarting on version {want}; this page reconnects by itself."}
+                    total = int(r.headers.get("Content-Length") or 0)
+                    buf = bytearray()
+                    while True:
+                        chunk = r.read(65536)
+                        if not chunk:
+                            break
+                        buf += chunk
+                        if total:
+                            self._update_step(pct=3 + 30 * len(buf) / total)
+                    wheel = bytes(buf)
+                self._update_step("openHop is installing the new version (this can take a minute)...", pct=35)
+                threading.Thread(target=self._follow_install_progress, args=(stop,), daemon=True,
+                                 name="install-progress").start()
+                try:
+                    self._upload_wheel(name, wheel)
+                finally:
+                    stop.set()
+                self._update_step(f"Restarting on version {want}; this page reconnects by itself.", pct=90)
                 self._save_state(force=True)
                 self._plugin_api("POST", "/api/plugins/restart", {"id": PLUGIN_ID}, timeout=30)
             except Exception as e:
+                stop.set()
                 # A restart that cut our own request short is the update working, not failing.
                 if not isinstance(e, (ConnectionError, TimeoutError, socket.timeout, urllib.error.URLError)) \
                         or self.plugin_update.get("message", "").startswith("Getting"):
-                    self.plugin_update = {"state": "failed", "message": f"Update failed: {str(e)[:200]}",
-                                          "ts": time.time()}
+                    self._update_step(f"Update failed: {str(e)[:200]}", state="failed")
                     log.error("Plugin update failed: %s", e)
         threading.Thread(target=work, daemon=True, name="plugin-update").start()
         self.note(f"Update to v{want} requested from the web page")

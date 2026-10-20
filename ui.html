@@ -304,6 +304,11 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 [hidden]{display:none!important}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-all}
 .callout.info{background:var(--signal-tint);border-color:var(--signal)}
+.upprog{display:flex;align-items:center;gap:10px;width:100%;margin:6px 0 2px}
+.upbar{flex:1;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.upbar i{display:block;height:100%;background:var(--bar);border-radius:4px;transition:width .4s}
+.uppct{font-size:0.8125rem;color:var(--ink);min-width:3ch;text-align:right}
+.uplines{width:100%;margin:6px 0 0;padding:6px 8px;border-radius:6px;background:var(--panel);border:1px solid var(--line);color:var(--ink);font:0.78125rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all}
 .callout .cbtns{display:flex;gap:8px;align-items:center;margin-left:auto}
 .callout{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--amber-tint);border:1px solid var(--amber);border-radius:8px;padding:10px 14px;margin:0 0 14px}
 /* phones: menu becomes a drawer */
@@ -662,6 +667,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
   <p class="explain" id="uLine"></p>
+  <div id="uProg"></div>
   <ul class="hlist" id="uIssues"></ul>
   <div class="inline-form" id="uBtns"></div>
   <details id="uNotesBox" hidden><summary>What's new</summary><div class="notes" id="uNotes"></div></details>
@@ -1098,6 +1104,12 @@ $("#mapGuess").checked=store.get("sgguess")==="1";
 $("#mapGuess").onchange=e=>{ store.set("sgguess",e.target.checked?"1":"0"); if(S) renderSources(S); };
 
 function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
+function upProg(st){
+  const p=Number.isFinite(st.pct)?Math.max(0,Math.min(100,Math.round(st.pct))):null;
+  const ls=(st.lines||[]).slice(-2);
+  return (p==null?"":`<div class="upprog"><div class="upbar" role="progressbar" aria-label="Update progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}"><i style="width:${p}%"></i></div><span class="uppct">${p}%</span></div>`)
+    +(ls.length?`<div role="group" aria-label="Latest installer output" style="width:100%"><pre class="uplines">${ls.map(esc).join("\n")}</pre></div>`:"");
+}
 function renderUpdate(d){
   const u=d.update||{}; const st=u.status||{};
   let pill="", line="", issues="", btns="";
@@ -1121,12 +1133,12 @@ function renderUpdate(d){
   else if(st.state==="done" && st.ts && Date.now()/1000-st.ts<86400 && !running) issues+=`<li class="ok">${esc(st.message)}</li>`;
   if(!u.installer_ready&&!u.managed_update) issues+=`<li class="warn">The Update button needs the updater, which the installer sets up. Run the installer once by hand (sudo bash install.sh).</li>`;
   let uc="";
-  if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> It restarts for a minute; this page reconnects by itself.</span></div>`;
+  if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> ${esc(st.message||"It restarts for a minute; this page reconnects by itself.")}</span>${upProg(st)}</div>`;
   else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
   else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. Nothing changes until you press Update.</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
   $("#updCallout").innerHTML=uc;
-  $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
+  $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uProg").innerHTML=running?upProg(st):""; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }
 function renderHeld(d){
