@@ -60,6 +60,7 @@ g.apply_settings({"flood_hop_floor":4})
 t0=time.time()
 flood=[pkt(t0-360+i*2.4, random.randint(20,40)) for i in range(150)]
 g.ingest(flood)
+check(g.fg_decide(t0) and not g.fg.get("limit"),"learning is done, so the rules change from counting to holding back (and it doesn't step in yet)")
 check(not g.fg_decide(t0) and not g.fg.get("limit"),"waits a minute before stepping in")
 busy,share,n=g.fg_load(t0)
 check(busy>=15 and share>0.9, f"measures the radio as busy ({busy:.0f}%, {share:.0%} flood)")
@@ -162,6 +163,7 @@ for k in range(80):
     g5.hist[hr]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":round(random.uniform(2,5),1)}
     g5.fg_hops[hr]={h:random.randint(1,4) for h in range(1,8)}
     g5.fg_adv[hr]={h:1 for h in range(1,7)}
+    g5.fg_hops_all[hr]=dict(g5.fg_hops[hr]); g5.fg_adv_all[hr]=dict(g5.fg_adv[hr])
 check(g5.fg_learn(T) and g5.fg.get("ready"),"after three days with enough traffic it starts acting")
 L=dict(g5.fg["learnt"])
 check(10<=L.get("flood_busy_percent",0)<=15 and L.get("flood_max_unscoped")==16 and L.get("flood_max_advert")==8, f"learnt values from this mesh, inside their safe ranges: {L}")
@@ -267,5 +269,51 @@ for k in range(20): gn.hist[str(int((T-k*3600)//3600*3600))]={"m":0,"c":0,"x":0,
 check("flood_busy_percent" not in gn.fg_learnt_values(T),"under two days of hours: no busy limit is learnt")
 gb._save_state(force=True); gb2=sg.SpamGuard(dict(gb.file_cfg))
 check(gb2.fg.get("busy_site") and gb2.cfg["flood_busy_percent"]==40,"the busy-site limit survives a restart")
+
+# ---- a busy mesh where long routes are normal (the evidence log from a real repeater: middle message 10 hops,
+# one in four 16 or more, one in ten 20 or more) and the radio is never "quiet". Before 6.5.5 FloodGuard never
+# learnt this, started at a made-up 16 hops and tightened to 8, holding back genuine messages.
+def busy_guard():
+    gb=guard(mock()); gb.radio=dict(RADIO); gb.refresh_openhop_info=lambda *a,**k: None
+    T=time.time(); gb.fg.update(ready=T-3600, learn_start=T-4*86400, learnt_at=T)
+    for k in range(30):
+        hr=str(int((T-k*3600)//3600*3600))
+        gb.hist[hr]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":round(random.uniform(18,32),1)}
+        gb.fg_hops_all[hr]={h:n for h,n in zip((4,6,8,10,12,16,20,24,29),(4,6,8,9,9,7,5,3,1))}
+        gb.fg_adv_all[hr]={h:n for h,n in zip((4,8,12,16),(4,3,2,1))}
+    return gb,T
+gb,T=busy_guard()
+rb=gb.fg_reach()
+check(rb is not None and 18<=rb<=24 and gb.fg.get("reach_all"), f"on a busy mesh route length is learnt from every hour: {rb}")
+check(gb.fg_can_act() and gb.fg_status()["acting"] and gb.fg_status()["reach_all"] and not gb.fg_status()["waiting_reach"],"and FloodGuard may act")
+gb.fg["busy_now"]=27; flood=[pkt(T-360+i*2.4, random.randint(20,40)) for i in range(150)]
+gb.ingest(flood); gb.fg_decide(T); gb.fg_decide(T+61)
+check(gb.fg.get("limit") and gb.fg["limit"]>=rb-4, f"its limit starts above the ordinary routes, not at 8: {gb.fg.get('limit')} (ordinary routes reach {rb})")
+check(gb._build_flood() and any(r["then"]["action"]=="drop" for r in gb._build_flood()),"and its rules hold packets back")
+# every flood packet is counted for this, flood or not
+gc=guard(mock()); gc.radio=dict(RADIO); gc.refresh_openhop_info=lambda *a,**k: None
+gc.ingest([pkt(time.time()-700+i, 12) for i in range(60)]); gc.fg_decide(time.time())
+check(sum(sum(v.values()) for v in gc.fg_hops_all.values())>=50,"hop counts are kept for every hour, not only quiet ones")
+# learnt values for the fixed limits come from every hour too
+Lb=gb.fg_learnt_values(T)
+check(Lb.get("flood_max_unscoped")==32 and 6<=Lb.get("flood_max_advert",0)<=16, f"the always-on limits are learnt from this mesh, not the made-up defaults: {Lb}")
+# too little heard: it only counts, and says why
+gw=guard(mock()); gw.radio=dict(RADIO); gw.refresh_openhop_info=lambda *a,**k: None
+gw.fg.update(ready=time.time()-60, learnt_at=time.time()); gw.cfg["mode"]="protect"
+check(gw.fg_reach() is None and not gw.fg_can_act(),"too few flood packets heard: route length unknown, so no holding back")
+stw=gw.fg_status(); check(stw["waiting_reach"] and not stw["acting"],"the page is told why")
+check(all(r["then"]["action"]=="log_only" for r in gw._build_flood()),"and the rules only log")
+gw.apply_settings({"flood_hop_floor":10})
+check(gw.fg_can_act() and gw.fg_status()["acting"] and not gw.fg_status()["waiting_reach"],"setting your own lowest hop limit lets it act")
+check(all(r["then"]["action"]=="drop" for r in gw._build_flood()),"and then the rules hold packets back")
+# the note when learning ends says where each limit comes from
+gl=guard(mock()); gl.radio=dict(RADIO); gl.refresh_openhop_info=lambda *a,**k: None
+gl.fg["learn_start"]=time.time()-4*86400; gl.settings["flood_max_advert"]=6; gl.rebuild_cfg(); gl.fg["start_now"]=True
+gl.fg_learn(time.time())
+note=[a["msg"] for a in gl.activity if "has learnt this repeater's traffic and now acts" in a["msg"]]
+check(note and "adverts stop after 6 hops (yours)" in note[0] and "(recommended)" in note[0] and note[0].count("(yours)")==1, f"values are labelled yours or recommended, not all 'yours': {note[:1]}")
+# saved across a restart
+gb._save_state(force=True); gb2=sg.SpamGuard(dict(gb.file_cfg))
+check(sum(sum(v.values()) for v in gb2.fg_hops_all.values())==sum(sum(v.values()) for v in gb.fg_hops_all.values()) and gb2.fg_adv_all,"the every-hour counts survive a restart")
 
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

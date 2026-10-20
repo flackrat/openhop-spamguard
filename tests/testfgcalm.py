@@ -69,6 +69,12 @@ async def main():
         res.append(("containing a flood" in a["call"] and "Interference on the radio" in a["call"], "with a flood as well, both are shown"))
         d = fgd(5, limit=None, since=None); d["metrics"]["interference"] = {"enabled": True}; await show(d); a = await info()
         res.append((a["call"].strip() == "", "no interference and no flood: nothing on the Overview"))
+        # FloodGuard not yet knowing the usual route length says so rather than claiming to act
+        await show(fgd(0.2, acting=False, waiting_reach=True)); a = await info()
+        res.append(("until it knows your routes" in a["call"] and "info" in a["cls"], "the Overview says it is only counting until it knows the routes: " + a["call"][:70]))
+        res.append(("how far packets normally come" in a["page"], "and the page says why nothing is held back"))
+        await show(fgd(0.2, acting=False, waiting_reach=True, limit=None, since=None)); a = await info()
+        res.append(("hasn't heard enough flood packets" in a["page"], "also when there is no flood: " + a["page"][:60].replace("\n"," ")))
         for scheme in ("light", "dark"):
             await pg.evaluate(f"document.documentElement.dataset.theme='{scheme}'")
             for age in (0.2, 70):

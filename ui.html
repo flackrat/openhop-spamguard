@@ -1138,6 +1138,8 @@ function renderUpdate(d){
   else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
   else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. Nothing changes until you press Update.</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
+  if(st.state==="failed" && st.can_force && !running && u.available && !u.managed_update)
+    btns+=`<button class="quiet" data-confirm="Install SpamGuard ${esc(u.latest)} anyway? openHop may have to compile a library, which can take a long time on a small Pi, and if it is cut short SpamGuard is left uninstalled until you add it again from the Plugins page." onclick="post('/install_update',{version:'${esc(u.latest)}',force:true})">Update anyway</button>`;
   $("#updCallout").innerHTML=uc;
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uProg").innerHTML=running?upProg(st):""; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
@@ -1337,7 +1339,7 @@ function renderFloodNav(d){
   const lnk=`<span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span>`;
   const flood=!fg.limit?"":fg.acting&&fgLong(fg)?`<div class="callout info"><span><strong>FloodGuard is active.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (limit ${fg.level}%), so flood packets from ${fg.limit}+ hops aren't passed on.</span>${lnk}</div>`
     :fg.acting?`<div class="callout"><span><strong>FloodGuard is containing a flood.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit}+ hops aren't passed on.</span>${lnk}</div>`
-    :`<div class="callout info"><span><strong>FloodGuard sees a flood but is only counting${fg.learning?" while it learns":" (Monitor)"}.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; nothing is held back.</span>${lnk}</div>`;
+    :`<div class="callout info"><span><strong>FloodGuard sees a flood but is only counting${fg.learning?" while it learns":fg.waiting_reach?" until it knows your routes":" (Monitor)"}.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; nothing is held back.</span>${lnk}</div>`;
   const noise=jm.since&&jm.rise!=null?`<div class="callout"><span><strong>Interference on the radio.</strong> Noise is ${Math.round(jm.rise)} dB above normal, so this repeater hears only about ${jm.range}% as far as usual.</span>${lnk}</div>`:"";
   c.innerHTML=flood+noise;
 }
@@ -1357,7 +1359,7 @@ function renderFloodPage(d){
   if(!fg.radio_known){
     h+=`<p class="lead">FloodGuard needs openHop's radio settings to measure airtime, and SpamGuard hasn't been able to read them yet.</p>`;
   } else if(fg.limit&&!fg.acting){
-    h+=`<div class="callout info"><span><strong>A flood, but FloodGuard is only counting.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. Flood packets from ${fg.limit} or more hops would be held back, but ${fg.learning?"FloodGuard is still learning":"SpamGuard is in Monitor"}, so everything is still passed on and only counted.</span></div>`;
+    h+=`<div class="callout info"><span><strong>A flood, but FloodGuard is only counting.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. Flood packets from ${fg.limit} or more hops would be held back, but ${fg.learning?"FloodGuard is still learning":fg.waiting_reach?"FloodGuard hasn't yet heard enough traffic to know how far packets normally come on this repeater":"SpamGuard is in Monitor"}, so everything is still passed on and only counted.</span></div>`;
   } else if(fg.limit&&fgLong(fg)){
     const days=(Date.now()/1000-fg.since)/86400;
     h+=`<div class="callout info"><span><strong>Holding back long-distance floods.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (peak ${Math.round(fg.peak||0)}%), limit ${fg.level}%. Flood packets from ${fg.limit}+ hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched.</span></div>`;
@@ -1365,7 +1367,7 @@ function renderFloodPage(d){
   } else if(fg.limit){
     h+=`<div class="callout"><span><strong>Containing a flood.</strong> Radio ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (peak ${Math.round(fg.peak||0)}%). Flood packets from ${fg.limit}+ hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself when the radio is quiet.</span></div>`;
   } else {
-    h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}% when most of that is flood traffic.${monitor?" SpamGuard is in Monitor, so FloodGuard only counts.":""}`
+    h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}% when most of that is flood traffic.${monitor?" SpamGuard is in Monitor, so FloodGuard only counts.":fg.waiting_reach?" It isn't holding anything back yet: it hasn't heard enough flood packets to know how far they normally come here (about 200 in a day).":""}`
       :"Contains floods of any kind of packet, not just channel messages, by watching how busy this repeater's radio is. It's off on this repeater; turn it on below."}</p>`;
   }
   const nm={flood_busy_percent:v=>`steps in above ${v}% busy`,flood_max_unscoped:v=>v?`unscoped flood packets stop after ${v} hops`:"no unscoped hop limit",flood_max_advert:v=>v?`adverts stop after ${v} hops`:"no advert hop limit"};

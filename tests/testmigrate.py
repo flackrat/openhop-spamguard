@@ -32,6 +32,15 @@ check(g2.standby is None and owner(m).get("id")==g2.instance_id,"second copy tak
 g1.last_verify=0; g1.poll_once()
 check(g1.standby is not None,"first copy, back again, now waits instead of fighting")
 
+# ---- the owner marker is refreshed every ten minutes, not five (fewer writes to the Pi's SD card) ----
+check(sg.LEASE_REFRESH==600 and sg.LEASE_SECONDS-sg.LEASE_REFRESH>=300,"refresh every 10 minutes, with five minutes of slack before the marker counts as stale")
+g1.last_verify=0; g1.standby=None
+m.policy["policy_engine"]["objects"]["spamguard_owner"]={"id":g2.instance_id,"kind":"normal","host":"x","version":sg.VERSION,"state":"active","ts":round(time.time())-400}
+p0=m.posts; g2.sync_policy(); check(m.posts==p0,"a marker 400 seconds old is left alone (no write to openHop)")
+m.policy["policy_engine"]["objects"]["spamguard_owner"]["ts"]=round(time.time())-650
+g2.sync_policy(); check(m.posts>p0 and time.time()-float(owner(m).get("ts"))<5,"one 650 seconds old is refreshed")
+p1=m.posts; g2.sync_policy(); check(m.posts==p1,"and then left alone again")
+
 # ---- moving a normal install into openHop as a plugin ----
 sys.path.insert(0, os.path.join(REPO, "tools")); import build_plugin
 wheel = build_plugin.build(os.path.join(TMP, "dist"))
