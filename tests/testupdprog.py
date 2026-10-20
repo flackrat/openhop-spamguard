@@ -55,6 +55,11 @@ async def main():
         res.append((a["callbar"] == [] and a["lines"] == [] and "Updating SpamGuard" in a["call"], "a request not yet picked up shows no bar and no lines"))
         await show(upd({"state": "failed", "message": "Update failed: boom", "pct": 55, "lines": ["ERROR: no matching distribution"], "ts": 4e9}, available=False)); a = await info()
         res.append((a["callbar"] == [] and a["boxbar"] == [], "a failed update shows no progress bar"))
+        await show(upd({"state": "failed", "message": "Update stopped before anything was changed. Test.", "pct": 34, "lines": [], "ts": 4e9, "can_force": True})); a = await info()
+        btn = await pg.evaluate("[...document.querySelectorAll('#uBtns button')].map(b=>b.textContent+'|'+(b.getAttribute('onclick')||'')+'|'+(b.dataset.confirm||''))")
+        res.append((any(x.startswith("Update anyway|") and "force:true" in x and "version:'6.5.1'" in x and "uninstalled" in x for x in btn), "a stopped update offers Update anyway, with a warning: " + str([x[:40] for x in btn])))
+        await show(upd({"state": "failed", "message": "Update failed: boom", "pct": 55, "lines": [], "ts": 4e9})); btn = await pg.evaluate("[...document.querySelectorAll('#uBtns button')].map(b=>b.textContent)")
+        res.append(("Update anyway" not in btn, "an ordinary failure doesn't offer it: " + str(btn)))
         res.append((not errs, "no page errors: " + str(errs)))
         bad = [m for c, m in res if not c]
         for m in bad: print("FAIL", m)

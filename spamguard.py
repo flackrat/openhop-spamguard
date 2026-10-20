@@ -44,6 +44,7 @@ import os
 import re
 import threading
 import struct
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -65,10 +66,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.4"
+VERSION = "6.5.5"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2.2"
+FLOODGUARD_VERSION = "1.2.3"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -136,7 +137,7 @@ SETTINGS_META: list[dict] = [
     {"key": "floodguard", "group": "FloodGuard", "type": "bool",
      "risk": "While a flood is being contained, flood packets that have already travelled more hops than the limit are not passed on by this repeater, whoever sent them, except channel messages from people SpamGuard knows. A genuine long-distance message or path search can miss this repeater for those minutes. Direct (routed) messages, replies and acknowledgements are never touched.",
      "label": "FloodGuard: contain floods when the radio gets too busy",
-     "help": "Some floods aren't channel messages at all: encrypted packets with a new identity every time, sent over and over with long, padded routes. Nothing in them can be blocked by name or text. FloodGuard watches how busy this repeater's radio is instead, which a sender can't fake. When flood traffic keeps the radio busier than the limit below, it stops passing on flood packets that have already come a long way, tightening a step at a time while the flood lasts, and lifts by itself once the radio is quiet again. On by default; it spends its first three days learning this repeater's traffic and only counts meanwhile."},
+     "help": "Some floods aren't channel messages at all: encrypted packets with a new identity every time, sent over and over with long, padded routes. Nothing in them can be blocked by name or text. FloodGuard watches how busy this repeater's radio is instead, which a sender can't fake. When flood traffic keeps the radio busier than the limit below, it stops passing on flood packets that have already come a long way, tightening a step at a time while the flood lasts, and lifts by itself once the radio is quiet again. On by default; it spends its first three days learning this repeater's traffic and only counts meanwhile. It also holds nothing back until it has heard enough flood packets to know how far they normally come here (about 200 in a day), because on a busy mesh ordinary routes can be long."},
     {"key": "flood_busy_percent", "group": "FloodGuard", "type": "int", "min": 5, "max": 90, "unit": "%",
      "risk": "Lower = steps in sooner, but a genuinely busy evening on a big mesh could trigger it. Higher = a flood has to fill more of the airtime before anything happens.",
      "label": "Step in when the radio is busier than",
@@ -412,7 +413,7 @@ IN_PLUGIN = os.environ.get("SPAMGUARD_PLUGIN") == "1"
 # marker is released to it or goes stale (the other copy stopped).
 OWNER_KEY = "spamguard_owner"
 LEASE_SECONDS = 900
-LEASE_REFRESH = 300
+LEASE_REFRESH = 600
 PLUGIN_ID = "openhop-spamguard"
 KIND_NAMES = {"normal": "a normal install", "docker": "a Docker container", "plugin": "the openHop plugin"}
 
@@ -1185,6 +1186,10 @@ class SpamGuard:
                          "busy_since": 0.0, "calm_since": 0.0, "v61": 1}
         self.fg_hops: dict[str, dict[int, int]] = {}   # hour -> {hop count: flood packets} outside floods
         self.fg_adv: dict[str, dict[int, int]] = {}    # the same for adverts only
+        # The same counts for every hour, flood or not, kept for two days. Used only when a repeater is so busy
+        # that it has too few quiet hours to learn from (the stores above), as on a busy mesh.
+        self.fg_hops_all: dict[str, dict[int, int]] = {}
+        self.fg_adv_all: dict[str, dict[int, int]] = {}
         self.fg["learnt"] = {}
         self.radio: dict = {}         # openHop's radio settings, for airtime
         self.me: dict = {}            # this repeater: name, hash, location
@@ -1349,6 +1354,10 @@ class SpamGuard:
                             if isinstance(v, dict) and int(k) > now - 8 * 86400}
             self.fg_adv = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("adv") or {}).items()
                            if isinstance(v, dict) and int(k) > now - 8 * 86400}
+            self.fg_hops_all = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("hops_all") or {}).items()
+                                if isinstance(v, dict) and int(k) > now - 2 * 86400}
+            self.fg_adv_all = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("adv_all") or {}).items()
+                               if isinstance(v, dict) and int(k) > now - 2 * 86400}
         if not fg.get("v61") if isinstance(fg, dict) else True:
             # 6.1 learns FloodGuard's values from this repeater's own traffic: values set by hand in 6.0
             # are cleared once, so it starts from its own. Whether FloodGuard is on or off is kept.
@@ -1429,7 +1438,8 @@ class SpamGuard:
                     "hist_mark": self.hist_mark,
                     "interference": {k: self.jam.get(k) for k in ("mark", "since", "peak", "episodes", "backfilled")},
                     "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61", "busy_site")},
-                                   "hops": self.fg_hops, "adv": self.fg_adv},
+                                   "hops": self.fg_hops, "adv": self.fg_adv,
+                                   "hops_all": self.fg_hops_all, "adv_all": self.fg_adv_all},
                     "reset_at": getattr(self, "reset_at", 0.0),
                     "monitor_since": getattr(self, "monitor_since", 0.0),
                     "view_marks": getattr(self, "view_marks", {}),
@@ -1676,6 +1686,12 @@ class SpamGuard:
             # Learnt only once it's clear the radio wasn't flooded at the time (see fg_decide).
             self._hop_pending.append((ts, hour, hops, ptype == PAYLOAD_TYPE_ADVERT))
 
+    def fg_can_act(self) -> bool:
+        """FloodGuard holds packets back only once it has finished its first learning AND knows how far flood
+        packets normally come on this repeater (or you set the lowest hop limit yourself). Until then it only
+        counts, because a made-up guess can be shorter than a busy mesh's ordinary routes."""
+        return bool(self.fg.get("ready")) and (self.fg_reach() is not None or "flood_hop_floor" in self.settings)
+
     def fg_load(self, now: float) -> tuple[float, float, int]:
         """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
         while self.air and self.air[0][0] < now - 900:
@@ -1703,6 +1719,9 @@ class SpamGuard:
                     merged[h] = merged.get(h, 0) + n
             for k in [k for k in store if int(k) < now - 8 * 86400]:
                 del store[k]
+        for store in (self.fg_hops_all, self.fg_adv_all):
+            for k in [k for k in store if int(k) < now - 2 * 86400]:
+                del store[k]
 
     def fg_reach(self) -> Optional[int]:
         """How many hops nearly all (95%) flood packets have travelled when they reach this repeater on an
@@ -1720,12 +1739,26 @@ class SpamGuard:
                 for hops, n in v.items():
                     counts[hops] = counts.get(hops, 0) + n
         total = sum(counts.values())
+        q = 0.95
+        self.fg["reach_all"] = False
         if total < 200:
-            return None
+            # Too few quiet hours: a repeater that is busy most of the time (where long routes are often normal
+            # and the radio is rarely below the quiet line). Take every hour of the last day instead, and a
+            # little lower in the range so that a flood's padded routes can't pull it up much.
+            counts = {}
+            for k, v in list(self.fg_hops_all.items()):
+                if int(k) >= cut - 3600:
+                    for hops, n in v.items():
+                        counts[hops] = counts.get(hops, 0) + n
+            total = sum(counts.values())
+            if total < 200:
+                return None
+            q = 0.90
+            self.fg["reach_all"] = True
         run = 0
         for hops in sorted(counts):
             run += counts[hops]
-            if run >= 0.95 * total:
+            if run >= q * total:
                 return hops
         return max(counts)
 
@@ -1747,6 +1780,9 @@ class SpamGuard:
         calm = busy < 0.7 * float(c.get("flood_busy_percent") or 15) and not f.get("limit")
         while self._hop_pending and self._hop_pending[0][0] < now - self.FG_WINDOW:
             _, hour, hops, advert = self._hop_pending.popleft()
+            for store in (self.fg_hops_all, self.fg_adv_all) if advert else (self.fg_hops_all,):
+                hh = store.setdefault(hour, {})
+                hh[hops] = hh.get(hops, 0) + 1
             if calm:
                 for store in (self.fg_hops, self.fg_adv) if advert else (self.fg_hops,):
                     hh = store.setdefault(hour, {})
@@ -1765,6 +1801,10 @@ class SpamGuard:
         start = max(floor, (reach if reach is not None else self.FG_DEFAULT_REACH) + 1)
         target = max(floor, start - 2 * int((busy - level) // 5)) if flooding else None
         changed = learnt
+        can = self.fg_can_act()
+        if "can_act" in f and can != f["can_act"]:   # started or stopped being able to hold packets back: rules change between log-only and drop
+            changed = True
+        f["can_act"] = can
         if flooding:
             f["calm_since"] = 0.0
             f["busy_since"] = f.get("busy_since") or now
@@ -1772,17 +1812,19 @@ class SpamGuard:
                 if now - f["busy_since"] >= self.FG_SUSTAIN:
                     # Starts just past the routes it normally hears, then tightens a step at a time.
                     f.update(limit=start, since=now, last_step=now, peak=busy, episodes=int(f.get("episodes") or 0) + 1)
-                    acting = c["mode"] == "protect" and not c.get("paused") and f.get("ready")
+                    acting = c["mode"] == "protect" and not c.get("paused") and self.fg_can_act()
                     self.note(f"FloodGuard: the radio is {busy:.0f}% busy, {share:.0%} of it flood traffic. "
                               + (f"Flood packets that have already come {start} or more hops are not passed on until it calms down."
                                  if acting else
                                  f"Flood packets from {start} or more hops would be held back, but "
-                                 + ("FloodGuard is still learning" if not f.get("ready") else "SpamGuard is in Monitor")
+                                 + ("FloodGuard is still learning" if not f.get("ready") else
+                                    "FloodGuard hasn't yet heard enough traffic to know how far packets normally come"
+                                    if c["mode"] == "protect" and not c.get("paused") else "SpamGuard is in Monitor")
                                  + ", so it only counts them and passes everything on."))
                     changed = True
             elif target < f["limit"] and now - f["last_step"] >= self.FG_STEP_SECONDS:
                 f.update(limit=max(target, f["limit"] - 2), last_step=now)
-                acting = c["mode"] == "protect" and not c.get("paused") and f.get("ready")
+                acting = c["mode"] == "protect" and not c.get("paused") and self.fg_can_act()
                 self.note(f"FloodGuard: still {busy:.0f}% busy, so flood packets from {f['limit']} or more hops away are now "
                           + ("held back too." if acting else "counted too (nothing is held back yet)."))
                 changed = True
@@ -1833,6 +1875,13 @@ class SpamGuard:
                         out[h] = out.get(h, 0) + n
             return out
         hops, adv = merged(self.fg_hops), merged(self.fg_adv)
+        # Too few quiet hours (a busy repeater): learn the route limits from every hour of the last two days.
+        every = lambda store: {h: sum(v.get(h, 0) for k, v in store.items() if int(k) >= cut)
+                               for h in {h for k, v in store.items() if int(k) >= cut for h in v}}
+        if sum(hops.values()) < 500:
+            hops = every(self.fg_hops_all)
+        if sum(adv.values()) < 50:
+            adv = every(self.fg_adv_all)
         new = {}
         if len(busy) >= 48:   # two days of hours, busiest five minutes of each
             # Twice a normal busy hour, and comfortably above the busiest genuine five minutes it heard.
@@ -1899,7 +1948,7 @@ class SpamGuard:
         elif first:
             f["ready"] = now
             what = "; ".join(words[k](self.cfg.get(k) if k in self.settings else auto.get(k, c.get(k)))
-                             + ("" if k in auto else " (yours)") for k in FG_AUTO_KEYS)
+                             + (" (yours)" if k in self.settings else "" if k in auto else " (recommended)") for k in FG_AUTO_KEYS)
             self.note(f"FloodGuard has learnt this repeater's traffic and now acts: {what}. Settings you set yourself are kept"
                       + ("." if new else ". It heard too little to learn from, so it uses the recommended values.")
                       + (" The radio here is busy most of the time, so it set its busy limit from that rather than from quiet hours." if f.get("busy_site") and "flood_busy_percent" in auto else ""))
@@ -2061,7 +2110,10 @@ class SpamGuard:
         return {"enabled": bool(c.get("floodguard")), "radio_known": bool(self.airtime_ms(40)),
                 "learning": bool(c.get("floodguard")) and (not f.get("ready") or bool(f.get("relearn"))),
                 "relearning": bool(f.get("relearn")),
-                "acting": bool(c.get("floodguard")) and bool(f.get("ready")) and c["mode"] == "protect" and not c.get("paused"),
+                "acting": bool(c.get("floodguard")) and self.fg_can_act() and c["mode"] == "protect" and not c.get("paused"),
+                "waiting_reach": bool(c.get("floodguard")) and bool(f.get("ready")) and reach is None
+                                 and "flood_hop_floor" not in self.settings and c["mode"] == "protect" and not c.get("paused"),
+                "reach_all": bool(f.get("reach_all")) and reach is not None,
                 "learn_start": ls or None, "learn_until": ls + FG_LEARN_DAYS * 86400 if ls else None,
                 "learn_days": FG_LEARN_DAYS, "learnt": dict(f.get("learnt") or {}), "learnt_at": f.get("learnt_at"),
                 "auto": sorted(k for k in FG_AUTO_KEYS if k not in self.settings and k not in self.file_cfg),
@@ -3853,7 +3905,7 @@ class SpamGuard:
         c = self.cfg
         if not c.get("floodguard"):
             return []
-        act = "drop" if c["mode"] == "protect" and self.fg.get("ready") else "log_only"
+        act = "drop" if c["mode"] == "protect" and self.fg_can_act() else "log_only"
         flood = {"field": "route_type", "op": "in", "value": [ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD]}
         rules = []
         lim = self.fg.get("limit")
@@ -5190,7 +5242,45 @@ class SpamGuard:
             fresh = ""
             stop.wait(1.0)
 
-    def start_plugin_update(self, want: str) -> dict:
+    PREFLIGHT_NETWORK = ("retrying", "could not fetch url", "failed to establish", "connection", "temporary failure",
+                         "name or service not known", "timed out", "ssl", "proxy")
+
+    def plugin_preflight(self, wheel: bytes) -> Optional[str]:
+        """Before openHop removes the running version: can the new version's libraries be installed from
+        ready-made builds on this machine? When not, openHop would compile them, which on a small Pi can take
+        longer than openHop waits and leave SpamGuard uninstalled. Returns a plain-language reason, or None when
+        all is well or it can't tell (no network, no pip), so only a clear 'no build exists' ever stops an update."""
+        import zipfile, tempfile, io
+        try:
+            with zipfile.ZipFile(io.BytesIO(wheel)) as z:
+                meta = next((n for n in z.namelist() if n.endswith(".dist-info/METADATA")), None)
+                text = z.read(meta).decode("utf-8", "replace") if meta else ""
+        except Exception:
+            return None
+        reqs = [m.group(1).strip() for m in re.finditer(r"(?m)^Requires-Dist:\s*([^;\r\n]+?)\s*$", text)]
+        if not reqs:
+            return None
+        tmp = tempfile.mkdtemp(prefix="spamguard-preflight-")
+        try:
+            r = subprocess.run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--no-deps",
+                                "--disable-pip-version-check", "--retries", "1", "--timeout", "15", "-d", tmp, *reqs],
+                               capture_output=True, text=True, timeout=120)
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if r.returncode == 0:
+            return None
+        out = ((r.stdout or "") + (r.stderr or "")).lower()
+        if any(w in out for w in self.PREFLIGHT_NETWORK) or "no matching distribution" not in out:
+            return None
+        names = ", ".join(sorted({re.split(r"[<>=!~ \[]", q, 1)[0] for q in reqs}))
+        return ("Update stopped before anything was changed. This machine can't get a ready-made build of one of "
+                f"SpamGuard's libraries ({names}), so openHop would have to compile it. That can take longer than "
+                "openHop waits and leave SpamGuard uninstalled. Download the wheel from the release page and install "
+                "it from openHop's Plugins page instead, or press Update anyway if you'd rather try.")
+
+    def start_plugin_update(self, want: str, force: bool = False) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
         restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
         if (getattr(self, "plugin_update", None) or {}).get("state") == "running":
@@ -5216,6 +5306,14 @@ class SpamGuard:
                         if total:
                             self._update_step(pct=3 + 30 * len(buf) / total)
                     wheel = bytes(buf)
+                if not force and self.cfg.get("plugin_preflight", True):
+                    self._update_step("Checking the update can install on this machine...", pct=34)
+                    why = self.plugin_preflight(wheel)
+                    if why:
+                        self._update_step(why, state="failed")
+                        self.plugin_update["can_force"] = True
+                        log.warning("Plugin update to %s not started: %s", want, why)
+                        return
                 self._update_step("openHop is installing the new version (this can take a minute)...", pct=35)
                 threading.Thread(target=self._follow_install_progress, args=(stop,), daemon=True,
                                  name="install-progress").start()
@@ -5277,7 +5375,7 @@ class SpamGuard:
         if managed_update():
             raise ValueError(managed_update())
         if IN_PLUGIN:
-            return self.start_plugin_update(want)
+            return self.start_plugin_update(want, force=bool(body.get("force")))
         if not os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"):
             raise ValueError("The updater isn't set up on this Pi yet. Run the installer once by hand: sudo bash install.sh")
         folder = os.path.dirname(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])

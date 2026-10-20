@@ -198,6 +198,8 @@ sudo bash /opt/openhop_spamguard/update.sh --version v5.9   # install a particul
 
 Or, from your clone: `git pull && sudo bash install.sh`.
 
+**If a plugin update stops, or SpamGuard disappears from openHop's Plugins page.** Before it changes anything, the Update button checks that the new version's libraries (PyYAML and pycryptodome) can be installed from ready-made builds on your machine. If they can't, it stops and says so, with nothing removed, and offers **Update anyway**. This matters on a Raspberry Pi 3 (or any small Pi) because openHop would otherwise compile the library from source, which can take longer than openHop waits; if that is cut short, the old version is already gone and SpamGuard stays uninstalled until you add it again. To get it back, download `openhop_spamguard-<version>-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest) and upload it on openHop's **Plugins** page. Your settings and everything learnt are kept in the plugin's data folder and come back with it. From 6.5.5 the plugin asks for PyYAML the way its published files spell it, which avoids the compile on Raspberry Pi OS Bookworm (pip 23.0 otherwise rejects the ready-made build over the capital letters).
+
 How the button works: SpamGuard runs as an ordinary user, so it can't install software. Pressing Update leaves a request file that a small root-owned systemd service (`openhop-spamguard-update`) carries out. It only ever downloads tagged releases of this repository over HTTPS. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 </details>

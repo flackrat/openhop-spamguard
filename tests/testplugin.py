@@ -17,6 +17,9 @@ man = load_manifest_from_wheel(wheel)
 check(man.id=="openhop-spamguard" and man.runtime, "openHop accepts the manifest")
 check(man.ui is not None and man.ui.entry=="spamguard-ui/index.html", "doorway page for openHop's Open button")
 check(man.version==build_plugin.version(), "manifest version matches SpamGuard's")
+import zipfile
+_req=[l.split(":",1)[1].strip() for n in zipfile.ZipFile(wheel).namelist() if n.endswith(".dist-info/METADATA") for l in zipfile.ZipFile(wheel).read(n).decode().splitlines() if l.startswith("Requires-Dist:")]
+check("PyYAML>=5.4" in _req and not any(r.startswith("pyyaml") for r in _req), f"PyYAML is asked for as piwheels spells it (pip 23.0 rejects the lower-case spelling and compiles it): {_req}")
 m = mock()
 for i,(n,t) in enumerate([("Hilltop Hiker","Morning all, clear skies up here"),("Canal Boat Ted","Anyone hearing me from the lock?")]):
     m.add(n,t,["A7","2F"],ago=1500-i*60)

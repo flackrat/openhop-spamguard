@@ -2,6 +2,18 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.5.5 (FloodGuard 1.2.3)
+### FloodGuard 1.2.3
+- **FloodGuard no longer holds back genuine long-route traffic on a busy mesh.** On a real repeater (evidence log, three days) the middle message had come 10 hops and one in four 16 or more, so FloodGuard's made-up start of 16 hops, tightened to a floor of 8, held back messages from senders SpamGuard didn't know yet. The cause was the same trap as the busy limit: it learnt how far flood packets normally come only from quiet hours, and a busy radio never has any. Now:
+  1. Hop counts are also kept for every hour (two days, small), and when there are too few quiet hours the normal route length, and the always-on unscoped and advert hop limits, are learnt from those instead.
+  2. FloodGuard holds nothing back until it knows how far flood packets normally come (about 200 in a day), unless you set the lowest hop limit yourself. Until then it counts and says so. The made-up default no longer decides anything.
+  3. The Activity note when learning ends called every limit "(yours)", even recommended ones. It now says yours, recommended, or nothing for learnt values.
+### SpamGuard 6.5.5
+- **The plugin no longer compiles PyYAML on a Raspberry Pi.** The real cause of the update that left SpamGuard uninstalled: the plugin asked for `pyyaml`, but the ready-made Raspberry Pi build is published as `PyYAML`, and pip 23.0 (Raspberry Pi OS Bookworm) throws it away over the capital letters and compiles it from source instead. On a Pi 3 that can outlast openHop's wait. The plugin now asks for `PyYAML`, so the ready-made build is used and the install takes seconds. Checked with the same pip version against a copy of the mirror's naming.
+- **An update that can't install stops before it removes anything.** Before openHop replaces the running version, SpamGuard checks that the new version's libraries are available as ready-made builds on this machine. Only a clear "none exist" stops it (no network, no pip or any other doubt lets the update go ahead), and the Updates box then explains, with an **Update anyway** button. The README says how to get SpamGuard back from the Plugins page if an install is ever cut short. It can be turned off with `plugin_preflight: false` in the config.
+- **Fewer writes to the SD card.** SpamGuard refreshes its "I'm in charge of this repeater" marker in openHop every 10 minutes instead of every 5. That marker is rewritten into openHop's policy file each time, which was the most regular write SpamGuard made. The marker still has five minutes of slack before another copy would treat it as stale.
+- `tests/testpreflight.py` (new) covers the check and the update flow; `testplugin.py`, `testmigrate.py` and `testupdprog.py` cover the PyYAML spelling, the ten-minute refresh and the new button.
+
 ## v6.5.4 (FloodGuard 1.2.2, unchanged)
 ### SpamGuard 6.5.4
 - **Shorter FloodGuard notices.** The two FloodGuard boxes took most of a phone screen; each is now two or three lines. The longer advice for a flood that has run for a day sits under the box instead of inside it.
