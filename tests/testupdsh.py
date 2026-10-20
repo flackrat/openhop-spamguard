@@ -29,6 +29,9 @@ release("v9.9.9", GOOD); release("v9.9.10", BAD)
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(s, *a, **k): super().__init__(*a, directory=SRV, **k)
     def log_message(s, *a): pass
+    def do_GET(s):
+        if s.path.endswith(".tar.gz"): time.sleep(0.8)   # a download that takes a moment, so the early percentage can be seen
+        super().do_GET()
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
 base = f"http://127.0.0.1:{srv.server_address[1]}"
 # fake systemctl (everything is active) and a curl that says the new version answers on its health page

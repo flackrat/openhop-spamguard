@@ -71,7 +71,10 @@ setup(
     packages=["openhop_spamguard"],
     package_data={{"openhop_spamguard": ["ui.html", "spamguard-ui/*"]}},
     data_files=[("share/openhop/plugins/{PLUGIN_ID}", ["openhop-plugin.json"])],
-    install_requires=["pycryptodome>=3.15", "pyyaml>=5.4"],
+    # PyYAML is written the way its published files spell it. pip 23.0 (Raspberry Pi OS Bookworm) throws away the
+    # ready-made piwheels build of "pyyaml" because the name's capitals differ, and then compiles it from source,
+    # which takes a Pi 3 longer than openHop waits.
+    install_requires=["pycryptodome>=3.15", "PyYAML>=5.4"],
     python_requires=">=3.9",
     entry_points={{"console_scripts": ["openhop-spamguard=openhop_spamguard.plugin:main"]}},
 )
