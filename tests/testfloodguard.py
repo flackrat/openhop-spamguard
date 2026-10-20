@@ -246,4 +246,26 @@ check(all(r["then"]["action"]=="log_only" for r in gq._build_flood()),"and its r
 g3=guard(mock(), floodguard=True); g3.ingest(flood)
 check(not g3.fg_decide(time.time()) and not g3.fg.get("limit"),"no radio settings: FloodGuard waits")
 
+# ---- a repeater in a busy place: the radio sits above the starting limit, so no hour is "quiet" and the
+# old learning (quiet hours only) could never raise the limit. It now takes every hour and uses the middle one.
+gb=guard(mock()); gb.radio=dict(RADIO); gb.refresh_openhop_info=lambda *a,**k: None
+T=time.time(); gb.fg["learn_start"]=T-3.1*86400
+for k in range(80):
+    hr=str(int((T-k*3600)//3600*3600))
+    gb.hist[hr]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":round(random.uniform(22,30),1)}
+for k in (3,4,5):   # and a flood of a few hours inside it doesn't move the middle
+    gb.hist[str(int((T-k*3600)//3600*3600))]["bz"]=70.0
+check(gb.fg_learn(T) and gb.fg.get("ready"),"a busy repeater finishes learning")
+check(gb.fg["learnt"].get("flood_busy_percent")==40 and gb.cfg["flood_busy_percent"]==40,f"and learns a higher busy limit (the top of its range): {gb.fg['learnt']}")
+check(any("busy most of the time" in a["msg"] for a in gb.activity),"and says why in Activity")
+# a quiet repeater still learns exactly as before, and the busy-site fallback is not used for it
+check(not g5.fg.get("busy_site") and 10<=g5.fg["learnt"]["flood_busy_percent"]<=20,"a quiet repeater's limit is learnt from its quiet hours, as before")
+# too little history: nothing learnt, nothing invented
+gn=guard(mock()); gn.radio=dict(RADIO); gn.refresh_openhop_info=lambda *a,**k: None
+gn.fg["learn_start"]=T-3.1*86400
+for k in range(20): gn.hist[str(int((T-k*3600)//3600*3600))]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":30.0}
+check("flood_busy_percent" not in gn.fg_learnt_values(T),"under two days of hours: no busy limit is learnt")
+gb._save_state(force=True); gb2=sg.SpamGuard(dict(gb.file_cfg))
+check(gb2.fg.get("busy_site") and gb2.cfg["flood_busy_percent"]==40,"the busy-site limit survives a restart")
+
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

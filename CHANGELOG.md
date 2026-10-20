@@ -2,6 +2,13 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.5.3 (FloodGuard 1.2.2)
+### FloodGuard 1.2.2
+- **A repeater in a busy place can now learn its own busy limit.** FloodGuard used to set its busy limit only from hours when the radio was *below* the starting limit (15%), and needed two days of them. On a repeater that normally sits above 15% there were none, so it stayed on the starting limit and was "containing a flood" for days at a time. It now falls back to every hour and takes twice the middle one (a flood of a few hours can't move a middle value), still inside its 10 to 40% range, and says so in Activity. Repeaters with quiet hours learn exactly as before. Then, as always, it moves a little each day.
+### SpamGuard 6.5.3
+- **FloodGuard is shown calmly once it has been on for an hour.** A flood that has just started is still amber. After an hour it becomes a quiet notice ("holding back long-distance flood packets") on the Overview and the FloodGuard page, with the radio's busy level against its limit. After a day the page adds that this usually means the site is simply busy, and points to the busy limit under Settings. The Details link in these notices is also darker, so it meets the contrast guidelines in the light theme.
+- `tests/testfgcalm.py` checks the wording, colours and accessibility; `tests/testfloodguard.py` covers the busy-repeater learning.
+
 ## v6.5.2 (FloodGuard 1.2.1, unchanged)
 ### SpamGuard 6.5.2
 - **The Update box shows how far the update has got.** While an update installs, the banner and the Updates box show a percentage bar and the last two lines the installer printed, so a slow Pi can be told apart from a stuck one. As an openHop plugin, the lines come from openHop's own install feed; on a normal install, from the updater's install log. The percentage is a guide, not a measurement: the download counts truly, but the installer doesn't say how many steps it has, so that part moves along with its output and never goes backwards. A failed update shows the reason, with no bar.

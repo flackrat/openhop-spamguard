@@ -304,6 +304,7 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 [hidden]{display:none!important}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;background:var(--panel);padding:1px 5px;border-radius:4px;word-break:break-all}
 .callout.info{background:var(--signal-tint);border-color:var(--signal)}
+.callout.info a,.callout.info .quietlink{color:var(--signal-text)}
 .upprog{display:flex;align-items:center;gap:10px;width:100%;margin:6px 0 2px}
 .upbar{flex:1;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
 .upbar i{display:block;height:100%;background:var(--bar);border-radius:4px;transition:width .4s}
@@ -1282,6 +1283,9 @@ function renderMove(d){
 var fgView=(()=>{ try{ return localStorage.getItem("sg.fgview")||"spam"; }catch(e){ return "spam"; } })();
 document.addEventListener("click",e=>{ const b=e.target.closest&&e.target.closest("#viewPick button"); if(!b) return;
   fgView=b.dataset.v; try{ localStorage.setItem("sg.fgview",fgView); }catch(e){} if(S) renderOverview(S); });
+// FloodGuard has been holding back long-distance floods for over an hour: a standing condition on a busy
+// site, not an incident, so it is shown calmly (amber is kept for a flood that has only just started).
+function fgLong(fg){ return !!(fg&&fg.limit&&fg.acting&&fg.since&&Date.now()/1000-fg.since>=3600); }
 function fmtMins(t){ const m=Math.max(1,Math.round((Date.now()/1000-t)/60)); return m<90?`${m} min`:`${Math.round(m/60)} h`; }
 /* FloodGuard: the menu switch, the Overview callout, and its own page */
 /* Interference watch: on the FloodGuard page */
@@ -1325,12 +1329,13 @@ function renderWardrive(d){
 }
 function renderFloodNav(d){
   const fg=(d.metrics||{}).floodguard||{};
-  const st=!fg.enabled?["Off","plain"]:fg.limit&&fg.acting?["Flood","would"]:fg.learning?["Learning","plain"]:["On","ok"];
+  const st=!fg.enabled?["Off","plain"]:fg.limit&&fg.acting?(fgLong(fg)?["Active","plain"]:["Flood","would"]):fg.learning?["Learning","plain"]:["On","ok"];
   const bt=$("#fgBrandTag"); bt.textContent=st[0]; bt.className="tag "+st[1];
   const jm=(d.metrics||{}).interference||{};
-  badge("floodguard",fg.limit?"Flood":jm.since?"Noise":"",(fg.limit&&fg.acting)||jm.since?"warn":"plain");   // learning/on/off shows next to its name above
+  badge("floodguard",fg.limit?(fgLong(fg)?"Active":"Flood"):jm.since?"Noise":"",(fg.limit&&fg.acting&&!fgLong(fg))||jm.since?"warn":"plain");   // learning/on/off shows next to its name above
   const c=$("#fgCallout"); if(!c) return;
-  c.innerHTML=!fg.limit?"":fg.acting?`<div class="callout"><span><strong>FloodGuard is containing a flood.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`
+  c.innerHTML=!fg.limit?"":fg.acting&&fgLong(fg)?`<div class="callout info"><span><strong>FloodGuard is holding back long-distance flood packets.</strong> The radio has been busy for ${fmtMins(fg.since)} (${fg.busy==null?"–":Math.round(fg.busy)+"%"} now, against its ${fg.level}% limit). Packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`
+    :fg.acting?`<div class="callout"><span><strong>FloodGuard is containing a flood.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; flood packets from ${fg.limit} or more hops away aren't passed on. Direct messages and people SpamGuard knows still get through.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`
     :`<div class="callout info"><span><strong>FloodGuard sees a flood but is only counting${fg.learning?" while it learns":" (Monitor)"}.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy; nothing is held back.</span><span class="cbtns"><a href="#/floodguard" class="quietlink">Details</a></span></div>`;
 }
 function renderFloodPage(d){
@@ -1338,7 +1343,7 @@ function renderFloodPage(d){
   const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   const fixed=[fg.unscoped?`unscoped flood packets stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
   const monitor=d.mode!=="protect"||d.paused;
-  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?"<span class='tag would'>containing a flood</span>":"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
+  let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?(fgLong(fg)?"<span class='tag plain'>holding back floods</span>":"<span class='tag would'>containing a flood</span>"):"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
   if(fg.enabled&&fg.learning&&fg.radio_known){
     const day=fg.learn_start?Math.min(fg.learn_days,Math.floor((Date.now()/1000-fg.learn_start)/86400)+1):1;
     const until=fg.learn_until?new Date(fg.learn_until*1000).toLocaleString([],{weekday:"long",hour:"2-digit",minute:"2-digit"}):"";
@@ -1350,6 +1355,9 @@ function renderFloodPage(d){
     h+=`<p class="lead">FloodGuard needs openHop's radio settings to measure airtime, and SpamGuard hasn't been able to read them yet.</p>`;
   } else if(fg.limit&&!fg.acting){
     h+=`<div class="callout info"><span><strong>A flood, but FloodGuard is only counting.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. Flood packets from ${fg.limit} or more hops would be held back, but ${fg.learning?"FloodGuard is still learning":"SpamGuard is in Monitor"}, so everything is still passed on and only counted.</span></div>`;
+  } else if(fg.limit&&fgLong(fg)){
+    const days=(Date.now()/1000-fg.since)/86400;
+    h+=`<div class="callout info"><span><strong>Holding back long-distance flood packets.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic, against a limit of ${fg.level}%. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.${days>=1?` It has been on for a day or more, which usually means this site is simply busy rather than flooded. ${(fg.auto||[]).includes("flood_busy_percent")?"FloodGuard raises its own busy limit a little each day as it learns this repeater's traffic. ":""}If you know the radio is normally this busy, you can raise the busy limit yourself under <a href="#/settings">Settings</a>.`:""}</span></div>`;
   } else if(fg.limit){
     h+=`<div class="callout"><span><strong>Containing a flood.</strong> The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy (at most ${Math.round(fg.peak||0)}%), mostly flood traffic. For ${fmtMins(fg.since)} now, flood packets that have already come ${fg.limit} or more hops aren't passed on, except channel messages from people SpamGuard knows. Direct messages, replies and acknowledgements are never touched. It lifts by itself once the radio is quiet again.</span></div>`;
   } else {
