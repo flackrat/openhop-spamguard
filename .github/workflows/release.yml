@@ -1,5 +1,5 @@
 # Publishes a GitHub release whenever the version number in spamguard.py changes on main.
-# The release notes are that version's section of CHANGELOG.md. Uses GitHub's built-in
+# The release notes are that version's section of CHANGELOG.md (its heading may carry extra text after the version). Uses GitHub's built-in
 # token for this repository only; no personal token is stored anywhere.
 # When CHANGELOG.md is edited, the notes of releases already published are brought in line with it.
 name: Release
@@ -23,7 +23,7 @@ jobs:
           v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)
           [ -n "$v" ] || { echo "No VERSION found in spamguard.py"; exit 1; }
           if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released"; exit 0; fi
-          awk -v h="## v$v" '$0==h{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > notes.md
+          awk -v h="## v$v" '$0==h||index($0,h" ")==1||index($0,h":")==1{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "SpamGuard $v" > notes.md
           # Download file for this version; the Pi's Update button fetches this, so its download
           # count shows roughly how many repeaters installed the update.
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           for t in $(gh release list --limit 200 --json tagName --jq '.[].tagName'); do
-            awk -v h="## $t" '$0==h{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > want.md
+            awk -v h="## $t" '$0==h||index($0,h" ")==1||index($0,h":")==1{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > want.md
             [ -s want.md ] || continue
             gh release view "$t" --json body --jq .body > have.md
             if ! diff -qbB want.md have.md >/dev/null; then
