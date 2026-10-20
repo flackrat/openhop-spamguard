@@ -2,6 +2,11 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.5.2 (FloodGuard 1.2.1, unchanged)
+### SpamGuard 6.5.2
+- **The Update box shows how far the update has got.** While an update installs, the banner and the Updates box show a percentage bar and the last two lines the installer printed, so a slow Pi can be told apart from a stuck one. As an openHop plugin, the lines come from openHop's own install feed; on a normal install, from the updater's install log. The percentage is a guide, not a measurement: the download counts truly, but the installer doesn't say how many steps it has, so that part moves along with its output and never goes backwards. A failed update shows the reason, with no bar.
+- The page is checked for accessibility (the bar is announced as a progress bar), and text from the installer is only ever shown as text. `tests/testupdprog.py`, `tests/testupdsh.py` (runs `update.sh` for real against a made-up release) and an extended `tests/testpluginops.py` cover it.
+
 ## v6.5.1 (FloodGuard 1.2.1, unchanged)
 ### SpamGuard 6.5.1
 - **Fewer false alarms from capital-letter names.** A sender name written in capital letters only, with no digits, such as a node or club abbreviation (BTCRWETN, RCTMARK), was being scored as made-up, so ordinary conversation from that name showed up as spam let through on the charts. Such names now count a little, not as made-up. Names with digits or mixed case, and any pattern you add yourself, are scored as before. `tests/testnames.py` covers it.
