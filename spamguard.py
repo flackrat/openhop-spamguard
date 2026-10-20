@@ -65,10 +65,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.2"
+VERSION = "6.5.3"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2.1"
+FLOODGUARD_VERSION = "1.2.2"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1342,7 +1342,7 @@ class SpamGuard:
         self.hist_mark = float(st.get("hist_mark") or 0)
         fg = st.get("floodguard") or {}
         if isinstance(fg, dict):
-            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61")})
+            self.fg.update({k: v for k, v in fg.items() if k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61", "busy_site")})
             if not isinstance(self.fg.get("learnt"), dict):
                 self.fg["learnt"] = {}
             self.fg_hops = {k: {int(h): int(n) for h, n in v.items()} for k, v in (fg.get("hops") or {}).items()
@@ -1428,7 +1428,7 @@ class SpamGuard:
                     "hist": self.hist,
                     "hist_mark": self.hist_mark,
                     "interference": {k: self.jam.get(k) for k in ("mark", "since", "peak", "episodes", "backfilled")},
-                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61")},
+                    "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61", "busy_site")},
                                    "hops": self.fg_hops, "adv": self.fg_adv},
                     "reset_at": getattr(self, "reset_at", 0.0),
                     "monitor_since": getattr(self, "monitor_since", 0.0),
@@ -1837,6 +1837,18 @@ class SpamGuard:
         if len(busy) >= 48:   # two days of hours, busiest five minutes of each
             # Twice a normal busy hour, and comfortably above the busiest genuine five minutes it heard.
             new["flood_busy_percent"] = round(max(2 * busy[int(0.9 * (len(busy) - 1))], 1.25 * busy[int(0.99 * (len(busy) - 1))]))
+            self.fg.pop("busy_site", None)
+        else:
+            # Hours below the limit were too few to judge. That is what a repeater in a busy place looks like
+            # (the radio sits above the starting limit most of the time), and it would never learn a higher
+            # limit if only quiet hours counted. So take every hour and use the middle one, which a flood that
+            # lasts a few hours can't move. Twice a typical hour, as above.
+            every = sorted(float(v["bz"]) for k, v in self.hist.items() if int(k) >= cut and v.get("bz") is not None)
+            if len(every) >= 48:
+                new["flood_busy_percent"] = round(2 * every[len(every) // 2])
+                self.fg["busy_site"] = True
+            else:
+                self.fg.pop("busy_site", None)
         if sum(hops.values()) >= 500:
             new["flood_max_unscoped"] = 2 * self._quantile(hops, 0.99)
         if sum(adv.values()) >= 50:
@@ -1889,7 +1901,8 @@ class SpamGuard:
             what = "; ".join(words[k](self.cfg.get(k) if k in self.settings else auto.get(k, c.get(k)))
                              + ("" if k in auto else " (yours)") for k in FG_AUTO_KEYS)
             self.note(f"FloodGuard has learnt this repeater's traffic and now acts: {what}. Settings you set yourself are kept"
-                      + ("." if new else ". It heard too little to learn from, so it uses the recommended values."))
+                      + ("." if new else ". It heard too little to learn from, so it uses the recommended values.")
+                      + (" The radio here is busy most of the time, so it set its busy limit from that rather than from quiet hours." if f.get("busy_site") and "flood_busy_percent" in auto else ""))
         elif changed:
             self.note("FloodGuard adjusted to this mesh's recent traffic: " + "; ".join(words[k](v) for k, v in changed.items()) + ".")
         self.rebuild_cfg()

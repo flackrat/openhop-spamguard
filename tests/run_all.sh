@@ -21,7 +21,7 @@ TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmes
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   [ -d .leaflet/node_modules/leaflet ] || (mkdir -p .leaflet && cd .leaflet && npm i -s leaflet@1.9.4 >/dev/null 2>&1)
   [ -d .axe/node_modules/axe-core ] || (mkdir -p .axe && cd .axe && npm i -s axe-core@4.10.2 >/dev/null 2>&1)
-  TESTS="$TESTS testguess testmappins testupdprog testhist testa11y testchpick"
+  TESTS="$TESTS testguess testmappins testupdprog testfgcalm testhist testa11y testchpick"
 else
   echo "(skipping the browser test: Playwright or npm not available)"
 fi
