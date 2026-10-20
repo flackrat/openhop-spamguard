@@ -1400,7 +1400,7 @@ function renderOverview(d){
     :{c:r.c,x:r.x,tip:`${when}: ${r.c} stopped, ${r.x} let through${r.m!=null?`, ${r.m} messages`:""}`};
   $("#h24").textContent=view==="floods"?"Flood packets, last 24 hours":view==="both"?"Spam and floods, last 24 hours":"Spam, last 24 hours";
   const leg=view==="floods"?sw("f","Stopped by FloodGuard")+sw("x","Over the limit but let through (while learning, in Monitor, or before the limit started)")
-    :sw("c","Spam stopped")+sw("x","Spam let through (before a block started, or in Monitor mode)")+(view==="both"?sw("f","Flood packets stopped by FloodGuard"):"");
+    :sw("c","Spam stopped")+sw("x","Looked like spam but not blocked (no block in place yet, or Monitor mode)")+(view==="both"?sw("f","Flood packets stopped by FloodGuard"):"");
   $("#leg24").innerHTML=leg; $("#leg7").innerHTML=leg.replace(/ \([^)]*\)/g,"");
   const cols=view==="floods"?[["f","Flood packets stopped"],["x","Let through"]]:null, segs=view==="floods"?["f","x"]:null;
   columns($("#chart24"),g.hourly.map(r=>({...pick(r,hh(r.t)),label:hh(r.t),full:hh(r.t)})),{every:6,col:"Hour",cols,segs});
