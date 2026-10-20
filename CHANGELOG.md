@@ -2,6 +2,11 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.5.4 (FloodGuard 1.2.2, unchanged)
+### SpamGuard 6.5.4
+- **Shorter FloodGuard notices.** The two FloodGuard boxes took most of a phone screen; each is now two or three lines. The longer advice for a flood that has run for a day sits under the box instead of inside it.
+- **Interference now shows on the Overview.** When the radio channel's noise stays well above this site's normal, a short notice says by how much and how far the repeater now hears, with a link to the FloodGuard page. Before, it was only on the FloodGuard and Health pages and as a small badge in the menu.
+
 ## v6.5.3 (FloodGuard 1.2.2)
 ### FloodGuard 1.2.2
 - **A repeater in a busy place can now learn its own busy limit.** FloodGuard used to set its busy limit only from hours when the radio was *below* the starting limit (15%), and needed two days of them. On a repeater that normally sits above 15% there were none, so it stayed on the starting limit and was "containing a flood" for days at a time. It now falls back to every hour and takes twice the middle one (a flood of a few hours can't move a middle value), still inside its 10 to 40% range, and says so in Activity. Repeaters with quiet hours learn exactly as before. Then, as always, it moves a little each day.

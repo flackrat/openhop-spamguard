@@ -42,7 +42,7 @@ async def main():
                 ("Containing a flood" in a["page"] and "would" in a["ptag"], "and so does the FloodGuard page"),
                 ("a day or more" not in a["page"], "with no long-running note yet")]
         await show(fgd(5)); a = await info()
-        res += [("info" in a["cls"] and "holding back long-distance" in a["call"] and "containing a flood" not in a["call"], "after hours it is a calm notice on the Overview: " + a["cls"]),
+        res += [("info" in a["cls"] and "FloodGuard is active" in a["call"] and "containing a flood" not in a["call"], "after hours it is a calm notice on the Overview: " + a["cls"]),
                 ("27%" in a["call"] and "15%" in a["call"], "which still says the radio is 27% busy against the 15% limit"),
                 (a["tag"] == "Active" and "plain" in a["tcls"], "brand tag: " + a["tag"]),
                 (a["ptext"] == "holding back floods" and "plain" in a["ptag"], "page tag: " + a["ptext"]),
@@ -50,11 +50,25 @@ async def main():
         await show(fgd(70)); a = await info()
         res += [("a day or more" in a["page"] and "#/settings" in a["link"], "after a day the page points at the busy limit in Settings: " + str(a["link"])),
                 ("raises its own busy limit" in a["page"], "and says FloodGuard is raising its own limit while it is automatic"),
-                ("holding back long-distance" in a["call"], "the Overview stays calm")]
+                ("FloodGuard is active" in a["call"], "the Overview stays calm")]
         await show(fgd(70, auto=[])); a = await info()
         res.append(("raises its own busy limit" not in a["page"], "a limit you set yourself isn't described as automatic"))
         await show(fgd(70, acting=False, learning=True)); a = await info()
         res.append(("only counting" in a["call"] and "info" in a["cls"], "still only counting while it learns: unchanged wording"))
+        # short enough for a phone: the notices were most of the screen before
+        await show(fgd(5)); a = await info()
+        res.append((len(a["call"]) < 150, f"the Overview notice is short ({len(a['call'])} characters)"))
+        await show(fgd(0.2)); a = await info()
+        res.append((len(a["call"]) < 140, f"and so is a fresh flood's ({len(a['call'])} characters)"))
+        # interference shows on the Overview, on its own or with a flood, and not when there is none
+        jam = {"enabled": True, "since": time.time() - 900, "rise": 12.4, "range": 41, "current": -100, "baseline": -112}
+        d = fgd(5, limit=None, since=None); d["metrics"]["interference"] = jam; await show(d); a = await info()
+        res.append(("Interference on the radio" in a["call"] and "12 dB" in a["call"] and "41%" in a["call"], "interference is on the Overview: " + a["call"][:60]))
+        res.append((len(a["call"]) < 150, f"in one short notice ({len(a['call'])} characters)"))
+        d = fgd(0.2); d["metrics"]["interference"] = jam; await show(d); a = await info()
+        res.append(("containing a flood" in a["call"] and "Interference on the radio" in a["call"], "with a flood as well, both are shown"))
+        d = fgd(5, limit=None, since=None); d["metrics"]["interference"] = {"enabled": True}; await show(d); a = await info()
+        res.append((a["call"].strip() == "", "no interference and no flood: nothing on the Overview"))
         for scheme in ("light", "dark"):
             await pg.evaluate(f"document.documentElement.dataset.theme='{scheme}'")
             for age in (0.2, 70):
