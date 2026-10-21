@@ -28,4 +28,7 @@ jobs:
           sudo -E env "PATH=$PATH" bash tests/run_all.sh | tee out.txt
           rc=${PIPESTATUS[0]}
           grep -E "^(FAIL|      )" out.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
+          if [ $rc -ne 0 ]; then
+            (cd tests && sudo -E env "PATH=$PATH" python3 testplugin.py 2>&1 | tail -30 | while IFS= read -r l; do echo "::error::testplugin: $l"; done)
+          fi
           exit $rc
