@@ -1,0 +1,43 @@
+# One-off helper: signs the files of releases that were published before release signing was added, with a
+# keyless Sigstore signature made by this workflow, and attaches the .sigstore.json files to each release.
+# The signatures are made now, not at release time, and each release's notes say so. Run it by hand from the
+# Actions tab (it asks which release tags to sign).
+name: Sign earlier releases
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Release tags to sign, separated by spaces"
+        required: true
+        default: "v6.5.1 v6.5.2 v6.5.3 v6.5.4 v6.5.5"
+permissions:
+  contents: read
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign and attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: ${{ inputs.tags }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            [[ "$tag" =~ ^v[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "Skipping odd tag: $tag"; continue; }
+            d="work/$tag"; mkdir -p "$d"
+            gh release download "$tag" --repo "$REPO" --dir "$d" --pattern '*.whl' --pattern '*.tar.gz'
+            for f in "$d"/*.whl "$d"/*.tar.gz; do
+              cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+              gh release upload "$tag" "$f.sigstore.json" --repo "$REPO" --clobber
+            done
+            if ! gh release view "$tag" --repo "$REPO" --json body --jq .body | grep -q "Release files signed on"; then
+              gh release view "$tag" --repo "$REPO" --json body --jq .body > "$d/notes.md"
+              printf '\n\n---\nRelease files signed on %s with a Sigstore signature (see SECURITY.md to verify). They were signed after publication, so the signature date is later than the release date.\n' "$(date -u +%F)" >> "$d/notes.md"
+              gh release edit "$tag" --repo "$REPO" --notes-file "$d/notes.md"
+            fi
+          done
