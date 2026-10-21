@@ -1,4 +1,4 @@
 bandit
 pip-audit
-pycryptodome>=3.15
+pycryptodome>=4.0.1
 PyYAML>=6.0.3
