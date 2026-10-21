@@ -2,6 +2,12 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.5.6 (FloodGuard 1.2.4)
+### FloodGuard 1.2.4
+- **A flood no longer teaches FloodGuard that flooding is normal.** On a busy site FloodGuard raises its busy limit to fit the traffic, but it counted the hours it had itself flagged as floods, so a long flood could push the limit up and make the next one harder to spot. Flagged hours are now left out, and if most of the hours it heard were floods it learns nothing from them. The busy limit also stops at 30%, however busy the site is.
+### SpamGuard 6.5.6
+- **No more false "bad" health when openHop does not run as a service on this computer.** systemd reports "inactive" for a service it has never heard of, so a plugin install with openHop in Docker or elsewhere could show the openHop service as stopped. SpamGuard now believes systemd only when the openHop service is really installed here. Found by the new automatic checks on GitHub.
+
 ## v6.5.5 (FloodGuard 1.2.3)
 ### FloodGuard 1.2.3
 - **FloodGuard no longer holds back genuine long-route traffic on a busy mesh.** On a real repeater (evidence log, three days) the middle message had come 10 hops and one in four 16 or more, so FloodGuard's made-up start of 16 hops, tightened to a floor of 8, held back messages from senders SpamGuard didn't know yet. The cause was the same trap as the busy limit: it learnt how far flood packets normally come only from quiet hours, and a busy radio never has any. Now:
