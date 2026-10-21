@@ -110,5 +110,16 @@ for _ in range(90):
 check(up,"SpamGuard restarted on the new version and its page is back")
 check((storage.paths_for(man.id).data_dir/"state.json").exists(),"what it had learnt is still there")
 rt.stop(man.id)
+# ---- no false "openHop service is inactive" when systemd has no such unit (openHop in Docker or elsewhere) ----
+real_sv=sg.systemd_value
+def fake_sv(load):
+    return lambda unit,prop: ({"LoadState":load,"ActiveState":"inactive"}.get(prop) if unit=="openhop-repeater" else real_sv(unit,prop))
+sg.systemd_value=fake_sv("not-found")
+h=g.health()
+check(h["openhop_service"] is None and not any("repeater service" in x for x in h["problems"]),"health: no unit installed, no false 'inactive' alarm")
+sg.systemd_value=fake_sv("loaded")
+h=g.health()
+check(h["openhop_service"]=="inactive" and any("repeater service is inactive" in x for x in h["problems"]),"health: a real stopped service is still reported")
+sg.systemd_value=real_sv
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
