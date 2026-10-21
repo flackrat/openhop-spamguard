@@ -15,8 +15,9 @@ if [ ! -d .openhop_core/src ]; then
   git clone -q https://github.com/openhop-dev/openhop_core .openhop_core && git -C .openhop_core checkout -q v1.1.3 \
     || { echo "could not fetch openhop_core source"; exit 2; }
 fi
+python3 -c "import hypothesis" 2>/dev/null || pip install -q hypothesis 2>/dev/null || pip install -q --break-system-packages hypothesis
 python3 -c "import Crypto" 2>/dev/null || pip install -q pycryptodome 2>/dev/null || pip install -q --break-system-packages pycryptodome
-TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testwardrive testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight"
+TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testwardrive testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testfuzz testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight"
 [ "${1:-}" = "--slow" ] && TESTS="$TESTS teststress"
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   [ -d .leaflet/node_modules/leaflet ] || (mkdir -p .leaflet && cd .leaflet && npm i -s leaflet@1.9.4 >/dev/null 2>&1)
