@@ -66,10 +66,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.5"
+VERSION = "6.5.6"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2.3"
+FLOODGUARD_VERSION = "1.2.4"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1892,9 +1892,14 @@ class SpamGuard:
             # (the radio sits above the starting limit most of the time), and it would never learn a higher
             # limit if only quiet hours counted. So take every hour and use the middle one, which a flood that
             # lasts a few hours can't move. Twice a typical hour, as above.
-            every = sorted(float(v["bz"]) for k, v in self.hist.items() if int(k) >= cut and v.get("bz") is not None)
-            if len(every) >= 48:
-                new["flood_busy_percent"] = round(2 * every[len(every) // 2])
+            # Hours FloodGuard flagged as a flood are left out, and if flood hours are most of what it heard, it
+            # learns nothing at all from them (a flood that long must not become "normal"). The busy limit it
+            # sets this way stops at BUSY_SITE_CEILING, below the top of the usual range.
+            window = [v for k, v in self.hist.items() if int(k) >= cut and v.get("bz") is not None]
+            every = sorted(float(v["bz"]) for v in window if not v.get("fc"))
+            flood_share = 1 - len(every) / len(window) if window else 0
+            if len(every) >= 48 and flood_share <= 0.5:
+                new["flood_busy_percent"] = min(self.BUSY_SITE_CEILING, round(2 * every[len(every) // 2]))
                 self.fg["busy_site"] = True
             else:
                 self.fg.pop("busy_site", None)
@@ -1904,6 +1909,7 @@ class SpamGuard:
             new["flood_max_advert"] = self._quantile(adv, 0.99) + 2
         return {k: max(FG_AUTO_KEYS[k][0], min(FG_AUTO_KEYS[k][1], int(v))) for k, v in new.items()}
 
+    BUSY_SITE_CEILING = 30   # a limit learnt on a permanently busy radio never goes above this (the usual range reaches 40)
     FG_DAILY_STEP = {"flood_busy_percent": 5, "flood_max_unscoped": 4, "flood_max_advert": 2}
 
     def fg_learn(self, now: float) -> bool:
@@ -4960,7 +4966,10 @@ class SpamGuard:
         c = self.cfg
         sysr = system_readings(c.get("evidence_dir", "/var/lib/openhop_spamguard"))
         restarts = systemd_value("openhop-spamguard", "NRestarts")
-        openhop_state = systemd_value("openhop-repeater", "ActiveState")
+        # systemd says "inactive" for a service it has never heard of, so only believe it when openHop's service
+        # really is installed on this machine (openHop may run in Docker or on another computer).
+        openhop_state = (systemd_value("openhop-repeater", "ActiveState")
+                         if systemd_value("openhop-repeater", "LoadState") == "loaded" else None)
         watchdog = bool(os.environ.get("WATCHDOG_USEC"))
         errors_hour = sum(1 for t in self.errors if t > now - 3600)
         problems, warnings = [], []
