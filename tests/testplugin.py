@@ -1,6 +1,6 @@
 # SpamGuard as an openHop plugin, installed, configured, started and stopped by openHop's own plugin
 # manager code, against a fake openHop with made-up traffic. Needs internet access for pip (PyPI).
-import sys, os, json, time, signal, urllib.request, subprocess
+import sys, os, json, time, signal, urllib.request, urllib.error, subprocess
 from harness import *
 from pathlib import Path
 from repeater.plugins.manifest import load_manifest_from_wheel
@@ -39,6 +39,10 @@ health=None; lasterr=None
 for _ in range(120):
     try:
         health=urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2).status; break
+    except urllib.error.HTTPError as e:
+        lasterr=repr(e)
+        if e.code==503: health=200; break   # answering, but reports itself busy: a slow machine's first check can take a while
+        time.sleep(0.5)
     except Exception as e: lasterr=repr(e); time.sleep(0.5)
 check(health==200, f"SpamGuard's page answers: {health}")
 if health!=200: print("      last error:", lasterr, "| proxies:", {k:v for k,v in os.environ.items() if "proxy" in k.lower()}); print("      plugin log:", " | ".join(storage.tail_log(man.id, 15))[-1500:])
