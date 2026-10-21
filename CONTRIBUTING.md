@@ -16,7 +16,8 @@ channel names and keys before sharing it. Security problems go through private r
 3. Open a pull request against `main`. Describe what changed and why, and mention how you tested it.
 
 The same suite runs on GitHub for every pull request, together with CodeQL and a Bandit and pip-audit check.
-Please make sure the Tests check passes before asking for a merge.
+Changes to `main` can only be made through a pull request, and the `tests` check has to pass before GitHub
+allows the merge. That applies to the maintainer too.
 
 ## What a good change looks like
 
