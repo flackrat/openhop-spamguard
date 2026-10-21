@@ -3,3 +3,4 @@
 !ui.html
 !replay.py
 !docker-entrypoint.sh
+!requirements/docker.txt
