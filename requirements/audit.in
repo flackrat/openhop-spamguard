@@ -1,0 +1,4 @@
+bandit
+pip-audit
+pycryptodome>=3.15
+PyYAML>=5.4

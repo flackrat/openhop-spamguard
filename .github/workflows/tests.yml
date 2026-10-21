@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: python -m pip install "pycryptodome>=3.15" "PyYAML>=5.4" pynacl hypothesis==6.170.5
+        run: python -m pip install --require-hashes -r requirements/ci.txt
       - name: Run the tests
         run: |
           set +e

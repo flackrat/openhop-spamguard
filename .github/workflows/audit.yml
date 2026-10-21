@@ -22,10 +22,7 @@ jobs:
           python-version: "3.12"
       - name: Bandit
         run: |
-          python -m pip install bandit==1.7.10
+          python -m pip install --require-hashes -r requirements/audit.txt
           bandit -q -r spamguard.py tools -lll
       - name: pip-audit
-        run: |
-          python -m pip install pip-audit==2.7.3
-          printf 'pycryptodome>=3.15\nPyYAML>=5.4\n' > req.txt
-          pip-audit -r req.txt
+        run: pip-audit --require-hashes -r requirements/docker.txt
