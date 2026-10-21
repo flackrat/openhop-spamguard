@@ -21,4 +21,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install "pycryptodome>=3.15" "PyYAML>=5.4" pynacl
       - name: Run the tests
-        run: bash tests/run_all.sh
+        run: |
+          set +e
+          bash tests/run_all.sh | tee out.txt
+          rc=${PIPESTATUS[0]}
+          grep -E "^(FAIL|      )" out.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
+          exit $rc
