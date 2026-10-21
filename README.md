@@ -1,6 +1,7 @@
 # openHop SpamGuard, with FloodGuard
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15768/badge)](https://www.bestpractices.dev/projects/15768)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/flackrat/openhop-spamguard/badge)](https://scorecard.dev/viewer/?uri=github.com/flackrat/openhop-spamguard)
 ![CodeQL](https://github.com/flackrat/openhop-spamguard/actions/workflows/codeql.yml/badge.svg)
 ![Audit](https://github.com/flackrat/openhop-spamguard/actions/workflows/audit.yml/badge.svg)
