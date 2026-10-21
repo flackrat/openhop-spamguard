@@ -1,0 +1,6 @@
+{
+  "name": "spamguard-test-leaflet",
+  "private": true,
+  "description": "Map library used only by the browser tests",
+  "dependencies": {"leaflet": "1.9.4"}
+}

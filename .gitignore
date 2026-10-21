@@ -6,8 +6,9 @@ state.json
 
 # test suite working files
 tests/.openhop/
-tests/.leaflet/
+tests/.leaflet
+tests/npm/*/node_modules/
 tests/.out_*
 tests/__pycache__/
 tests/.openhop_core/
-tests/.axe/
+tests/.axe
