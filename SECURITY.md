@@ -1,10 +1,29 @@
 # Security policy
 
-If you find a security problem in SpamGuard, please report it privately through this repository's
-Security tab ("Report a vulnerability") rather than opening a public issue. Include the SpamGuard version
-and what you saw. I will reply as soon as I can and credit you in the release notes if you wish.
+## Reporting a vulnerability
 
-The latest release is the only supported version.
+Please report security problems privately, not in a public issue. Use GitHub's private reporting:
+<https://github.com/flackrat/openhop-spamguard/security/advisories/new>
 
-Each release wheel carries a signed build attestation, so you can check it was built from this repository by
-its release workflow: `gh attestation verify <wheel> --repo flackrat/openhop-spamguard`.
+Include the SpamGuard version and what you saw. I aim to reply within 7 days, to have a fix or a clear plan
+within 30 days, and to credit you in the release notes if you wish.
+
+## Supported versions
+
+Only the latest release receives fixes. Update from the Update box in SpamGuard, or install the newest wheel
+from the [releases page](https://github.com/flackrat/openhop-spamguard/releases).
+
+## Checking a release
+
+Each release file is signed two ways, so you can confirm it was built from this repository by its release
+workflow and wasn't changed afterwards.
+
+Build attestation (GitHub CLI):
+
+    gh attestation verify <wheel> --repo flackrat/openhop-spamguard
+
+Sigstore signature (cosign), using the `.sigstore.json` file next to each download:
+
+    cosign verify-blob --bundle <file>.sigstore.json \
+      --certificate-identity-regexp 'https://github.com/flackrat/openhop-spamguard/' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>
