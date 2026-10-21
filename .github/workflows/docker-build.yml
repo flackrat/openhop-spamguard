@@ -1,0 +1,20 @@
+# Builds the Docker image (without publishing it) whenever the Dockerfile or its locked requirements change,
+# so a bad base-image digest or requirements file is caught before a release.
+name: Docker build
+on:
+  pull_request:
+    paths: [Dockerfile, .dockerignore, requirements/docker.txt, docker-entrypoint.sh, .github/workflows/docker-build.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build
+        run: docker build -t spamguard-test .
+      - name: Check the image starts and has its libraries
+        run: docker run --rm --entrypoint python3 spamguard-test -c "import yaml, Crypto; import spamguard; print(spamguard.VERSION)"
