@@ -1,0 +1,6 @@
+{
+  "name": "spamguard-test-axe",
+  "private": true,
+  "description": "Accessibility checker used only by the browser tests",
+  "dependencies": {"axe-core": "4.10.2"}
+}
