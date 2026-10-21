@@ -35,13 +35,13 @@ cfg.update({"api_key":"t", "openhop_url":f"http://127.0.0.1:{m.srv.server_addres
 storage.write_config(man.id, cfg)
 st = storage.read_state(man.id); st["enabled"]=True; storage.write_state(man.id, st)
 check(rt.start(man.id)==PluginState.RUNNING, "openHop starts the plugin")
-health=None
+health=None; lasterr=None
 for _ in range(120):
     try:
         health=urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2).status; break
-    except Exception: time.sleep(0.5)
+    except Exception as e: lasterr=repr(e); time.sleep(0.5)
 check(health==200, f"SpamGuard's page answers: {health}")
-if health!=200: print("      plugin log:", " | ".join(storage.tail_log(man.id, 15))[-1500:])
+if health!=200: print("      last error:", lasterr, "| proxies:", {k:v for k,v in os.environ.items() if "proxy" in k.lower()}); print("      plugin log:", " | ".join(storage.tail_log(man.id, 15))[-1500:])
 for i in range(8): m.add(rname(),"FREE PRIZE claim now https://spam.example/"+rname(5),["C4","9D","E1"])
 time.sleep(9)
 names=[r.get("name","") for r in m.policy["policy_engine"]["rules"]]
