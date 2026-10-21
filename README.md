@@ -1,6 +1,9 @@
 # openHop SpamGuard, with FloodGuard
 
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/flackrat/openhop-spamguard/badge)](https://scorecard.dev/viewer/?uri=github.com/flackrat/openhop-spamguard)
+![CodeQL](https://github.com/flackrat/openhop-spamguard/actions/workflows/codeql.yml/badge.svg)
+![Audit](https://github.com/flackrat/openhop-spamguard/actions/workflows/audit.yml/badge.svg)
 
 > **Spam on your mesh, stopped at the door.** SpamGuard is anti-spam for MeshCore that works it out for itself. It spots spam floods as they happen and stops your repeater passing them on, so the rest of the mesh never hears them. No block lists to keep up, and your regulars keep chatting.
 >

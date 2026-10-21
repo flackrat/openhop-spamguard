@@ -59,7 +59,7 @@ except ImportError:  # pragma: no cover
     yaml = None
 
 try:
-    from Crypto.Cipher import AES  # pycryptodome
+    from Crypto.Cipher import AES  # nosec B413
 except ImportError:  # pragma: no cover
     try:
         from Cryptodome.Cipher import AES  # the same library packaged as pycryptodomex (Debian, Ubuntu)
@@ -847,7 +847,7 @@ def parse_path(value: Any) -> list[str]:
 
 
 def text_key(snippet: str) -> str:
-    return "text:" + hashlib.sha1(snippet.encode()).hexdigest()[:10]
+    return "text:" + hashlib.sha1(snippet.encode(), usedforsecurity=False).hexdigest()[:10]
 
 
 def hops_related(a: str, b: str) -> bool:
@@ -3518,7 +3518,7 @@ class SpamGuard:
                          channel=cc["events"][-1].channel, from_ts=last, ttl=ttl)
                 if ws and (not common or len(common) < 0.6 * len(strip_emoji(raws[-1]))):
                     # Copies differ: also match on shared words, which survives emoji moving around.
-                    want("words:" + hashlib.sha1("|".join(ws).encode()).hexdigest()[:10], "words", ws,
+                    want("words:" + hashlib.sha1("|".join(ws).encode(), usedforsecurity=False).hexdigest()[:10], "words", ws,
                          f"Sent under {len(cc['senders'])} different names, with small changes",
                          "campaign", channel=cc["events"][-1].channel, from_ts=last, ttl=ttl)
                 if not common and not ws and cc.get("strong"):
@@ -3554,7 +3554,7 @@ class SpamGuard:
                          channel=v["ch"], ttl=c["dedupe_seconds"], from_ts=v["last"], sender=only)
                 ws = common_words(raws, c["min_rule_chars"])
                 if ws and (not common or len(common) < 0.6 * len(strip_emoji(raws[-1]))):
-                    want("words:" + hashlib.sha1("|".join(ws).encode()).hexdigest()[:10], "words", ws,
+                    want("words:" + hashlib.sha1("|".join(ws).encode(), usedforsecurity=False).hexdigest()[:10], "words", ws,
                          "Re-sent with emoji or symbols changed", "dedupe",
                          channel=v["ch"], ttl=c["dedupe_seconds"], from_ts=v["last"], sender=only)
             # Oldest first, so the rule remembers who sent the message originally.
@@ -3598,7 +3598,7 @@ class SpamGuard:
                 if len({x[0].packet for x in evs}) <= int(c["repeat_max"]):
                     continue
                 snip = middle_chunk(evs[-1][1], c["text_rule_chars"])
-                key = "repeat:" + hashlib.sha1(f"{who}|{snip}".encode()).hexdigest()[:10]
+                key = "repeat:" + hashlib.sha1(f"{who}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
                 if self._add_block(key, "repeat", snip, f"Sent {len(evs)} times in a few minutes", "repeat",
@@ -3613,7 +3613,7 @@ class SpamGuard:
                     continue
                 content = longest_piece(strip_mentions(e.text)).strip()
                 snip = middle_chunk(content, c["text_rule_chars"])
-                key = "replay:" + hashlib.sha1(f"{e.sender}|{snip}".encode()).hexdigest()[:10]
+                key = "replay:" + hashlib.sha1(f"{e.sender}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
                 if self._add_block(key, "repeat", snip, "An old message being sent again by another device", "replay",
