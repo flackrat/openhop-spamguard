@@ -23,7 +23,9 @@ jobs:
       - name: Run the tests
         run: |
           set +e
-          bash tests/run_all.sh | tee out.txt
+          # The update script and plugin tests expect to run as root, as they do on a Pi.
+          sudo git config --global --add safe.directory '*'
+          sudo -E env "PATH=$PATH" bash tests/run_all.sh | tee out.txt
           rc=${PIPESTATUS[0]}
           grep -E "^(FAIL|      )" out.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
           exit $rc
