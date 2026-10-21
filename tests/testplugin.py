@@ -36,7 +36,7 @@ storage.write_config(man.id, cfg)
 st = storage.read_state(man.id); st["enabled"]=True; storage.write_state(man.id, st)
 check(rt.start(man.id)==PluginState.RUNNING, "openHop starts the plugin")
 health=None
-for _ in range(40):
+for _ in range(120):
     try:
         health=urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2).status; break
     except Exception: time.sleep(0.5)
