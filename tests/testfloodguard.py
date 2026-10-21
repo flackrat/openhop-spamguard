@@ -258,7 +258,7 @@ for k in range(80):
 for k in (3,4,5):   # and a flood of a few hours inside it doesn't move the middle
     gb.hist[str(int((T-k*3600)//3600*3600))]["bz"]=70.0
 check(gb.fg_learn(T) and gb.fg.get("ready"),"a busy repeater finishes learning")
-check(gb.fg["learnt"].get("flood_busy_percent")==40 and gb.cfg["flood_busy_percent"]==40,f"and learns a higher busy limit (the top of its range): {gb.fg['learnt']}")
+check(gb.fg["learnt"].get("flood_busy_percent")==sg.SpamGuard.BUSY_SITE_CEILING and gb.cfg["flood_busy_percent"]==30,f"and learns a higher busy limit, stopping at the busy-site ceiling: {gb.fg['learnt']}")
 check(any("busy most of the time" in a["msg"] for a in gb.activity),"and says why in Activity")
 # a quiet repeater still learns exactly as before, and the busy-site fallback is not used for it
 check(not g5.fg.get("busy_site") and 10<=g5.fg["learnt"]["flood_busy_percent"]<=20,"a quiet repeater's limit is learnt from its quiet hours, as before")
@@ -268,7 +268,7 @@ gn.fg["learn_start"]=T-3.1*86400
 for k in range(20): gn.hist[str(int((T-k*3600)//3600*3600))]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":30.0}
 check("flood_busy_percent" not in gn.fg_learnt_values(T),"under two days of hours: no busy limit is learnt")
 gb._save_state(force=True); gb2=sg.SpamGuard(dict(gb.file_cfg))
-check(gb2.fg.get("busy_site") and gb2.cfg["flood_busy_percent"]==40,"the busy-site limit survives a restart")
+check(gb2.fg.get("busy_site") and gb2.cfg["flood_busy_percent"]==30,"the busy-site limit survives a restart")
 
 # ---- a busy mesh where long routes are normal (the evidence log from a real repeater: middle message 10 hops,
 # one in four 16 or more, one in ten 20 or more) and the radio is never "quiet". Before 6.5.5 FloodGuard never
@@ -316,4 +316,20 @@ check(note and "adverts stop after 6 hops (yours)" in note[0] and "(recommended)
 gb._save_state(force=True); gb2=sg.SpamGuard(dict(gb.file_cfg))
 check(sum(sum(v.values()) for v in gb2.fg_hops_all.values())==sum(sum(v.values()) for v in gb.fg_hops_all.values()) and gb2.fg_adv_all,"the every-hour counts survive a restart")
 
+
+# ---- a flood must not become "normal": hours FloodGuard flagged as floods are left out of busy-site learning,
+# and if flood hours are most of what it heard, it learns nothing from them.
+def busy_guard(bz_for, flagged):
+    x=guard(mock()); x.radio=dict(RADIO); x.refresh_openhop_info=lambda *a,**k: None
+    x.fg["learn_start"]=T-3.1*86400
+    for k in range(80):
+        x.hist[str(int((T-k*3600)//3600*3600))]={"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{},"bz":bz_for(k),**({"fc":1} if flagged(k) else {})}
+    return x
+gf1=busy_guard(lambda k: 24.0 if k%4 else 38.0, lambda k: k%4==0)      # a quarter of the hours were flagged floods
+v=gf1.fg_learnt_values(T).get("flood_busy_percent")
+check(v==30 and gf1.fg.get("busy_site"),f"flagged flood hours are left out of the busy-site middle: {v}")
+gf2=busy_guard(lambda k: 24.0 if k%4==0 else 38.0, lambda k: k%4!=0)   # three quarters flagged: a flood dominated
+check("flood_busy_percent" not in gf2.fg_learnt_values(T) and not gf2.fg.get("busy_site"),"flood hours are most of what it heard: no busy limit is learnt")
+gf3=busy_guard(lambda k: 12.0, lambda k: False)                        # a mildly busy radio: below the ceiling, so unchanged
+check(gf3.fg_learnt_values(T).get("flood_busy_percent")==24,"a busy limit below the ceiling is left exactly as learnt")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
