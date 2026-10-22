@@ -30,7 +30,7 @@ On Windows, PuTTY gives you `ssh` access and `pscp` for copying files; WinSCP is
 
 A fresh install ends with SpamGuard running in Monitor mode, so nothing is blocked until you choose Protect.
 
-1. **Create an openHop API token.** In the openHop dashboard go to System > API Tokens, create one and copy it. It is shown only once and gives full admin access, so treat it like a password.
+1. **Create an openHop API token.** In the openHop dashboard go to System > API Tokens, create one and copy it. The token is shown only once and gives full admin access, so treat it like a password.
 2. **Download and install** (on the Pi):
 
     ```
@@ -233,7 +233,7 @@ Useful Pi checks: `vcgencmd measure_temp` (temperature), `df -h /` (disk), `free
 sudo bash /opt/openhop_spamguard/uninstall.sh
 ```
 
-It stops SpamGuard, takes its rules back out of openHop, and removes everything listed below. Your own openHop rules and settings are left alone. Add `--keep-evidence` to keep the evidence log, or `--undo-speed-fix` to put openHop's original packet-count setting back as well.
+The script stops SpamGuard, takes its rules back out of openHop, and removes everything listed below. Your own openHop rules and settings are left alone. Add `--keep-evidence` to keep the evidence log, or `--undo-speed-fix` to put openHop's original packet-count setting back as well.
 
 If your version doesn't have `uninstall.sh` (before 5.8.3), run it from a fresh download:
 
@@ -256,4 +256,4 @@ If the uninstaller says it couldn't update openHop's rules (for example because 
 
 ---
 
-SpamGuard is provided "as is", without warranty, under the GNU AGPL-3.0 licence. You are responsible for how you operate your repeater and for any message logs you keep. It is an independent project, not affiliated with openHop or MeshCore. See the [Disclaimer](../README.md#disclaimer).
+SpamGuard is provided "as is", without warranty, under the GNU AGPL-3.0 licence. You are responsible for how you operate your repeater and for any message logs you keep. SpamGuard is an independent project, not affiliated with openHop or MeshCore. See the [Disclaimer](../README.md#disclaimer).
