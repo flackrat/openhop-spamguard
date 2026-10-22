@@ -17,7 +17,7 @@ channel names and keys before sharing it. Security problems go through private r
 
 The same suite runs on GitHub for every pull request, together with CodeQL and a Bandit and pip-audit check.
 Changes to `main` can only be made through a pull request, and the `tests` check has to pass before GitHub
-allows the merge. That applies to the maintainer too.
+allows the merge. The same applies to the maintainer.
 
 ## What a good change looks like
 

@@ -2,7 +2,7 @@
 
 openHop has a plugin system (System > Plugins in its dashboard) that works the same whether openHop is installed directly, in Docker, on Unraid or as a Home Assistant add-on. SpamGuard can run as one of those plugins, so you don't need SSH, an installer or a separate container.
 
-It needs **openHop 1.1.2 or later**. If System > Plugins isn't in your openHop dashboard, your openHop is older: update it with the update option in its dashboard, or `manage.sh upgrade` on the Pi, and the Plugins page appears.
+The plugin needs **openHop 1.1.2 or later**. If System > Plugins isn't in your openHop dashboard, your openHop is older: update it with the update option in its dashboard, or `manage.sh upgrade` on the Pi, and the Plugins page appears.
 
 Only one SpamGuard can look after a repeater at a time. Each copy checks for another before changing anything, and waits if one is already in charge, so installing the plugin next to an older install never makes them fight. To switch, use **Move to the plugin** (below).
 
@@ -65,7 +65,7 @@ Then install the wheel from the [latest release](https://github.com/flackrat/ope
 
 ## Plugin manager isn't running
 
-If openHop's System > Plugins page says the plugin manager is unavailable (or SpamGuard's page says so), openHop's plugin manager service isn't running. This can happen after updating an openHop that was installed directly on the Pi. On the Pi:
+If openHop's System > Plugins page says the plugin manager is unavailable (or SpamGuard's page says so), openHop's plugin manager service isn't running. That can happen after updating an openHop that was installed directly on the Pi. On the Pi:
 
 ```
 sudo systemctl enable --now openhop-plugin-manager
