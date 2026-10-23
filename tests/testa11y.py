@@ -34,6 +34,14 @@ def patch(d):
     m.update({"me":{"name":"Example Repeater","hash":"5A","lat":ME[0],"lon":ME[1]},"entries":entries,"sources":sources,
               "unplaced":{"d1":0,"d7":3},"learned":2410,"advert_routes":7320,"map_working":False,
               "map_directory":True,"public_repeaters":4380,"public_error":None})
+    m["radio_known"]=True
+    m["most_held"]=[{"name":"Rowan Hill again","held":14,"messages":61,"days":3,"per_day":20,"today":4,"also":["Rowan Hill"]},
+                    {"name":"QX7TP2LM","held":6,"messages":6,"days":1,"per_day":6,"today":0}]
+    m["flood_sources"]=[{"hop":"9A","d1":420,"d7":2210,"last":now-600,"candidates":[rep("9A","Hawthorn Ridge",52.1,-1.2)]},
+                        {"hop":"B2","d1":0,"d7":35,"last":now-90000,"candidates":[]}]
+    for i,r in enumerate(m["daily"]): r.update(ar=(180+i*12)*60000,sa=(2+i%3)*1000,fs=(30+i*9)*60000)
+    for i,r in enumerate(m["hourly"]): r.update(bz=None if i in (3,4) else 8+(i*7)%23, af=40+(i*11)%50)
+    if d.get("recent"): d["recent"][0]["label"]="spam"
     return d
 LF=os.path.join(REPO,'tests','.leaflet','node_modules','leaflet','dist')+'/'
 
@@ -86,7 +94,9 @@ async def main():
     check("blocked circles get a white centre", dots>=1, dots)
     await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(1500)
     t=await pg.evaluate("[...document.querySelectorAll('details.chart-data')].map(d=>d.querySelectorAll('tr').length)")
-    check("each chart has a table of numbers", len(t)==3 and all(x>2 for x in t), t)
+    check("each chart has a table of numbers", len(t)>=4 and all(x>2 for x in t), t)
+    al2=await pg.evaluate("['chartAir','chartBusyOv'].map(i=>{const e=document.getElementById(i); return e&&!e.closest('section').hidden?e.getAttribute('aria-label'):'hidden'})")
+    check("airtime and radio-busy charts are described", all(a and len(a)>20 or a=='hidden' for a in al2) and al2[0]!='hidden', al2)
     al=await pg.evaluate("['chart24','chart7','chartHour'].map(i=>document.getElementById(i).getAttribute('aria-label'))")
     check("each chart has a description", all(al), al)
     # options
