@@ -1,0 +1,4 @@
+# The coding standard (Ruff) and test coverage in .github/workflows/tests.yml. Compile with:
+#   uv pip compile --python-version 3.12 --generate-hashes requirements/quality.in -o requirements/quality.txt
+ruff==0.17.2
+coverage==7.17.0

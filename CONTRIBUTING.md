@@ -13,9 +13,12 @@ channel names and keys before sharing it. Security problems go through private r
 
 1. Fork the repository and make your change on a branch.
 2. Run the whole test suite with `bash tests/run_all.sh` (about 3 minutes). Nothing in it talks to a real repeater.
+   Check the coding standard with `ruff check .` (the rules are in `ruff.toml`).
 3. Open a pull request against `main`. Describe what changed and why, and mention how you tested it.
 
-The same suite runs on GitHub for every pull request, together with CodeQL and a Bandit and pip-audit check.
+The same suite runs on GitHub for every pull request, under coverage (the shipped code should stay at 80% or
+more), together with the coding standard, the privacy and leak checks, dependency review, CodeQL, Bandit,
+pip-audit and zizmor.
 Changes to `main` can only be made through a pull request, and the `tests` check has to pass before GitHub
 allows the merge. The same applies to the maintainer.
 

@@ -89,6 +89,11 @@ def sampler():
         if st and (st.get("update") or {}).get("status"): samples.append(dict(st["update"]["status"]))
         time.sleep(0.25)
 threading.Thread(target=sampler,daemon=True).start()
+try:
+    urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/settings",data=b'{"mode":"monitor"}',method="POST",headers={"Content-Type":"text/plain"}),timeout=10)
+    check(False,"a change sent as plain text (as a cross-site form could) is refused")
+except urllib.error.HTTPError as e:
+    check(e.code==415,"a change sent as plain text (as a cross-site form could) is refused: "+str(e.code))
 req=urllib.request.Request(f"http://127.0.0.1:{port}/install_update",data=json.dumps({"version":"5.22.1"}).encode(),method="POST",headers={"Content-Type":"application/json"})
 res=json.loads(urllib.request.urlopen(req,timeout=10).read()); check(res.get("ok"),"update accepted: "+str(res)[:80])
 t0=time.time()

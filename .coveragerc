@@ -1,0 +1,9 @@
+# Test coverage of the code that ships (tests/run_all.sh with SG_TEST_PY, see .github/workflows/tests.yml).
+[run]
+include =
+    */spamguard.py
+    */replay.py
+    */tools/privacy_check.py
+data_file = .coverage
+[report]
+precision = 1
