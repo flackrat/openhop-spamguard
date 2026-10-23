@@ -28,6 +28,8 @@ sources=[
 ]
 def patch(d):
     d["summary"]["caught_24h"]=d["metrics"]["d1"]["c"]
+    d["rule_summary"]={"after_yours":True,"yours":1,"rules":[[9001,"spamguard:text:ab12 (duplicate) text \"example\"","drop","Blocks a packet that is a channel message, is on a channel SpamGuard reads, contains the text \"example\""],
+                                                         [9002,"spamguard:known-people","allow","Lets through a packet that is from someone SpamGuard knows"]]}
     m=d["metrics"]; m["since"]=now-8*86400
     m.update({"me":{"name":"Example Repeater","hash":"5A","lat":ME[0],"lon":ME[1]},"entries":entries,"sources":sources,
               "unplaced":{"d1":0,"d7":3},"learned":2410,"advert_routes":7320,"map_working":False,
@@ -62,6 +64,15 @@ async def main():
     check("skip link visible when focused", vis)
     await pg.keyboard.press("Enter"); f=await pg.evaluate("document.activeElement.tagName+':'+document.activeElement.textContent.slice(0,30)")
     check("skip link moves focus to the page heading", f.startswith("H"), f)
+    await pg.focus('#footRules'); await pg.keyboard.press("Enter"); await pg.wait_for_timeout(300)
+    st=await pg.evaluate("[document.getElementById('rulesDlg').open, document.querySelectorAll('#rulesList li').length, document.getElementById('rulesList').textContent.includes('channel message')]")
+    check("the rules line opens a list of what each rule says", st==[True,2,True], st)
+    await pg.add_script_tag(content=AXE)
+    v=await pg.evaluate("""async()=>(await axe.run(document.getElementById('rulesDlg'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21a','wcag21aa']}})).violations.map(v=>v.id)""")
+    check("the open rules list has no WCAG 2.1 AA problems", not v, v)
+    await pg.keyboard.press("Escape"); await pg.wait_for_timeout(300)
+    st=await pg.evaluate("[document.getElementById('rulesDlg').open, document.activeElement.id]")
+    check("Escape closes the rules list and returns focus to the line", st==[False,"footRules"], st)
     await pg.click('a[data-nav="sources"]'); await pg.wait_for_timeout(1500)
     f=await pg.evaluate("document.activeElement.tagName+':'+document.activeElement.textContent.slice(0,30)")
     check("changing page moves focus to its heading", f.startswith("H2:Spam sources"), f)

@@ -2,6 +2,11 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.6.1
+### SpamGuard 6.6.1
+- **See what each rule says.** The "N rules in openHop" line at the foot of the page is now a button. It opens a list of SpamGuard's rules in the order openHop checks them, each in plain English (for example "Blocks a packet that is a channel message, contains the text ..."), with a Copy as text button. Channel keys are never shown.
+- **Sensitivity now sets the repeat limits too.** Relaxed, Balanced and Strict now also set how many copies of a message are allowed before the repeat guard acts (4, 3 or 2), the same limit for the all-day repeat guard, and how long its hold lasts (2, 3 or 6 hours). Balanced behaves exactly as before.
+
 ## v6.6.0
 ### SpamGuard 6.6.0
 - **Slow repeating is now caught.** The repeat guard only notices copies sent within minutes of each other, so a name posting the same long message once an hour, all evening, slipped past it. SpamGuard now also counts how many times one name sends the same long message in a day. After three, further copies are held for three hours, and while they keep going one copy gets through each time the hold ends. The first copies and anything new from that name still go out, and it only ever counts repeats, never what a message says. Copies of one send that arrive by several routes count once. It is on by default, and the limit, the time window and the hold are in Advanced under Duplicate suppression. Ordinary repeats, such as re-posting a notice a few times a day, are left alone.

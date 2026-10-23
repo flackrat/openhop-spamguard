@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.6.0"
+VERSION = "6.6.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.4"
@@ -218,7 +218,7 @@ SETTINGS_META: list[dict] = [
      "risk": "Turned off, a device that keeps re-sending other people's old messages (usually broken firmware) fills the channel with repeats, often dozens of copies of each. While on, someone whose device clock is badly wrong and who sends the same long message twice may have the second copy held back.",
      "label": "Stop old messages being sent again (replays)",
      "help": "Some devices pick up channel messages and send them out again later, with their own clock (often months or years wrong) and sometimes with the sender's name cut short. When a message turns up again that was first heard a while ago, either with a clock that's badly off or under a cut-short copy of the original name, further copies of it from that name are held back. The original message always went out first, and anything new from anyone is untouched."},
-    {"key": "repeat_max", "group": "Duplicate suppression", "type": "int", "min": 2, "max": 20,
+    {"key": "repeat_max", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
      "label": "Copies allowed before repeats are stopped",
      "help": "How many times one name can send the same message within the time below before further copies are stopped."},
@@ -233,7 +233,7 @@ SETTINGS_META: list[dict] = [
      "risk": "Turned off, one name can post the same long message again and again, spread out through the day, and all of it goes out. While on, someone who genuinely posts the same long message more than the limit below in a day has the extra copies held back for a few hours.",
      "label": "Stop slow repeating (the same message spread over hours)",
      "help": "The repeat guard above only notices copies sent within minutes of each other. This one counts the same long message from the same name over a whole day, so a message posted every hour or so is caught too. Their first few copies, and anything new they say, still go out. It only counts what is repeated, never what the message says."},
-    {"key": "slow_repeat_max", "group": "Duplicate suppression", "type": "int", "min": 2, "max": 20,
+    {"key": "slow_repeat_max", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
      "label": "Copies allowed before slow repeats are stopped",
      "help": "How many times one name can send the same long message within the day before further copies are held."},
@@ -241,7 +241,7 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = catches slower repeating, but a message re-posted once a day for a week is never counted against the daily limit anyway. Shorter = only quick repeating counts.",
      "label": "Within (slow repeats)",
      "help": "The time in which those copies are counted."},
-    {"key": "slow_repeat_hold_seconds", "group": "Duplicate suppression", "type": "int", "min": 900, "max": 86400, "unit": "s",
+    {"key": "slow_repeat_hold_seconds", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 900, "max": 86400, "unit": "s",
      "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = a copy gets through sooner.",
      "label": "Hold further copies for (slow repeats)",
      "help": "How long further copies of that message from that name are held. While they keep repeating it, one copy gets through each time this period ends."},
@@ -321,13 +321,16 @@ META_BY_KEY = {m["key"]: m for m in SETTINGS_META}
 PRESETS: dict[str, dict] = {
     "relaxed": {"rotate_first_hops": 4, "hop_random_senders": 5, "hop_new_senders": 10, "hop_campaign_senders": 5,
                 "hop_random_senders_long": 8, "text_distinct_senders": 4, "similarity": 80,
-                "dedupe_seconds": 600, "dedupe_min_chars": 40, "name_score_threshold": 4},
+                "dedupe_seconds": 600, "dedupe_min_chars": 40, "name_score_threshold": 4,
+                "repeat_max": 4, "slow_repeat_max": 4, "slow_repeat_hold_seconds": 7200},
     "balanced": {"rotate_first_hops": 3, "hop_random_senders": 3, "hop_new_senders": 6, "hop_campaign_senders": 3,
                  "hop_random_senders_long": 5, "text_distinct_senders": 3, "similarity": 65,
-                 "dedupe_seconds": 900, "dedupe_min_chars": 30, "name_score_threshold": 3},
+                 "dedupe_seconds": 900, "dedupe_min_chars": 30, "name_score_threshold": 3,
+                 "repeat_max": 3, "slow_repeat_max": 3, "slow_repeat_hold_seconds": 10800},
     "strict": {"rotate_first_hops": 2, "hop_random_senders": 2, "hop_new_senders": 4, "hop_campaign_senders": 2,
                "hop_random_senders_long": 3, "text_distinct_senders": 2, "similarity": 55,
-               "dedupe_seconds": 1800, "dedupe_min_chars": 24, "name_score_threshold": 2},
+               "dedupe_seconds": 1800, "dedupe_min_chars": 24, "name_score_threshold": 2,
+               "repeat_max": 2, "slow_repeat_max": 2, "slow_repeat_hold_seconds": 21600},
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -506,6 +509,64 @@ def hashtag_secret(name: str) -> str:
     if not name.startswith("#"):
         name = "#" + name
     return hashlib.sha256(name.encode("utf-8")).digest()[:16].hex()
+
+
+_PAYLOAD_NAMES = {4: "an advert", 5: "a channel message"}
+
+
+def plain_rule(rule: dict) -> str:
+    """One of SpamGuard's openHop rules in plain English, for the page. Never shows a channel key."""
+    then = (rule.get("then") or {}).get("action")
+    lead = {"drop": "Blocks", "log_only": "Only watches (nothing is blocked)", "allow": "Lets through"}.get(then, "Applies to")
+
+    def show(v) -> str:
+        t = re.sub(r"\s+", " ", str(v)).strip()
+        return '"' + (t[:80] + "..." if len(t) > 80 else t) + '"'
+
+    def one(c: dict) -> str:
+        f, op, v = c.get("field"), c.get("op"), c.get("value")
+        if f == "payload_type" and op == "equals":
+            return "is " + _PAYLOAD_NAMES.get(v, f"packet type {v}")
+        if f == "payload_type" and op == "in":
+            return "is " + " or ".join(_PAYLOAD_NAMES.get(x, f"packet type {x}") for x in (v or []))
+        if f == "channel_hash":
+            return "is on a channel SpamGuard reads"
+        if f == "channel_decryptable":
+            return "can be read by this repeater"
+        if f == "channel_message_body" and op == "contains":
+            return f"contains the text {show(v)}"
+        if f == "channel_sender" and op == "equals":
+            return f"is from {show(v)}"
+        if f == "channel_sender" and op == "not_equals":
+            return f"is not from {show(v)}"
+        if f == "channel_sender" and op == "in":
+            return "is from someone SpamGuard knows"
+        if f == "path_hashes" and op in ("contains", "intersects"):
+            return f"came through repeater {v if not isinstance(v, list) else ' or '.join(map(str, v))}"
+        if f == "route_type" and op == "equals":
+            return "was sent as a flood" if v in (0, 1) else "was sent along a direct route"
+        if f == "route_type" and op == "in":
+            return "was sent as a flood" if set(v or []) <= {0, 1} else "has one of several route types"
+        if f == "hop_count" and op in ("gte", "greater_than", "gt"):
+            return f"has come {v} or more hops" if op == "gte" else f"has come more than {v} hops"
+        if f == "hop_count" and op == "equals":
+            return f"has come exactly {v} hops"
+        if f == "local_transmission" and op == "not_equals":
+            return "was not sent by this repeater itself"
+        return f"{f} {op} {show(v)}"
+
+    def walk(cond) -> list:
+        if not isinstance(cond, dict):
+            return []
+        if "all" in cond:
+            return [x for c in cond["all"] for x in walk(c)]
+        if "any" in cond:
+            parts = [" and ".join(walk(c)) for c in cond["any"]]
+            return ["(" + " or ".join(p for p in parts if p) + ")"]
+        return [one(cond)]
+
+    conds = walk(rule.get("if"))
+    return lead + (" a packet that " + ", ".join(conds) if conds else " every packet")
 
 
 def oh_sender(name) -> str:
@@ -4242,7 +4303,7 @@ class SpamGuard:
         main, tail = self.build_rule_sets()
         ours_new = main + tail
         self.rule_summary = {"after_yours": bool(self.cfg.get("rules_after_yours")), "yours": len(user_rules),
-                             "rules": [[r.get("id"), r.get("name"), (r.get("then") or {}).get("action")] for r in ours_new]}
+                             "rules": [[r.get("id"), r.get("name"), (r.get("then") or {}).get("action"), plain_rule(r)] for r in ours_new]}
         needs_enable = bool(ours_new) and not pe.get("enabled")
         # The known-people list lives in openHop as an object (@spamguard.known_senders).
         objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
