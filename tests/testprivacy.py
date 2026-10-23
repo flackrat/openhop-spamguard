@@ -52,5 +52,14 @@ check(rc==0,"no-reply and example addresses pass: "+out)
 rc,out=run(["--text-env","T"],d,{"T":"Fixes the map near 52.555,-1.444","PRIVACY_BLOCKLIST":""})
 check(rc==1 and "T line 1: map coordinates" in out,"checks pull request text: "+out)
 shutil.rmtree(d)
+
+# 6. The Presidio helper: only the readable parts of code are looked at, and it never fails a run
+sys.path.insert(0,os.path.join(REPO,"tools"))
+import presidio_check as pc
+check(pc.readable_parts("x.py",'m.add("Rowan Hill",TEXT)  # a made-up name')==["Rowan Hill"," a made-up name"],"code: quoted text and comments only")
+check(pc.readable_parts("x.html","const a={b:1};let c=`${d}`;")==[],"script lines in pages are skipped")
+check(pc.readable_parts("x.md","Meet at the <b>green</b>")==["Meet at the  green "],"documents: the whole line, without tags")
+r=subprocess.run([sys.executable,os.path.join(REPO,"tools","presidio_check.py"),"--staged"],cwd=REPO,capture_output=True,text=True)
+check(r.returncode==0,"it never fails, installed or not: "+r.stdout[-200:]+r.stderr[-200:])
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
