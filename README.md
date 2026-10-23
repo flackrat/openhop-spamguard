@@ -138,8 +138,6 @@ SpamGuard keeps a list of names it has seen sending genuine messages. The list g
 - **Text blocks you add yourself** only ever stop names SpamGuard doesn't know yet.
 - **Lockdown** (at the bottom of the Blocks page): for 30 minutes to 2 hours, only known names get through on the channels SpamGuard reads. New people are held too, so it's for heavy attacks only. The lockdown ends by itself. During a big flood from many repeaters at once SpamGuard starts a 15-minute lockdown itself (Advanced > Blocking by source repeater can turn that off).
 
-Replaying a day of real traffic, this caught more spam while holding only a handful of genuine messages.
-
 Things to know:
 
 - How quickly a name becomes known is adjustable (Advanced > Known people), and Advanced > Exceptions lists everyone it knows, with **Trust** and **Forget**. Automatic campaign blocks apply to everyone, because spammers copy known names, but one that keeps catching regulars heard from their usual repeater removes itself.
