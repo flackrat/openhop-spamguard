@@ -1,0 +1,3 @@
+# The workflow security check in .github/workflows/audit.yml. Compile with:
+#   uv pip compile --python-version 3.12 --generate-hashes requirements/zizmor.in -o requirements/zizmor.txt
+zizmor==1.31.1
