@@ -23,6 +23,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Finds where spam enters the mesh** and blocks it there, while still letting your regulars through.
 - **Stops copy-paste floods:** the first copy gets through, copies under other names don't.
 - **Stops one name repeating itself:** the same message posted over and over is cut off after a few copies, while anything new from that name still goes out.
+- **Stops slow repeating:** the same long message posted again and again through the day, even an hour apart, is cut off after a few copies a day. The first few copies, and anything new from that name, still go out.
 - **Stops replays:** a device re-sending other people's old messages (usually broken firmware with a wrong clock or cut-short names) has its further copies held back, while the original and anything new still go out.
 - **Lockdown** for a heavy attack: for a while, only people it already knows get through. During a big flood from many repeaters at once it starts by itself, for 15 minutes.
 
@@ -108,6 +109,7 @@ A repeater is shared: anything it refuses to pass on disappears for everyone dow
 - **FloodGuard looks only at how packets travel:** flood or direct, how many hops they've come, and how busy the radio is. Never at who sent them or what they say, and only while a flood is actually swamping the airtime.
 - **SpamGuard doesn't block** what someone says, or a named person for their views. Even the repeat guard only holds back *further copies of the repeated message*, for an hour; anything new that person says still goes out.
 - **Blocking a particular person is your app's job, not the repeater's.** There's deliberately no "block this person" button. MeshCore apps and sites let each user block or hide a sender, repeater or channel for themselves. Blocking there only changes what *you* see, and the mesh still carries the message, so it's the right place for "I don't want to read this person". SpamGuard deals with behaviour that harms everyone's channel, at the repeater, so it never travels further.
+- **There is no under-18 mode**, because a repeater can't tell anyone's age and a language filter wouldn't catch the real risks. [Protecting young people on MeshCore](docs/protecting-young-people.md) explains what works better, including a private channel for a youth group.
 - **"This is spam" and text blocks are for spam content**, not for silencing a point of view. Every automatic block expires once the spam stops.
 
 ## Advanced
