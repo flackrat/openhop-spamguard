@@ -36,7 +36,9 @@ allows the merge. The same applies to the maintainer.
 Never commit real names, messages, places, coordinates, addresses, callsigns or anything copied from a real
 mesh conversation, including in tests, comments and examples. Make up every example. The Tests check runs a
 privacy check (`tools/privacy_check.py`) and a leak check (Gitleaks) on each pull request, and a pull request
-can't be merged until both pass. If a made-up value is flagged, add it to `.privacy-allow`. To run the check
+can't be merged until both pass. If a made-up value is flagged, add it to `.privacy-allow`. A third check,
+Microsoft Presidio (`tools/presidio_check.py`), points out new names and places in the added lines. It only
+warns, because it guesses: if what it points at is made up, leave it. To run the check
 yourself before committing:
 
     python3 tools/privacy_check.py --staged
