@@ -26,7 +26,10 @@ jobs:
           set -euo pipefail
           v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)
           [ -n "$v" ] || { echo "No VERSION found in spamguard.py"; exit 1; }
-          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released"; exit 0; fi
+          if gh release view "v$v" >/dev/null 2>&1; then
+            # A draft left by a run that failed part-way is thrown away and made again; a published release stays.
+            if [ "$(gh release view "v$v" --json isDraft --jq .isDraft)" = true ]; then gh release delete "v$v" --yes; else echo "v$v is already released"; exit 0; fi
+          fi
           awk -v h="## v$v" '$0==h||index($0,h" ")==1||index($0,h":")==1{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "SpamGuard $v" > notes.md
           # Download file for this version; the Pi's Update button fetches this, so its download
@@ -34,10 +37,12 @@ jobs:
           git archive --format=tar.gz --prefix="spamguard-v$v/" -o "spamguard-v$v.tar.gz" HEAD
           # The openHop plugin file for this version (System > Plugins > Install wheel in openHop).
           python3 tools/build_plugin.py dist
-          gh release create "v$v" "spamguard-v$v.tar.gz" dist/*.whl --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --latest
+          # Releases are immutable once published, so everything (files and signatures) goes on a draft
+          # first and the release is published last.
+          gh release create "v$v" "spamguard-v$v.tar.gz" dist/*.whl --target "$GITHUB_SHA" --title "SpamGuard v$v" --notes-file notes.md --draft
       - name: Sign the release wheel (build attestation)
         if: hashFiles('dist/*.whl') != ''
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.whl
       - name: Sign the release files (Sigstore, keyless)
@@ -54,6 +59,16 @@ jobs:
             cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
             gh release upload "v$v" "$f.sigstore.json"
           done
+      - name: Publish the release
+        if: hashFiles('dist/*.whl') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)
+          n=$(gh release view "v$v" --json assets --jq '.assets | length')
+          [ "$n" -ge 4 ] || { echo "Only $n files on the draft, not publishing"; exit 1; }
+          gh release edit "v$v" --draft=false --latest
       - name: Bring existing release notes in line with CHANGELOG.md
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,7 +96,7 @@ jobs:
       - name: Work out the version
         id: v
         run: echo "v=$(sed -nE 's/^VERSION = "([0-9]+(\.[0-9]+){1,3})"$/\1/p' spamguard.py | head -1)" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
