@@ -1421,7 +1421,7 @@ function renderOverview(d){
   const tile=(t,v,sub,cls)=>`<div${cls?` class="${cls}"`:""}><dt>${t.replace(/ (h|days)\b/g,"&nbsp;$1")}</dt><dd>${v}<small>${String(sub||"").replace(/ (h|days)\b/g,"&nbsp;$1")}</small></dd></div>`;
   $("#kpis").innerHTML=
     tile("Spam stopped, 24 h",fmtN(a.c),`${fmtN(w.c)} in 7 days`)+
-    tile("Spam let through, 24 h",fmtN(a.x),a.stop_rate==null?"no spam yet":`${a.stop_rate}% of spam stopped`)+
+    tile("Likely spam let through, 24 h",fmtN(a.x),a.stop_rate==null?"no spam yet":`${a.stop_rate}% of spam stopped`)+
     tile("Spam share of channel traffic",a.spam_share==null?"–":a.spam_share+"%",`${fmtN(a.spam)} of ${fmtN(a.m)} messages, 24 h`)+
     tile("Airtime saved, 24 h",m.radio_known?fmtAir(a.a):"–",m.radio_known?`${fmtAir(w.a)} in 7 days`:"needs openHop's radio settings")+
     tile("Possibly genuine held, 24 h",fmtN((d.held||[]).length),(d.held||[]).length?`<a href="#/held">review</a>`:"none")+
