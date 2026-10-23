@@ -151,6 +151,10 @@ body.advanced .basic-only{display:none}
 body.dirty .savebar{display:flex}
 #toast.bad{background:var(--stop);color:#fff}
 .foot{color:var(--soft);font-size:0.78125rem;text-align:center;margin-top:24px}
+.foot button.linklike{background:none;border:0;padding:12px 2px;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+dialog#rulesDlg{width:calc(100% - 32px);max-width:680px;max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:16px 18px}
+dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
+.rules-list{margin:10px 0;padding-left:22px}.rules-list li{margin:0 0 10px;line-height:1.45}.rules-list .meta{display:block;color:var(--soft);font-size:0.78125rem;overflow-wrap:anywhere}
 .foot.legal{margin-top:10px;font-size:0.71875rem;line-height:1.5;max-width:640px;margin-left:auto;margin-right:auto}
 .foot.legal a{color:inherit}
 .route{overflow-wrap:anywhere}
@@ -713,7 +717,10 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p>During a big flood of made-up names through many repeaters at once, SpamGuard can start a 15-minute lockdown by itself: only people it knows get through, then it stops on its own. Newcomers are held for those minutes too; you can turn this off in Settings.</p>
   <p><strong>Start again from scratch</strong> (Advanced, Settings) clears every block, setting and exception, and the page then shows only what happens after the reset. Nothing recorded is thrown away: the evidence log keeps everything.</p>
 </section></div>
-<p class="foot" id="foot"></p>
+<p class="foot" id="foot"><button type="button" class="linklike" id="footRules" aria-haspopup="dialog">Rules in openHop</button><span id="footRest"></span></p>
+<dialog id="rulesDlg" aria-labelledby="rulesTitle"><h2 id="rulesTitle" style="margin-top:0;font-size:1.0625rem">SpamGuard's rules in openHop</h2>
+<p class="explain" id="rulesIntro"></p><ol id="rulesList" class="rules-list"></ol>
+<div class="inline-form"><button class="quiet" type="button" id="rulesCopy">Copy as text</button><button class="quiet" type="button" id="rulesClose">Close</button></div></dialog>
 <p class="foot legal">SpamGuard <span id="footVer"></span> · <a id="repoLink" href="https://github.com/flackrat/openhop-spamguard" target="_blank" rel="noopener noreferrer">github.com/flackrat/openhop-spamguard</a> · AGPL-3.0 licence<br>
 Provided "as is", without warranty of any kind. You decide what your repeater forwards, and you are responsible for using it within your local radio and data-protection rules. An independent project, not affiliated with or endorsed by openHop or MeshCore.</p>
 </div>
@@ -1078,6 +1085,22 @@ $("#ruleCopy").addEventListener("click",()=>{
   const t=head+"\n"+lines.join("\n"), done=()=>toast("Rule summary copied");
   if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(t).then(done,()=>fallbackCopy(t,done)); } else fallbackCopy(t,done);
 });
+$("#footRules").addEventListener("click",()=>{
+  const r=S&&S.rule_summary, dlg=$("#rulesDlg"), list=$("#rulesList"); list.textContent="";
+  const act={drop:"Blocks",log_only:"Watches only",allow:"Lets through"};
+  if(!r||!r.rules.length){ $("#rulesIntro").textContent="SpamGuard has no rules in openHop right now."; }
+  else {
+    $("#rulesIntro").textContent=`${r.rules.length} rule${r.rules.length===1?"":"s"}, placed ${r.after_yours?"after":"before"} your own ${r.yours} rule${r.yours===1?"":"s"}. openHop checks them in this order.`;
+    for(const [id,name,a,desc] of r.rules){
+      const li=document.createElement("li"), t=document.createElement("span"), m=document.createElement("span");
+      t.textContent=desc||(act[a]||a); m.className="meta"; m.textContent=`rule ${id}, ${name}`;
+      li.append(t,m); list.append(li);
+    }
+  }
+  if(dlg.showModal) dlg.showModal(); else dlg.setAttribute("open","");
+});
+$("#rulesClose").addEventListener("click",()=>{ const d=$("#rulesDlg"); if(d.close) d.close(); else d.removeAttribute("open"); $("#footRules").focus(); });
+$("#rulesCopy").addEventListener("click",()=>$("#ruleCopy").click());
 var chAll=false;
 $("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderChannels(S); });
 $("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });
@@ -1176,8 +1199,8 @@ function render(d, editing){
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
-  $("#foot").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop, last checked ${ago(d.health.last_poll)}`
-    + (editing?" (some sections wait while you edit)":"");
+  $("#footRules").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop`;
+  $("#footRest").textContent=`, last checked ${ago(d.health.last_poll)}`+(editing?" (some sections wait while you edit)":"");
 }
 /* ---------- menu and pages ---------- */
 const isDark=()=>{ const t=document.documentElement.dataset.theme; return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches); };
