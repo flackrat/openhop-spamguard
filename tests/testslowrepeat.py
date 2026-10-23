@@ -118,7 +118,34 @@ m10.add("Quarry Pete",TEXT,["4C","2F"],ago=60)
 g11.poll_once(); g11.last_sync=0; g11.sync_pending=True; g11.poll_once()
 check(any(b.get("source")=="slowrepeat" for b in g11.blocks.values()),"the fourth send after a restart is held")
 
-# 11. Settings are exposed with plain help text
+# 11. Changing name to start the count again doesn't work: the new name carries on the old one's count
+m12=mock(); g12=guard(m12, long_window_seconds=86400); g12.apply_settings({"mode":"protect"})
+sends(m12,"Rowan Hill",TEXT,3,3000,15000)
+cycle(g12)
+check(not any(b["kind"]=="repeat" for b in g12.blocks.values()),"three sends under the first name: nothing held")
+m12.add("Rowan Hill again",TEXT.replace("the club net","the www club net"),["4C","2F"],ago=300)
+cycle(g12)
+reps=[b for b in g12.blocks.values() if b.get("source")=="slowrepeat"]
+check(len(reps)==1 and reps[0].get("who")=="Rowan Hill again","the new name is held on its first send: "+str(reps))
+check(reps and "another name" in reps[0].get("reason",""),"the reason says another name was involved")
+check(m12.decide("Rowan Hill again",TEXT,["4C","2F"])=="drop","its next copy is dropped")
+
+# 12. Two people posting the same notice at overlapping times are still counted separately
+m13=mock(); g13=guard(m13, long_window_seconds=86400); g13.apply_settings({"mode":"protect"})
+for i in range(3):
+    m13.add("Quarry Pete",TEXT,["4C","2F"],ago=20000-i*6000)
+    m13.add("Hilltop Hiker",TEXT,["A7","2F"],ago=17000-i*6000)
+cycle(g13)
+check(not any(b["kind"]=="repeat" for b in g13.blocks.values()),"overlapping posters are not linked")
+
+# 13. Adding "www" doesn't make it a new message
+m14=mock(); g14=guard(m14, long_window_seconds=86400); g14.apply_settings({"mode":"protect"})
+for i in range(4):
+    m14.add("Quarry Pete",TEXT if i%2 else TEXT.replace("the club net","the www club net"),["4C","2F"],ago=12000-i*3000)
+cycle(g14)
+check(any(b.get("source")=="slowrepeat" for b in g14.blocks.values()),"four sends, two with www, are four sends")
+
+# 14. Settings are exposed with plain help text
 keys={s["key"] for s in sg.SETTINGS} if hasattr(sg,"SETTINGS") else set()
 check(not keys or {"slow_repeat","slow_repeat_max","slow_repeat_window_seconds","slow_repeat_hold_seconds"}<=keys,"settings listed for the page")
 print(f"{ok} passed, {fail} failed")

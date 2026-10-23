@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.6.1"
+VERSION = "6.6.2"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.4"
@@ -2275,8 +2275,8 @@ class SpamGuard:
             h["c"] += 1
             if self.cfg["mode"] == "protect" and not self.cfg.get("paused"):
                 h["a"] = round(h["a"] + self.airtime_ms(e.length), 1)
-        elif spammy:
-            h["x"] += 1
+        elif spammy and not self.is_known(e.sender):
+            h["x"] += 1  # a known name with an odd-looking handle isn't spam
         else:
             return
         hop = e.first_hop
@@ -3308,13 +3308,15 @@ class SpamGuard:
         content = longest_piece(strip_mentions(e.text)).strip()
         if len(content) < int(c.get("dedupe_min_chars", 30)):
             return
-        norm = normalise(content)
+        # "www" adds nothing to what a message says, and adding or dropping it shouldn't make a new message
+        norm = " ".join(w for w in normalise(content).split() if w != "www")
         if len(norm) < 12:
             return
         key = f"{e.sender}|{e.channel}|" + hashlib.sha1(norm.encode(), usedforsecurity=False).hexdigest()[:12]
         rec = self.slow_sends.get(key)
         if rec is None:
-            rec = self.slow_sends[key] = {"who": e.sender, "ch": e.channel, "snip": middle_chunk(content, c["text_rule_chars"]), "ts": []}
+            part = max(re.split(r"(?i)\bwww\b\.?", content), key=len)  # so the held text matches with or without "www."
+            rec = self.slow_sends[key] = {"who": e.sender, "ch": e.channel, "snip": middle_chunk(part, c["text_rule_chars"]), "ts": []}
             while len(self.slow_sends) > 1500:
                 self.slow_sends.pop(next(iter(self.slow_sends)))
         if rec["ts"] and abs(e.ts - rec["ts"][-1]) < 120:
@@ -3736,15 +3738,29 @@ class SpamGuard:
         # gets through each time the hold ends while they keep at it. Only repeats are counted, never content.
         if c.get("slow_repeat", True):
             win_s = int(c["slow_repeat_window_seconds"])
+            # A name that takes over sending the same message after another name has stopped (someone
+            # changing their name to start the count again) carries on that name's count. Two people who
+            # post the same thing at overlapping times are still counted separately.
+            same: dict[str, list] = {}
+            for skey, rec in self.slow_sends.items():
+                same.setdefault(skey.rsplit("|", 2)[-1] + "|" + str(rec["ch"]), []).append(rec)
             for skey, rec in self.slow_sends.items():
                 recent = [t for t in rec["ts"] if t >= now - win_s]
+                if not recent:
+                    continue
+                own = len(recent)
+                for other in same.get(skey.rsplit("|", 2)[-1] + "|" + str(rec["ch"]), ()):
+                    if other is rec or not other["ts"] or other["ts"][-1] >= recent[0]:
+                        continue
+                    recent = [t for t in other["ts"] if t >= now - win_s] + recent
                 if len(recent) <= int(c["slow_repeat_max"]):
                     continue
+                reason = f"Sent {len(recent)} times today" + ("" if own == len(recent) else ", partly under another name")
                 key = "slowrepeat:" + hashlib.sha1(skey.encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
-                if self._add_block(key, "repeat", rec["snip"], f"Sent {len(recent)} times today", "slowrepeat",
-                                   channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=recent[-1],
+                if self._add_block(key, "repeat", rec["snip"], reason, "slowrepeat",
+                                   channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=max(recent),
                                    extra={"who": rec["who"]}):
                     changed = True
 
