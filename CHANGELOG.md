@@ -2,6 +2,10 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.6.0
+### SpamGuard 6.6.0
+- **Slow repeating is now caught.** The repeat guard only notices copies sent within minutes of each other, so a name posting the same long message once an hour, all evening, slipped past it. SpamGuard now also counts how many times one name sends the same long message in a day. After three, further copies are held for three hours, and while they keep going one copy gets through each time the hold ends. The first copies and anything new from that name still go out, and it only ever counts repeats, never what a message says. Copies of one send that arrive by several routes count once. It is on by default, and the limit, the time window and the hold are in Advanced under Duplicate suppression. Replaying five and a half days of real traffic held only the one name that was repeating itself and nobody else.
+
 ## v6.5.6 (FloodGuard 1.2.4)
 ### FloodGuard 1.2.4
 - **A flood no longer teaches FloodGuard that flooding is normal.** On a busy site FloodGuard raises its busy limit to fit the traffic, but it counted the hours it had itself flagged as floods, so a long flood could push the limit up and make the next one harder to spot. Flagged hours are now left out, and if most of the hours it heard were floods it learns nothing from them. The busy limit also stops at 30%, however busy the site is.
