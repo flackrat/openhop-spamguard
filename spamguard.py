@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.5.6"
+VERSION = "6.6.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.4"
@@ -229,6 +229,22 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = they can start again sooner.",
      "label": "Stop further copies for",
      "help": "How long further copies of that message from that name are stopped."},
+    {"key": "slow_repeat", "group": "Duplicate suppression", "type": "bool",
+     "risk": "Turned off, one name can post the same long message again and again, spread out through the day, and all of it goes out. While on, someone who genuinely posts the same long message more than the limit below in a day has the extra copies held back for a few hours.",
+     "label": "Stop slow repeating (the same message spread over hours)",
+     "help": "The repeat guard above only notices copies sent within minutes of each other. This one counts the same long message from the same name over a whole day, so a message posted every hour or so is caught too. Their first few copies, and anything new they say, still go out. It only counts what is repeated, never what the message says."},
+    {"key": "slow_repeat_max", "group": "Duplicate suppression", "type": "int", "min": 2, "max": 20,
+     "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
+     "label": "Copies allowed before slow repeats are stopped",
+     "help": "How many times one name can send the same long message within the day before further copies are held."},
+    {"key": "slow_repeat_window_seconds", "group": "Duplicate suppression", "type": "int", "min": 3600, "max": 172800, "unit": "s",
+     "risk": "Longer = catches slower repeating, but a message re-posted once a day for a week is never counted against the daily limit anyway. Shorter = only quick repeating counts.",
+     "label": "Within (slow repeats)",
+     "help": "The time in which those copies are counted."},
+    {"key": "slow_repeat_hold_seconds", "group": "Duplicate suppression", "type": "int", "min": 900, "max": 86400, "unit": "s",
+     "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = a copy gets through sooner.",
+     "label": "Hold further copies for (slow repeats)",
+     "help": "How long further copies of that message from that name are held. While they keep repeating it, one copy gets through each time this period ends."},
     # -- Known people
     {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
      "risk": "1 = names become known very quickly, which is easier to abuse. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
@@ -352,6 +368,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "repeat_max": 3,
     "repeat_window_seconds": 600,
     "repeat_block_seconds": 3600,
+    "slow_repeat": True,
+    "slow_repeat_max": 3,
+    "slow_repeat_window_seconds": 86400,
+    "slow_repeat_hold_seconds": 10800,
     "text_rule_chars": 40,
     "random_name_patterns": [r"(?=.*\d)(?=.*[a-z])[a-z0-9]{8}"],
     "detect_garbage": True,
@@ -1113,6 +1133,8 @@ class SpamGuard:
         self.update_info: dict = {"latest": None, "notes": "", "url": "", "checked": None, "error": None}
         self._update_checking = False
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
+        # Slow repeating: "name|channel|hash of the message" -> {"who", "ch", "snip", "ts": [times of each separate send]}
+        self.slow_sends: dict[str, dict] = {}
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
         # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
@@ -1385,6 +1407,11 @@ class SpamGuard:
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
                 self.sender_history[name] = {"first": v[0], "count": int(v[1]), "hops": set()}
+        for k, v in (st.get("slow_sends") or {}).items():
+            if isinstance(v, dict) and v.get("who") and isinstance(v.get("ts"), list):
+                ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
+                if ts:
+                    self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:]}
         for b in self.blocks.values():
             b.setdefault("hits", 0)
             b.setdefault("source", "manual" if b.get("manual") else ("hop" if b.get("kind") == "hop" else "campaign"))
@@ -1449,6 +1476,8 @@ class SpamGuard:
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
+                    "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
+                                   for k, v in list(self.slow_sends.items())[-1500:]},
                 }
 
     def reset_all(self):
@@ -3181,6 +3210,8 @@ class SpamGuard:
             h["hops"].add(e.first_hop)
             if e.known_then is None:
                 e.known_then = self.is_known(e.sender)
+            if not e.replay and not e.local:
+                self._note_slow_send(e)
             self._match_event(e, count=not again)
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
@@ -3202,7 +3233,34 @@ class SpamGuard:
             self.events.popleft()
         for s in [s for s, h in self.sender_history.items() if h["first"] < now - 86400]:
             del self.sender_history[s]
+        keep = max(int(self.cfg.get("slow_repeat_window_seconds", 86400)), 3600) + 3600
+        for k in [k for k, v in self.slow_sends.items() if not v["ts"] or v["ts"][-1] < now - keep]:
+            del self.slow_sends[k]
         return new
+
+    def _note_slow_send(self, e) -> None:
+        """Remember each separate send of a long message by one name, for the day-long repeat limit. Copies
+        of one send that arrive by different routes a moment apart count once."""
+        c = self.cfg
+        if not c.get("slow_repeat", True) or e.exempt or e.sender in self.allow_senders:
+            return
+        content = longest_piece(strip_mentions(e.text)).strip()
+        if len(content) < int(c.get("dedupe_min_chars", 30)):
+            return
+        norm = normalise(content)
+        if len(norm) < 12:
+            return
+        key = f"{e.sender}|{e.channel}|" + hashlib.sha1(norm.encode(), usedforsecurity=False).hexdigest()[:12]
+        rec = self.slow_sends.get(key)
+        if rec is None:
+            rec = self.slow_sends[key] = {"who": e.sender, "ch": e.channel, "snip": middle_chunk(content, c["text_rule_chars"]), "ts": []}
+            while len(self.slow_sends) > 1500:
+                self.slow_sends.pop(next(iter(self.slow_sends)))
+        if rec["ts"] and abs(e.ts - rec["ts"][-1]) < 120:
+            rec["ts"][-1] = max(rec["ts"][-1], e.ts)
+        elif not rec["ts"] or e.ts > rec["ts"][-1]:
+            rec["ts"].append(e.ts)
+            del rec["ts"][:-40]
 
     # ---- detection ----
     def _similar(self, a: frozenset, b: frozenset, th: float) -> bool:
@@ -3612,6 +3670,23 @@ class SpamGuard:
                                    extra={"who": who}):
                     changed = True
 
+        # 2b''. Slow repeating: the same long message from one name, spread over hours so the quick check above
+        # never sees it. Counts separate sends over a day; further copies are held for a few hours, and one
+        # gets through each time the hold ends while they keep at it. Only repeats are counted, never content.
+        if c.get("slow_repeat", True):
+            win_s = int(c["slow_repeat_window_seconds"])
+            for skey, rec in self.slow_sends.items():
+                recent = [t for t in rec["ts"] if t >= now - win_s]
+                if len(recent) <= int(c["slow_repeat_max"]):
+                    continue
+                key = "slowrepeat:" + hashlib.sha1(skey.encode(), usedforsecurity=False).hexdigest()[:10]
+                if self.suppressed.get(key, 0) > now:
+                    continue
+                if self._add_block(key, "repeat", rec["snip"], f"Sent {len(recent)} times today", "slowrepeat",
+                                   channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=recent[-1],
+                                   extra={"who": rec["who"]}):
+                    changed = True
+
         # 2b'. Replays: further copies of an old message being sent again, from that name only.
         if c.get("replay_guard", True):
             for e in a["long"]:
@@ -3975,7 +4050,7 @@ class SpamGuard:
                               "then": {"action": self.rule_action(b)}})
         return rules
 
-    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "replay": "replayed", "campaign": "campaign",
+    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "replay": "replayed", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours"}
 
