@@ -16,6 +16,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Dependency review (no new packages with known vulnerabilities)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: never
       - name: Privacy check (no personal details, places or real-world examples)
         env:
           # A private list kept as a repository secret, so its entries never appear in the repository.

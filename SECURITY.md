@@ -31,3 +31,11 @@ Sigstore signature (cosign), using the `.sigstore.json` file next to each downlo
 The files of releases up to v6.6.2 were rebuilt from their tags and signed again on 23 October 2026, when
 the repository history was tidied up. Their signatures and build attestations carry that date and name the
 one-off `reissue-releases` workflow rather than the release workflow. Both commands above still check them.
+
+## How the project is checked
+
+Every pull request runs the tests, a privacy check, a leak check (Gitleaks) and GitHub's dependency review,
+which blocks new packages with known vulnerabilities. CodeQL (extended security rules), Bandit, pip-audit on
+every set of dependencies and zizmor (for the workflows themselves) run on each change and weekly. Release
+files are virus-scanned with ClamAV before they are published, each Docker image is scanned with Trivy before
+it is pushed, and the published image is scanned again every week.
