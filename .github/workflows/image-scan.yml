@@ -1,0 +1,29 @@
+# Checks the published Docker image every week for vulnerabilities found since it was built, and shows them
+# under Security, then Code scanning.
+name: Image scan
+on:
+  schedule:
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Scan the latest image (Trivy)
+        run: |
+          set -euo pipefail
+          tv=0.76.1
+          curl -fsSL -o /tmp/trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v$tv/trivy_${tv}_Linux-64bit.tar.gz"
+          echo "c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0  /tmp/trivy.tgz" | sha256sum -c -
+          tar -xzf /tmp/trivy.tgz -C /tmp trivy
+          /tmp/trivy image --no-progress --severity MEDIUM,HIGH,CRITICAL --format sarif -o trivy.sarif ghcr.io/flackrat/openhop-spamguard:latest
+          /tmp/trivy image --no-progress --severity HIGH,CRITICAL ghcr.io/flackrat/openhop-spamguard:latest
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
