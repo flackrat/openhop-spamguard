@@ -64,6 +64,9 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .banner.warn{background:var(--amber-tint);border-color:var(--amber);color:var(--ink)}
 .banner.bad{background:var(--stop-tint);border-color:var(--stop)}
 .banner.info{background:var(--signal-tint);border-color:var(--signal)}
+.banner a{color:inherit;text-decoration:underline;font-weight:600}
+.banner.dismissable{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.banner.dismissable button{flex:none}
 
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
 section > h2{font-size:1rem;font-weight:650;margin:0 0 4px}
@@ -227,9 +230,9 @@ body.advanced .stats.adv{display:grid}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 
 /* ---------- app layout: openHop-style side menu ---------- */
-:root{--c-stop:#009096;--c-let:#c2610c;--c-flood:#6b4fc8;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
-@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
-:root[data-theme=dark]{--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}
+:root{--c-stop:#009096;--c-let:#c2610c;--c-flood:#6b4fc8;--c-used:#9aa7b2;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
+:root[data-theme=dark]{--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}
 .app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 .side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--nav);color:var(--nav-ink);border-right:1px solid var(--line);padding:14px 10px 20px;display:flex;flex-direction:column;gap:2px}
 .side .brand{padding:4px 8px 14px;font-size:1.03125rem}
@@ -271,6 +274,26 @@ main{min-width:0}
 body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (min-width:1300px){.kpis,body.advanced .kpis{grid-template-columns:repeat(var(--n,6),minmax(0,1fr))}}
 @media (max-width:560px){.kpis,body.advanced .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Phones: the numbers first, less reading. Mode and Sensitivity move below the tiles and lose their
+   explanations (the buttons say enough; the full text is on wider screens and in Help). */
+@media (max-width:560px){
+  .page[data-page=overview].on{display:flex;flex-direction:column}
+  .page[data-page=overview] > *{order:3}
+  .page[data-page=overview] > .hero,.page[data-page=overview] > [id$=Callout],.page[data-page=overview] > #chHint{order:0}
+  .page[data-page=overview] > #kpiSec{order:1}
+  .page[data-page=overview] > .controls{order:2;grid-template-columns:minmax(0,1fr);gap:10px}
+  .page[data-page=overview] > section,.page[data-page=overview] .controls section{padding:12px 14px}
+  .page[data-page=overview] h2{font-size:1rem}
+  .page[data-page=overview] .controls h2{font-size:0.875rem;margin:0 0 6px}
+  .page[data-page=overview] .controls .seg button{padding:8px 4px;font-size:0.8125rem}
+  #modeExplain,#sensExplain,.page[data-page=overview] .lead,#kpiSince{display:none}
+  .hero{padding:2px 0 10px}
+  .hero h1{font-size:1.25rem}
+  .hero p{font-size:0.875rem}
+  .kpis dd{font-size:1.25rem}
+  .kpis small{font-size:0.6875rem}
+  .banner{padding:10px 12px;font-size:0.875rem}
+}
 .kpis a,.callout a,.quietlink{color:var(--signal)}
 .kpis div{background:var(--paper);border-radius:8px;padding:10px 12px;min-width:0}
 .kpis dt{font-size:0.78125rem;color:var(--soft)}
@@ -280,14 +303,19 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 .legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:0.78125rem;color:var(--soft);margin:2px 0 8px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
-.sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)} .sw-f{background:var(--c-flood)}
+.sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)} .sw-f{background:var(--c-flood)} .sw-u{background:var(--c-used)}
 .chart{position:relative;height:150px}
 .chart.short{height:120px}
 .chart svg{width:100%;height:100%;overflow:visible}
 .chart .grid{stroke:var(--line);stroke-width:1}
 .chart .ax{fill:var(--soft);font-size:0.6875rem}
-.chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)} .chart .f{fill:var(--c-flood)}
+.chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)} .chart .f{fill:var(--c-flood)} .chart .u{fill:var(--c-used)}
+.lbl{display:flex;gap:6px;align-items:center;margin-top:6px} .lbl button{padding:2px 9px;font-size:0.75rem} .lbl button[aria-pressed=true]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .chart .lvl{stroke:var(--soft);stroke-width:1;stroke-dasharray:4 3}
+.chart .ln{fill:none;stroke:var(--c-flood);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .ln2{fill:none;stroke:var(--c-let);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .dot{fill:var(--c-flood);stroke:var(--panel);stroke-width:2} .chart .dot2{fill:var(--c-let);stroke:var(--panel);stroke-width:2}
+.sw.ln-sw{height:3px;border-radius:2px;background:var(--c-flood)} .sw.ln2-sw{height:3px;border-radius:2px;background:var(--c-let)} .sw.lvl-sw{height:0;border-top:1px dashed var(--soft);border-radius:0}
 .viewpick{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:0 0 8px}
 .viewpick button{border:0;border-radius:0;min-height:36px;padding:0 14px;background:transparent;color:var(--ink)}
 .viewpick button[aria-pressed=true]{background:var(--nav-active);font-weight:600}
@@ -431,7 +459,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <p class="explain" id="sensExplain"></p>
   </section>
 </div>
-<section>
+<section id="kpiSec">
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
   <dl class="kpis" id="kpis"></dl>
 </section>
@@ -461,6 +489,18 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="chart short" id="chartHour" role="img"></div>
 </section>
 </div>
+<section id="busyOvSec" hidden>
+  <h2>How busy the radio was, last 24 hours</h2>
+  <p class="lead">The busiest five minutes of each hour: how much of the time the radio was receiving or sending. <span id="busyOvLead"></span></p>
+  <div class="legend" id="busyOvLeg"></div>
+  <div class="chart short" id="chartBusyOv" role="img"></div>
+</section>
+<section id="airSec" hidden>
+  <h2>Airtime, last 7 days</h2>
+  <p class="lead">Minutes a day this repeater's radio spent on traffic, and the airtime it would also have spent passing on the spam and flood packets that were stopped.</p>
+  <div class="legend"><span><i class="sw sw-u"></i>Airtime used</span><span><i class="sw sw-c"></i>Saved by stopping spam</span><span><i class="sw sw-f"></i>Saved by FloodGuard</span></div>
+  <div class="chart short" id="chartAir" role="img"></div>
+</section>
 <section>
   <div class="health-head"><h2>Where the spam enters the mesh</h2><a href="#/sources" class="quietlink">Map and details</a></div>
   <p class="lead">The first repeater on each spam message's route, last 7 days.</p>
@@ -475,6 +515,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="more" id="blocksMore"></p>
   <div class="foldbar" id="blocksFold"></div>
   <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain" style="margin-left:10px">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
+</section>
+<section id="mostHeldSec">
+  <h2>Most held, last 7 days</h2>
+  <p class="lead">The names with the most copies held back, and how much they send. A name that took over another name's repeat count is shown together with it, so one sender behind several names reads as one. Only counts are shown, never what anyone said.</p>
+  <div class="scroll"><table id="mostHeld"></table></div>
 </section>
 <section id="lockSec">
   <div class="health-head"><h2>Emergency: lockdown</h2><span id="lPill"></span></div>
@@ -510,6 +555,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="messages"><section>
   <h2>Recent channel messages</h2>
   <p class="lead">Mark anything SpamGuard missed as spam, or tell it when it got something wrong. Routes read left to right from where the message entered the mesh.</p>
+  <p class="explain" id="lblLead">The <b>Spam</b> and <b>Fine</b> buttons only label a message: nothing is blocked or trusted. Labels go in the evidence log, so a replay can show how often SpamGuard got it right.</p>
   <ul class="rows" id="recent"></ul>
   <div class="foldbar" id="recentMore"></div>
   <p style="margin:10px 0 0" id="clrRecent"><button class="quiet" onclick="post('/clear_recent',{})">Clear this list</button> <span class="explain">Only clears the page: the evidence log keeps everything.</span></p>
@@ -551,6 +597,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">Per hour. Flood packets FloodGuard stopped, and ones over a limit that were still passed on.</p>
   <div class="legend"><span><i class="sw sw-f"></i>Stopped by FloodGuard</span><span><i class="sw sw-x"></i>Over the limit but let through (while learning, in Monitor, or before the limit started)</span></div>
   <div class="chart" id="chartFlood" role="img"></div>
+</section>
+<section id="floodSrcSec">
+  <h2>Where floods come into the mesh</h2>
+  <p class="lead">The first repeater on the route of each flood packet FloodGuard stopped, last 7 days. A repeater near the top may be worth a word with its owner.</p>
+  <div class="scroll"><table id="floodSrc"></table></div>
 </section>
 <section id="busySec">
   <h2>How busy the radio was</h2>
@@ -738,7 +789,7 @@ const store = {get(k){try{return localStorage.getItem(k)}catch(e){return null}},
 const TTLS = [["1800","for 30 minutes"],["3600","for 1 hour"],["21600","for 6 hours"],["86400","for 1 day"],["604800","for 1 week"],["315360000","until I remove it"]];
 
 function ago(ts){ if(!ts) return "never"; const s=Math.max(0,Date.now()/1000-ts);
-  if(s<90) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; return Math.round(s/86400)+" days ago"; }
+  if(s<90) return "just now"; if(s<3600) return Math.round(s/60)+" min ago"; if(s<86400) return Math.round(s/3600)+" h ago"; const d=Math.round(s/86400); return d+(d===1?" day ago":" days ago"); }
 function left(sec, perm){ if(perm) return "Stays until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
 function toast(t,bad){ if(bad){ const a=$("#alertBox"); a.textContent=""; setTimeout(()=>a.textContent=t,50); } const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
 
@@ -769,7 +820,9 @@ function renderTop(d){
   if(d.service&&d.service.state==="bad") b+=`<div class="banner bad"><b>SpamGuard needs attention.</b>${esc(d.service.problems[0])}</div>`;
   if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
   if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
-  if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10) b+=`<div class="banner info"><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div>`;
+  const hid=Number(store.get("sgDismissUnread")||0);
+  if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
+    b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
   const m=d.paused?"pause":d.mode;
@@ -895,6 +948,16 @@ function renderBlocks(d){
     :(dups.length?`<details ${wasOpen?"open":""}><summary>Short-lived duplicate blocks (${dups.length}), each stopping copies of a message seen in the last few minutes</summary><ul class="rows">${dups.map(item).join("")}</ul></details>`:"");
 }
 
+/* ---------- most held, last 7 days ---------- */
+function renderMostHeld(d){
+  const list=((d.metrics||{}).most_held)||[];
+  const head=`<tr><th>Name</th><th class="num">Copies held</th><th class="num">Messages a day</th><th class="num">Days heard</th><th class="num">Held today</th></tr>`;
+  $("#mostHeld").innerHTML=head+(list.length?list.map(r=>`<tr><td class="lead-cell">${esc(r.name)}${r.also&&r.also.length?`<div class="explain">also sent as ${esc(r.also.join(", "))}</div>`:""}</td>
+    <td class="num" data-label="Copies held">${fmtN(r.held)}</td><td class="num" data-label="Messages a day">${fmtN(r.per_day)}</td>
+    <td class="num" data-label="Days heard">${r.days}</td><td class="num" data-label="Held today">${fmtN(r.today)}</td></tr>`).join("")
+    :`<tr><td colspan="5" class="empty">Nobody has had anything held in the last 7 days.</td></tr>`);
+}
+
 /* ---------- recent messages ---------- */
 function renderRecent(d){
   const adv=document.body.classList.contains("advanced");
@@ -907,8 +970,10 @@ function renderRecent(d){
     const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
       ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"")+(m.matched||m.known?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"danger"))
       : (m.trusted||m.known?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"danger"));
+    const lb=(v,t)=>`<button type="button" class="quiet" aria-pressed="${m.label===v}" data-p="/label" data-b="${esc(JSON.stringify({label:m.label===v?"none":v,sender:m.sender,text:m.text,path:m.path,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
+    const lbl=`<div class="lbl" role="group" aria-label="Your label for this message, for checking accuracy"><span class="explain">Label only:</span>${lb("spam","Spam")}${lb("not_spam","Fine")}</div>`;
     return `<li><div><div><strong>${esc(m.sender)}</strong>${tag}</div><div class="msg-text">${esc(m.text)}</div>
-      <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div></div>
+      <div class="msg-meta">${m.time}, via <span class="route">${esc(m.path)}</span>${m.channel!=="Public"?", "+esc(m.channel):""}${why.length?". "+why.join(", "):""}${m.matched_desc&&adv?". Caught by "+esc(m.matched_desc):""}${adv?". Name score "+m.name_score:""}</div>${lbl}</div>
       <div class="acts">${acts}</div></li>`;
   });
   fold("recent","recentMore",items,`<li><p class="empty">No channel messages heard in the last ${Math.round(d.settings.long_window_seconds/3600)} hours.</p></li>`);
@@ -1195,6 +1260,7 @@ function render(d, editing){
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
+  renderMostHeld(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
@@ -1403,16 +1469,17 @@ function renderFloodPage(d){
   if(facts.length) h+=`<p class="explain">${esc(facts.join(" "))}</p>`;
   h+=`<div class="switchrow">${fg.enabled?btn("Turn FloodGuard off","/settings",{floodguard:false},"quiet"):btn("Turn FloodGuard on","/settings",{floodguard:true},"go")}${fg.enabled?`<button class="quiet" data-p="/fg_relearn" data-b="{}" data-confirm="Put every FloodGuard setting back to FloodGuard's own values and learn this repeater's traffic again from scratch? Values you set yourself are cleared. Learning takes ${fg.learn_days} days${fg.learning&&!fg.relearning?"":"; it keeps protecting with the recommended values meanwhile"}." onclick="act(this)">Reset and learn again</button>`:""}</div>`;
   $("#fgCard").innerHTML=h;
+  const fs=m.flood_sources||[];
+  $("#floodSrc").innerHTML=`<tr><th>Repeater code</th><th>Likely repeater</th><th class="num">24 h</th><th class="num">7 days</th><th>Last stopped</th></tr>`+
+    (fs.length?fs.map(s=>`<tr><td class="lead-cell"><span class="route">${esc(s.hop)}</span></td><td data-label="Likely repeater">${srcName(s)}</td>
+      <td class="num" data-label="24 h">${fmtN(s.d1)}</td><td class="num" data-label="7 days">${fmtN(s.d7)}</td><td data-label="Last stopped">${ago(s.last+3599)}</td></tr>`).join("")
+    :`<tr><td colspan="5" class="empty">FloodGuard hasn't stopped any flood packets in the last 7 days.</td></tr>`);
   if(PAGE!=="floodguard") return;   // charts are drawn at their real width, so only while the page is showing
   columns($("#chartFlood"),m.hourly.map(r=>({f:r.fc||0,x:r.fx||0,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.fc||0} flood packets stopped, ${r.fx||0} over the limit let through`})),
     {every:6,col:"Hour",segs:["f","x"],cols:[["f","Stopped"],["x","Let through"]]});
   $("#chartFlood").setAttribute("aria-label",`Flood packets per hour, last 24 hours: ${m.d1.fc||0} stopped by FloodGuard. The numbers are in the table below.`);
-  const rows=m.hourly.map(r=>({c:r.bz==null?0:Math.round(r.bz),label:hh(r.t),full:hh(r.t),af:r.af,
-    tip:r.bz==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: busiest five minutes ${Math.round(r.bz)}%${r.af!=null?`, ${r.af}% of the hour's airtime was flood traffic`:""}`}));
   $("#busyLead").textContent=fg.enabled?`The dashed line is where FloodGuard steps in (${fg.level}%).`:"Measured whether FloodGuard is on or not.";
-  columns($("#chartBusy"),rows.map(r=>({...r,f:r.c,c:0})),{every:6,col:"Hour",unit:"%",segs:["f"],level:fg.enabled?fg.level:0,cols:[["f","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
-  const pk=rows.reduce((b,r)=>r.c>b.c?r:b,rows[0]);
-  $("#chartBusy").setAttribute("aria-label",m.hourly.some(r=>r.bz!=null)?`How busy the radio was, per hour, last 24 hours. Busiest: ${pk.c}% at ${pk.full}. The numbers are in the table below.`:"How busy the radio was: not measured yet.");
+  drawBusy($("#chartBusy"),m,fg,hh);
 }
 function renderOverview(d){
   renderMove(d);
@@ -1464,6 +1531,23 @@ function renderOverview(d){
   const peak=g.by_hour.reduce((b,v,i)=>v>g.by_hour[b]?i:b,0);
   $("#chartHour").setAttribute("aria-label",g.by_hour.some(v=>v)?`Spam by time of day${g.on}, last 7 days. Busiest hour ${String(peak).padStart(2,"0")}:00 with ${g.by_hour[peak]}. The numbers are in the table below.`:`Spam by time of day${g.on}: none in the last 7 days.`);
   $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
+  // how busy the radio was, as a line next to the other graphs
+  const bel=$("#chartBusyOv");
+  $("#busyOvSec").hidden=!m.radio_known||!!chPick;
+  if(m.radio_known&&!chPick){
+    $("#busyOvLeg").innerHTML=`<span><i class="sw ln-sw"></i>Busiest five minutes of the hour</span>`+(fg.enabled?`<span><i class="sw lvl-sw"></i>Where FloodGuard steps in (${fg.level}%)</span>`:"");
+    if(!drawBusy(bel,m,fg,hh)) $("#busyOvSec").hidden=true;
+  }
+  // airtime: what the radio used, and what it would also have spent on what was stopped
+  $("#airSec").hidden=!m.radio_known||chPick;
+  if(m.radio_known&&!chPick){
+    const mn=v=>Math.round((v||0)/6000)/10;
+    columns($("#chartAir"),m.daily.map(r=>({u:mn(r.ar),c:mn(r.sa),f:mn(r.fs),label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:day(r.t),
+      tip:`${day(r.t)}: ${mn(r.ar)} min used, ${mn(r.sa)} min saved by stopping spam, ${mn(r.fs)} min saved by FloodGuard`})),
+      {every:1,col:"Day",unit:"",segs:["u","c","f"],cols:[["u","Airtime used (min)"],["c","Saved by stopping spam (min)"],["f","Saved by FloodGuard (min)"]]});
+    const t=k=>Math.round(m.daily.reduce((a,r)=>a+mn(r[k]),0)*10)/10;
+    $("#chartAir").setAttribute("aria-label",`Airtime per day, last 7 days: ${t("ar")} minutes used, ${t("sa")} minutes saved by stopping spam, ${t("fs")} minutes saved by FloodGuard. The numbers are in the table below.`);
+  }
 }
 function srcName(s){
   const c=s.candidates||[], l=s.likely;
@@ -1507,6 +1591,42 @@ function columns(el,rows,opt){
   const cols=opt.cols||[["c",hasX?"Stopped":"Spam"]].concat(hasX?[["x","Let through"]]:[]).concat(hasF?[["f","Flood packets stopped"]]:[]);
   d.querySelector("div").innerHTML=`<table><tr><th scope="col">${esc(opt.col||"When")}</th>${cols.map(c=>`<th scope="col" class="num">${esc(c[1])}</th>`).join("")}</tr>`+
     rows.map(r=>`<tr><td>${esc(r.full||r.label)}</td>${cols.map(c=>`<td class="num">${r[c[0]]==null?"–":r[c[0]]+(c[2]||"")}</td>`).join("")}</tr>`).join("")+"</table>";
+}
+/* ---------- line charts (one or two lines, gaps where nothing was measured) ---------- */
+function lines(el,rows,opt){
+  const W=el.clientWidth||600, H=el.clientHeight||140, L=30, B=18, T=8, base=H-B, keys=opt.keys, u=opt.unit||"";
+  const top=opt.max||niceMax(Math.max(1,opt.level||0,...rows.flatMap(r=>keys.map(k=>r[k]||0))));
+  const band=(W-L)/rows.length, x=i=>L+i*band+band/2, y=v=>base-(v/top)*(base-T);
+  let g="";
+  [0,top/2,top].forEach(v=>{ g+=`<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L-6}" y="${y(v)+4}" text-anchor="end">${Number.isInteger(v)?v:v.toFixed(1)}${u}</text>`; });
+  if(opt.level) g+=`<line class="lvl" x1="${L}" x2="${W}" y1="${y(opt.level)}" y2="${y(opt.level)}"/>`;
+  keys.forEach((k,j)=>{
+    let d="", pen=false;
+    rows.forEach((r,i)=>{ if(r[k]==null){ pen=false; return; } d+=(pen?"L":"M")+x(i).toFixed(1)+","+y(r[k]).toFixed(1); pen=true; });
+    if(d) g+=`<path class="${j?"ln2":"ln"}" d="${d}"/>`;
+    rows.forEach((r,i)=>{ if(r[k]!=null&&(i===0||rows[i-1][k]==null)&&(i===rows.length-1||rows[i+1][k]==null)) g+=`<circle class="${j?"dot2":"dot"}" cx="${x(i)}" cy="${y(r[k])}" r="4"/>`; });
+  });
+  rows.forEach((r,i)=>{
+    g+=`<rect class="hit" x="${L+i*band}" y="${T}" width="${band}" height="${base-T}" data-tip="${esc(r.tip)}"/>`;
+    if(i%opt.every===0) g+=`<text class="ax" x="${x(i)}" y="${H-3}" text-anchor="middle">${esc(r.label)}</text>`;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${g}</svg>`;
+  let dt=el.nextElementSibling;
+  if(!dt||!dt.classList.contains("chart-data")){ dt=document.createElement("details"); dt.className="chart-data"; dt.innerHTML="<summary>Show the numbers</summary><div class='scroll'></div>"; el.after(dt); }
+  const cols=opt.cols;
+  dt.querySelector("div").innerHTML=`<table><tr><th scope="col">${esc(opt.col||"When")}</th>${cols.map(c=>`<th scope="col" class="num">${esc(c[1])}</th>`).join("")}</tr>`+
+    rows.map(r=>`<tr><td>${esc(r.full||r.label)}</td>${cols.map(c=>`<td class="num">${r[c[0]]==null?"–":r[c[0]]+(c[2]||"")}</td>`).join("")}</tr>`).join("")+"</table>";
+}
+function busyRows(m,hh){
+  return m.hourly.map(r=>({bz:r.bz==null?null:Math.round(r.bz),af:r.af,label:hh(r.t),full:hh(r.t),
+    tip:r.bz==null?`${hh(r.t)}: not measured`:`${hh(r.t)}: busiest five minutes ${Math.round(r.bz)}%${r.af!=null?`, ${r.af}% of the hour's airtime was flood traffic`:""}`}));
+}
+function drawBusy(el,m,fg,hh){
+  const rows=busyRows(m,hh);
+  lines(el,rows,{keys:["bz"],every:6,col:"Hour",unit:"%",level:fg.enabled?fg.level:0,cols:[["bz","Busiest 5 minutes","%"],["af","Flood share of airtime","%"]]});
+  const pk=rows.reduce((b,r)=>(r.bz||0)>(b.bz||0)?r:b,rows[0]);
+  el.setAttribute("aria-label",rows.some(r=>r.bz!=null)?`How busy the radio was, per hour, last 24 hours. Busiest: ${pk.bz}% at ${pk.full}.${fg.enabled?` FloodGuard steps in at ${fg.level}%.`:""} The numbers are in the table below.`:"How busy the radio was: not measured yet.");
+  return rows.some(r=>r.bz!=null);
 }
 document.addEventListener("mousemove",e=>{
   const t=$("#tip"), h=e.target.closest&&e.target.closest(".hit");

@@ -27,3 +27,7 @@ Sigstore signature (cosign), using the `.sigstore.json` file next to each downlo
     cosign verify-blob --bundle <file>.sigstore.json \
       --certificate-identity-regexp 'https://github.com/flackrat/openhop-spamguard/' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>
+
+The files of releases up to v6.6.2 were rebuilt from their tags and signed again on 23 October 2026, when
+the repository history was tidied up. Their signatures and build attestations carry that date and name the
+one-off `reissue-releases` workflow rather than the release workflow. Both commands above still check them.
