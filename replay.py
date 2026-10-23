@@ -50,7 +50,7 @@ def encrypt(sender: str, text: str, key_hex: str) -> str:
     k = sg._secret32(key_hex)
     pt = b"\x00\x00\x00\x00\x00" + f"{sender}: {text}".encode()
     pt += b"\x00" * ((-len(pt)) % 16)
-    ct = AES.new(k[:16], AES.MODE_ECB).encrypt(pt)  # MeshCore channel format (rebuilding packets from the log)
+    ct = AES.new(k[:16], AES.MODE_ECB).encrypt(pt)
     return (bytes([sg.channel_hash_byte(key_hex)]) + hmac.new(k, ct, hashlib.sha256).digest()[:2] + ct).hex()
 
 
