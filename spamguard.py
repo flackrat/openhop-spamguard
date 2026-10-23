@@ -66,10 +66,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.6.2"
+VERSION = "6.7.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2.4"
+FLOODGUARD_VERSION = "1.2.5"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1196,6 +1196,12 @@ class SpamGuard:
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
         # Slow repeating: "name|channel|hash of the message" -> {"who", "ch", "snip", "ts": [times of each separate send]}
         self.slow_sends: dict[str, dict] = {}
+        # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
+        self.name_links: dict[str, dict] = {}
+        # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
+        self.held_names: dict[str, dict] = {}
+        # Your one-tap labels (packet id, or "name|text") -> "spam" / "not_spam", for the replay tool
+        self.labels: collections.OrderedDict = collections.OrderedDict()
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
         # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
@@ -1473,6 +1479,19 @@ class SpamGuard:
                 ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
                 if ts:
                     self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:]}
+        for k, v in (st.get("name_links") or {}).items():
+            if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
+                self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
+        day8 = now - 8 * 86400
+        for k, v in (st.get("held_names") or {}).items():
+            if isinstance(v, dict):
+                d = {str(dk): [int(x) for x in dv][:2] for dk, dv in v.items()
+                     if isinstance(dv, list) and len(dv) == 2 and float(dk) > day8}
+                if d:
+                    self.held_names[str(k)] = d
+        for k, v in (st.get("labels") or {}).items():
+            if v in ("spam", "not_spam"):
+                self.labels[str(k)] = v
         for b in self.blocks.values():
             b.setdefault("hits", 0)
             b.setdefault("source", "manual" if b.get("manual") else ("hop" if b.get("kind") == "hop" else "campaign"))
@@ -1537,6 +1556,9 @@ class SpamGuard:
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
+                    "name_links": self.name_links,
+                    "held_names": dict(list(self.held_names.items())[-3000:]),
+                    "labels": dict(list(self.labels.items())[-1000:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                 }
@@ -1770,6 +1792,11 @@ class SpamGuard:
         if stopped:
             h["fc"] = h.get("fc", 0) + 1
             h["fs"] = round(h.get("fs", 0) + ms)
+            path = parse_path(p.get("original_path"))
+            if path:   # the first repeater on the route: where the flood came into the mesh
+                fh = h.setdefault("fh", {})
+                if path[0] in fh or len(fh) < 60:
+                    fh[path[0]] = fh.get(path[0], 0) + 1
         elif flood and sent and not local and self.fg_over(hops, ptype, route):
             h["fx"] = h.get("fx", 0) + 1   # over a limit but passed on: Monitor, or before the rule landed
         if flood and not local:
@@ -2221,6 +2248,59 @@ class SpamGuard:
                 "advert": int(c.get("flood_max_advert") or 0) if c.get("floodguard") else 0,
                 "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
 
+    def _held_day(self, e: Event) -> Optional[list]:
+        """[messages, copies held] for this name on the day of this message, or None for our own messages."""
+        if not e.sender or e.sender == "?" or e.local:
+            return None
+        day = str(int(time.mktime(time.localtime(e.ts)[:3] + (0, 0, 0, 0, 0, -1))))
+        d = self.held_names.get(e.sender)
+        if d is None:
+            if len(self.held_names) >= 3000:   # forget the names heard longest ago
+                old = min(self.held_names, key=lambda n: max(self.held_names[n]))
+                del self.held_names[old]
+            d = self.held_names[e.sender] = {}
+        if day not in d:
+            for k in [k for k in d if float(k) < e.ts - 8 * 86400]:
+                del d[k]
+        return d.setdefault(day, [0, 0])
+
+    def most_held(self, now: float) -> list:
+        """The names with the most copies held over the last 7 days, with how much they send, and any
+        names that carried on another's repeat count, so one person behind several names shows as one."""
+        cut = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - 6 * 86400
+        rows = []
+        linked = {a for v in self.name_links.values() for a in v.get("after", [])}
+        for name, d in self.held_names.items():
+            days = {k: v for k, v in d.items() if float(k) >= cut}
+            held = sum(v[1] for v in days.values())
+            if not held and name not in self.name_links and name not in linked:
+                continue
+            active = sum(1 for v in days.values() if v[0])
+            today = d.get(str(int(time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)))), [0, 0])
+            rows.append({"name": name, "held": held, "messages": sum(v[0] for v in days.values()),
+                         "days": active, "per_day": round(sum(v[0] for v in days.values()) / max(1, active)),
+                         "today": today[1]})
+        # group linked names: a name that carried on from others takes their rows
+        by = {r["name"]: r for r in rows}
+        for name, link in self.name_links.items():
+            if link.get("ts", 0) < now - 7 * 86400:
+                continue
+            head = by.get(name)
+            for a in link.get("after", []):
+                r = by.pop(a, None) if a != name else None
+                if r is None:
+                    continue
+                if head is None:
+                    head = by[name] = {"name": name, "held": 0, "messages": 0, "days": 0, "per_day": 0, "today": 0}
+                for f in ("held", "messages", "today"):
+                    head[f] += r[f]
+                head["days"] = max(head["days"], r["days"])
+                head.setdefault("also", []).append(a)
+                head["also"].extend(r.get("also", []))
+            if head is not None and head.get("also"):
+                head["per_day"] = round(head["messages"] / max(1, head["days"]))
+        return sorted((r for r in by.values() if r["held"]), key=lambda r: (-r["held"], -r["today"]))[:8]
+
     def _people_block(self, b: Optional[dict]) -> bool:
         return bool(b) and b["kind"] in ("hop", "suffix", "links", "lockdown")
 
@@ -2252,6 +2332,9 @@ class SpamGuard:
         hour = str(int(e.ts // 3600 * 3600))
         h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
         h["m"] += 1
+        hn = self._held_day(e)
+        if hn is not None:
+            hn[0] += 1
         b = self.blocks.get(e.matched) if e.matched else None
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
         spammy = e.random or e.obfuscated or bool(cc and cc.get("strong"))
@@ -2273,6 +2356,8 @@ class SpamGuard:
                 h["g"] += 1
                 return
             h["c"] += 1
+            if hn is not None:
+                hn[1] += 1
             if self.cfg["mode"] == "protect" and not self.cfg.get("paused"):
                 h["a"] = round(h["a"] + self.airtime_ms(e.length), 1)
         elif spammy and not self.is_known(e.sender):
@@ -2318,17 +2403,33 @@ class SpamGuard:
         daily = []
         for i in range(6, -1, -1):
             day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - i * 86400
-            c = x = m = fc = fx = 0
+            c = x = m = fc = fx = ar = sa = fs = 0
             bz = None
             for k, v in hist.items():
                 if day0 <= int(k) < day0 + 86400:
                     c += v.get("c", 0); x += v.get("x", 0); m += v.get("m", 0)
                     fc += v.get("fc", 0); fx += v.get("fx", 0)
+                    ar += v.get("ar", 0); sa += v.get("a", 0); fs += v.get("fs", 0)
                     if v.get("bz") is not None:
                         bz = max(bz or 0, v["bz"])
-            daily.append({"t": day0, "c": c, "x": x, "m": m, "fc": fc, "fx": fx, "bz": bz})
+            daily.append({"t": day0, "c": c, "x": x, "m": m, "fc": fc, "fx": fx, "bz": bz,
+                          "ar": round(ar), "sa": round(sa), "fs": round(fs)})
         by_hour = [0] * 24  # spam by hour of day, last 7 days
         sources: dict[str, dict] = {}
+        fsrc: dict[str, dict] = {}   # where FloodGuard's stopped flood packets came into the mesh
+        for k, v in hist.items():
+            t = int(k)
+            if t < cut7:
+                continue
+            for hop, n in (v.get("fh") or {}).items():
+                s7 = fsrc.setdefault(hop, {"hop": hop, "d7": 0, "d1": 0, "last": 0})
+                s7["d7"] += n
+                if t >= cut24 - 3600:
+                    s7["d1"] += n
+                s7["last"] = max(s7["last"], t)
+        flood_sources = sorted(fsrc.values(), key=lambda s: (-s["d7"], -s["d1"]))[:10]
+        for s7 in flood_sources:
+            s7["candidates"] = self.repeaters_for(s7["hop"])
         for k, v in hist.items():
             t = int(k)
             if t < cut7:
@@ -2388,7 +2489,8 @@ class SpamGuard:
             s7["candidates"] = self.repeaters_for(s7["hop"])
             s7["likely"] = ent["likely"].get(s7["hop"])
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
-                "sources": top, "entries": entries, "unplaced": ent["unplaced"],
+                "sources": top, "flood_sources": flood_sources, "most_held": self.most_held(now),
+                "entries": entries, "unplaced": ent["unplaced"],
                 "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
                 "map_working": bool(ent.get("working")),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
@@ -3522,7 +3624,9 @@ class SpamGuard:
             return (f"new repeaters sending via {route}" if route
                     else "new repeaters right next to yours")
         if b["kind"] == "repeat":
-            return f"more copies of \"{b['value']}\" from {b.get('who')}"
+            after = b.get("after") or []
+            return f"more copies of \"{b['value']}\" from {b.get('who')}" + (
+                f" (carrying on from {', '.join(after)})" if after else "")
         but = f" (except from {b['sender']})" if b.get("sender") else ""
         if b["kind"] == "words":
             return "messages containing all of " + ", ".join(f"\"{w}\"" for w in b["value"]) + but
@@ -3749,10 +3853,15 @@ class SpamGuard:
                 if not recent:
                     continue
                 own = len(recent)
+                after = []
                 for other in same.get(skey.rsplit("|", 2)[-1] + "|" + str(rec["ch"]), ()):
                     if other is rec or not other["ts"] or other["ts"][-1] >= recent[0]:
                         continue
-                    recent = [t for t in other["ts"] if t >= now - win_s] + recent
+                    theirs = [t for t in other["ts"] if t >= now - win_s]
+                    if theirs:
+                        recent = theirs + recent
+                        if other["who"] not in after:
+                            after.append(other["who"])
                 if len(recent) <= int(c["slow_repeat_max"]):
                     continue
                 reason = f"Sent {len(recent)} times today" + ("" if own == len(recent) else ", partly under another name")
@@ -3761,8 +3870,11 @@ class SpamGuard:
                     continue
                 if self._add_block(key, "repeat", rec["snip"], reason, "slowrepeat",
                                    channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=max(recent),
-                                   extra={"who": rec["who"]}):
+                                   extra={"who": rec["who"], "after": after[:5]} if after else {"who": rec["who"]}):
                     changed = True
+                if after and len(recent) > int(c["slow_repeat_max"]):
+                    old = self.name_links.get(rec["who"], {}).get("after", [])
+                    self.name_links[rec["who"]] = {"after": (old + [a for a in after if a not in old])[:10], "ts": now}
 
         # 2b'. Replays: further copies of an old message being sent again, from that name only.
         if c.get("replay_guard", True):
@@ -5668,6 +5780,7 @@ class SpamGuard:
                                "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
                                "campaign": e.campaign is not None,
                                "matched": e.matched, "packet": e.packet,
+                               "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
             rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "links": 1, "campaign": 2, "dedupe": 3}
@@ -5678,7 +5791,7 @@ class SpamGuard:
                                "permanent": b["expires"] - now > PERMANENT_SECONDS / 2,
                                "action": b.get("action"), "effective": "paused" if c.get("paused") else self.rule_action(b),
                                "match": b.get("match"), "mode": self.hop_mode(b) if b["kind"] == "hop" else None,
-                               "sender": b.get("sender"),
+                               "sender": b.get("sender"), "who": b.get("who"), "after": b.get("after"),
                                "only_channel": b.get("only_channel"),
                                "rules": self.rule_numbers(b),
                                "paths": sorted(b.get("paths") or {}) if b["kind"] == "hop" else None,
@@ -5953,6 +6066,24 @@ class SpamGuard:
                                 "manual", channel=channel,
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]))
                 msg = f"Blocking messages containing \"{text}\""
+            elif op == "label":
+                lab = body.get("label")
+                if lab not in ("spam", "not_spam", "none"):
+                    raise ValueError("Label a message as spam, fine, or clear the label")
+                sender, text = str(body.get("sender") or ""), str(body.get("text") or "")
+                key = str(body.get("packet") or "") or f"{sender}|{text}"
+                if not key.strip("|"):
+                    raise ValueError("Which message?")
+                self.ev({"type": "label", "label": lab, "sender": sender, "text": text,
+                         "path": body.get("path"), "packet": body.get("packet"), "by": "label"})
+                self.labels.pop(key, None)
+                if lab != "none":
+                    self.labels[key] = lab
+                    while len(self.labels) > 1000:
+                        self.labels.popitem(last=False)
+                msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "none": "Label cleared"}[lab] + (
+                    ". Labels are kept in the evidence log, for checking SpamGuard's accuracy later."
+                    if self.evidence is not None else ". Turn on the evidence log to keep labels.")
             elif op == "not_spam":
                 self.genuine_marks.append(now)
                 self.ev({"type": "label", "label": "not_spam", "sender": body.get("sender"), "text": body.get("text"),
@@ -6146,6 +6277,7 @@ class SpamGuard:
                 self.hist.clear()
                 self.catches.clear()
                 self.held.clear()
+                self.held_names.clear()
                 self.note(f"Spam history cleared ({n} spam message{'' if n == 1 else 's'} over the last 8 days); "
                           "blocks, settings and the evidence log are unchanged")
                 self._important = True
@@ -6217,7 +6349,7 @@ ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "exten
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
-           "hide_source"}
+           "hide_source", "label"}
 
 
 class QuietServer(ThreadingHTTPServer):

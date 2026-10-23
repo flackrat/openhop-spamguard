@@ -2,6 +2,19 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.7.0 (FloodGuard 1.2.5)
+### FloodGuard 1.2.5
+- **Where floods come into the mesh.** The FloodGuard page now lists the first repeaters on the routes of the flood packets it stopped, so you know which repeater owner to talk to.
+### SpamGuard 6.7.0
+- **Most held, last 7 days.** A new table on the Blocks page lists the names with the most copies held back, how many messages a day they send, and how many were held today. When a name took over another name's repeat count, the two are shown together, so one sender behind several names reads as one. Only counts are shown, never what anyone said.
+- **Name changes are shown.** When a name carries on another name's repeat count, Activity and the block both say which name it carried on from.
+- **Airtime, last 7 days.** A new chart on the Overview shows the minutes a day the radio spent on traffic, next to the airtime saved by stopping spam and by FloodGuard.
+- **One-tap labels.** Each recent message has Spam and Fine buttons that only record your opinion: nothing is blocked or trusted. Labels go in the evidence log, so a replay can show how often SpamGuard got it right.
+- **Easier on a phone.** The Overview now opens with the spam numbers. Mode and Sensitivity follow, without their explanations, then the graphs, with less text throughout.
+- **"Most channel messages are on channels SpamGuard can't read" can be dismissed.** It stays hidden on that device for 30 days.
+- **How busy the radio was, as a line.** The Overview shows the busiest five minutes of each hour as a line next to the other graphs, with FloodGuard's step-in level dashed. The FloodGuard page uses the same line, and hours with no measurement show as a gap.
+- **All examples are made up.** The examples in the code comments, tests and documentation are now all invented, with no real names, messages or places.
+
 ## v6.6.2
 ### SpamGuard 6.6.2
 - **Changing name no longer restarts the all-day repeat count.** When a new name takes over sending the same long message after another name has stopped, it carries on that name's count, so its copies are held straight away. Two people posting the same thing at the same sort of time are still counted separately, and a tiny change to the text no longer counts as a new message.
