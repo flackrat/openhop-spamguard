@@ -11,7 +11,7 @@ for i,(n,t) in enumerate([("Hilltop Hiker","Morning all, clear skies up here"),(
 # made-up spam campaign under random names through repeater 76
 for i in range(6): m.add(rname(),"FREE PRIZE claim now https://spam.example/"+rname(5),["C4","9D","E1"],ago=60-i)
 g=guard(m, listen_port=18171, listen_host="127.0.0.1"); g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
-for i in range(4): m.add(rname(),"FREE PRIZE claim now https://spam.example/"+rname(5),["C4","9D","E1"]); 
+for i in range(4): m.add(rname(),"FREE PRIZE claim now https://spam.example/"+rname(5),["C4","9D","E1"]);
 g.poll_once()
 # synthetic history: 7 days of made-up hourly counts
 now=int(time.time())//3600*3600; h={}

@@ -588,6 +588,8 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
             if hmac.new(key, ct, hashlib.sha256).digest()[:2] != mac:
                 continue
             padded = ct + b"\x00" * ((-len(ct)) % 16)
+            # AES in ECB mode is what MeshCore itself uses for channel messages; SpamGuard only reads them,
+            # and never uses it to protect anything of its own.
             pt = AES.new(key[:16], AES.MODE_ECB).decrypt(padded)[: len(ct)]
             # [timestamp 4][flags 1]["sender: text"][zero padding]
             msg = pt[5:].split(b"\x00", 1)[0].decode("utf-8", "replace")
@@ -752,7 +754,7 @@ def is_obfuscated(text: str, name: bool = False) -> bool:
     if TAG_CHARS.search(text) and not re.search("\U0001F3F4[\U000E0020-\U000E007F]+\U000E007F", text):
         return True  # tag letters, other than in subdivision flags such as England's
     hidden = "\u200b\u200c\u200d\u2060\ufeff\u00ad\u180e"
-    if re.search(f"[A-Za-z0-9][{hidden}]+[A-Za-z0-9]", text) or re.search(f"[\u200b\u2060\ufeff\u00ad\u180e]", text):
+    if re.search(f"[A-Za-z0-9][{hidden}]+[A-Za-z0-9]", text) or re.search("[\u200b\u2060\ufeff\u00ad\u180e]", text):
         return True
     # An emoji wedged between letters of one word: "Bu🔥ilt". Not for display names, where a
     # symbol inside the name is just styling ("HDZ✝rt").
@@ -1001,14 +1003,14 @@ def system_readings(folder: str) -> dict:
         out["temp_c"] = round(int(t) / 1000, 1)
     mem = _read("/proc/meminfo")
     if mem:
-        m = {l.split(":")[0]: int(l.split()[1]) for l in mem.splitlines() if l.split()[1:2] and l.split()[1].isdigit()}
+        m = {ln.split(":")[0]: int(ln.split()[1]) for ln in mem.splitlines() if ln.split()[1:2] and ln.split()[1].isdigit()}
         if "MemTotal" in m and "MemAvailable" in m:
             out["mem_avail_pct"] = round(100 * m["MemAvailable"] / m["MemTotal"])
     st = _read("/proc/self/status")
     if st:
-        for l in st.splitlines():
-            if l.startswith("VmRSS:"):
-                out["rss_mb"] = round(int(l.split()[1]) / 1024)
+        for ln in st.splitlines():
+            if ln.startswith("VmRSS:"):
+                out["rss_mb"] = round(int(ln.split()[1]) / 1024)
     try:
         d = shutil.disk_usage(folder if os.path.isdir(folder) else "/")
         out["disk_free_mb"] = round(d.free / 1048576)
@@ -1087,7 +1089,7 @@ class EvidenceLog:
         for fpath in self.files():
             if os.path.basename(fpath)[:10] >= cutoff:
                 with open(fpath, encoding="utf-8") as f:
-                    lines.extend(l for l in f.read().splitlines() if l.strip())
+                    lines.extend(ln for ln in f.read().splitlines() if ln.strip())
         if not scramble:
             return "\n".join(lines) + ("\n" if lines else "")
         salt = secrets.token_hex(8)
@@ -1371,7 +1373,7 @@ class SpamGuard:
             self.ev({"type": "msg", "ts": round(e.ts, 2), "packet": e.packet, "channel": e.channel,
                      "sender": e.sender, "shape": name_shape(e.sender), "text": e.text,
                      "path": e.path, "hops": len(e.path), "name_score": e.name_score, "random": e.random, "garbage": e.garbage,
-                     "obfuscated": e.obfuscated, "garbage": e.garbage, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
+                     "obfuscated": e.obfuscated, "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
                      "known_then": e.known_then, "in_passing": e.in_passing, "exempt": e.exempt, "own": self.is_own(e),
                      "sender_count_24h": h.get("count"), "sender_first_seen": round(h.get("first", e.ts), 2),
                      "campaign_senders": len(cc["senders"]) if cc else 0,
@@ -1589,7 +1591,9 @@ class SpamGuard:
         # measurements and recorded interference stay: they're a record, not a setting.)
         self.fg.update(limit=None, learnt={}, learnt_at=None, ready=None, relearn=None, learn_start=None,
                        episodes=0, peak=0.0, start_now=None, welcomed=None)
-        self.fg_hops.clear(); self.fg_adv.clear(); self._hop_pending.clear()
+        self.fg_hops.clear()
+        self.fg_adv.clear()
+        self._hop_pending.clear()
         for e in self.events:            # recent messages are judged again under the fresh rules
             e.matched = None
         self.rebuild_cfg()
@@ -1981,7 +1985,8 @@ class SpamGuard:
         c = self.cfg
         cut = max(now - 7 * 86400, float(self.fg.get("learn_start") or 0))   # nothing from before a re-learn
         level = float(c.get("flood_busy_percent") or 15)
-        calm = lambda k: float((self.hist.get(k) or {}).get("bz") or 0) < 0.7 * level and not (self.hist.get(k) or {}).get("fc")
+        def calm(k):
+            return float((self.hist.get(k) or {}).get("bz") or 0) < 0.7 * level and not (self.hist.get(k) or {}).get("fc")
         busy = sorted(float(v["bz"]) for k, v in self.hist.items()
                       if int(k) >= cut and v.get("bz") is not None and float(v["bz"]) < level and not v.get("fc"))
         def merged(store):
@@ -1993,8 +1998,9 @@ class SpamGuard:
             return out
         hops, adv = merged(self.fg_hops), merged(self.fg_adv)
         # Too few quiet hours (a busy repeater): learn the route limits from every hour of the last two days.
-        every = lambda store: {h: sum(v.get(h, 0) for k, v in store.items() if int(k) >= cut)
-                               for h in {h for k, v in store.items() if int(k) >= cut for h in v}}
+        def every(store):
+            return {h: sum(v.get(h, 0) for k, v in store.items() if int(k) >= cut)
+                    for h in {h for k, v in store.items() if int(k) >= cut for h in v}}
         if sum(hops.values()) < 500:
             hops = every(self.fg_hops_all)
         if sum(adv.values()) < 50:
@@ -2217,7 +2223,7 @@ class SpamGuard:
             j["below_since"] = 0.0
 
     def jam_status(self) -> dict:
-        j, now = self.jam, time.time()
+        j = self.jam
         base, cur = j.get("baseline"), j.get("current")
         rise = round(cur - base, 1) if base is not None and cur is not None else None
         return {"enabled": bool(self.cfg.get("interference_watch", True)), "baseline": base, "current": cur, "rise": rise,
@@ -2407,9 +2413,14 @@ class SpamGuard:
             bz = None
             for k, v in hist.items():
                 if day0 <= int(k) < day0 + 86400:
-                    c += v.get("c", 0); x += v.get("x", 0); m += v.get("m", 0)
-                    fc += v.get("fc", 0); fx += v.get("fx", 0)
-                    ar += v.get("ar", 0); sa += v.get("a", 0); fs += v.get("fs", 0)
+                    c += v.get("c", 0)
+                    x += v.get("x", 0)
+                    m += v.get("m", 0)
+                    fc += v.get("fc", 0)
+                    fx += v.get("fx", 0)
+                    ar += v.get("ar", 0)
+                    sa += v.get("a", 0)
+                    fs += v.get("fs", 0)
                     if v.get("bz") is not None:
                         bz = max(bz or 0, v["bz"])
             daily.append({"t": day0, "c": c, "x": x, "m": m, "fc": fc, "fx": fx, "bz": bz,
@@ -2449,7 +2460,7 @@ class SpamGuard:
                 names |= set((v.get("ch") or {}).keys())
         per_ch = {}
         for name in sorted(names, key=lambda n: (n != "Public", n.lower())):
-            def one(v):
+            def one(v, name=name):
                 return (v.get("ch") or {}).get(name) or {}
             hr = []
             for r in hourly:
@@ -2460,7 +2471,10 @@ class SpamGuard:
                 c = x = m = 0
                 for k, v in hist.items():
                     if r["t"] <= int(k) < r["t"] + 86400:
-                        o = one(v); c += o.get("c", 0); x += o.get("x", 0); m += o.get("m", 0)
+                        o = one(v)
+                        c += o.get("c", 0)
+                        x += o.get("x", 0)
+                        m += o.get("m", 0)
                 dy.append({"t": r["t"], "c": c, "x": x, "m": m})
             bh = [0] * 24
             t24 = {"m": 0, "c": 0, "x": 0}
@@ -2631,7 +2645,7 @@ class SpamGuard:
             states = dict(sorted(nxt.items(), key=lambda kv: kv[1][0])[:60])
         if anchor:
             best = None
-            for (sid, gap), (cost, pos, placed) in states.items():
+            for (_sid, gap), (cost, pos, placed) in states.items():
                 d = self._km(pos, anchor)
                 if d > self.LINK_KM * (gap + 1):
                     continue
@@ -2753,7 +2767,8 @@ class SpamGuard:
         key = (">".join(path), distrust)
         if key in cache and cache[key][0] == stamp:
             return cache[key][1]
-        ctx = lambda i: (path[i], path[i + 1] if i + 1 < len(path) else "ME")
+        def ctx(i):
+            return (path[i], path[i + 1] if i + 1 < len(path) else "ME")
         x = learned.get(ctx(0))
         y = learned.get(ctx(1)) if len(path) > 1 else None
         res = None
@@ -3773,7 +3788,7 @@ class SpamGuard:
                     v["raws"].add(e.text)
                     v["senders"].add(e.sender)
                     v["last"] = max(v["last"], e.ts)
-            for norm, v in variants.items():
+            for _norm, v in variants.items():
                 if len(v["raws"]) < 2:
                     continue
                 originals = sorted(v["raws"])
@@ -4541,7 +4556,7 @@ class SpamGuard:
                 for _ in range(14):
                     start = end - 43200
                     rows = None
-                    for attempt in range(2):
+                    for _attempt in range(2):
                         try:
                             res = self._api("GET", f"/api/filtered_packets?type={PAYLOAD_TYPE_ADVERT}"
                                                    f"&start_timestamp={start:.0f}&end_timestamp={end:.0f}&limit=5000",
@@ -4997,7 +5012,9 @@ class SpamGuard:
         sock = socket.create_connection((host, port), timeout=15)
         if tls:
             import ssl
-            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+            ctx = ssl.create_default_context()
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2   # refuse anything older than TLS 1.2
+            sock = ctx.wrap_socket(sock, server_hostname=host)
         key = base64.b64encode(os.urandom(16)).decode()
         path = (u.path.rstrip("/") or "") + "/ws/packets"
         req = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
@@ -5040,7 +5057,7 @@ class SpamGuard:
                 pause = 5
                 frag = b""
 
-                def need(n):
+                def need(n, sock=sock):
                     nonlocal buf
                     while len(buf) < n:
                         chunk = sock.recv(65536)
@@ -5523,7 +5540,9 @@ class SpamGuard:
         ready-made builds on this machine? When not, openHop would compile them, which on a small Pi can take
         longer than openHop waits and leave SpamGuard uninstalled. Returns a plain-language reason, or None when
         all is well or it can't tell (no network, no pip), so only a clear 'no build exists' ever stops an update."""
-        import zipfile, tempfile, io
+        import zipfile
+        import tempfile
+        import io
         try:
             with zipfile.ZipFile(io.BytesIO(wheel)) as z:
                 meta = next((n for n in z.namelist() if n.endswith(".dist-info/METADATA")), None)
@@ -5547,7 +5566,7 @@ class SpamGuard:
         out = ((r.stdout or "") + (r.stderr or "")).lower()
         if any(w in out for w in self.PREFLIGHT_NETWORK) or "no matching distribution" not in out:
             return None
-        names = ", ".join(sorted({re.split(r"[<>=!~ \[]", q, 1)[0] for q in reqs}))
+        names = ", ".join(sorted({re.split(r"[<>=!~ \[]", q, maxsplit=1)[0] for q in reqs}))
         return ("Update stopped before anything was changed. This machine can't get a ready-made build of one of "
                 f"SpamGuard's libraries ({names}), so openHop would have to compile it. That can take longer than "
                 "openHop waits and leave SpamGuard uninstalled. Download the wheel from the release page and install "
@@ -5765,7 +5784,7 @@ class SpamGuard:
             hops.sort(key=lambda x: (-x["caught"] - x["random"] * 3, -x["messages"]))
             direct = next((h for h in hops if h["hop"] == "DIRECT" and h["signals"]), None)
             campaigns = []
-            for cid, cc in sorted(a["campaigns"].items(), key=lambda kv: -len(kv[1]["senders"])):
+            for _cid, cc in sorted(a["campaigns"].items(), key=lambda kv: -len(kv[1]["senders"])):
                 campaigns.append({"senders": len(cc["senders"]), "count": len(cc["events"]),
                                   "example": cc["events"][-1].text[:120],
                                   "variants": len({e.text for e in cc["events"]}),
@@ -5971,7 +5990,7 @@ class SpamGuard:
                                 try:
                                     re.compile(p)
                                 except re.error as err:
-                                    raise ValueError(f"pattern '{p}' is not valid: {err}")
+                                    raise ValueError(f"pattern '{p}' is not valid: {err}") from None
                     else:
                         raise ValueError(f"unknown setting {k}")
                     new[k] = v
@@ -6241,7 +6260,9 @@ class SpamGuard:
                 f.update(learnt={}, learnt_at=None, learn_start=time.time(), limit=None)
                 if f.get("ready"):
                     f["relearn"] = True
-                self.fg_hops.clear(); self.fg_adv.clear(); self._hop_pending.clear()
+                self.fg_hops.clear()
+                self.fg_adv.clear()
+                self._hop_pending.clear()
                 self.rebuild_cfg()
                 self.sync_pending = True
                 self.note(f"FloodGuard settings reset to its own values. It is learning this repeater's traffic again for "
@@ -6424,6 +6445,10 @@ def make_handler(guard: SpamGuard):
             key = guard.cfg.get("listen_api_key")
             if key and self.headers.get("X-API-Key") != key:
                 return self._send(401, {"error": "This SpamGuard needs its access key"})
+            # Changes only come as JSON. A browser won't send JSON to another site without asking first, so a
+            # web page elsewhere can't quietly change SpamGuard's settings through someone's browser.
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                return self._send(415, {"error": "Changes must be sent as JSON"})
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n) or b"{}")

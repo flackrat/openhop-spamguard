@@ -46,7 +46,7 @@ def load_allowed() -> list[str]:
     """Exact strings that look personal but are made up (example addresses, invented test coordinates)."""
     try:
         with open(ALLOW_FILE, encoding="utf-8") as f:
-            return [l.rstrip("\n") for l in f if l.strip() and not l.startswith("#")]
+            return [ln.rstrip("\n") for ln in f if ln.strip() and not ln.startswith("#")]
     except OSError:
         return []
 
@@ -60,12 +60,12 @@ def load_blocklist(path: str | None) -> list[re.Pattern]:
         except OSError:
             print(f"privacy check: can't read the blocklist file {path}", file=sys.stderr)
     out = []
-    for l in lines:
-        l = l.strip()
-        if not l or l.startswith("#"):
+    for entry in lines:
+        entry = entry.strip()
+        if not entry or entry.startswith("#"):
             continue
         try:
-            out.append(re.compile(l[3:], re.I) if l.startswith("re:") else re.compile(re.escape(l), re.I))
+            out.append(re.compile(entry[3:], re.I) if entry.startswith("re:") else re.compile(re.escape(entry), re.I))
         except re.error:
             print(f"privacy check: blocklist entry #{len(out) + 1} isn't a valid pattern", file=sys.stderr)
     return out
@@ -95,14 +95,14 @@ def added_lines(args: list[str]):
     """(path, line number, text) for each line added in a git diff."""
     out = subprocess.run(["git", "diff", "--no-color", "-U0", *args], cwd=ROOT, capture_output=True, text=True).stdout
     path, n = None, 0
-    for l in out.splitlines():
-        if l.startswith("+++ "):
-            path = l[6:] if l.startswith("+++ b/") else None
-        elif l.startswith("@@"):
-            m = re.search(r"\+(\d+)", l)
+    for row in out.splitlines():
+        if row.startswith("+++ "):
+            path = row[6:] if row.startswith("+++ b/") else None
+        elif row.startswith("@@"):
+            m = re.search(r"\+(\d+)", row)
             n = int(m.group(1)) if m else 0
-        elif l.startswith("+") and path and not SKIP_PATHS.search(path):
-            yield path, n, l[1:]
+        elif row.startswith("+") and path and not SKIP_PATHS.search(path):
+            yield path, n, row[1:]
             n += 1
 
 
