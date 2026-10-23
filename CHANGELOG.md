@@ -2,6 +2,11 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.6.2
+### SpamGuard 6.6.2
+- **Changing name no longer restarts the all-day repeat count.** When a new name takes over sending the same long message after another name has stopped, it carries on that name's count, so its copies are held straight away. Two people posting the same thing at the same sort of time are still counted separately, and a tiny change to the text no longer counts as a new message.
+- **"Spam let through" no longer counts regulars.** A name SpamGuard knows from genuine messages was counted as spam let through if its name happened to look made-up, so a regular's test messages could make the stop rate look much worse than it was. Known names are no longer counted, and the tile is now called "Likely spam let through".
+
 ## v6.6.1
 ### SpamGuard 6.6.1
 - **See what each rule says.** The "N rules in openHop" line at the foot of the page is now a button. It opens a list of SpamGuard's rules in the order openHop checks them, each in plain English (for example "Blocks a packet that is a channel message, contains the text ..."), with a Copy as text button. Channel keys are never shown.
