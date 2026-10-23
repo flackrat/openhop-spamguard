@@ -53,14 +53,23 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: python -m pip install --require-hashes -r requirements/ci.txt
+        run: python -m pip install --require-hashes -r requirements/ci.txt -r requirements/quality.txt
+      - name: Coding standard (Ruff, warnings count as errors)
+        run: ruff check --output-format github .
       - name: Run the tests
         run: |
           set +e
           # The update script and plugin tests expect to run as root, as they do on a Pi.
           sudo git config --global --add safe.directory '*'
-          sudo -E env "PATH=$PATH" bash tests/run_all.sh | tee out.txt
+          # Each test runs under coverage, so the report below shows how much of the shipped code they reach.
+          sudo -E env "PATH=$PATH" SG_TEST_PY="python3 -m coverage run --parallel-mode --rcfile=../.coveragerc" bash tests/run_all.sh | tee out.txt
           rc=${PIPESTATUS[0]}
+          (cd tests && sudo -E env "PATH=$PATH" python3 -m coverage combine -q --rcfile=../.coveragerc \
+            && sudo -E env "PATH=$PATH" python3 -m coverage report --rcfile=../.coveragerc | tee ../coverage.txt) || true
+          if [ -s coverage.txt ]; then
+            { echo "### Test coverage of the shipped code"; echo '```'; cat coverage.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Test coverage: $(awk '/^TOTAL/{print $NF}' coverage.txt)"
+          fi
           grep -E "^(FAIL|      )" out.txt | head -20 | while IFS= read -r l; do echo "::error::$l"; done
           if [ $rc -ne 0 ]; then
             (cd tests && sudo -E env "PATH=$PATH" python3 testplugin.py 2>&1 | tail -30 | while IFS= read -r l; do echo "::error::testplugin: $l"; done)

@@ -85,7 +85,7 @@ def run(msgs, overrides: dict, channels: dict):
     if scrambled:
         # Names were scrambled: use the scores worked out on the Pi from the real names.
         sg.name_score = lambda name, pats: recorded.get(name, 0)
-    state = tempfile.mktemp(suffix=".json")
+    state = os.path.join(tempfile.mkdtemp(prefix="sg-replay-"), "state.json")  # a private folder, not a guessable name
     cfg = {"state_file": state, "evidence_log": False, "mode": "protect", **overrides}
     g = sg.SpamGuard(cfg)
     g.cfg["channels"].update(channels)
@@ -162,9 +162,9 @@ def main():
 
     msgs, labels = [], {}
     for p in a.log:
-        m, l, _ = load(p)
+        m, lab, _ = load(p)
         msgs += m
-        labels.update(l)
+        labels.update(lab)
     msgs.sort(key=lambda r: r["ts"])
     if not msgs:
         sys.exit("No messages in the log. Is the evidence log switched on?")

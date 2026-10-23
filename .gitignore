@@ -12,3 +12,6 @@ tests/.out_*
 tests/__pycache__/
 tests/.openhop_core/
 tests/.axe
+.coverage
+.coverage.*
+coverage.txt

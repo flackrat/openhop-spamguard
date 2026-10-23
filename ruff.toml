@@ -1,0 +1,14 @@
+# SpamGuard's coding standard, checked by Ruff on every pull request (see .github/workflows/tests.yml).
+# pycodestyle errors (E4, E7, E9), pyflakes (F), warnings (W) and flake8-bugbear (B) for everything that
+# ships; long lines are allowed, since much of the text is user-facing wording kept on one line.
+target-version = "py39"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F", "W", "B"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# The tests are written compactly on purpose (several checks to a line, star imports from the shared
+# harness, and setup code shared through exec()), so these layout and name checks don't apply to them.
+"tests/**" = ["E401", "E402", "E701", "E702", "E703", "E731", "E741", "F401", "F403", "F405", "F821", "F841", "B006", "B007", "B023"]
