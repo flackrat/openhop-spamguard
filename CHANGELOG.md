@@ -4,7 +4,7 @@ SpamGuard and FloodGuard ship together as one openHop plugin with one release nu
 
 ## v6.6.0
 ### SpamGuard 6.6.0
-- **Slow repeating is now caught.** The repeat guard only notices copies sent within minutes of each other, so a name posting the same long message once an hour, all evening, slipped past it. SpamGuard now also counts how many times one name sends the same long message in a day. After three, further copies are held for three hours, and while they keep going one copy gets through each time the hold ends. The first copies and anything new from that name still go out, and it only ever counts repeats, never what a message says. Copies of one send that arrive by several routes count once. It is on by default, and the limit, the time window and the hold are in Advanced under Duplicate suppression. Replaying five and a half days of real traffic held only the one name that was repeating itself and nobody else.
+- **Slow repeating is now caught.** The repeat guard only notices copies sent within minutes of each other, so a name posting the same long message once an hour, all evening, slipped past it. SpamGuard now also counts how many times one name sends the same long message in a day. After three, further copies are held for three hours, and while they keep going one copy gets through each time the hold ends. The first copies and anything new from that name still go out, and it only ever counts repeats, never what a message says. Copies of one send that arrive by several routes count once. It is on by default, and the limit, the time window and the hold are in Advanced under Duplicate suppression. Ordinary repeats, such as re-posting a notice a few times a day, are left alone.
 
 ## v6.5.6 (FloodGuard 1.2.4)
 ### FloodGuard 1.2.4
@@ -14,7 +14,7 @@ SpamGuard and FloodGuard ship together as one openHop plugin with one release nu
 
 ## v6.5.5 (FloodGuard 1.2.3)
 ### FloodGuard 1.2.3
-- **FloodGuard no longer holds back genuine long-route traffic on a busy mesh.** On a real repeater (evidence log, three days) the middle message had come 10 hops and one in four 16 or more, so FloodGuard's made-up start of 16 hops, tightened to a floor of 8, held back messages from senders SpamGuard didn't know yet. The cause was the same trap as the busy limit: it learnt how far flood packets normally come only from quiet hours, and a busy radio never has any. Now:
+- **FloodGuard no longer holds back genuine long-route traffic on a busy mesh.** On a busy mesh many genuine messages arrive over long routes, so FloodGuard's made-up start of 16 hops, tightened to a floor of 8, held back messages from senders SpamGuard didn't know yet. The cause was the same trap as the busy limit: it learnt how far flood packets normally come only from quiet hours, and a busy radio never has any. Now:
   1. Hop counts are also kept for every hour (two days, small), and when there are too few quiet hours the normal route length, and the always-on unscoped and advert hop limits, are learnt from those instead.
   2. FloodGuard holds nothing back until it knows how far flood packets normally come (about 200 in a day), unless you set the lowest hop limit yourself. Until then it counts and says so. The made-up default no longer decides anything.
   3. The Activity note when learning ends called every limit "(yours)", even recommended ones. It now says yours, recommended, or nothing for learnt values.
@@ -97,7 +97,7 @@ SpamGuard and FloodGuard ship together as one openHop plugin with one release nu
 
 ## v6.3 (FloodGuard 1.1, unchanged)
 ### SpamGuard 6.3
-- **Replay guard: old messages sent again.** Some devices pick up channel messages and send them out again later, with their own clock (in one case measured on a Dutch mesh, about 823 days slow) and sometimes with the sender's name cut short, so one message arrives many times over. When a message turns up again that was first heard at least half a minute earlier, under the same name with a badly wrong clock or under a cut-short copy of the name, further copies of it from that name are held back for six hours. The original always went out first, the same text from anyone else is untouched, and anything new from that name still goes out.
+- **Replay guard: old messages sent again.** Some devices pick up channel messages and send them out again later, with their own clock (sometimes wrong by months or years) and sometimes with the sender's name cut short, so one message arrives many times over. When a message turns up again that was first heard at least half a minute earlier, under the same name with a badly wrong clock or under a cut-short copy of the name, further copies of it from that name are held back for six hours. The original always went out first, the same text from anyone else is untouched, and anything new from that name still goes out.
 - A person re-sending their own message isn't caught (their device gives it a new, correct time and their full name), nor are the mesh's own echoes seconds apart, nor short replies like "ok thanks".
 - Replayed copies don't count towards SpamGuard getting to know a name, so a replaying device can't make names "known".
 - On by default; Advanced, Settings, Duplicate suppression turns it off. Its blocks show on the Blocks page marked *replay*, and in openHop as *(replayed)*.
@@ -199,7 +199,7 @@ More from the testers in the Dutch MeshCore community, thank you again.
 
 ## v5.29
 Most of this release comes from detailed testing and feedback in the Dutch MeshCore community. A big thank you to everyone there who tested, reported and suggested.
-- **A spam wave can no longer flood openHop with rules.** The "Most rules at once" limit now covers every rule SpamGuard writes, including repeater blocks and the rules that let known people through, and it can't be set above 500. Too many rules can overload openHop, and a tester running a similar tool saw openHop's database lock up after a wave of identical spam on several channels. Repeater blocks get first claim on the space, and short-lived duplicate rules make way first.
+- **A spam wave can no longer flood openHop with rules.** The "Most rules at once" limit now covers every rule SpamGuard writes, including repeater blocks and the rules that let known people through, and it can't be set above 500. Too many rules can overload openHop, and a big wave of identical spam across several channels can bring openHop's database to a standstill. Repeater blocks get first claim on the space, and short-lived duplicate rules make way first.
 - **"Clear automatic blocks" now sticks.** Cleared blocks used to come straight back a minute later, rebuilt from the same spam SpamGuard had already seen, so it looked as if the button did nothing. They now stay away for 24 hours (a duplicate block for as long as it had left). New spam can still make new blocks, and Exceptions, Not re-blocked, Clear lets them back sooner.
 - **Readable rule names in openHop.** openHop's packet list shows the name of the rule that dropped a packet, so SpamGuard's rule names now say what they stop and who made them, for example `(yours) text "..."`, `(duplicate)`, `(campaign)`, `(repeating)` or `(auto) via 4C`. You can see at a glance whether a drop was a block you added or one SpamGuard made itself.
 - **Fewer rules in openHop.** A block on a source repeater can now be limited to one channel, as text blocks already could, instead of always covering every channel. The rule that lets known people through is now one rule whatever the number of channels, and a message already stopped by one of your text blocks no longer gets an extra duplicate rule as well.
@@ -258,7 +258,7 @@ Most of this release comes from detailed testing and feedback in the Dutch MeshC
 - SpamGuard now also works with the copy of its encryption library that Debian and Ubuntu package under a different name.
 - `tests/testdocker.py` checks the Docker settings.
 ## v5.18
-- **Fewer genuine people mistaken for spammers, especially outside the UK.** Some name styles that are common on meshes in other countries were being counted as made-up, which on a busy repeater could add up to a block. Checked against thousands of real names from meshes across Europe, North America and South Africa, this cuts those false alarms by about three quarters with no change to the spam caught on real logs.
+- **Fewer genuine people mistaken for spammers, especially outside the UK.** Some name styles that are common on meshes in other countries were being counted as made-up, which on a busy repeater could add up to a block. Checked against a large set of real names from meshes in several regions, this cuts those false alarms substantially, with no change to the spam caught.
 - `tests/testnames.py` keeps this checked.
 ## v5.17
 - **Better protection against floods of junk messages.** SpamGuard now recognises a newer style of flood that sends meaningless text under a stream of made-up names, and treats it like any other spam, so the repeater it enters through gets blocked.
@@ -343,14 +343,14 @@ Most of this release comes from detailed testing and feedback in the Dutch MeshC
 - **Spam sources** page: which repeaters spam arrives through, on a map using the locations repeaters advertise in openHop, plus a table with Block / Never block. The map needs internet on the viewing device; the table doesn't.
 - Fix: fewer genuine names mistaken for disguised spam names.
 ## v5.10.3
-- Repeater blocks now end sooner after the spam through that repeater stops (new setting: Advanced > Timing > Repeater blocks last for). On real traffic this caught the same spam and held fewer genuine people. Text blocks keep their times.
+- Repeater blocks now end sooner after the spam through that repeater stops (new setting: Advanced > Timing > Repeater blocks last for). The same spam stays blocked, with fewer genuine people held. Text blocks keep their times.
 - New Possibly genuine, held panel on the main page: messages held in the last 24 hours by a repeater, link or lockdown block from names that don't look made-up, each with a Let through button that trusts the name. It only appears when there's something in it.
 ## v5.10.2
 - Removed blocking a sender by name (added in 5.10). A repeater is shared, so a block on a person silences them for everyone downstream, invisibly, and is easy to forget. Names can also be copied, so it can hit the wrong person. SpamGuard now sticks to spam behaviour; muting a person belongs in each user's own MeshCore app. Any sender blocks already set are removed on update, with a note on the page.
 - README: new section "What SpamGuard blocks, and what it doesn't".
 - Includes v5.10.1: far fewer SD card writes (about 33 MB a day instead of 170 MB), and a limit on how large the known-names list can grow.
 ## v5.10.1
-- Kinder to SD cards: SpamGuard's working file is now saved straight away only for important changes (a real block, a newly known person, anything you do on the page), otherwise at most every 5 minutes. On a day of real traffic that's 14 writes an hour instead of 72, about 33 MB a day instead of 170 MB. A clean restart or update still saves everything; a power cut loses at most 5 minutes of learning.
+- Kinder to SD cards: SpamGuard's working file is now saved straight away only for important changes (a real block, a newly known person, anything you do on the page), otherwise at most every 5 minutes. On a typical day that is far fewer writes, around 33 MB a day instead of about 170 MB. A clean restart or update still saves everything; a power cut loses at most 5 minutes of learning.
 - Routine "copies under other names" notes no longer go to the system log. They still show on the page and in the evidence log.
 - The known-names list now has a size limit.
 ## v5.10
@@ -368,7 +368,6 @@ SpamGuard now learns who the regulars are, and uses openHop's policy objects to 
 - Lockdown button: for 30 min to 2 hours, only known names get through. It ends by itself.
 - uninstall.sh also removes the known-people list from openHop.
 
-Replaying a day of real traffic, more spam was caught and only a handful of genuine messages were held.
 ## v5.8.3
 - `uninstall.sh`: removes SpamGuard cleanly, including taking its rules back out of openHop. Your own openHop rules and settings are left alone. Options `--keep-evidence` and `--undo-speed-fix`.
 - README and guide: an Uninstall section.
