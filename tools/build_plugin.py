@@ -16,6 +16,16 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN_ID = "openhop-spamguard"
 
 
+def source_date() -> str:
+    """The last commit's time (seconds since 1970), or a fixed date outside a git checkout."""
+    try:
+        out = subprocess.run(["git", "-C", HERE, "log", "-1", "--format=%ct"], capture_output=True, text=True,
+                             check=True).stdout.strip()
+        return out if out.isdigit() else "1704067200"
+    except (OSError, subprocess.CalledProcessError):
+        return "1704067200"
+
+
 def version() -> str:
     """SpamGuard's version padded to the three numbers openHop's manifests require (5.19 -> 5.19.0)."""
     text = open(os.path.join(HERE, "spamguard.py"), encoding="utf-8").read()
@@ -80,8 +90,11 @@ setup(
 )
 ''')
         os.makedirs(out_dir, exist_ok=True)
-        subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "-q",
-                        "-w", out_dir, stage], check=True)
+        # Reproducible: every build of the same commit gives the same file, bit for bit. The timestamps inside
+        # the wheel come from the last commit rather than the clock.
+        env = dict(os.environ, SOURCE_DATE_EPOCH=os.environ.get("SOURCE_DATE_EPOCH") or source_date())
+        subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps", "--no-cache-dir", "-q",
+                        "-w", out_dir, stage], check=True, env=env)
     finally:
         shutil.rmtree(stage, ignore_errors=True)
     wheel = os.path.join(out_dir, f"openhop_spamguard-{v}-py3-none-any.whl")

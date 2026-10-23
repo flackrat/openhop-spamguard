@@ -56,6 +56,12 @@ jobs:
         run: python -m pip install --require-hashes -r requirements/ci.txt -r requirements/quality.txt
       - name: Coding standard (Ruff, warnings count as errors)
         run: ruff check --output-format github .
+      - name: Reproducible build (building twice gives the same plugin file)
+        run: |
+          set -euo pipefail
+          python tools/build_plugin.py /tmp/build-a >/dev/null
+          python tools/build_plugin.py /tmp/build-b >/dev/null
+          cmp /tmp/build-a/*.whl /tmp/build-b/*.whl && echo "Reproducible: $(sha256sum /tmp/build-a/*.whl | cut -c1-16)"
       - name: Run the tests
         run: |
           set +e
