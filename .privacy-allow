@@ -1,0 +1,12 @@
+# Values that look personal but are made up, for the privacy check (tools/privacy_check.py).
+# Add a value here only if it is invented: an example address in the docs, or a test's made-up location.
+39.455,-95.787
+39.097,-95.083
+192.168.1.20
+192.168.1.50
+# tests/testprivacy.py plants these made-up values to prove the check finds them
+someone.real@mailbox.co.uk
+40.123,-96.179
+40.555,-96.170
+ZE9 9ZZ
+192.168.7.42

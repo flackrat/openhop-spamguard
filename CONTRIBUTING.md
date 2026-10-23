@@ -31,6 +31,16 @@ allows the merge. The same applies to the maintainer.
 5. **Detection stays behavioural.** SpamGuard blocks spam behaviour, never people or opinions, and never touches
    direct messages or acknowledgements.
 
+## Keep it free of personal details
+
+Never commit real names, messages, places, coordinates, addresses, callsigns or anything copied from a real
+mesh conversation, including in tests, comments and examples. Make up every example. The Tests check runs a
+privacy check (`tools/privacy_check.py`) and a leak check (Gitleaks) on each pull request, and a pull request
+can't be merged until both pass. If a made-up value is flagged, add it to `.privacy-allow`. To run the check
+yourself before committing:
+
+    python3 tools/privacy_check.py --staged
+
 ## Licence
 
 SpamGuard is released under the GNU AGPL version 3. By sending a change you agree that it is released under the
