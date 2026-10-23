@@ -32,6 +32,9 @@ The files of releases up to v6.6.2 were rebuilt from their tags and signed again
 the repository history was tidied up. Their signatures and build attestations carry that date and name the
 one-off `reissue-releases` workflow rather than the release workflow. Both commands above still check them.
 
+Builds are reproducible: running `python3 tools/build_plugin.py` on the release's tag gives a plugin file
+identical, bit for bit, to the one on the release page, and the source download is `git archive` of the tag.
+
 ## How the project is checked
 
 Every pull request runs the tests, a privacy check, a leak check (Gitleaks) and GitHub's dependency review,
