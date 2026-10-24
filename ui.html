@@ -75,6 +75,42 @@ section > .lead{color:var(--soft);margin:0 0 12px;font-size:0.875rem;max-width:7
 @media (max-width:720px){.controls{grid-template-columns:1fr}}
 .controls section{margin:0}
 
+/* protection level: a slider that warms from teal to red as it gets tougher */
+.lvl-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lvl-head h2{margin:0}
+.lvl-now{display:flex;align-items:center;gap:6px}
+.lvl-now b{font-size:1.0625rem}
+.lvl-dot{width:12px;height:12px;border-radius:50%;background:var(--lvl,#c9a227);transition:background .15s linear}
+.lvl-track{position:relative;margin:14px 0 2px}
+.lvl-pin{position:absolute;top:-14px;transform:translateX(-50%);font-size:0.6875rem;font-weight:650;color:var(--signal-text);white-space:nowrap;pointer-events:none}
+.lvl-range{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;padding:0;border:0;box-shadow:none;background:transparent;cursor:pointer}
+.lvl-range:focus{outline:none}
+.lvl-range::-webkit-slider-runnable-track{height:12px;border-radius:6px;background:linear-gradient(90deg,#1d8a8c,#5fa36a 25%,#c9a227 50%,#d9731f 75%,#b8322a)}
+.lvl-range::-moz-range-track{height:12px;border-radius:6px;background:linear-gradient(90deg,#1d8a8c,#5fa36a 25%,#c9a227 50%,#d9731f 75%,#b8322a)}
+.lvl-range::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;margin-top:-9px;border-radius:50%;background:var(--lvl,#c9a227);border:4px solid var(--panel);box-shadow:0 0 0 1px var(--field),0 2px 5px rgba(0,0,0,.25);transition:background .15s linear}
+.lvl-range::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--lvl,#c9a227);border:4px solid var(--panel);box-shadow:0 0 0 1px var(--field),0 2px 5px rgba(0,0,0,.25);transition:background .15s linear}
+.lvl-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--focus)}
+.lvl-range:focus-visible::-moz-range-thumb{box-shadow:0 0 0 3px var(--focus)}
+.lvl-scale{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));text-align:center;font-size:0.75rem;color:var(--soft);margin-bottom:8px}
+.lvl-scale.ends{display:flex;justify-content:space-between}
+#lvlMore{margin-top:8px}
+#lvlMore summary{cursor:pointer;font-weight:600;min-height:32px;padding:6px 0}
+.lvl-figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.lvl-fig{border:1px solid var(--line);border-radius:8px;padding:10px}
+.lvl-fig b{display:block;font-size:1.5rem;font-weight:650}
+.lvl-fig span{font-size:0.75rem;color:var(--soft)}
+.lvl-bars{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:4px;align-items:end;height:90px;border-bottom:1px solid var(--line);margin:6px 0 4px}
+.lvl-bars div{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:0.6875rem;color:var(--soft)}
+.lvl-bars i{display:block;width:100%;border-radius:3px 3px 0 0;opacity:.35;transition:opacity .15s linear}
+.lvl-bars .on{color:var(--ink);font-weight:700}
+.lvl-bars .on i{opacity:1}
+.lvl-rules{display:grid;grid-template-columns:minmax(0,11em) minmax(0,1fr);gap:6px 12px;margin:10px 0;font-size:0.875rem}
+.lvl-rules dt{color:var(--soft)}
+.lvl-rules dd{margin:0}
+.lvl-look{list-style:none;padding:0;margin:6px 0}
+.lvl-look li{border-top:1px solid var(--line);padding:6px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:0.875rem}
+.lvl-look .msg-text{flex:1 1 220px}
+@media (max-width:520px){.lvl-figs{grid-template-columns:1fr 1fr 1fr}.lvl-fig b{font-size:1.25rem}.lvl-rules{grid-template-columns:1fr}.lvl-rules dd{margin-bottom:6px}}
 .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:6px 0 8px}
 .seg button{flex:1;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;padding:8px 6px;font-weight:550}
 .seg button:last-child{border-right:0}
@@ -286,7 +322,8 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
   .page[data-page=overview] h2{font-size:1rem}
   .page[data-page=overview] .controls h2{font-size:0.875rem;margin:0 0 6px}
   .page[data-page=overview] .controls .seg button{padding:8px 4px;font-size:0.8125rem}
-  #modeExplain,#sensExplain,.page[data-page=overview] .lead,#kpiSince{display:none}
+  #modeExplain,.page[data-page=overview] .lead,#kpiSince{display:none}
+  #sensExplain{font-size:0.8125rem}
   .hero{padding:2px 0 10px}
   .hero h1{font-size:1.25rem}
   .hero p{font-size:0.875rem}
@@ -451,12 +488,14 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     </div>
     <p class="explain" id="modeExplain"></p>
   </section>
-  <section>
-    <h2>Sensitivity</h2>
-    <div class="seg" role="group" aria-label="Sensitivity" id="sensSeg">
-      <button data-v="relaxed">Relaxed</button><button data-v="balanced">Balanced</button><button data-v="strict">Strict</button>
-    </div>
+  <section id="lvlSec">
+    <div class="lvl-head"><h2><label for="lvl">Protection level</label></h2>
+      <span class="lvl-now"><span class="lvl-dot" id="lvlDot" aria-hidden="true"></span><b id="lvlName">Balanced</b> <span class="explain" id="lvlNum">50 of 100</span></span></div>
+    <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
+    <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
     <p class="explain" id="sensExplain"></p>
+    <div id="lvlOwn"></div>
+    <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
   </section>
 </div>
 <section id="kpiSec">
@@ -528,7 +567,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section class="adv">
   <h2>Block something yourself</h2>
-  <p class="lead">Repeater hashes are the 2, 4 or 6 character codes shown in message routes (e.g. 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals. They are for spam messages: use at least 12 characters of the message, they last at most a week, and they never stop people SpamGuard knows.</p>
+  <p class="lead">A repeater's code is the 2, 4 or 6 characters shown for it in message routes (for example 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals. They are for spam messages: use at least 12 characters of the message, they last at most a week, and they never stop people SpamGuard knows.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
     <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
@@ -575,7 +614,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section class="adv">
   <h2>Repeaters messages arrived from</h2>
-  <p class="lead">Grouped by the first repeater on each route, over the detection window. “Never block” stops SpamGuard ever blocking that repeater automatically (useful for your own neighbours).</p>
+  <p class="lead">Grouped by the first repeater on each route, over the last few minutes. “Never block” stops SpamGuard ever blocking that repeater automatically (useful for your own neighbours).</p>
   <div class="scroll"><table id="hops"></table></div>
   <p class="more" id="learnt"></p>
 </section>
@@ -633,7 +672,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </div>
 <div class="page" data-page="settings"><section id="profSec">
   <h2>Settings profiles</h2>
-  <p class="lead">A profile is a saved set of detection settings (the sensitivity and every value you changed) that you can put back, or share with other operators as a small file. It never holds your channels, keys, exceptions, the mode or the evidence log, and nothing switches by itself.</p>
+  <p class="lead">A profile is a saved set of detection settings (the protection level and every value you changed) that you can put back, or share with other operators as a small file. It never holds your channels, keys, exceptions, the mode or the evidence log, and nothing switches by itself.</p>
   <p class="explain" id="profState"></p>
   <ul class="rows" id="profList"></ul>
   <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
@@ -641,7 +680,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section id="settingsSec">
   <h2>Detection settings</h2>
-  <p class="lead">Choosing a sensitivity sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
+  <p class="lead">The protection level sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
   <div id="settings"></div>
   <div class="savebar"><button class="go saveSet" id="saveSet">Save settings</button><button class="cancelSet" id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
@@ -649,7 +688,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section>
   <h2>Start again from scratch</h2>
-  <p class="lead">Puts SpamGuard back as if it had just been installed and starts filtering spam afresh. It removes every block (including ones you added or removed by hand, with no 24-hour wait), resets every setting and the sensitivity, and clears trusted senders, repeaters and texts, learnt routes and the people it knows. It then relearns regulars from the last day's normal-looking names.</p>
+  <p class="lead">Puts SpamGuard back as if it had just been installed and starts filtering spam afresh. It removes every block (including ones you added or removed by hand, with no 24-hour wait), resets every setting and the protection level, and clears trusted senders, repeaters and texts, learnt routes and the people it knows. It then relearns regulars from the last day's normal-looking names.</p>
   <p class="explain">Kept: Monitor or Protect, channels you added, whether the evidence log is on, and the wardriving choice. FloodGuard forgets what it learnt and learns this repeater's traffic again for three days (recorded interference is kept). Nothing recorded is thrown away, but the page starts again from now: charts, messages, activity and the held list only show what happens after the reset. The evidence log keeps everything, before and after. Your own openHop rules are never touched.</p>
   <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
   <div id="resetBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
@@ -683,7 +722,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h2>Exceptions</h2>
   <p class="lead">Things SpamGuard should leave alone.</p>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Trusted senders</h3>
-  <p class="explain">Never counted as spam names and never de-duplicated. Channel names are not verified, so a spammer can copy a trusted name. SpamGuard still blocks a campaign even if one of its names is trusted, and logs a warning when a trusted name turns up somewhere new.</p>
+  <p class="explain">Never counted as spam names and never treated as copies. Channel names are not verified, so a spammer can copy a trusted name. SpamGuard still blocks a campaign even if one of its names is trusted, and logs a warning when a trusted name turns up somewhere new.</p>
   <div class="chips" id="trustSenders"></div>
   <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Known people</h3>
@@ -691,11 +730,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="inline-form"><input id="knownFind" type="search" aria-label="Search known people" placeholder="Search known people" autocomplete="off"><span class="explain" id="knownCount"></span></div>
   <ul class="rows" id="knownList"></ul>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Repeaters never blocked automatically</h3>
-  <p class="explain">Covers every hash width, so 27 also covers 27AB. You can still block these by hand.</p>
+  <p class="explain">Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
   <div class="chips" id="trustHops"></div>
   <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Text never blocked</h3>
-  <p class="explain">Messages containing any of these (capitals ignored) are never de-duplicated or treated as campaigns. Use for bots, net check-ins or regular announcements.</p>
+  <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
   <div class="chips" id="trustTexts"></div>
   <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Not re-blocked</h3>
@@ -753,7 +792,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p>SpamGuard stops how spam is sent (floods of made-up names, the same message under many names, one name repeating itself) and never what people say. Blocks on message text only stop names SpamGuard doesn't know yet, last at most a week, and need at least 12 characters of a message. People it knows are never blocked for a message; if one of them copies or repeats something, only the extra copies are held back for a while. You can't mark a known person's message as spam.</p>
   <h3 id="help-floodguard">FloodGuard: floods of any kind</h3>
   <p>Some floods aren't channel messages at all: encrypted packets with a new identity on almost every one, sent over and over with long, padded routes, so a single message can arrive dozens of times. Nothing in them can be blocked by name or text. <strong>FloodGuard</strong> (on by default; it can be turned off on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page) watches something a sender can't fake instead: how much of the time this repeater's radio is busy receiving and sending packets. It first spends three days learning how busy this radio normally gets and how far packets normally travel, and only counts meanwhile; then it sets its own limits from that and checks them once a day. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, and tightens two hops at a time while the radio stays busy, never below the floor you set. It lifts by itself once the radio has been quiet for a while, and says so in Activity.</p>
-  <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. While it's on, FloodGuard also keeps fixed hop limits for unscoped flood packets (32 hops) and adverts (8 hops), the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. You can change both on its page, and 0 turns one off. In Monitor, FloodGuard only counts what it would have stopped.</p>
+  <p>It never looks at who sent a packet or what it says, channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so the mesh keeps working for ordinary messages during a flood. Nearby repeaters each protect their own airtime, so a flood is held to the area it is actually swamping. The flood packets it stops are shown on the Overview graphs in their own colour, next to the spam, and <em>How busy the radio was</em> shows the busiest five minutes of each hour. While it's on, FloodGuard also keeps fixed hop limits for flood packets with no region (32 hops) and adverts (8 hops), the same as MeshCore's <code>flood.max.unscoped</code> and <code>flood.max.advert</code>. You can change both on its page, and 0 turns one off. In Monitor, FloodGuard only counts what it would have stopped.</p>
   <h3>Interference on the channel</h3>
   <p>openHop measures the noise on the radio channel every 30 seconds. FloodGuard learns what's normal for this site over the first six hours and, when the noise stays well above it for five minutes, says so on its page, on Health and in Activity, with how much of its normal hearing range the repeater still has. A nearby transmitter that never stops (faulty or non-compliant equipment) or jamming are the usual causes. Nothing can be blocked, but every episode is recorded with its times and levels, and <strong>Copy the record</strong> gives you a summary to send to whoever looks after the equipment or to your radio regulator.</p>
   <h3>Wardriving pings</h3>
@@ -761,7 +800,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
   <h3>If it blocks someone genuine</h3>
-  <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same message are the usual causes. <strong>Relaxed</strong> sensitivity makes both less likely.</p>
+  <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same message are the usual causes. A gentler protection level makes both less likely.</p>
   <h3>Limits</h3>
   <p>SpamGuard only controls what <em>your</em> repeater forwards. People in direct range of the spammer will still hear him, so the more repeaters near the source run a filter, the better. It cannot read private channels or direct messages unless you give it the channel key. It never blocks a person for what they say: to hide someone you'd rather not read, use the block option in your own MeshCore app.</p>
   <h3>Starting again</h3>
@@ -804,7 +843,7 @@ function act(el){ post(el.dataset.p, JSON.parse(el.dataset.b)); }
 function btn(label, path, body, cls){ return `<button class="${cls||""}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`; }
 document.addEventListener("click", e => { const b=e.target.closest("[data-confirm]"); if(b && !confirm(b.dataset.confirm)) e.stopImmediatePropagation(); }, true);
 
-/* ---------- top: hero, banners, mode, sensitivity ---------- */
+/* ---------- top: hero, banners, mode, protection level ---------- */
 function renderTop(d){
   const sm=d.summary, n=Math.max(0,sm.caught_24h-((d.metrics&&d.metrics.d1&&d.metrics.d1.l)||0)), plural=n===1?"":"s";
   let h1, sub;
@@ -835,19 +874,80 @@ function renderTop(d){
         ?`It would normally switch itself to Protect after watching for a day, but ${esc(d.auto_protect.waiting)}.`
         :`It will switch itself to Protect on ${new Date(d.auto_protect.due*1000).toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"})} unless you choose otherwise (${d.auto_protect.spam} spam spotted so far).`}
         ${btn("Stay in Monitor","/settings",{auto_protect:false},"quiet")}</span>`:"");
-  document.querySelectorAll("#sensSeg button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===d.sensitivity)));
-  const custom=d.overridden.some(k=>(d.meta.find(m=>m.key===k)||{}).preset);
-  $("#sensExplain").innerHTML={
-    relaxed:"<strong>Relaxed</strong> only acts on obvious, heavy spam. Fewest false alarms, but some spam gets through before it reacts.",
-    balanced:"<strong>Balanced</strong> is recommended. Reacts after a few spam messages and rarely affects genuine users.",
-    strict:"<strong>Strict</strong> reacts after one or two messages. Use during a heavy attack. Busy events, people repeating a message, or code-like names (M0ABC123) may get caught."}[d.sensitivity]
-    +(custom?" <span class='tag would'>adjusted in Advanced</span>":"");
+  renderLevel(d);
 }
 $("#modeSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
   if(v==="pause") post("/settings",{paused:true}); else post("/settings",{paused:false,mode:v}); });
-$("#sensSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
-  if(S && S.overridden.some(k=>(S.meta.find(m=>m.key===k)||{}).preset) && !confirm("Choosing a sensitivity replaces the values you adjusted in Advanced settings. Continue?")) return;
-  post("/settings",{sensitivity:v}); });
+/* ---------- protection level ---------- */
+const LVL_NAMES=[[20,"Gentle"],[40,"Easy-going"],[60,"Balanced"],[80,"Firm"],[101,"Tough"]];
+const LVL_SAYS=["Only the most obvious repeating and floods of made-up names are held. More spam reaches the channel, and ordinary chat is never touched.",
+  "Holds plain spam, a little later than Balanced. Good for a quiet mesh.",
+  "Holds spam without getting in the way of conversation. A good place to start.",
+  "Also catches slower repeaters and people who change name to start again, and holds them for longer.",
+  "Acts after one or two copies, and holds for longest. Use during a heavy attack. Someone chatting fast and repeating themselves may now and then be held."];
+const LVL_HEAT=[[0,[29,138,140]],[25,[95,163,106]],[50,[201,162,39]],[75,[217,115,31]],[100,[184,50,42]]];
+let lvlDrag=null, lvlTimer=null, lvlKey="";
+const lvlName=p=>LVL_NAMES.find(([t])=>p<t)[1];
+function lvlHeat(p){ for(let i=1;i<LVL_HEAT.length;i++){ const [x1,c1]=LVL_HEAT[i-1],[x2,c2]=LVL_HEAT[i];
+  if(p<=x2){ const t=(p-x1)/(x2-x1); return `rgb(${c1.map((c,j)=>Math.round(c+(c2[j]-c)*t)).join(",")})`; } } return "rgb(184,50,42)"; }
+function lvlValues(d,p){ const P=d.presets, lo=p<=50?P.relaxed:P.balanced, hi=p<=50?P.balanced:P.strict, f=p<=50?p/50:(p-50)/50, v={};
+  for(const k in P.balanced) v[k]=Math.floor(lo[k]+(hi[k]-lo[k])*f+0.5); return v; }
+function span(sec){ const m=Math.round(sec/60); if(m<60) return m+(m===1?" minute":" minutes");
+  const h=sec/3600; if(h>=10) return Math.round(h)+" hours";
+  const half=Math.round(h*2)/2, w=Math.floor(half); return half===1?"1 hour":(w+(half>w?"½":""))+" hours"; }
+function renderLevel(d){
+  const L=d.level||{value:50}, own=L.own||[], pv=L.preview||{};
+  const p=lvlDrag!=null?lvlDrag:L.value, el=$("#lvl");
+  if(lvlDrag==null && document.activeElement!==el) el.value=L.value;
+  const heat=lvlHeat(p); $("#lvlSec").style.setProperty("--lvl",heat);
+  $("#lvlName").textContent=lvlName(p); $("#lvlNum").textContent=p+" of 100";
+  el.setAttribute("aria-valuetext",`${lvlName(p)}, ${p} of 100`);
+  const pin=$("#lvlPin");
+  if(pv.suggested!=null){ pin.hidden=false; pin.style.left=`calc(15px + (100% - 30px) * ${pv.suggested/100})`; } else pin.hidden=true;
+  $("#sensExplain").innerHTML=esc(LVL_SAYS[Math.min(4,Math.floor(p/20))]);
+  $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(o=>esc(o.label)).join(", ")}${own.length>3?" and more":""}. <a href="#/settings">See them in Settings</a></p>`:"";
+  const key=JSON.stringify([p,pv,own.length]); if(key===lvlKey) return; lvlKey=key;
+  $("#lvlDetail").innerHTML=lvlDetail(d,p,pv);
+}
+function lvlDetail(d,p,pv){
+  const v=lvlValues(d,p), times=n=>n===1?"once":n===2?"twice":n+" times";
+  const rules=`<dl class="lvl-rules">
+    <dt>The same message, again and again</dt><dd>Let through ${times(v.slow_repeat_max)} in ${span(v.slow_repeat_window_seconds)}, then further copies are held for ${span(v.slow_repeat_hold_seconds)}. Changing name doesn't start the count again.</dd>
+    <dt>Quick bursts</dt><dd>Held after ${v.repeat_max} copies in a few minutes, for ${span(v.repeat_block_seconds)}.</dd>
+    <dt>One message under many names</dt><dd>Blocked once ${v.text_distinct_senders} names send it, and copies under other names for ${span(v.dedupe_seconds)}.</dd>
+    <dt>Floods of made-up names</dt><dd>A repeater is blocked after ${v.hop_random_senders} made-up names come through it.</dd>
+    <dt>Automatic blocks</dt><dd>Last ${span(v.block_ttl_seconds)} after the spam stops, then end by themselves.</dd></dl>`;
+  let out="";
+  if(!pv.enabled) out=`<p class="explain">Turn on the evidence log in Settings, and SpamGuard will show here what each level would have held on your own traffic.</p>`;
+  else if(!pv.levels){ out=pv.running?`<p class="explain">Working this out from your recent traffic. It takes a few minutes.</p>`
+      :`<p class="explain">${pv.error?esc(pv.error):"This is worked out once a day from your recent traffic."} ${btn("Work it out now","/preview_now",{},"quiet")}</p>`; }
+  else {
+    const near=pv.levels.reduce((a,b)=>Math.abs(b.level-p)<Math.abs(a.level-p)?b:a), max=Math.max(1,...pv.levels.map(x=>x.held));
+    const days=Math.max(1,Math.round(((pv.to||0)-(pv.from||0))/86400));
+    out=`<p class="explain">Your repeater heard ${fmtN(pv.messages)} channel messages in the last ${days===1?"day":days+" days"}. Replayed at ${near.level===p?"this level":"about this level ("+near.level+")"}, SpamGuard would have:</p>
+    <div class="lvl-figs"><div class="lvl-fig"><b>${fmtN(near.held)}</b><span>held back</span></div>
+      <div class="lvl-fig"><b>${fmtN(near.repeats+near.spam)}</b><span>${pv.labelled_spam?"spam or repeats":"repeats stopped"}</span></div>
+      <div class="lvl-fig"><b>${fmtN(near.check)}</b><span>worth a look</span></div></div>
+    ${near.wrong?`<p class="banner warn" style="margin:6px 0"><b>${near.wrong} message${near.wrong===1?"":"s"} you marked as fine would be held at this level.</b>A gentler level would let ${near.wrong===1?"it":"them"} through.</p>`:""}
+    <div class="lvl-bars" role="img" aria-label="Messages held at each level: ${pv.levels.map(x=>x.level+": "+x.held).join(", ")}">${pv.levels.map(x=>`<div class="${x.level===near.level?"on":""}"><span>${x.held}</span><i style="height:${Math.round(x.held/max*72)+2}px;background:${lvlHeat(x.level)}"></i></div>`).join("")}</div>
+    <div class="lvl-scale ends"><span>Gentle</span><span>Tough</span></div>
+    ${near.check_items&&near.check_items.length?`<p class="explain" style="margin:10px 0 0">Worth a look: held, but not just one name repeating itself. Marking them only labels them; nothing is blocked or trusted.</p>
+      <ul class="lvl-look">${near.check_items.map(m=>{ const lb=(val,t)=>`<button type="button" class="quiet" data-p="/label" data-b="${esc(JSON.stringify({label:val,sender:m.sender,text:m.text,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
+        return `<li><span class="explain">${esc(new Date(m.ts*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}))}</span><b>${esc(m.sender)}</b><span class="msg-text">${esc(m.text)}</span>${lb("spam","Spam")}${lb("not_spam","Fine")}</li>`; }).join("")}</ul>`:""}
+    <p class="explain">Worked out ${ago(pv.ran)}. You have marked ${pv.labelled_spam+pv.labelled_fine} message${pv.labelled_spam+pv.labelled_fine===1?"":"s"} so far: each one you mark as spam or fine helps place the Suggested point where spam stops and people chatting normally aren't touched.</p>
+    <p>${pv.suggested!=null&&pv.suggested!==d.level.value?btn(`Use the suggested level (${lvlName(pv.suggested)}, ${pv.suggested})`,"/settings",{level:pv.suggested},"")+" ":""}${pv.running?"":btn("Work it out again","/preview_now",{},"quiet")}</p>`;
+  }
+  return out+`<h3 style="font-size:0.9375rem;margin:12px 0 0">What this level does</h3>`+rules;
+}
+function lvlSend(v){
+  const own=(S&&S.level&&S.level.own)||[];
+  let replace=false;
+  if(own.length) replace=confirm(`You have set ${own.length===1?"one value":own.length+" values"} this level controls yourself (${own.map(o=>o.label).join(", ")}).\n\nOK: use this level's values instead of yours.\nCancel: keep yours and change the level for everything else.`);
+  lvlDrag=null; post("/settings",replace?{level:v,replace_own:true}:{level:v});
+}
+$("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
+$("#lvl").addEventListener("change",e=>{ const v=+e.target.value; clearTimeout(lvlTimer);
+  lvlTimer=setTimeout(()=>{ if(S && S.level && v===S.level.value){ lvlDrag=null; return; } lvlSend(v); },500); });
 
 /* ---------- health ---------- */
 function dur(sec){ if(sec==null) return "–"; sec=Math.max(0,Math.round(sec)); const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60);
@@ -938,7 +1038,7 @@ function renderBlocks(d){
   const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":fg.acting?"<span class='tag stop'>blocking</span>":fg.learning?"<span class='tag would'>counting while learning</span>":"<span class='tag would'>watching only</span>";
   const fgRow=(title,why)=>`<li><div><div class="what">${title}${fgEff}<span class="tag fg">FloodGuard</span></div><div class="why">${why}${adv&&fg.rules&&fg.rules.length?` <span class="rulenum">openHop rule ${fg.rules.join(", ")}</span>`:""}</div></div><div class="acts"><a href="#/floodguard" class="quietlink">FloodGuard</a></div></li>`;
   const fgItems=[fg.limit?fgRow(`Flood packets from ${fg.limit} or more hops away`,`The radio is ${fg.busy==null?"–":Math.round(fg.busy)+"%"} busy with flood traffic. Direct messages and people SpamGuard knows still get through. Lifts by itself once the radio is quiet.`):"",
-    fg.unscoped?fgRow(`Unscoped flood packets from ${fg.unscoped} or more hops away`,"A fixed hop limit while FloodGuard is on, like MeshCore's flood.max.unscoped."):"",
+    fg.unscoped?fgRow(`Flood packets with no region, from ${fg.unscoped} or more hops away`,"A fixed hop limit while FloodGuard is on, like MeshCore's flood.max.unscoped."):"",
     fg.advert?fgRow(`Adverts from ${fg.advert} or more hops away`,"A fixed hop limit while FloodGuard is on, like MeshCore's flood.max.advert."):""].filter(Boolean);
   items.unshift(...fgItems);
   fold("blocks","blocksFold",items,`<li><p class="empty">Nothing is blocked. SpamGuard will add blocks here when spam turns up.</p></li>`);
@@ -1014,7 +1114,7 @@ function renderAdvanced(d){
     (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
       <td class="act-cell">${h.hop==="DIRECT"?"":(h.blocked?"":btn("Block","/block_hop",{hop:h.hop},"quiet"))+(h.allowed?btn("Allow blocking","/unallow_hop",{hop:h.hop},"quiet"):btn("Never block","/allow_hop",{hop:h.hop},"quiet"))}</td></tr>`).join("")
-     || `<tr><td colspan="8" class="empty">No messages in the detection window.</td></tr>`);
+     || `<tr><td colspan="8" class="empty">No messages in the last few minutes.</td></tr>`);
   $("#campaigns").innerHTML=`<tr><th>Example</th><th class="num">Names</th><th class="num">Messages</th><th class="num">Versions</th><th>Entered via</th><th></th></tr>`+
     (d.campaigns.map(c=>`<tr><td class="msg-text lead-cell">${esc(c.example)}</td><td class="num" data-label="Names">${c.senders}</td><td class="num" data-label="Messages">${c.count}</td><td class="num" data-label="Versions">${c.variants}</td>
       <td class="route" data-label="Entered via">${esc(Object.entries(c.hops).map(([k,v])=>k+" ("+v+")").join(", "))}</td><td class="act-cell">${btn("Block text","/mark_spam",{text:c.example},"quiet")}</td></tr>`).join("")
@@ -1042,7 +1142,8 @@ function renderAdvanced(d){
 function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit?(/^[a-z]{2,}/.test(m.unit)?" "+m.unit:m.unit):""); }
 function profDiff(d,p){
   const cur=d.profiles.current, meta=Object.fromEntries(d.meta.map(m=>[m.key,m])), out=[];
-  if(cur.sensitivity!==p.sensitivity) out.push(`Sensitivity: ${cur.sensitivity} → ${p.sensitivity}`);
+  const pl=x=>x.level!=null?x.level:({relaxed:0,balanced:50,strict:100}[x.sensitivity]??50);
+  if(pl(cur)!==pl(p)) out.push(`Protection level: ${pl(cur)} → ${pl(p)}`);
   const keys=new Set([...Object.keys(cur.values),...Object.keys(p.values||{})]);
   keys.forEach(k=>{ const a=cur.values[k], b=(p.values||{})[k]; if(JSON.stringify(a)===JSON.stringify(b)) return;
     const m=meta[k]; const f=v=>v===undefined?"default":(m?fmtDefault(m,v):String(v));
@@ -1055,7 +1156,7 @@ function renderProfiles(d){
   $("#profList").innerHTML=P.list.map(p=>{
     const n=Object.keys(p.values||{}).length;
     return `<li><div><div class="what">${esc(p.name)}${p.name===P.in_use?" <span class='tag ok'>in use</span>":""}</div>
-      <div class="why">${esc(p.sensitivity)} sensitivity, ${n} changed value${n===1?"":"s"}</div></div>
+      <div class="why">Protection level ${esc(p.level!=null?p.level:({relaxed:0,balanced:50,strict:100}[p.sensitivity]??50))}, ${n} changed value${n===1?"":"s"}</div></div>
       <div class="acts"><button data-n="${esc(p.name)}" onclick="profApply(this.dataset.n)">Apply</button><button class="quiet" data-n="${esc(p.name)}" onclick="profExport(this.dataset.n)">Export</button>${btn("Delete","/profile_delete",{name:p.name},"quiet danger")}</div></li>`;
   }).join("")||`<li><p class="empty">No profiles yet.</p></li>`;
 }
@@ -1068,7 +1169,7 @@ function profApply(name){
 }
 function profExport(name){
   const p=(S.profiles.list||[]).find(x=>x.name===name); if(!p) return;
-  const data={format:"spamguard-profile",version:1,name:p.name,sensitivity:p.sensitivity,values:p.values||{}};
+  const data={format:"spamguard-profile",version:1,name:p.name,sensitivity:p.sensitivity,level:p.level,values:p.values||{}};
   const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
   a.download="spamguard-profile-"+p.name.replace(/[^A-Za-z0-9_-]+/g,"-")+".json"; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -1130,7 +1231,7 @@ $("#resetAll").onclick=()=>{ if(!confirm("Start SpamGuard again from scratch?\n\
 $("#resetWord").oninput=()=>{ $("#resetGo").disabled=$("#resetWord").value.trim().toUpperCase()!=="RESET"; };
 $("#resetNo").onclick=()=>{ $("#resetBox").hidden=true; $("#resetAll").hidden=false; };
 $("#resetGo").onclick=()=>{ if($("#resetWord").value.trim().toUpperCase()!=="RESET") return; $("#resetBox").hidden=true; $("#resetAll").hidden=false; clean(); post("/reset_all",{confirm:"RESET"}); };
-$("#resetSet").onclick=()=>{ if(confirm("Reset every setting you changed (FloodGuard's too) to its default for the current sensitivity?\n\nWhat FloodGuard has learnt about this repeater stays. To make it learn again, use Reset and learn again on the FloodGuard page.")){ clean(); post("/settings",{reset:true}); } };
+$("#resetSet").onclick=()=>{ if(confirm("Reset every setting you changed (FloodGuard's too) to its default for the current protection level?\n\nWhat FloodGuard has learnt about this repeater stays. To make it learn again, use Reset and learn again on the FloodGuard page.")){ clean(); post("/settings",{reset:true}); } };
 
 /* ---------- forms ---------- */
 function ttlOptions(sel,textBlock){ sel.innerHTML=TTLS.filter(([v])=>!textBlock||+v<=604800).map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
@@ -1435,7 +1536,7 @@ function renderFloodNav(d){
 function renderFloodPage(d){
   const m=d.metrics; if(!m) return;
   const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  const fixed=[fg.unscoped?`unscoped flood packets stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
+  const fixed=[fg.unscoped?`flood packets with no region stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
   const monitor=d.mode!=="protect"||d.paused;
   let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?(fgLong(fg)?"<span class='tag plain'>holding back floods</span>":"<span class='tag would'>containing a flood</span>"):"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
   if(fg.enabled&&fg.learning&&fg.radio_known){
@@ -1459,7 +1560,7 @@ function renderFloodPage(d){
     h+=`<p class="lead">${fg.enabled?`Watching how busy the radio is: ${fg.busy==null?"–":Math.round(fg.busy)+"%"} over the last five minutes${fg.flood_share!=null&&fg.busy?`, ${Math.round(100*fg.flood_share)}% of it flood traffic`:""}. It steps in above ${fg.level}% when most of that is flood traffic.${monitor?" SpamGuard is in Monitor, so FloodGuard only counts.":fg.waiting_reach?" It isn't holding anything back yet: it hasn't heard enough flood packets to know how far they normally come here (about 200 in a day).":""}`
       :"Contains floods of any kind of packet, not just channel messages, by watching how busy this repeater's radio is. It's off on this repeater; turn it on below."}</p>`;
   }
-  const nm={flood_busy_percent:v=>`steps in above ${v}% busy`,flood_max_unscoped:v=>v?`unscoped flood packets stop after ${v} hops`:"no unscoped hop limit",flood_max_advert:v=>v?`adverts stop after ${v} hops`:"no advert hop limit"};
+  const nm={flood_busy_percent:v=>`steps in above ${v}% busy`,flood_max_unscoped:v=>v?`flood packets with no region stop after ${v} hops`:"no hop limit for packets with no region",flood_max_advert:v=>v?`adverts stop after ${v} hops`:"no advert hop limit"};
   const cur={flood_busy_percent:fg.level,flood_max_unscoped:(d.settings||{}).flood_max_unscoped,flood_max_advert:(d.settings||{}).flood_max_advert};
   const src=k=>(fg.auto||[]).includes(k)?(fg.learnt&&fg.learnt[k]!=null?"learnt":"recommended"):"yours";
   const srcs=Object.keys(nm).map(src), same=srcs.every(x=>x===srcs[0]);

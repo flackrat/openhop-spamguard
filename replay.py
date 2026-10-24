@@ -8,6 +8,7 @@ Nothing touches openHop or the radio - it all happens on a simulated clock.
   python3 replay.py evidence.jsonl                      # compare relaxed / balanced / strict
   python3 replay.py evidence.jsonl --set dedupe_seconds=600 --set hop_new_senders=8
   python3 replay.py evidence.jsonl --sensitivity strict --details
+  python3 replay.py evidence.jsonl --levels 0,50,80,100 # protection levels instead of the three presets
 
 On the Pi use openHop's Python:  /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py ...
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import hashlib
 import hmac
 import json
@@ -77,7 +79,9 @@ def load(path):
     return msgs, labels, settings
 
 
-def run(msgs, overrides: dict, channels: dict):
+def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False):
+    """quiet_step: when no message arrives, step the clock this far at a time instead of one poll (quicker).
+    known_at_start: begin knowing the people the Pi already knew when the log starts, as it did."""
     sg.time = Clock()  # SpamGuard now runs on log time
     recorded = {m["sender"]: m.get("name_score", 0) for m in msgs}
     real_score = sg.name_score
@@ -86,8 +90,17 @@ def run(msgs, overrides: dict, channels: dict):
         # Names were scrambled: use the scores worked out on the Pi from the real names.
         sg.name_score = lambda name, pats: recorded.get(name, 0)
     state = os.path.join(tempfile.mkdtemp(prefix="sg-replay-"), "state.json")  # a private folder, not a guessable name
-    cfg = {"state_file": state, "evidence_log": False, "mode": "protect", **overrides}
+    # never the real state file or evidence log, whatever the settings say
+    cfg = {"mode": "protect", **overrides, "state_file": state, "evidence_log": False}
     g = sg.SpamGuard(cfg)
+    g._save_state = lambda *a, **k: None  # a replay keeps nothing, and saving was half its running time
+    if known_at_start and msgs:
+        first: dict = {}
+        for m in msgs:
+            first.setdefault(m["sender"], m)
+        for name, m in first.items():
+            if m.get("known_then"):
+                g.known[name] = [m["ts"], m["ts"], 1000]
     g.cfg["channels"].update(channels)
     keys = {name: key for name, key in g.cfg["channels"].items()}
     step = g.cfg["poll_seconds"]
@@ -110,7 +123,12 @@ def run(msgs, overrides: dict, channels: dict):
                 b = g.blocks.get(e.matched) if e.matched else None
                 out.append((e.packet, e.matched, b.get("source") if b else None))
         g.decide()
-        Clock.now += step
+        if quiet_step and not batch and i < len(msgs):
+            # stay on the same poll ticks as a normal run, so messages are seen at the same moments
+            ticks = max(1, min(int(quiet_step // step), math.ceil((msgs[i]["ts"] - Clock.now) / step)))
+            Clock.now += step * ticks
+        else:
+            Clock.now += step
     sg.name_score = real_score
     try:
         os.remove(state)
@@ -122,7 +140,7 @@ def run(msgs, overrides: dict, channels: dict):
 
 def summarise(msgs, caught):
     res = {"total": len(msgs), "caught": 0, "spam": 0, "spam_caught": 0, "genuine": 0, "genuine_caught": 0,
-           "by_source": {}, "missed": [], "wrong": [], "unlabelled_caught": []}
+           "by_source": {}, "missed": [], "wrong": [], "unlabelled_caught": [], "repeats": 0, "check": []}
     for idx, m in enumerate(msgs):
         k, src = caught.get(f"r{idx}", (None, None))
         hit = k is not None
@@ -142,7 +160,32 @@ def summarise(msgs, caught):
                 res["wrong"].append(m)
         elif hit:
             res["unlabelled_caught"].append(m)
+            # One name sending the same thing again and again is spam behaviour whatever it says;
+            # anything else held without a label is worth a look.
+            if src in REPEAT_SOURCES:
+                res["repeats"] += 1
+            else:
+                res["check"].append(m)
     return res
+
+
+REPEAT_SOURCES = {"repeat", "slowrepeat", "replay"}
+
+
+def level_report(msgs, overrides, channels, levels) -> dict:
+    """What each protection level would have held, for SpamGuard's own page."""
+    out = []
+    for lv in levels:
+        caught, _ = run(msgs, dict(overrides, level=lv), channels, quiet_step=60, known_at_start=True)
+        r = summarise(msgs, caught)
+        out.append({"level": lv, "held": r["caught"], "spam": r["spam_caught"], "repeats": r["repeats"],
+                    "wrong": r["genuine_caught"], "check": len(r["check"]),
+                    "check_items": [{"ts": m["ts"], "sender": m["sender"], "text": m["text"][:200],
+                                     "packet": m.get("packet"), "channel": m.get("channel")} for m in r["check"][:8]],
+                    "by": r["by_source"]})
+    return {"from": msgs[0]["ts"] if msgs else None, "to": msgs[-1]["ts"] if msgs else None, "messages": len(msgs),
+            "labelled_spam": sum(1 for m in msgs if m["_label"] == "spam"),
+            "labelled_fine": sum(1 for m in msgs if m["_label"] == "not_spam"), "levels": out}
 
 
 def line(m):
@@ -157,6 +200,10 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a setting")
     ap.add_argument("--hashtag", action="append", default=[], help="extra #channel to decrypt")
     ap.add_argument("--details", action="store_true", help="list missed, wrongly blocked and unlabelled catches")
+    ap.add_argument("--levels", help="protection levels to replay instead of the three presets, e.g. 0,50,80,100")
+    ap.add_argument("--json", action="store_true", help="with --levels: print the results as JSON")
+    ap.add_argument("--since", type=float, help="only messages from this Unix time on")
+    ap.add_argument("--base", metavar="FILE", help="a JSON file of settings to start from")
     a = ap.parse_args()
     logging.disable(logging.WARNING)  # keep the report readable
 
@@ -166,9 +213,17 @@ def main():
         msgs += m
         labels.update(lab)
     msgs.sort(key=lambda r: r["ts"])
+    if a.since:
+        msgs = [m for m in msgs if m["ts"] >= a.since]
     if not msgs:
+        if a.json:
+            print(json.dumps({"messages": 0, "levels": []}))
+            return
         sys.exit("No messages in the log. Is the evidence log switched on?")
     overrides = {}
+    if a.base:
+        with open(a.base, encoding="utf-8") as f:
+            overrides.update(json.load(f))
     for kv in a.set:
         k, _, v = kv.partition("=")
         overrides[k] = json.loads(v) if v[:1] in "0123456789-[{tfn" else v
@@ -177,6 +232,20 @@ def main():
         if ch and ch.startswith("#"):
             channels.setdefault(ch, sg.hashtag_secret(ch))
 
+    if a.levels:
+        try:
+            levels = [max(0, min(100, int(x))) for x in a.levels.split(",") if x.strip()]
+        except ValueError:
+            sys.exit("--levels takes numbers from 0 to 100, separated by commas")
+        rep = level_report(msgs, overrides, channels, levels)
+        if a.json:
+            print(json.dumps(rep, ensure_ascii=False))
+            return
+        print(f"{rep['messages']} channel messages; you labelled {rep['labelled_spam']} as spam and {rep['labelled_fine']} as fine.\n")
+        print(f"{'Level':<16}{'Held':>6}{'Repeats':>9}{'Your spam':>11}{'Your fine':>11}{'Worth a look':>14}")
+        for r in rep["levels"]:
+            print(f"{str(r['level']) + ' ' + sg.level_name(r['level']):<16}{r['held']:>6}{r['repeats']:>9}{r['spam']:>11}{r['wrong']:>11}{r['check']:>14}")
+        return
     days = (msgs[-1]["ts"] - msgs[0]["ts"]) / 86400
     nspam = sum(1 for m in msgs if m["_label"] == "spam")
     ngen = sum(1 for m in msgs if m["_label"] == "not_spam")
