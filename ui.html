@@ -318,6 +318,7 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
   .page[data-page=overview] > .hero,.page[data-page=overview] > [id$=Callout],.page[data-page=overview] > #chHint{order:0}
   .page[data-page=overview] > #kpiSec{order:1}
   .page[data-page=overview] > .controls{order:2;grid-template-columns:minmax(0,1fr);gap:10px}
+  .page[data-page=overview] .controls #lvlSec{order:-1}
   .page[data-page=overview] > section,.page[data-page=overview] .controls section{padding:12px 14px}
   .page[data-page=overview] h2{font-size:1rem}
   .page[data-page=overview] .controls h2{font-size:0.875rem;margin:0 0 6px}
@@ -680,6 +681,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </section>
 <section id="settingsSec">
   <h2>Detection settings</h2>
+  <div class="inline-form"><label for="lvlExact">Protection level, 0 to 100</label><input id="lvlExact" type="number" min="0" max="100" step="1" inputmode="numeric" style="width:6em"><button type="button" id="lvlExactSet">Set</button><span class="explain" id="lvlExactName"></span></div>
   <p class="lead">The protection level sets the starred values for you. Changing a value here overrides that, and is kept across restarts. Every setting lists its side-effects. Try changes in Monitor mode first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
   <div id="settings"></div>
@@ -892,59 +894,89 @@ function lvlHeat(p){ for(let i=1;i<LVL_HEAT.length;i++){ const [x1,c1]=LVL_HEAT[
   if(p<=x2){ const t=(p-x1)/(x2-x1); return `rgb(${c1.map((c,j)=>Math.round(c+(c2[j]-c)*t)).join(",")})`; } } return "rgb(184,50,42)"; }
 function lvlValues(d,p){ const P=d.presets, lo=p<=50?P.relaxed:P.balanced, hi=p<=50?P.balanced:P.strict, f=p<=50?p/50:(p-50)/50, v={};
   for(const k in P.balanced) v[k]=Math.floor(lo[k]+(hi[k]-lo[k])*f+0.5); return v; }
-function span(sec){ const m=Math.round(sec/60); if(m<60) return m+(m===1?" minute":" minutes");
-  const h=sec/3600; if(h>=10) return Math.round(h)+" hours";
-  const half=Math.round(h*2)/2, w=Math.floor(half); return half===1?"1 hour":(w+(half>w?"½":""))+" hours"; }
+// Friendly durations: whole minutes or hours, and halves of a day past a day, with "about" when rounded.
+function span(sec){
+  let n, unit, exact;
+  if(sec<3600){ n=Math.round(sec/300)*5||Math.round(sec/60); unit=n===1?"minute":"minutes"; exact=Math.abs(n*60-sec)<30; }
+  else if(sec<10*3600){ n=Math.round(sec/1800)/2; unit=n===1?"hour":"hours"; exact=Math.abs(n*3600-sec)<60; }
+  else if(sec<20*3600){ n=Math.round(sec/3600); unit="hours"; exact=Math.abs(n*3600-sec)<60; }
+  else { const d=Math.round(sec/43200)/2; exact=Math.abs(d*86400-sec)<60;
+    const t=d===1?"a day":d===1.5?"a day and a half":(Number.isInteger(d)?d:Math.floor(d)+"½")+" days";
+    return (exact?"":"about ")+t; }
+  const t=(Number.isInteger(n)?n:Math.floor(n)+"½")+" "+unit;
+  return (exact?"":"about ")+(n===1&&unit==="hour"?"an hour":t);
+}
+// The values in force at level p: the level's own, except any you have set yourself.
+function lvlInForce(d,p){ const v=lvlValues(d,p), mine=(d.level&&d.level.mine)||{}, yours={};
+  for(const k in mine){ if(k in v){ v[k]=mine[k]; yours[k]=true; } } return [v,yours]; }
+function lvlOwnAt(d,p){ const lv=lvlValues(d,p), mine=(d.level&&d.level.mine)||{};
+  return Object.keys(mine).filter(k=>k in lv && mine[k]!==lv[k]).map(k=>(d.meta.find(m=>m.key===k)||{label:k}).label); }
+function openSettings(q){
+  const a=$("#advToggle"); if(!a.checked){ a.checked=true; a.onchange(); }
+  location.hash="#/settings";
+  setTimeout(()=>{ const f=$("#setFind"); if(f&&q){ f.value=q; f.dispatchEvent(new Event("input")); } const t=$("#lvlExact"); if(t) t.scrollIntoView({block:"start"}); },60);
+  return false;
+}
 function renderLevel(d){
-  const L=d.level||{value:50}, own=L.own||[], pv=L.preview||{};
-  const p=lvlDrag!=null?lvlDrag:L.value, el=$("#lvl");
+  const L=d.level||{value:50}, pv=L.preview||{};
+  const p=lvlDrag!=null?lvlDrag:L.value, el=$("#lvl"), own=lvlOwnAt(d,p);
   if(lvlDrag==null && document.activeElement!==el) el.value=L.value;
   const heat=lvlHeat(p); $("#lvlSec").style.setProperty("--lvl",heat);
   $("#lvlName").textContent=lvlName(p); $("#lvlNum").textContent=p+" of 100";
   el.setAttribute("aria-valuetext",`${lvlName(p)}, ${p} of 100`);
   const pin=$("#lvlPin");
-  if(pv.suggested!=null){ pin.hidden=false; pin.style.left=`calc(15px + (100% - 30px) * ${pv.suggested/100})`; } else pin.hidden=true;
+  if(pv.suggested!=null){ pin.hidden=false; pin.textContent=pv.early?"Early guess":"Suggested"; pin.style.left=`calc(15px + (100% - 30px) * ${pv.suggested/100})`; } else pin.hidden=true;
   $("#sensExplain").innerHTML=esc(LVL_SAYS[Math.min(4,Math.floor(p/20))]);
-  $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(o=>esc(o.label)).join(", ")}${own.length>3?" and more":""}. <a href="#/settings">See them in Settings</a></p>`:"";
-  const key=JSON.stringify([p,pv,own.length]); if(key===lvlKey) return; lvlKey=key;
+  $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(esc).join(", ")}${own.length>3?" and more":""}. <a href="#/settings" onclick="return openSettings(${esc(JSON.stringify(own[0]))})">See ${own.length===1?"it":"them"} in Settings</a></p>`:"";
+  const ex=$("#lvlExact"); if(ex && document.activeElement!==ex) ex.value=L.value;
+  const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)}. You can also slide it on the Overview.`;
+  const key=JSON.stringify([p,pv,L.mine,d.settings&&d.settings.evidence_log]); if(key===lvlKey) return; lvlKey=key;
   $("#lvlDetail").innerHTML=lvlDetail(d,p,pv);
 }
 function lvlDetail(d,p,pv){
-  const v=lvlValues(d,p), times=n=>n===1?"once":n===2?"twice":n+" times";
+  const [v,yours]=lvlInForce(d,p), times=n=>n===1?"once":n===2?"twice":n+" times";
+  const y=k=>yours[k]?` <span class="tag would">your own setting</span>`:"";
   const rules=`<dl class="lvl-rules">
-    <dt>The same message, again and again</dt><dd>Let through ${times(v.slow_repeat_max)} in ${span(v.slow_repeat_window_seconds)}, then further copies are held for ${span(v.slow_repeat_hold_seconds)}. Changing name doesn't start the count again.</dd>
-    <dt>Quick bursts</dt><dd>Held after ${v.repeat_max} copies in a few minutes, for ${span(v.repeat_block_seconds)}.</dd>
-    <dt>One message under many names</dt><dd>Blocked once ${v.text_distinct_senders} names send it, and copies under other names for ${span(v.dedupe_seconds)}.</dd>
-    <dt>Floods of made-up names</dt><dd>A repeater is blocked after ${v.hop_random_senders} made-up names come through it.</dd>
-    <dt>Automatic blocks</dt><dd>Last ${span(v.block_ttl_seconds)} after the spam stops, then end by themselves.</dd></dl>`;
+    <dt>The same message, again and again</dt><dd>Let through ${times(v.slow_repeat_max)} in ${span(v.slow_repeat_window_seconds)}, then further copies are held for ${span(v.slow_repeat_hold_seconds)}. Changing name doesn't start the count again.${y("slow_repeat_max")}${y("slow_repeat_window_seconds")}${y("slow_repeat_hold_seconds")}</dd>
+    <dt>Quick bursts</dt><dd>Held after ${v.repeat_max} copies in a few minutes, for ${span(v.repeat_block_seconds)}.${y("repeat_max")}${y("repeat_block_seconds")}</dd>
+    <dt>One message under many names</dt><dd>Held once ${v.text_distinct_senders} names send it, and copies under other names are held for ${span(v.dedupe_seconds)}.${y("text_distinct_senders")}${y("dedupe_seconds")}</dd>
+    <dt>Floods of made-up names</dt><dd>Messages through a repeater are held once ${v.hop_random_senders} made-up names come through it.${y("hop_random_senders")}</dd>
+    <dt>How long holds last</dt><dd>${span(v.block_ttl_seconds).replace(/^./,c=>c.toUpperCase())} after the spam stops, then they end by themselves.${y("block_ttl_seconds")}</dd></dl>`;
   let out="";
-  if(!pv.enabled) out=`<p class="explain">Turn on the evidence log in Settings, and SpamGuard will show here what each level would have held on your own traffic.</p>`;
+  if(!pv.enabled) out=`<p class="explain">SpamGuard can show here what each level would have held on your own traffic. It needs the evidence log, a record of the channel messages it reads that stays on this repeater.</p><p>${btn("Turn on the evidence log","/settings",{evidence_log:true},"")}</p>`;
+  else if(!pv.switched_on) out=`<p class="explain">Working out what each level would have held is turned off.</p><p>${btn("Turn it on","/settings",{level_preview:true},"quiet")}</p>`;
   else if(!pv.levels){ out=pv.running?`<p class="explain">Working this out from your recent traffic. It takes a few minutes.</p>`
-      :`<p class="explain">${pv.error?esc(pv.error):"This is worked out once a day from your recent traffic."} ${btn("Work it out now","/preview_now",{},"quiet")}</p>`; }
+      :`<p class="explain">${pv.error?esc(pv.error):"This is worked out once a day from your recent traffic, starting about ten minutes after the evidence log is turned on."} ${btn("Work it out now","/preview_now",{},"quiet")}</p>`; }
   else {
     const near=pv.levels.reduce((a,b)=>Math.abs(b.level-p)<Math.abs(a.level-p)?b:a), max=Math.max(1,...pv.levels.map(x=>x.held));
     const days=Math.max(1,Math.round(((pv.to||0)-(pv.from||0))/86400));
-    out=`<p class="explain">Your repeater heard ${fmtN(pv.messages)} channel messages in the last ${days===1?"day":days+" days"}. Replayed at ${near.level===p?"this level":"about this level ("+near.level+")"}, SpamGuard would have:</p>
+    out=`<p class="explain">Your repeater heard ${fmtN(pv.messages)} messages on the Public and hashtag channels in the last ${days===1?"day":days+" days"}${pv.skipped?` (${fmtN(pv.skipped)} on private channels aren't included)`:""}. Replayed at ${near.level===p?"this level":"about this level ("+near.level+")"}, SpamGuard would have:</p>
     <div class="lvl-figs"><div class="lvl-fig"><b>${fmtN(near.held)}</b><span>held back</span></div>
-      <div class="lvl-fig"><b>${fmtN(near.repeats+near.spam)}</b><span>${pv.labelled_spam?"spam or repeats":"repeats stopped"}</span></div>
+      <div class="lvl-fig"><b>${fmtN(near.repeats+near.spam)}</b><span>${pv.labelled_spam?"spam or repeats held":"repeats held"}</span></div>
       <div class="lvl-fig"><b>${fmtN(near.check)}</b><span>worth a look</span></div></div>
     ${near.wrong?`<p class="banner warn" style="margin:6px 0"><b>${near.wrong} message${near.wrong===1?"":"s"} you marked as fine would be held at this level.</b>A gentler level would let ${near.wrong===1?"it":"them"} through.</p>`:""}
-    <div class="lvl-bars" role="img" aria-label="Messages held at each level: ${pv.levels.map(x=>x.level+": "+x.held).join(", ")}">${pv.levels.map(x=>`<div class="${x.level===near.level?"on":""}"><span>${x.held}</span><i style="height:${Math.round(x.held/max*72)+2}px;background:${lvlHeat(x.level)}"></i></div>`).join("")}</div>
-    <div class="lvl-scale ends"><span>Gentle</span><span>Tough</span></div>
-    ${near.check_items&&near.check_items.length?`<p class="explain" style="margin:10px 0 0">Worth a look: held, but not just one name repeating itself. Marking them only labels them; nothing is blocked or trusted.</p>
-      <ul class="lvl-look">${near.check_items.map(m=>{ const lb=(val,t)=>`<button type="button" class="quiet" data-p="/label" data-b="${esc(JSON.stringify({label:val,sender:m.sender,text:m.text,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
+    <div class="lvl-bars" aria-hidden="true">${pv.levels.map(x=>`<div class="${x.level===near.level?"on":""}"><span>${x.held}</span><i style="height:${Math.round(x.held/max*72)+2}px;background:${lvlHeat(x.level)}"></i></div>`).join("")}</div>
+    <div class="lvl-scale ends" aria-hidden="true"><span>Gentle</span><span>Tough</span></div>
+    <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><tr><th scope="col">Level</th><th scope="col" class="num">Held back</th><th scope="col" class="num">Repeats${pv.labelled_spam?" or spam":""}</th><th scope="col" class="num">Worth a look</th>${pv.labelled_fine?`<th scope="col" class="num">Marked fine</th>`:""}</tr>
+      ${pv.levels.map(x=>`<tr><td>${x.level} ${lvlName(x.level)}</td><td class="num">${x.held}</td><td class="num">${x.repeats+x.spam}</td><td class="num">${x.check}</td>${pv.labelled_fine?`<td class="num">${x.wrong}</td>`:""}</tr>`).join("")}</table></div></details>
+    ${near.check_items&&near.check_items.length?`<p class="explain" style="margin:10px 0 0">Worth a look: held, but not just one name repeating itself. Marking them only labels them; nothing is held or trusted because of it.</p>
+      <ul class="lvl-look">${near.check_items.map(m=>{ const lb=(val,t)=>`<button type="button" class="quiet" aria-pressed="${m.label===val}" data-p="/label" data-b="${esc(JSON.stringify({label:m.label===val?"none":val,sender:m.sender,text:m.text,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
         return `<li><span class="explain">${esc(new Date(m.ts*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}))}</span><b>${esc(m.sender)}</b><span class="msg-text">${esc(m.text)}</span>${lb("spam","Spam")}${lb("not_spam","Fine")}</li>`; }).join("")}</ul>`:""}
-    <p class="explain">Worked out ${ago(pv.ran)}. You have marked ${pv.labelled_spam+pv.labelled_fine} message${pv.labelled_spam+pv.labelled_fine===1?"":"s"} so far: each one you mark as spam or fine helps place the Suggested point where spam stops and people chatting normally aren't touched.</p>
-    <p>${pv.suggested!=null&&pv.suggested!==d.level.value?btn(`Use the suggested level (${lvlName(pv.suggested)}, ${pv.suggested})`,"/settings",{level:pv.suggested},"")+" ":""}${pv.running?"":btn("Work it out again","/preview_now",{},"quiet")}</p>`;
+    <p class="explain">Worked out ${ago(pv.ran)}. You have marked ${fmtN(pv.marked)} message${pv.marked===1?"":"s"} as spam or fine. ${pv.early?`The pin on the slider is an early guess from repeats alone, so it never goes past Firm. Mark at least 5 held messages to firm it up.`:"Your marks place the Suggested pin where spam stops and people chatting normally aren't held."}</p>
+    <p>${pv.suggested!=null&&pv.suggested!==d.level.value?`<button type="button" onclick="lvlSend(${pv.suggested})">${pv.early?"Try the early guess":"Use the suggested level"} (${lvlName(pv.suggested)}, ${pv.suggested})</button> `:""}${pv.running?"":btn("Work it out again","/preview_now",{},"quiet")}</p>`;
   }
   return out+`<h3 style="font-size:0.9375rem;margin:12px 0 0">What this level does</h3>`+rules;
 }
 function lvlSend(v){
-  const own=(S&&S.level&&S.level.own)||[];
+  const own=S?lvlOwnAt(S,v):[];
   let replace=false;
-  if(own.length) replace=confirm(`You have set ${own.length===1?"one value":own.length+" values"} this level controls yourself (${own.map(o=>o.label).join(", ")}).\n\nOK: use this level's values instead of yours.\nCancel: keep yours and change the level for everything else.`);
+  if(own.length) replace=confirm(`You have set ${own.length===1?"one value":own.length+" values"} this level controls yourself (${own.join(", ")}).\n\nOK: use this level's values instead of yours.\nCancel: keep yours and change the level for everything else.`);
   lvlDrag=null; post("/settings",replace?{level:v,replace_own:true}:{level:v});
 }
+$("#lvlExactSet").addEventListener("click",()=>{ const v=Number($("#lvlExact").value);
+  if(!Number.isInteger(v)||v<0||v>100){ toast("The protection level is a whole number from 0 to 100",true); return; }
+  if(S&&S.level&&v===S.level.value){ toast("It's already "+v); return; } lvlSend(v); });
+$("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactSet").click(); });
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 $("#lvl").addEventListener("change",e=>{ const v=+e.target.value; clearTimeout(lvlTimer);
   lvlTimer=setTimeout(()=>{ if(S && S.level && v===S.level.value){ lvlDrag=null; return; } lvlSend(v); },500); });
