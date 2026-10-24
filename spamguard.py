@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.9.0"
+VERSION = "6.9.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -5706,10 +5706,11 @@ class SpamGuard:
                          "name or service not known", "timed out", "ssl", "proxy")
 
     def plugin_preflight(self, wheel: bytes) -> Optional[str]:
-        """Before openHop removes the running version: can the new version's libraries be installed from
-        ready-made builds on this machine? When not, openHop would compile them, which on a small Pi can take
-        longer than openHop waits and leave SpamGuard uninstalled. Returns a plain-language reason, or None when
-        all is well or it can't tell (no network, no pip), so only a clear 'no build exists' ever stops an update."""
+        """Before openHop removes the running version: will the new version's libraries install from ready-made
+        builds on this machine? When the newest version of one only comes as source code, openHop would compile
+        it, which on a small Pi can take longer than openHop waits and leave SpamGuard uninstalled. Returns a
+        plain-language reason, or None when all is well or it can't tell (no network, no pip), so only a clear
+        answer ever stops an update."""
         import zipfile
         import tempfile
         import io
@@ -5722,25 +5723,36 @@ class SpamGuard:
         reqs = [m.group(1).strip() for m in re.finditer(r"(?m)^Requires-Dist:\s*([^;\r\n]+?)\s*$", text)]
         if not reqs:
             return None
+        names = ", ".join(sorted({re.split(r"[<>=!~ \[]", q, maxsplit=1)[0] for q in reqs}))
+        # Ask pip for exactly what openHop's install would fetch: the newest version of each library. A new
+        # release often comes out as source code first, with ready-made builds for small machines following
+        # a day or so later; only the newest version counts, since that is the one openHop would compile.
         tmp = tempfile.mkdtemp(prefix="spamguard-preflight-")
         try:
-            r = subprocess.run([sys.executable, "-m", "pip", "download", "--only-binary=:all:", "--no-deps",
-                                "--disable-pip-version-check", "--retries", "1", "--timeout", "15", "-d", tmp, *reqs],
-                               capture_output=True, text=True, timeout=120)
-        except (subprocess.TimeoutExpired, OSError):
-            return None
+            try:
+                r = subprocess.run([sys.executable, "-m", "pip", "download", "--no-deps",
+                                    "--disable-pip-version-check", "--retries", "1", "--timeout", "15", "-d", tmp, *reqs],
+                                   capture_output=True, text=True, timeout=300)
+            except (subprocess.TimeoutExpired, OSError):
+                return None
+            got = os.listdir(tmp) if os.path.isdir(tmp) else []
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-        if r.returncode == 0:
-            return None
         out = ((r.stdout or "") + (r.stderr or "")).lower()
-        if any(w in out for w in self.PREFLIGHT_NETWORK) or "no matching distribution" not in out:
+        if r.returncode != 0:
+            if any(w in out for w in self.PREFLIGHT_NETWORK) or "no matching distribution" not in out:
+                return None
+            return ("Update stopped before anything was changed. This machine can't get one of SpamGuard's "
+                    f"libraries ({names}), so openHop couldn't install the new version. Press Update anyway if "
+                    "you'd rather try, or install the plugin file from openHop's Plugins page.")
+        source = sorted({re.split(r"-\d", f, maxsplit=1)[0] for f in got if not f.endswith(".whl")})
+        if not source:
             return None
-        names = ", ".join(sorted({re.split(r"[<>=!~ \[]", q, maxsplit=1)[0] for q in reqs}))
-        return ("Update stopped before anything was changed. This machine can't get a ready-made build of one of "
-                f"SpamGuard's libraries ({names}), so openHop would have to compile it. That can take longer than "
-                "openHop waits and leave SpamGuard uninstalled. Download the wheel from the release page and install "
-                "it from openHop's Plugins page instead, or press Update anyway if you'd rather try.")
+        return ("Update stopped before anything was changed. A new version of " + ", ".join(source) + " (one of "
+                "SpamGuard's libraries) has come out without a ready-made build for this machine yet, so openHop "
+                "would have to compile it. On a small Pi that can take longer than openHop waits and leave "
+                "SpamGuard uninstalled. Ready-made builds usually follow within a day, so try again tomorrow, or "
+                "press Update anyway if you'd rather wait for the compile.")
 
     def start_plugin_update(self, want: str, force: bool = False) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
