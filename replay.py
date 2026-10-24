@@ -204,6 +204,7 @@ def main():
     ap.add_argument("--json", action="store_true", help="with --levels: print the results as JSON")
     ap.add_argument("--since", type=float, help="only messages from this Unix time on")
     ap.add_argument("--base", metavar="FILE", help="a JSON file of settings to start from")
+    ap.add_argument("--only-channels", metavar="NAMES", help="only these channels, comma-separated (e.g. Public,#chat)")
     a = ap.parse_args()
     logging.disable(logging.WARNING)  # keep the report readable
 
@@ -215,6 +216,12 @@ def main():
     msgs.sort(key=lambda r: r["ts"])
     if a.since:
         msgs = [m for m in msgs if m["ts"] >= a.since]
+    skipped = 0
+    if a.only_channels:
+        keep = {c.strip() for c in a.only_channels.split(",") if c.strip()}
+        before = len(msgs)
+        msgs = [m for m in msgs if (m.get("channel") or "Public") in keep]
+        skipped = before - len(msgs)
     if not msgs:
         if a.json:
             print(json.dumps({"messages": 0, "levels": []}))
@@ -238,6 +245,7 @@ def main():
         except ValueError:
             sys.exit("--levels takes numbers from 0 to 100, separated by commas")
         rep = level_report(msgs, overrides, channels, levels)
+        rep["skipped"] = skipped
         if a.json:
             print(json.dumps(rep, ensure_ascii=False))
             return

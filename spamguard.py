@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.8.0"
+VERSION = "6.9.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -179,6 +179,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = more history for tuning, but more of people's messages kept on the Pi (about 1-3 MB per busy day).",
      "label": "Keep the evidence log for",
      "help": "Older days are deleted automatically."},
+    {"key": "level_preview", "group": "Evidence log", "type": "bool",
+     "risk": "Turned off, the Overview can't show what each protection level would have held. While on, the Pi spends a few minutes a day on it, at the lowest priority.",
+     "label": "Work out what each protection level would have held",
+     "help": "Once a day SpamGuard replays the last two days of the evidence log at eleven points along the protection level, so the Overview can show what each would have held. Nothing is changed by it. Only the Public channel and hashtag channels are replayed."},
     {"key": "max_paths_per_hop", "risk": "Higher = more routes blocked for a stubborn spammer, but more rules for openHop to check on every message. Lower = once the limit is hit, new routes from that repeater are not blocked.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 500,
      "label": "Most routes to learn per repeater",
      "help": "Upper limit on exact routes remembered for one blocked repeater."},
@@ -402,6 +406,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "wardrive_block": False,
     "evidence_log": False,
     "evidence_days": 7,
+    "level_preview": True,
     "evidence_dir": "/var/lib/openhop_spamguard/evidence",
     "max_origins_per_route": 60,
     "enable_text_rules": True,
@@ -450,7 +455,7 @@ FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity", "level"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix",
+KEEP_ON_RESET = {"evidence_log", "evidence_days", "level_preview", "update_check", "map_directory", "openhop_autofix",
                  "wardrive_block"}
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
@@ -3159,11 +3164,14 @@ class SpamGuard:
     PREVIEW_EVERY = 86400          # once a day
     PREVIEW_SPAN = 2 * 86400       # over the last two days
     PREVIEW_MIN_MESSAGES = 200     # fewer than this and a suggestion would be guesswork
+    PREVIEW_FIRM_MARKS = 5         # until you have marked this many messages, the suggestion is an early guess...
+    PREVIEW_EARLY_CAP = 70         # ...and never tougher than this
 
     def refresh_level_preview(self, force: bool = False):
         """Once a day, in the background at low priority: replay the last two days of the evidence log at
         each protection level, so the page can say what each level would have held. Nothing is changed."""
-        if self._preview_busy or self.evidence is None or getattr(self, "standby", None):
+        if self._preview_busy or self.evidence is None or getattr(self, "standby", None) \
+                or not self.cfg.get("level_preview", True):
             return
         now = time.time()
         if not force and now - self._preview_tried < self.PREVIEW_EVERY:
@@ -3178,6 +3186,9 @@ class SpamGuard:
         if not files:
             return
         c = self.cfg
+        # Only channels a replay can read without their keys: Public and hashtag channels. Private channel
+        # keys never leave SpamGuard, so those messages are left out rather than misread.
+        readable = [n for n, k in c["channels"].items() if n.startswith("#") or k == PUBLIC_CHANNEL_KEY]
         # your own settings, apart from the ones the level sets, and your exceptions: never keys or tokens
         base = {k: c[k] for k in profile_keys() if k in c and k not in PRESETS["balanced"]}
         base.update({"allow_hops": sorted(self.allow_hops), "allow_senders": sorted(self.allow_senders),
@@ -3193,7 +3204,8 @@ class SpamGuard:
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(base, f)
                 cmd = [sys.executable, script, "--levels", ",".join(map(str, PREVIEW_LEVELS)), "--json",
-                       "--since", str(int(now - self.PREVIEW_SPAN)), "--base", path, *files]
+                       "--since", str(int(now - self.PREVIEW_SPAN)), "--base", path,
+                       "--only-channels", ",".join(readable), *files]
                 if shutil.which("nice"):
                     cmd = ["nice", "-n", "19", *cmd]   # the radio's work always comes first
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, cwd=folder)
@@ -3216,14 +3228,29 @@ class SpamGuard:
 
         threading.Thread(target=work, daemon=True, name="level-preview").start()
 
+    def label_of(self, m: dict) -> Optional[str]:
+        return self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender', '')}|{m.get('text', '')}")
+
     def preview_summary(self) -> dict:
         p = self.level_preview or {}
+        marked = len(self.labels)
         out = {"running": bool(self._preview_busy), "enabled": self.evidence is not None,
+               "switched_on": bool(self.cfg.get("level_preview", True)), "marked": marked,
                "ran": p.get("ran"), "error": p.get("error") if (p.get("failed") or 0) > (p.get("ran") or 0) else None}
         if p.get("levels"):
-            out.update({k: p.get(k) for k in ("from", "to", "messages", "labelled_spam", "labelled_fine",
-                                              "levels", "suggested", "took")})
+            out.update({k: p.get(k) for k in ("from", "to", "messages", "skipped", "labelled_spam", "labelled_fine", "took")})
+            # your marks show straight away, not only after the next daily run
+            out["levels"] = [dict(lv, check_items=[dict(m, label=self.label_of(m)) for m in lv.get("check_items") or []])
+                             for lv in p["levels"]]
+            sug = p.get("suggested")
+            out["early"] = sug is not None and marked < self.PREVIEW_FIRM_MARKS
+            out["suggested"] = min(sug, self.PREVIEW_EARLY_CAP) if out["early"] else sug
         return out
+
+    def my_level_values(self) -> dict:
+        """The values the level would set that you have set yourself (on the page or in the config file)."""
+        return {k: self.settings.get(k, self.file_cfg.get(k)) for k in PRESETS["balanced"]
+                if self.settings.get(k, self.file_cfg.get(k)) is not None}
 
     def refresh_public_map(self, force: bool = False):
         """Once a day, in the background, if switched on."""
@@ -5977,7 +6004,8 @@ class SpamGuard:
                 "version": VERSION, "floodguard_version": FLOODGUARD_VERSION,
                 "mode": c["mode"], "paused": bool(c.get("paused")), "sensitivity": c["sensitivity"],
                 "level": {"value": c.get("level", 50), "name": level_name(c.get("level", 50)),
-                          "names": LEVEL_NAMES, "own": self.own_level_values(), "preview": self.preview_summary()},
+                          "names": LEVEL_NAMES, "own": self.own_level_values(), "mine": self.my_level_values(),
+                          "preview": self.preview_summary()},
                 "service": self.health(),
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
@@ -6261,6 +6289,8 @@ class SpamGuard:
             elif op == "preview_now":
                 if self.evidence is None:
                     raise ValueError("Turn on the evidence log first: the check replays what it has recorded")
+                if not self.cfg.get("level_preview", True):
+                    raise ValueError("Working this out is turned off in Settings, under Evidence log")
                 if self._preview_busy:
                     raise ValueError("It is already being worked out")
                 if time.time() - max(self._preview_tried, (self.level_preview or {}).get("ran") or 0) < 600:

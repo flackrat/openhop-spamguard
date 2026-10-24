@@ -26,6 +26,8 @@ async def main():
         txt=await pg.text_content("#lvlDetail")
         check("Held after 2 copies" in txt and "What this level does" in txt, "it says what the level does in plain words")
         check("evidence log" in txt, "and how to see what it would have held")
+        bt=[x for x in await pg.query_selector_all("#lvlDetail button") if "Turn on the evidence log" in (await x.text_content())]
+        check(bool(bt), "with a button right there to turn the evidence log on")
         await pg.evaluate("document.querySelector('#lvl').dispatchEvent(new Event('change'))")
         await pg.wait_for_timeout(1500)
         check(g.cfg["level"]==85, f"letting go saves it: {g.cfg['level']}")
@@ -40,6 +42,11 @@ async def main():
         await pg.wait_for_timeout(1800)
         check(asked and "yourself" in asked[0], "it asks before replacing them")
         check(g.cfg["level"]==60 and g.cfg["slow_repeat_max"]==5, "Cancel keeps your own value and still moves the level")
+        # an exact number on the Settings page, for those who want one
+        await pg.evaluate("openSettings('')"); await pg.wait_for_timeout(600)
+        check(await pg.is_visible("#lvlExact"), "the Settings page has the level as a number, reached from the Overview")
+        await pg.fill("#lvlExact","37"); await pg.click("#lvlExactSet"); await pg.wait_for_timeout(1800)
+        check(g.cfg["level"]==37, f"typing an exact level sets it: {g.cfg['level']}")
         check(not errs, f"no page errors: {errs}")
         await b.close()
 asyncio.run(main())

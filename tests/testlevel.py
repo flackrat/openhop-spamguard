@@ -119,6 +119,36 @@ except ValueError as e: check("10 minutes" in str(e), f"asking again straight aw
 check(not [f for f in os.listdir(tempfile.gettempdir()) if f.startswith("sg-preview-")], "it tidies up after itself")
 g4._save_state(force=True)
 g5=sg.SpamGuard(dict(g4.file_cfg)); check((g5.preview_summary().get("levels") or [])==ps["levels"], "the result survives a restart")
+# an early guess until you have marked a few messages, never tougher than Firm
+g4.level_preview=dict(g4.level_preview, suggested=100)
+g4.labels.clear()
+ps=g4.preview_summary(); check(ps["early"] and ps["suggested"]==70 and ps["marked"]==0, f"an early guess is capped at Firm: {ps.get('suggested')}")
+for i in range(5): g4.labels[f"x{i}"]="spam"
+ps=g4.preview_summary(); check(not ps["early"] and ps["suggested"]==100, "with five marks the suggestion stands as worked out")
+# marks show straight away on the messages worth a look
+item={"ts":now,"sender":"Canal Boat Ted","text":"Anyone at the lock this morning?","packet":"pk9"}
+g4.level_preview["levels"][0]["check_items"]=[item]
+g4.action("label",{"label":"not_spam","packet":"pk9","sender":item["sender"],"text":item["text"]})
+check(g4.preview_summary()["levels"][0]["check_items"][0]["label"]=="not_spam", "a mark shows on the message straight away")
+check(g4.preview_summary()["marked"]==6, "and the count of marks goes up straight away")
+# your own values, whatever the level
+g4.apply_settings({"repeat_max":5}); check(g4.status()["level"]["mine"]=={"repeat_max":5}, "the page is told which values are yours")
+# the daily run can be turned off
+g4.apply_settings({"level_preview":False}); g4._preview_tried=0
+g4.refresh_level_preview(force=True); check(not g4._preview_busy, "turned off, it doesn't run")
+try: g4.action("preview_now",{}); check(False,"asking while it is off is refused")
+except ValueError as e: check("turned off" in str(e), f"asking while it's off says so: {e}")
+check(not g4.preview_summary()["switched_on"], "and the page is told")
+check("level_preview" not in sg.profile_keys(), "it's housekeeping, so not part of a profile")
+# private channels are left out of the replay, and counted
+priv=[dict(r) for r in rows if r["type"]=="msg"][:30]
+for r2 in priv: r2["channel"]="Club"
+pf=os.path.join(d,"priv.jsonl")
+with open(pf,"w") as f: f.write("".join(json.dumps(r)+"\n" for r in rows+priv))
+r=subprocess.run([sys.executable,os.path.join(here,"..","replay.py"),"--levels","50","--json","--only-channels","Public",pf],capture_output=True,text=True,timeout=300)
+rp=json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode==0 else {}
+check(rp.get("skipped")==30 and rp.get("messages")==264, f"private channel messages are left out and counted: {rp.get('skipped')} {rp.get('messages')}")
+
 m6=mock(); g6=guard(m6, evidence_log=False)
 try: g6.action("preview_now",{}); check(False,"needs the evidence log")
 except ValueError as e: check("evidence log" in str(e), "it needs the evidence log, and says so")

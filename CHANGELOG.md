@@ -2,6 +2,19 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.9.0
+### SpamGuard 6.9.0
+Improvements to the protection level from user testing, from first-time users to experts.
+- **No more dead end on a new install.** "What this level would have done" now has a Turn on the evidence log button right there, instead of pointing to a Settings page that only shows in Advanced. "See it in Settings" next to your own values switches Advanced on and takes you to that setting.
+- **An honest suggestion.** Until you have marked at least five held messages as spam or fine, the pin on the slider says "Early guess", is worked out from repeats alone and never goes past Firm.
+- **Your marks show straight away.** Spam and Fine stay pressed on the messages worth a look, and the count of messages you have marked goes up at once, not after the next daily run.
+- **What this level does now says what really applies,** including values you set yourself, marked as yours. "Use the suggested level" asks about your own values, as moving the slider does.
+- **The slider comes first on a phone,** straight after the spam numbers and before Mode.
+- **For experts:** the Settings page shows the protection level as a number you can type, there is a switch to turn the daily replay off (Settings, Evidence log), and durations read naturally, such as "about a day and a half".
+- **Private channels are left out of the replay, and the page says how many,** since their keys never leave SpamGuard. Only the Public channel and hashtag channels are replayed.
+- **Show the numbers** under the chart of what each level would have held, like every other chart.
+- **One word for it.** The protection level panel now says "held" throughout.
+
 ## v6.8.0
 ### SpamGuard 6.8.0
 - **A protection level slider instead of Relaxed, Balanced and Strict.** The Overview has a slider from Gentle to Tough that warms from teal to red as it gets tougher, and every point in between works. 0, 50 and 100 are exactly the old Relaxed, Balanced and Strict, so nothing changes until you move it. Under the slider it says in plain words what that level does: how many copies are let through, for how long further copies are held, and how long automatic blocks last.
