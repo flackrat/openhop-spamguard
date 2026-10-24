@@ -18,12 +18,15 @@ def wheel(requires=("pycryptodome>=3.15","PyYAML>=5.4")):
         z.writestr("openhop_spamguard/__init__.py","")
     return b.getvalue()
 class R:
-    def __init__(s,rc=0,out="",err=""): s.returncode=rc; s.stdout=out; s.stderr=err
+    def __init__(s,rc=0,out="",err="",files=("pycryptodome-4.1.0-cp37-abi3-linux_armv7l.whl","PyYAML-6.0.3-cp311-cp311-linux_armv7l.whl")):
+        s.returncode=rc; s.stdout=out; s.stderr=err; s.files=files
 calls=[]
 def fake(result):
     def run(cmd,**kw):
         calls.append(cmd)
         if isinstance(result,Exception): raise result
+        if result.returncode==0 and "-d" in cmd:   # what pip would have downloaded
+            for f in result.files: open(os.path.join(cmd[cmd.index("-d")+1],f),"wb").close()
         return result
     return run
 real_run=subprocess.run
@@ -35,13 +38,23 @@ try:
     calls.clear(); with_pip(R(0))
     check(g.plugin_preflight(wheel()) is None,"ready-made builds exist: no objection")
     c=calls[0]
-    check("--only-binary=:all:" in c and "pycryptodome>=3.15" in c and "PyYAML>=5.4" in c,"it asks pip for the wheel's own requirements, binary only: "+" ".join(c[3:9]))
+    check("--only-binary=:all:" not in c and "pycryptodome>=3.15" in c and "PyYAML>=5.4" in c,"it asks pip for exactly what an install would fetch: "+" ".join(c[3:9]))
     check(not any("pytest" in x for x in c),"and not for optional extras")
     check("--no-deps" in c and "--disable-pip-version-check" in c,"without dependencies or the version check")
 
+    # the newest version of a library has only come out as source code so far (a ready-made build for small
+    # machines usually follows within a day): openHop would compile it, so stop with nothing changed
+    with_pip(R(0,files=("pycryptodome-4.2.0.tar.gz","PyYAML-6.0.3-cp311-cp311-linux_armv7l.whl")))
+    why=g.plugin_preflight(wheel())
+    check(why and "stopped before anything was changed" in why and "pycryptodome" in why and "PyYAML" not in why,
+          "a newest version that would have to be compiled stops it, naming only that library: "+str(why)[:120])
+    check(why and "try again tomorrow" in why and "Update anyway" in why,"and says what to do instead")
+    with_pip(R(0,files=("PyYAML-6.0.3.zip","pycryptodome-4.1.0-cp37-abi3-linux_armv7l.whl")))
+    check("PyYAML" in (g.plugin_preflight(wheel()) or ""),"a zip of source code counts too")
+
     with_pip(R(1,"","ERROR: Could not find a version that satisfies the requirement PyYAML>=5.4 (from versions: none)\nERROR: No matching distribution found for PyYAML>=5.4"))
     why=g.plugin_preflight(wheel())
-    check(why and "stopped before anything was changed" in why and "PyYAML" in why and "pycryptodome" in why,"a clear 'no build exists' stops it, naming the libraries: "+str(why)[:90])
+    check(why and "stopped before anything was changed" in why and "PyYAML" in why and "pycryptodome" in why,"a clear 'nothing at all to install' stops it, naming the libraries: "+str(why)[:90])
     check(why and "Plugins page" in why and "Update anyway" in why,"and says what to do instead")
 
     with_pip(R(1,"","WARNING: Retrying (Retry(total=0)) after connection broken by 'NewConnectionError'\nERROR: Could not find a version that satisfies the requirement PyYAML (from versions: none)\nERROR: No matching distribution found for PyYAML"))
