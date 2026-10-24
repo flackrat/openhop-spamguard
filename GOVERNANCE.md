@@ -37,7 +37,11 @@ The maintainer is responsible for:
 
 The project is set up so that it doesn't depend on any one machine or private copy: the code, the release
 process, the signing (keyless, through GitHub Actions) and the documentation all live in this repository.
-Arrangements for someone else to take over if the maintainer can't continue are being put in place.
+A second person has access to the repository and has agreed to take over if the maintainer can't
+continue. They can open and close issues, review and merge pull requests, and make a release, which the
+release workflow builds, virus-scans and signs by itself when a new version reaches `main`. Signing is
+keyless, so there are no keys or passwords to hand over. The project can therefore carry on within a week
+of losing any one person.
 
 ## Changing this document
 
