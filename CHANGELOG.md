@@ -2,6 +2,10 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.9.1
+### SpamGuard 6.9.1
+- **Updates no longer leave a small Pi without SpamGuard when a library has just had a new release.** When one of SpamGuard's libraries puts out a new version, it often comes as source code first, with ready-made builds for Raspberry Pis following a day or so later. openHop would then compile it while installing, which on a Pi 3 can take longer than openHop waits, so the install stopped partway and nothing was running. SpamGuard's check before updating now asks for exactly what openHop's install would fetch, and if anything would have to be compiled it stops the update before anything is changed, says which library, and suggests trying again tomorrow (or Update anyway).
+
 ## v6.9.0
 ### SpamGuard 6.9.0
 Improvements to the protection level from user testing, from first-time users to experts.
