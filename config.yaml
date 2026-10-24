@@ -27,6 +27,9 @@ mode: monitor
 #   balanced = recommended.
 #   strict   = blocks quickly. Best during a heavy attack, but more likely to
 #              catch genuine people (e.g. a busy event, people repeating a message).
+# These are the two ends and the middle of the protection level slider on the web
+# page (0, 50 and 100), where you can choose anything in between. To start at a
+# point in between, add a line such as "level: 70" below.
 sensitivity: balanced
 
 

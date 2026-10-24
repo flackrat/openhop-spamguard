@@ -124,8 +124,8 @@ Start with the Health panel on the page and the last 50 log lines; most problems
 | Times on the page are an hour or more out | Pi's time zone not set (it defaults to UTC) | See Pi housekeeping below. |
 | Newest message is old | Quiet channel, or checking stopped | Check the footer "last checked"; if it is not "just now", restart SpamGuard and send the log. |
 | "Restart if it hangs: off" on the page | Old service settings | Re-run `sudo bash install.sh` from the package folder. |
-| Genuine people being blocked | A rule too broad for your traffic | Press **Not spam** on their message, remove the block, or choose Relaxed sensitivity. |
-| Spam getting through | Spam doesn't match the current signs yet | Press **This is spam**; try Strict during an attack; keep the evidence log on for tuning. |
+| Genuine people being blocked | A rule too broad for your traffic | Press **Not spam** on their message, remove the block, or slide the protection level gentler. |
+| Spam getting through | Spam doesn't match the current signs yet | Press **This is spam**; slide the protection level tougher during an attack; keep the evidence log on for tuning. |
 | Restart command doesn't return | Service stuck stopping | In a second window: `sudo systemctl kill -s KILL openhop-spamguard` then `sudo systemctl start openhop-spamguard`. |
 
 If something looks wrong, collect these three and send them for diagnosis:
@@ -196,7 +196,10 @@ Replay it with different settings to see what would have been caught, missed or 
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py ~/sg-evidence.jsonl
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py ~/sg-evidence.jsonl --details
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py ~/sg-evidence.jsonl --sensitivity strict --set dedupe_seconds=600
+/opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py ~/sg-evidence.jsonl --levels 0,50,80,100
 ```
+
+SpamGuard does the `--levels` replay itself once a day, at low priority, over the last two days of the evidence log, and shows the results under the protection level on the Overview.
 
 If you set a page password (`listen_api_key`), add `-H "X-API-Key: YOUR_PASSWORD"` to the curl command.
 
@@ -246,7 +249,7 @@ If the uninstaller says it couldn't update openHop's rules (for example because 
 | What | Where |
 |---|---|
 | Program, web page, replay tool, openHop speed-fix script | `/opt/openhop_spamguard/` |
-| Config (token, mode, sensitivity) | `/etc/openhop_spamguard/config.yaml` |
+| Config (token, mode, protection level) | `/etc/openhop_spamguard/config.yaml` |
 | Old config kept by an upgrade | `/etc/openhop_spamguard/config.yaml.old` |
 | Blocks, learnt routes, page settings | `/var/lib/openhop_spamguard/state.json` |
 | Evidence log (one file per day) | `/var/lib/openhop_spamguard/evidence/` |

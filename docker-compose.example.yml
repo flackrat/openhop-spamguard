@@ -15,7 +15,7 @@ services:
       OPENHOP_URL: "http://openhop-repeater:8000"
       # Optional:
       # SPAMGUARD_MODE: "monitor"          # monitor or protect (you can switch on the page)
-      # SPAMGUARD_SENSITIVITY: "balanced"  # relaxed, balanced or strict
+      # SPAMGUARD_LEVEL: "50"  # protection level, 0 (gentle) to 100 (tough)
       # SPAMGUARD_CHANNELS: "#chat,#test"  # extra hashtag channels to protect
       # SPAMGUARD_PASSWORD: ""             # ask for a password before changes on the page
       TZ: "Europe/London"                  # your time zone, so the charts use local time
