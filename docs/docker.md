@@ -48,7 +48,8 @@ Most settings are changed on SpamGuard's own page, and those choices are kept in
 | `OPENHOP_API_KEY` | Your openHop API token (required) |
 | `OPENHOP_URL` | Where openHop's web API is (default `http://127.0.0.1:8000`) |
 | `SPAMGUARD_MODE` | `monitor` or `protect` at first start |
-| `SPAMGUARD_SENSITIVITY` | `relaxed`, `balanced` or `strict` at first start |
+| `SPAMGUARD_LEVEL` | Protection level from 0 (gentle) to 100 (tough) at first start; 50 is balanced |
+| `SPAMGUARD_SENSITIVITY` | The older choice: `relaxed`, `balanced` or `strict` (0, 50 or 100) |
 | `SPAMGUARD_CHANNELS` | Extra hashtag channels to protect, comma-separated, e.g. `#chat,#test` |
 | `SPAMGUARD_PASSWORD` | Ask for a password before anything is changed on the page |
 | `TZ` | Your time zone, e.g. `Europe/Amsterdam` |

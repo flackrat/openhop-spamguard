@@ -2,6 +2,16 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.8.0
+### SpamGuard 6.8.0
+- **A protection level slider instead of Relaxed, Balanced and Strict.** The Overview has a slider from Gentle to Tough that warms from teal to red as it gets tougher, and every point in between works. 0, 50 and 100 are exactly the old Relaxed, Balanced and Strict, so nothing changes until you move it. Under the slider it says in plain words what that level does: how many copies are let through, for how long further copies are held, and how long automatic blocks last.
+- **See what each level would have held on your own traffic.** Once a day, at the lowest priority so the radio always comes first, SpamGuard replays the last two days of the evidence log at eleven points along the scale. Open "What this level would have done" to see how many messages that level would have held, how many were one name repeating itself, and how many are worth a look, with a small chart across the whole scale. Messages worth a look have Spam and Fine buttons; the more you mark, the better the Suggested point on the slider. Nothing is changed by the replay itself. It needs the evidence log turned on.
+- **Tougher also means for longer.** The level now also sets how long a quick-repeat block lasts (30 minutes, 1 hour or 2 hours across the scale), how far back the all-day repeat count looks (12, 24 or 36 hours) and how long automatic blocks last (3, 6 or 12 hours). Balanced is the same as before.
+- **Values you set yourself are kept.** If you have changed one of the values the level sets, the slider says so, and moving it asks whether to use the level's values or keep yours.
+- **Plainer words throughout.** Settings and help no longer talk about hashes, de-duplication, unscoped packets or detection windows; for example "Duplicate suppression" is now "Copies and repeats".
+- **Older choices still work.** A config file, Docker setting or saved profile with relaxed, balanced or strict is read as 0, 50 or 100. The new config setting is `level` (`SPAMGUARD_LEVEL` for Docker).
+- **The replay tool is about nine times quicker,** and can replay protection levels: `replay.py LOG --levels 0,50,80,100`.
+
 ## v6.7.0 (FloodGuard 1.2.5)
 ### FloodGuard 1.2.5
 - **Where floods come into the mesh.** The FloodGuard page now lists the first repeaters on the routes of the flood packets it stopped, so you know which repeater owner to talk to.

@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.7.0"
+VERSION = "6.8.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -106,17 +106,17 @@ SETTINGS_META: list[dict] = [
              "'Anything passing through' blocks everything through it, including people it knows."},
     {"key": "hop_random_senders", "risk": "Lower = blocks a spam repeater sooner, but a repeater used by a couple of people with code-like names (e.g. M0ABC123) could get blocked. Higher = more spam gets out before the block starts.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 100,
      "preset": True, "label": "Random-looking names before blocking",
-     "help": "Block a repeater after this many different made-up looking names (like UD6DWREK) arrive through it in the detection window."},
+     "help": "Block a repeater after this many different made-up looking names (like UD6DWREK) arrive through it within the time set under How far back to count."},
     {"key": "hop_new_senders", "risk": "Lower = catches spammers using realistic names sooner, but a rally, club meet or any busy event where lots of new people talk through one repeater can trigger a block of that repeater. Higher = safer for events, slower against spam.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 200,
      "preset": True, "label": "Brand-new names before blocking",
-     "help": "Block a repeater after this many names never seen before (posting once or twice) arrive through it in the detection window. "
+     "help": "Block a repeater after this many names never seen before (posting once or twice) arrive through it within the time set under How far back to count. "
              "Catches spammers who use realistic names. Raise this if you host busy events."},
     {"key": "hop_campaign_senders", "risk": "Lower = quicker to block a repeater carrying a spam campaign, but a few people forwarding the same news (e.g. a road closure) through one repeater could trigger it.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 100,
      "preset": True, "label": "Spam-campaign senders before blocking",
      "help": "Block a repeater after this many different names send near-identical messages through it."},
-    {"key": "hop_random_senders_long", "risk": "Lower = catches slow, drip-fed spam, but over a long window a handful of genuine code-like names on a busy repeater can add up and trigger a block.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 500,
-     "preset": True, "label": "Slow spam: random names over the long window",
-     "help": "Catches a spammer who posts slowly to stay under the limits: block after this many random-looking names over the long window."},
+    {"key": "hop_random_senders_long", "risk": "Lower = catches slow, drip-fed spam, but over a longer time a handful of genuine code-like names on a busy repeater can add up and trigger a block.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 500,
+     "preset": True, "label": "Slow spam: made-up names over a longer time",
+     "help": "Catches a spammer who posts slowly to stay under the limits: block after this many made-up looking names within the longer time set under Timing."},
     {"key": "auto_lockdown", "group": "Blocking by source repeater", "type": "bool",
      "risk": "During a big flood, people SpamGuard doesn't know yet (newcomers) are held for 15 minutes too. Turning it off lets a flood through that comes from many repeaters at once with made-up names.",
      "label": "Short automatic lockdown during a big flood",
@@ -124,10 +124,10 @@ SETTINGS_META: list[dict] = [
     {"key": "enable_rotation_guard", "group": "Blocking by source repeater", "type": "bool",
      "risk": "While a rotation block is active, a genuine repeater that has never been heard before, sitting in the same place in the network as the spammer, is blocked until it builds up history or you allow it. Turning this off lets more spam through from a spammer who keeps changing his repeater's identity.",
      "label": "Catch a spam repeater that keeps changing its identity",
-     "help": "Some firmware lets a repeater change its ID (and so its hash) at will. The spam then arrives from a new first repeater each time, but always through the same next repeaters. SpamGuard learns which repeaters normally appear in front of each route and, when many unknown ones start sending spam the same way, blocks unknown ones there while still letting the known ones through."},
+     "help": "Some firmware lets a repeater change its ID (and so its code in routes) at will. The spam then arrives from a new first repeater each time, but always through the same next repeaters. SpamGuard learns which repeaters normally appear in front of each route and, when many unknown ones start sending spam the same way, blocks unknown ones there while still letting the known ones through."},
     {"key": "rotate_first_hops", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 50,
      "preset": True, "risk": "Lower = reacts to an identity-changing spammer sooner, but a couple of new genuine repeaters appearing behind the same route at the same time as some odd-looking names could trigger it. Higher = more spam gets through first.",
-     "label": "Unknown repeaters before a rotation block",
+     "label": "New repeaters before an identity-changing block",
      "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs."},
     {"key": "route_memory_days", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 60, "unit": "days",
      "risk": "Shorter = repeaters that only talk occasionally are forgotten and may be treated as unknown during a rotation block. Longer = slightly more memory and disk use.",
@@ -151,12 +151,12 @@ SETTINGS_META: list[dict] = [
      "label": "Lift once the radio has been quiet for",
      "help": "The limit is removed when the radio has been well below the busy level for this long."},
     {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
-     "risk": "Unscoped flood packets (sent without a region) that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
-     "label": "Hop limit for unscoped flood packets (0 = off)",
+     "risk": "Flood packets sent without a region that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
+     "label": "Most hops for flood packets with no region (0 = off)",
      "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Automatic: about twice the longest routes this repeater normally hears, between 16 and 32 (32 until it has learnt). Genuine traffic usually takes 5 to 7 hops, so a padded flood can't run to openHop's 64-hop ceiling. openHop's own Max flood hops setting also applies to flood packets, so whichever limit is lower is the one that bites."},
     {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
-     "label": "Hop limit for adverts (0 = off)",
+     "label": "Most hops for adverts (0 = off)",
      "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt). openHop's own Max flood hops setting also applies to adverts, and the lower of the two is the one that counts."},
     {"key": "interference_watch", "group": "FloodGuard", "type": "bool",
      "risk": "Turned off, SpamGuard won't tell you when something nearby is drowning the channel, so a repeater that has gone half-deaf can go unnoticed for days.",
@@ -183,7 +183,7 @@ SETTINGS_META: list[dict] = [
      "label": "Most routes to learn per repeater",
      "help": "Upper limit on exact routes remembered for one blocked repeater."},
     # -- Text blocking
-    {"key": "enable_text_rules", "risk": "Turning this off leaves only repeater blocks and duplicate suppression, so spam from a new location gets through until its repeater is detected. While on, a genuine message that several people repeat can be blocked.", "group": "Blocking by message text", "type": "bool",
+    {"key": "enable_text_rules", "risk": "Turning this off leaves only repeater blocks and the copy and repeat checks, so spam from a new location gets through until its repeater is detected. While on, a genuine message that several people repeat can be blocked.", "group": "Blocking by message text", "type": "bool",
      "label": "Block spam campaigns by their text",
      "help": "When several different names send the same or very similar message, block that text from everyone."},
     {"key": "text_distinct_senders", "risk": "Lower (2) = blocks a campaign after just two names, but two people sending the same genuine message (a net check-in, a forwarded alert) will get it blocked. Higher = more spam copies get through first.", "group": "Blocking by message text", "type": "int", "min": 2, "max": 50,
@@ -194,54 +194,54 @@ SETTINGS_META: list[dict] = [
      "help": "Messages this similar are grouped together, so adding a random word, changing case or swapping "
              "look-alike letters does not dodge the filter. 100% means identical only."},
     {"key": "min_rule_chars", "risk": "Lower = rules can be built from shorter shared text (helps with heavily varied spam), but a short rule such as 'the meeting' could block genuine messages containing it. Higher = safer, but heavily varied spam may not produce a rule at all.", "group": "Blocking by message text", "type": "int", "min": 8, "max": 80,
-     "label": "Shortest text a rule may match",
+     "label": "Shortest text a block may match",
      "help": "A text rule must match at least this many characters, so it never blocks something short and common."},
     # -- Duplicate suppression
-    {"key": "dedupe_enabled", "risk": "While on, anyone who sends the same long message twice (resending because nobody answered, a repeated net call, several people forwarding an alert) only has the first copy forwarded. Turning it off lets a spammer repeat himself freely under new names until other rules catch up.", "group": "Duplicate suppression", "type": "bool",
+    {"key": "dedupe_enabled", "risk": "While on, anyone who sends the same long message twice (resending because nobody answered, a repeated net call, several people forwarding an alert) only has the first copy forwarded. Turning it off lets a spammer repeat himself freely under new names until other rules catch up.", "group": "Copies and repeats", "type": "bool",
      "label": "Only let the first copy of a message through",
      "help": "After any channel message is seen, the same text from anyone else is blocked for a while. "
              "Stops a spammer repeating himself under new names. Short messages are never affected."},
-    {"key": "dedupe_seconds", "risk": "Longer = repeats are blocked for longer, but genuine people re-asking the same question later are blocked for longer too. Shorter = a spammer can wait it out and repeat the message.", "group": "Duplicate suppression", "type": "int", "min": 30, "max": 86400, "unit": "s",
-     "preset": True, "label": "Block repeats for",
+    {"key": "dedupe_seconds", "risk": "Longer = repeats are blocked for longer, but genuine people re-asking the same question later are blocked for longer too. Shorter = a spammer can wait it out and repeat the message.", "group": "Copies and repeats", "type": "int", "min": 30, "max": 86400, "unit": "s",
+     "preset": True, "label": "Block copies for",
      "help": "How long the same text stays blocked after it is first seen."},
-    {"key": "dedupe_min_chars", "risk": "Lower = more messages are de-duplicated, catching shorter spam, but everyday phrases like 'Is anyone receiving me?' may only get through once per period. Higher = everyday chat is safer, short spam is not de-duplicated.", "group": "Duplicate suppression", "type": "int", "min": 5, "max": 150,
+    {"key": "dedupe_min_chars", "risk": "Lower = more messages are treated as copies, catching shorter spam, but everyday phrases like 'Is anyone receiving me?' may only get through once per period. Higher = everyday chat is safer, short spam is not de-duplicated.", "group": "Copies and repeats", "type": "int", "min": 5, "max": 150,
      "preset": True, "label": "Only for messages at least this long",
-     "help": "Messages shorter than this are never de-duplicated, so 'Morning all' or 'Anyone about?' are safe."},
-    {"key": "text_rule_chars", "risk": "Shorter = harder for the spammer to dodge by editing the message, but more chance of matching a genuine message that shares that wording. Longer = more precise, but small edits can dodge it.", "group": "Duplicate suppression", "type": "int", "min": 5, "max": 150,
-     "label": "Characters matched by a duplicate rule",
+     "help": "Messages shorter than this are never treated as copies, so 'Morning all' or 'Anyone about?' are safe."},
+    {"key": "text_rule_chars", "risk": "Shorter = harder for the spammer to dodge by editing the message, but more chance of matching a genuine message that shares that wording. Longer = more precise, but small edits can dodge it.", "group": "Copies and repeats", "type": "int", "min": 5, "max": 150,
+     "label": "How much of a message a copy block matches",
      "help": "How much of a message a duplicate rule matches, so small edits don't get round it."},
-    {"key": "repeat_guard", "group": "Duplicate suppression", "type": "bool",
+    {"key": "repeat_guard", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can post the same line over and over and it all goes out, because SpamGuard never blocks a person for what they say.",
      "label": "Stop one name repeating the same message",
      "help": "When the same name sends the same message again and again in a short time, further copies of that message from that name are not passed on for a while. Their first copies, and anything new they say, still go out."},
-    {"key": "replay_guard", "group": "Duplicate suppression", "type": "bool",
+    {"key": "replay_guard", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, a device that keeps re-sending other people's old messages (usually broken firmware) fills the channel with repeats, often dozens of copies of each. While on, someone whose device clock is badly wrong and who sends the same long message twice may have the second copy held back.",
      "label": "Stop old messages being sent again (replays)",
      "help": "Some devices pick up channel messages and send them out again later, with their own clock (often months or years wrong) and sometimes with the sender's name cut short. When a message turns up again that was first heard a while ago, either with a clock that's badly off or under a cut-short copy of the original name, further copies of it from that name are held back. The original message always went out first, and anything new from anyone is untouched."},
-    {"key": "repeat_max", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 2, "max": 20,
+    {"key": "repeat_max", "group": "Copies and repeats", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
      "label": "Copies allowed before repeats are stopped",
      "help": "How many times one name can send the same message within the time below before further copies are stopped."},
-    {"key": "repeat_window_seconds", "group": "Duplicate suppression", "type": "int", "min": 60, "max": 7200, "unit": "s",
-     "label": "Within",
+    {"key": "repeat_window_seconds", "group": "Copies and repeats", "type": "int", "min": 60, "max": 7200, "unit": "s",
+     "label": "Counted over",
      "help": "The time in which those copies are counted."},
-    {"key": "repeat_block_seconds", "group": "Duplicate suppression", "type": "int", "min": 300, "max": 86400, "unit": "s",
+    {"key": "repeat_block_seconds", "group": "Copies and repeats", "type": "int", "preset": True, "min": 300, "max": 86400, "unit": "s",
      "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = they can start again sooner.",
      "label": "Stop further copies for",
      "help": "How long further copies of that message from that name are stopped."},
-    {"key": "slow_repeat", "group": "Duplicate suppression", "type": "bool",
+    {"key": "slow_repeat", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can post the same long message again and again, spread out through the day, and all of it goes out. While on, someone who genuinely posts the same long message more than the limit below in a day has the extra copies held back for a few hours.",
      "label": "Stop slow repeating (the same message spread over hours)",
      "help": "The repeat guard above only notices copies sent within minutes of each other. This one counts the same long message from the same name over a whole day, so a message posted every hour or so is caught too. Their first few copies, and anything new they say, still go out. It only counts what is repeated, never what the message says."},
-    {"key": "slow_repeat_max", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 2, "max": 20,
+    {"key": "slow_repeat_max", "group": "Copies and repeats", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
      "label": "Copies allowed before slow repeats are stopped",
      "help": "How many times one name can send the same long message within the day before further copies are held."},
-    {"key": "slow_repeat_window_seconds", "group": "Duplicate suppression", "type": "int", "min": 3600, "max": 172800, "unit": "s",
+    {"key": "slow_repeat_window_seconds", "group": "Copies and repeats", "type": "int", "preset": True, "min": 3600, "max": 172800, "unit": "s",
      "risk": "Longer = catches slower repeating, but a message re-posted once a day for a week is never counted against the daily limit anyway. Shorter = only quick repeating counts.",
-     "label": "Within (slow repeats)",
+     "label": "Counted over (slow repeats)",
      "help": "The time in which those copies are counted."},
-    {"key": "slow_repeat_hold_seconds", "group": "Duplicate suppression", "type": "int", "preset": True, "min": 900, "max": 86400, "unit": "s",
+    {"key": "slow_repeat_hold_seconds", "group": "Copies and repeats", "type": "int", "preset": True, "min": 900, "max": 86400, "unit": "s",
      "risk": "Longer = a persistent repeater stays quiet for longer. Shorter = a copy gets through sooner.",
      "label": "Hold further copies for (slow repeats)",
      "help": "How long further copies of that message from that name are held. While they keep repeating it, one copy gets through each time this period ends."},
@@ -265,20 +265,20 @@ SETTINGS_META: list[dict] = [
      "help": "Names are scored 0-6 for looking machine-generated. "
              "Names at or above this score count as random. Lower = stricter."},
     {"key": "random_name_patterns", "risk": "A pattern that is too broad (e.g. any 8 letters) marks genuine people as random. Try new patterns in Monitor mode first.", "group": "Sender names", "type": "list",
-     "label": "Extra name patterns (regular expressions)",
-     "help": "Optional. One regular expression per line. Names matching any of these always count as random. Matching ignores case."},
+     "label": "Extra name patterns (for experts)",
+     "help": "Optional, for experts. One pattern (a regular expression) per line. Names matching any of these always count as random. Matching ignores case."},
     {"key": "detect_garbage", "risk": "Turning this off lets junk-text floods through until other signs catch up. While on, a newcomer whose message is genuinely garbled could be counted as spam.", "group": "Sender names", "type": "bool",
      "label": "Treat unreadable random text as spam",
      "help": "Some floods send meaningless junk text under made-up names. When on, junk messages like that count as spam. "
              "Ordinary messages in any language, with emoji or kaomoji, are not affected."},
     # -- Timing
     {"key": "window_seconds", "risk": "Longer = slow spam is easier to spot, but on a busy repeater genuine new users add up and can trip the 'brand-new names' limit. Shorter = only fast bursts are detected.", "group": "Timing", "type": "int", "min": 60, "max": 86400, "unit": "s",
-     "label": "Detection window",
+     "label": "How far back to count",
      "help": "How far back SpamGuard looks when counting senders through a repeater."},
     {"key": "long_window_seconds", "risk": "Longer = catches very slow spam, but random-looking genuine names accumulate over the window and can add up to a block on busy repeaters.", "group": "Timing", "type": "int", "min": 600, "max": 86400, "unit": "s",
-     "label": "Long window (slow spam)",
+     "label": "How far back to count slow spam",
      "help": "A longer look-back used to catch spam sent slowly."},
-    {"key": "block_ttl_seconds", "risk": "Longer = a spammer who pauses and returns is still blocked, but genuine users behind a wrongly blocked repeater stay blocked longer. Shorter = mistakes clear faster, but spam may return between blocks.", "group": "Timing", "type": "int", "min": 300, "max": PERMANENT_SECONDS, "unit": "s",
+    {"key": "block_ttl_seconds", "preset": True, "risk": "Longer = a spammer who pauses and returns is still blocked, but genuine users behind a wrongly blocked repeater stay blocked longer. Shorter = mistakes clear faster, but spam may return between blocks.", "group": "Timing", "type": "int", "min": 300, "max": PERMANENT_SECONDS, "unit": "s",
      "label": "Automatic blocks last for",
      "help": "Automatic blocks are removed this long after the spam stops. They are renewed while spam keeps arriving."},
     {"key": "hop_block_ttl_seconds", "risk": "Longer = a spam repeater that goes quiet for a while is still blocked when the spammer returns, but new people whose messages pass through it stay held longer. Shorter = mistakes clear sooner; a returning spammer gets a few copies through before the block starts again.", "group": "Timing", "type": "int", "min": 600, "max": PERMANENT_SECONDS, "unit": "s",
@@ -322,23 +322,64 @@ PRESETS: dict[str, dict] = {
     "relaxed": {"rotate_first_hops": 4, "hop_random_senders": 5, "hop_new_senders": 10, "hop_campaign_senders": 5,
                 "hop_random_senders_long": 8, "text_distinct_senders": 4, "similarity": 80,
                 "dedupe_seconds": 600, "dedupe_min_chars": 40, "name_score_threshold": 4,
-                "repeat_max": 4, "slow_repeat_max": 4, "slow_repeat_hold_seconds": 7200},
+                "repeat_max": 4, "slow_repeat_max": 4, "slow_repeat_hold_seconds": 7200,
+                "repeat_block_seconds": 1800, "slow_repeat_window_seconds": 43200, "block_ttl_seconds": 10800},
     "balanced": {"rotate_first_hops": 3, "hop_random_senders": 3, "hop_new_senders": 6, "hop_campaign_senders": 3,
                  "hop_random_senders_long": 5, "text_distinct_senders": 3, "similarity": 65,
                  "dedupe_seconds": 900, "dedupe_min_chars": 30, "name_score_threshold": 3,
-                 "repeat_max": 3, "slow_repeat_max": 3, "slow_repeat_hold_seconds": 10800},
+                 "repeat_max": 3, "slow_repeat_max": 3, "slow_repeat_hold_seconds": 10800,
+                 "repeat_block_seconds": 3600, "slow_repeat_window_seconds": 86400, "block_ttl_seconds": 21600},
     "strict": {"rotate_first_hops": 2, "hop_random_senders": 2, "hop_new_senders": 4, "hop_campaign_senders": 2,
                "hop_random_senders_long": 3, "text_distinct_senders": 2, "similarity": 55,
                "dedupe_seconds": 1800, "dedupe_min_chars": 24, "name_score_threshold": 2,
-               "repeat_max": 2, "slow_repeat_max": 2, "slow_repeat_hold_seconds": 21600},
+               "repeat_max": 2, "slow_repeat_max": 2, "slow_repeat_hold_seconds": 21600,
+               "repeat_block_seconds": 7200, "slow_repeat_window_seconds": 129600, "block_ttl_seconds": 43200},
 }
+# The protection level (0-100) slides smoothly between the three presets: 0 is relaxed, 50 balanced and
+# 100 strict, and every value in between is worked out from the two either side. Tougher also means longer.
+SENSITIVITY_LEVEL = {"relaxed": 0, "balanced": 50, "strict": 100}
+LEVEL_NAMES = ((20, "Gentle"), (40, "Easy-going"), (60, "Balanced"), (80, "Firm"), (101, "Tough"))
+PREVIEW_LEVELS = tuple(range(0, 101, 10))
+
+
+def level_values(level) -> dict:
+    """The settings a protection level sets. Rounded half up, the same way the web page does it."""
+    level = max(0, min(100, int(level)))
+    lo, hi, f = ((PRESETS["relaxed"], PRESETS["balanced"], level / 50) if level <= 50
+                 else (PRESETS["balanced"], PRESETS["strict"], (level - 50) / 50))
+    return {k: int(lo[k] + (hi[k] - lo[k]) * f + 0.5) for k in PRESETS["balanced"]}
+
+
+def level_name(level) -> str:
+    return next(n for top, n in LEVEL_NAMES if int(level) < top)
+
+
+def suggest_level(rep: dict) -> Optional[int]:
+    """The level that would have held the most spam for the fewest messages worth a look, and never one
+    you marked as fine (each counts three times against it). The gentlest such level wins a tie. No
+    suggestion from too little traffic, or when nothing like spam was seen."""
+    levels = rep.get("levels") or []
+    span = (rep.get("to") or 0) - (rep.get("from") or 0)
+    if not levels or (rep.get("messages") or 0) < SpamGuard.PREVIEW_MIN_MESSAGES or span < 12 * 3600:
+        return None
+    if not any(lv["spam"] + lv["repeats"] for lv in levels):
+        return None
+    best = max(levels, key=lambda lv: (lv["spam"] + lv["repeats"] - lv["check"] - 3 * lv["wrong"], -lv["level"]))
+    return best["level"]
+
+
+def level_sensitivity(level) -> str:
+    """The nearest of the three old presets, for anything that still reads 'sensitivity'."""
+    return min(SENSITIVITY_LEVEL, key=lambda s: abs(SENSITIVITY_LEVEL[s] - int(level)))
+
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "openhop_url": "http://127.0.0.1:8000",
     "api_key": "",
     "mode": "monitor",                    # monitor | protect
     "paused": False,
-    "sensitivity": "balanced",            # relaxed | balanced | strict
+    "sensitivity": "balanced",            # relaxed | balanced | strict (the older choice: 0, 50 or 100 below)
+    "level": 50,                          # protection level 0-100: how firmly SpamGuard pushes back
     "channels": {"Public": PUBLIC_CHANNEL_KEY},
     "hashtag_channels": [],               # e.g. ["#test", "#chat"] - keys are worked out from the name
     "enable_hop_rules": True,
@@ -407,7 +448,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 FG_AUTO_KEYS = {"flood_busy_percent": (10, 40), "flood_max_unscoped": (16, 32), "flood_max_advert": (6, 16)}
 FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
-EXTRA_TUNABLES = {"mode", "paused", "sensitivity"}
+EXTRA_TUNABLES = {"mode", "paused", "sensitivity", "level"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
 KEEP_ON_RESET = {"evidence_log", "evidence_days", "update_check", "map_directory", "openhop_autofix",
                  "wardrive_block"}
@@ -1167,6 +1208,9 @@ class SpamGuard:
     def __init__(self, cfg_file: dict):
         self.file_cfg = cfg_file
         self.lock = threading.RLock()
+        self.level_preview: Optional[dict] = None
+        self._preview_busy = False
+        self._preview_tried = time.time() - self.PREVIEW_EVERY + 600   # first check 10 minutes after starting
         self.events: collections.deque[Event] = collections.deque()
         self.seen_packets: collections.OrderedDict[str, float] = collections.OrderedDict()
         # Packets already written to the evidence log. Kept across restarts, because on start-up
@@ -1315,16 +1359,39 @@ class SpamGuard:
                         and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
                     self.known[name] = [h["first"], h["first"], h["count"]]
 
-    # ---- configuration layering: defaults < sensitivity preset < config file < web page
+    def current_level(self) -> int:
+        """The protection level: set on the page, else in the config file; an older sensitivity choice
+        (relaxed, balanced or strict) stands for 0, 50 or 100."""
+        for src in (self.settings, self.file_cfg):
+            if src.get("level") is not None:
+                try:
+                    return max(0, min(100, int(src["level"])))
+                except (TypeError, ValueError):
+                    pass
+            if src.get("sensitivity") in SENSITIVITY_LEVEL:
+                return SENSITIVITY_LEVEL[src["sensitivity"]]
+        return 50
+
+    def own_level_values(self) -> list[dict]:
+        """Values the protection level would set that you have set yourself to something else."""
+        lv = level_values(self.cfg.get("level", 50))
+        out = []
+        for k, v in lv.items():
+            mine = self.settings.get(k, self.file_cfg.get(k))
+            if mine is not None and mine != v:
+                out.append({"key": k, "label": META_BY_KEY[k]["label"], "yours": mine, "level": v,
+                            "unit": META_BY_KEY[k].get("unit")})
+        return out
+
+    # ---- configuration layering: defaults < protection level < config file < web page
     def rebuild_cfg(self):
-        sens = self.settings.get("sensitivity") or self.file_cfg.get("sensitivity") or "balanced"
-        if sens not in PRESETS:
-            sens = "balanced"
+        level = self.current_level()
         cfg = json.loads(json.dumps(DEFAULT_CONFIG))
-        cfg.update(PRESETS[sens])
+        cfg.update(level_values(level))
         cfg.update(self.file_cfg)
         cfg.update(self.settings)
-        cfg["sensitivity"] = sens
+        cfg["level"] = level
+        cfg["sensitivity"] = level_sensitivity(level)
         # FloodGuard's learnt values, for the settings you haven't set yourself
         for k, v in ((getattr(self, "fg", None) or {}).get("learnt") or {}).items():
             if k in FG_AUTO_KEYS and k not in self.settings and k not in self.file_cfg:
@@ -1387,7 +1454,8 @@ class SpamGuard:
 
     def snapshot_settings(self, why: str):
         self.ev({"type": "settings", "why": why, "version": VERSION,
-                 "sensitivity": self.cfg["sensitivity"], "mode": self.cfg["mode"], "paused": bool(self.cfg.get("paused")),
+                 "sensitivity": self.cfg["sensitivity"], "level": self.cfg.get("level"), "mode": self.cfg["mode"],
+                 "paused": bool(self.cfg.get("paused")),
                  "settings": {m["key"]: self.cfg.get(m["key"]) for m in SETTINGS_META}})
 
     def note(self, msg: str, journal: bool = True):
@@ -1494,6 +1562,9 @@ class SpamGuard:
         for k, v in (st.get("labels") or {}).items():
             if v in ("spam", "not_spam"):
                 self.labels[str(k)] = v
+        if isinstance(st.get("level_preview"), dict):
+            self.level_preview = st["level_preview"]
+            self._preview_tried = float(self.level_preview.get("ran") or self.level_preview.get("failed") or 0)
         for b in self.blocks.values():
             b.setdefault("hits", 0)
             b.setdefault("source", "manual" if b.get("manual") else ("hop" if b.get("kind") == "hop" else "campaign"))
@@ -1561,6 +1632,7 @@ class SpamGuard:
                     "name_links": self.name_links,
                     "held_names": dict(list(self.held_names.items())[-3000:]),
                     "labels": dict(list(self.labels.items())[-1000:]),
+                    "level_preview": self.level_preview,
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                 }
@@ -2068,7 +2140,7 @@ class SpamGuard:
         f["learnt_at"] = now
         f.pop("start_now", None)
         words = {"flood_busy_percent": lambda v: f"steps in above {v}% busy",
-                 "flood_max_unscoped": lambda v: f"unscoped flood packets stop after {v} hops",
+                 "flood_max_unscoped": lambda v: f"flood packets with no region stop after {v} hops",
                  "flood_max_advert": lambda v: f"adverts stop after {v} hops"}
         if first and relearn:
             f.pop("relearn", None)
@@ -3081,6 +3153,76 @@ class SpamGuard:
                             "seen": seen, "src": "map"})
             except Exception:
                 continue
+        return out
+
+    # ---- what each protection level would have done, replayed from the evidence log
+    PREVIEW_EVERY = 86400          # once a day
+    PREVIEW_SPAN = 2 * 86400       # over the last two days
+    PREVIEW_MIN_MESSAGES = 200     # fewer than this and a suggestion would be guesswork
+
+    def refresh_level_preview(self, force: bool = False):
+        """Once a day, in the background at low priority: replay the last two days of the evidence log at
+        each protection level, so the page can say what each level would have held. Nothing is changed."""
+        if self._preview_busy or self.evidence is None or getattr(self, "standby", None):
+            return
+        now = time.time()
+        if not force and now - self._preview_tried < self.PREVIEW_EVERY:
+            return
+        script = os.path.join(HERE, "replay.py")
+        if not os.path.exists(script):
+            return
+        self._preview_tried = now
+        self.evidence.flush(force=True)
+        first_day = time.strftime("%Y-%m-%d", time.localtime(now - self.PREVIEW_SPAN - 86400))
+        files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first_day]
+        if not files:
+            return
+        c = self.cfg
+        # your own settings, apart from the ones the level sets, and your exceptions: never keys or tokens
+        base = {k: c[k] for k in profile_keys() if k in c and k not in PRESETS["balanced"]}
+        base.update({"allow_hops": sorted(self.allow_hops), "allow_senders": sorted(self.allow_senders),
+                     "allow_texts": sorted(self.allow_texts), "hashtag_channels": list(c.get("hashtag_channels") or [])})
+        self._preview_busy = True
+
+        def work():
+            import tempfile
+            folder = tempfile.mkdtemp(prefix="sg-preview-")
+            started = time.time()
+            try:
+                path = os.path.join(folder, "base.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(base, f)
+                cmd = [sys.executable, script, "--levels", ",".join(map(str, PREVIEW_LEVELS)), "--json",
+                       "--since", str(int(now - self.PREVIEW_SPAN)), "--base", path, *files]
+                if shutil.which("nice"):
+                    cmd = ["nice", "-n", "19", *cmd]   # the radio's work always comes first
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800, cwd=folder)
+                if r.returncode != 0:
+                    raise RuntimeError((r.stderr or "").strip().splitlines()[-1:] or "replay failed")
+                rep = json.loads(r.stdout.strip().splitlines()[-1])
+                rep["ran"], rep["took"] = time.time(), round(time.time() - started)
+                rep["suggested"] = suggest_level(rep)
+                with self.lock:
+                    self.level_preview = rep
+                    self._save_state(force=True)
+            except Exception as e:
+                log.warning("Could not work out what each protection level would do: %s", e)
+                with self.lock:
+                    self.level_preview = dict(self.level_preview or {}, error="It couldn't be worked out this time. "
+                                              "It will try again tomorrow.", failed=time.time())
+            finally:
+                shutil.rmtree(folder, ignore_errors=True)
+                self._preview_busy = False
+
+        threading.Thread(target=work, daemon=True, name="level-preview").start()
+
+    def preview_summary(self) -> dict:
+        p = self.level_preview or {}
+        out = {"running": bool(self._preview_busy), "enabled": self.evidence is not None,
+               "ran": p.get("ran"), "error": p.get("error") if (p.get("failed") or 0) > (p.get("ran") or 0) else None}
+        if p.get("levels"):
+            out.update({k: p.get(k) for k in ("from", "to", "messages", "labelled_spam", "labelled_fine",
+                                              "levels", "suggested", "took")})
         return out
 
     def refresh_public_map(self, force: bool = False):
@@ -4588,6 +4730,7 @@ class SpamGuard:
             self.refresh_openhop_info()
             self.refresh_own_identities()
             self.refresh_public_map()
+            self.refresh_level_preview()
             self.backfill_adverts()
             self.fetch_noise()
         except Exception:
@@ -4823,7 +4966,7 @@ class SpamGuard:
             c = self.cfg
             config = {"api_key": c.get("api_key", ""), "openhop_url": c.get("openhop_url"),
                       "mode": c.get("mode", "monitor"), "sensitivity": c.get("sensitivity", "balanced"),
-                      "listen_port": port, "hashtag_channels": list(c.get("hashtag_channels") or []),
+                      "level": c.get("level", 50), "listen_port": port, "hashtag_channels": list(c.get("hashtag_channels") or []),
                       "import_from": f"http://{self._address_seen_by_openhop()}:{port}/handover?key={self._handover_key}"}
             if c.get("listen_api_key"):
                 config["listen_api_key"] = c["listen_api_key"]
@@ -5833,6 +5976,8 @@ class SpamGuard:
             return {
                 "version": VERSION, "floodguard_version": FLOODGUARD_VERSION,
                 "mode": c["mode"], "paused": bool(c.get("paused")), "sensitivity": c["sensitivity"],
+                "level": {"value": c.get("level", 50), "name": level_name(c.get("level", 50)),
+                          "names": LEVEL_NAMES, "own": self.own_level_values(), "preview": self.preview_summary()},
                 "service": self.health(),
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
@@ -5892,7 +6037,7 @@ class SpamGuard:
     # ---- settings profiles ----
     def current_profile(self) -> dict:
         """The detection settings in force now, as a profile: the sensitivity plus every value you changed."""
-        return {"sensitivity": self.cfg.get("sensitivity", "balanced"),
+        return {"sensitivity": self.cfg.get("sensitivity", "balanced"), "level": self.cfg.get("level", 50),
                 "values": {k: self.settings[k] for k in profile_keys() if k in self.settings}}
 
     @staticmethod
@@ -5901,7 +6046,7 @@ class SpamGuard:
         Anything else (channels, keys, exceptions, the mode, unknown fields) is refused, not ignored."""
         if not isinstance(p, dict):
             raise ValueError("That isn't a SpamGuard profile")
-        extra = set(p) - {"format", "version", "name", "sensitivity", "values", "saved"}
+        extra = set(p) - {"format", "version", "name", "sensitivity", "level", "values", "saved"}
         if extra:
             raise ValueError("A profile can't hold " + ", ".join(sorted(extra)))
         if p.get("format", PROFILE_FORMAT) != PROFILE_FORMAT or int(p.get("version", 1)) != 1:
@@ -5933,14 +6078,22 @@ class SpamGuard:
                 for x in v:
                     re.compile(x)
             out[k] = v
-        return {"sensitivity": sens, "values": out}
+        level = p.get("level", SENSITIVITY_LEVEL[sens])
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            raise ValueError("The protection level in the profile isn't a number") from None
+        if not 0 <= level <= 100:
+            raise ValueError("The protection level in the profile must be from 0 to 100")
+        return {"sensitivity": level_sensitivity(level), "level": level, "values": out}
 
     def profile_modified(self) -> bool:
         p = self.profiles.get(self.profile_in_use or "")
         if not p:
             return False
         cur = self.current_profile()
-        return cur["sensitivity"] != p.get("sensitivity") or cur["values"] != (p.get("values") or {})
+        level = p.get("level", SENSITIVITY_LEVEL.get(p.get("sensitivity"), 50))
+        return cur["level"] != level or cur["values"] != (p.get("values") or {})
 
     def apply_profile(self, p: dict):
         """Put a profile's detection settings in place. Everything a profile doesn't hold stays as it is."""
@@ -5948,7 +6101,7 @@ class SpamGuard:
         with self.lock:
             for k in profile_keys():
                 self.settings.pop(k, None)
-        self.apply_settings({"sensitivity": p["sensitivity"]})
+        self.apply_settings({"level": p["level"]})
         if p["values"]:
             self.apply_settings(dict(p["values"]))
 
@@ -5968,10 +6121,27 @@ class SpamGuard:
                     elif k == "sensitivity":
                         if v not in PRESETS:
                             raise ValueError("sensitivity must be relaxed, balanced or strict")
-                        # Choosing a preset clears hand-tuned values it controls.
+                        # The older choice: the same as that level, and it replaces your own values.
                         for m in SETTINGS_META:
                             if m.get("preset"):
                                 self.settings.pop(m["key"], None)
+                        k, v = "level", SENSITIVITY_LEVEL[v]
+                        self.settings.pop("sensitivity", None)
+                    elif k == "level":
+                        try:
+                            v = int(v)
+                        except (TypeError, ValueError):
+                            raise ValueError("The protection level must be a number from 0 to 100") from None
+                        if not 0 <= v <= 100:
+                            raise ValueError("The protection level must be a number from 0 to 100")
+                        self.settings.pop("sensitivity", None)
+                    elif k == "replace_own":
+                        # With a new level: drop your own values for the settings the level sets.
+                        if v:
+                            for m in SETTINGS_META:
+                                if m.get("preset"):
+                                    self.settings.pop(m["key"], None)
+                        continue
                     elif k in META_BY_KEY:
                         m = META_BY_KEY[k]
                         if m["type"] == "bool":
@@ -6001,10 +6171,13 @@ class SpamGuard:
                 self.settings.update(new)
                 words = {"mode": {"monitor": "Monitor only", "protect": "Protect"},
                          "paused": {True: "Paused", False: "Resumed"}}
-                self.note("Changed: " + ", ".join(
-                    (words.get(k, {}).get(v) if not isinstance(v, (list, dict)) else None)
-                    or f"{META_BY_KEY[k]['label'] if k in META_BY_KEY else k} = {', '.join(map(str, v)) if isinstance(v, list) else v}"
-                    for k, v in new.items()))
+                if "level" in new:
+                    words["level"] = {new["level"]: f"Protection level {new['level']} ({level_name(new['level'])})"}
+                if new:
+                    self.note("Changed: " + ", ".join(
+                        (words.get(k, {}).get(v) if not isinstance(v, (list, dict)) else None)
+                        or f"{META_BY_KEY[k]['label'] if k in META_BY_KEY else k} = {', '.join(map(str, v)) if isinstance(v, list) else v}"
+                        for k, v in new.items()))
             self.rebuild_cfg()
             self.snapshot_settings("changed on the page")
             self._save_state(force=True)
@@ -6085,6 +6258,15 @@ class SpamGuard:
                                 "manual", channel=channel,
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]))
                 msg = f"Blocking messages containing \"{text}\""
+            elif op == "preview_now":
+                if self.evidence is None:
+                    raise ValueError("Turn on the evidence log first: the check replays what it has recorded")
+                if self._preview_busy:
+                    raise ValueError("It is already being worked out")
+                if time.time() - max(self._preview_tried, (self.level_preview or {}).get("ran") or 0) < 600:
+                    raise ValueError("It was worked out a few minutes ago. Try again in 10 minutes")
+                self.refresh_level_preview(force=True)
+                msg = "Working out what each level would have held. It takes a few minutes"
             elif op == "label":
                 lab = body.get("label")
                 if lab not in ("spam", "not_spam", "none"):
@@ -6370,7 +6552,7 @@ ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "exten
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
-           "hide_source", "label"}
+           "hide_source", "label", "preview_now"}
 
 
 class QuietServer(ThreadingHTTPServer):
@@ -6495,6 +6677,7 @@ def load_config(path: Optional[str]) -> dict:
     # Optional settings from the environment, mainly for Docker. The config file wins when both are set,
     # except for the token above.
     env = {"OPENHOP_URL": "openhop_url", "SPAMGUARD_MODE": "mode", "SPAMGUARD_SENSITIVITY": "sensitivity",
+           "SPAMGUARD_LEVEL": "level",
            "SPAMGUARD_PASSWORD": "listen_api_key"}
     for var, key in env.items():
         if os.environ.get(var) and key not in cfg:

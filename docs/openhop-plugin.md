@@ -32,7 +32,7 @@ The repeater stays protected the whole time, and the page carries on at the same
 | `api_key` | Your openHop API token (required) |
 | `openhop_url` | Where openHop's web API is. Leave as `http://127.0.0.1:8000`; the plugin runs alongside openHop |
 | `mode` | `monitor` or `protect` at first start (you can switch on SpamGuard's page) |
-| `sensitivity` | `relaxed`, `balanced` or `strict` at first start |
+| `level` | Protection level from 0 (gentle) to 100 (tough) at first start; 50 is balanced. The older `sensitivity` (`relaxed`, `balanced`, `strict`) still works |
 | `listen_port` | The port for SpamGuard's own page (default 8091) |
 | `hashtag_channels` | Extra hashtag channels to protect, e.g. `["#chat", "#test"]` |
 | `listen_api_key` | A password for changes on SpamGuard's page. Leave empty for none; anyone on your network can then change settings there |
