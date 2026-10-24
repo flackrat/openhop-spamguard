@@ -289,6 +289,19 @@ The web page is built to WCAG 2.1 AA and works fully with a keyboard and screen 
 
 `bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine (add `--slow` for the Pi-sized stress test). The suite includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). The script only ever reads the log with names scrambled, and never the lists of people in the status.
 
+## Other openHop plugins
+
+SpamGuard is one of a growing number of plugins for openHop Repeater. Others worth a look:
+
+| Plugin | What it does |
+|---|---|
+| [txmesh](https://github.com/zfouts/openhop-txmesh-plugin) | Connects your repeater to the txme.sh network, reporting mesh activity and relaying bot replies |
+| [Telemetry](https://codeberg.org/vanous/openhop-telemetry-plugin) | Collects voltage and temperature from MeshCore repeaters |
+| [Prometheus](https://github.com/openhop-dev/openhop-prometheus-plugin) | Exports your repeater's telemetry as Prometheus metrics, with a small built-in dashboard |
+| [Nomad](https://github.com/openhop-dev/openhop-nomad-plugin) | Bridges a dedicated repeater companion identity to Project N.O.M.A.D. |
+
+Know another one? Suggestions are welcome as an issue.
+
 ## Licence
 
 GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later), see [LICENSE](LICENSE). Copyright (c) 2026 Flackrat.
