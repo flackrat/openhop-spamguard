@@ -29,7 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           rc=0
-          for f in requirements/*.txt; do
+          for f in requirements.txt requirements/*.txt; do
             echo "== $f"
             # Packages installed straight from a URL (the Presidio language model) aren't in vulnerability databases.
             awk '/^[^ #].* @ https?:/{skip=1;next} skip&&/^[ \t]/{next} {skip=0;print}' "$f" > /tmp/audit-req.txt
