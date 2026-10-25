@@ -2,6 +2,18 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## The big picture
+
+The detail is below, newest first. In short:
+
+| Versions | What changed |
+|---|---|
+| **5.8 to 5.19** | The first public releases, running as their own service on the Pi. Catches spam campaigns sent under many made-up names, finds the repeater spam comes in through and blocks it there while letting known people through, stops copy-paste floods, adds an emergency lockdown, a map of where spam comes from and an optional evidence log. 5.19 adds Docker. |
+| **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
+| **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
+| **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
+| **6.8 to 6.10** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, and updates that won't leave a small Pi without SpamGuard. |
+
 ## v6.10.0
 ### SpamGuard 6.10.0
 - **Messages is now one quarantine list.** Every channel message SpamGuard read is in one place, like a mail quarantine, with what SpamGuard did and why in plain words: Stopped, Held (possibly genuine), Spam let through, or Passed on. Filter buttons show how many of each, copies of one message are grouped (with how many names sent them), and there is a search box and a choice of the last 24 hours or 7 days. Choose a message to see why, how many copies there were, which way it came in and what SpamGuard knows about the sender, and to let it through, stop copies like it, or label it. Tick several to act on them together. It reads the evidence log when that is on; otherwise it shows the last few hours. The old live feed is still there underneath.

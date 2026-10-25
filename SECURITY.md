@@ -8,6 +8,32 @@ Please report security problems privately, not in a public issue. Use GitHub's p
 Include the SpamGuard version and what you saw. I aim to reply within 7 days, to have a fix or a clear plan
 within 30 days, and to credit you in the release notes if you wish.
 
+## What SpamGuard can change on your system
+
+It helps to know what SpamGuard is allowed to touch, both for checking it and for reporting a problem.
+
+1. **As an openHop plugin (the recommended install),** it runs under openHop's plugin manager as openHop's own
+   user, not as root. It reads packets from openHop and writes its own rules through openHop's web API, using
+   the API token you give it. Its rules are all named `spamguard:...`, and it never changes your own rules.
+   It writes only to its own data folder inside openHop's plugin folder.
+2. **Its web page** (port 8091) shows status to anyone on your network, like openHop's own dashboard. Setting
+   a page password (`listen_api_key`) protects every change, the message list and the evidence download.
+   Changes are only accepted as JSON, so another website can't make them through your browser.
+3. **The openHop rule-check fix** ("Keep openHop's rule-check fix in place", on by default) changes one line
+   in openHop's installed files, to stop an openHop bug letting blocked spam through, and puts it back after
+   an openHop update. It is applied by `tune-openhop.sh`, which you can read first, and can be turned off in
+   Settings. It will be retired once openHop releases its own fix.
+4. **The older direct install** (its own service, for openHop older than 1.1.2) installs two root-owned
+   systemd units, `openhop-spamguard-update.path` and `openhop-spamguard-update.service`. They run
+   `update.sh` as root only when you press Update. It downloads
+   only from this repository's releases over HTTPS, keeps the previous version, and puts it back if the new
+   one doesn't start. It doesn't yet check the release's signature itself, so please check releases by hand
+   (below) if that matters to you, or use the plugin.
+5. **Outside contact** is limited to GitHub (only when checking for or installing an update) and, if you turn
+   it on, the public MeshCore map. There is no telemetry.
+
+Reports about any of these are very welcome, including ones that only affect the older install.
+
 ## Supported versions
 
 Only the latest release receives fixes. Update from the Update box in SpamGuard, or install the newest wheel

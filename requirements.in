@@ -1,0 +1,5 @@
+# SpamGuard's own libraries: the only two it needs. These are the exact versions it is tested and released
+# with; requirements.txt is the same list locked with checksums (pip-compile --generate-hashes).
+# The openHop plugin asks for at least pycryptodome 3.15 and PyYAML 5.4, so openHop can use what it already has.
+pycryptodome==4.0.1
+pyyaml==6.0.3
