@@ -2,6 +2,16 @@
 
 SpamGuard and FloodGuard ship together as one openHop plugin with one release number (SpamGuard's), but each has its own history below. FloodGuard's version only goes up when FloodGuard itself changes. Versions 5.2 to 5.7 came before the first public release (v5.8), so they were never published as releases and have no download.
 
+## v6.10.0
+### SpamGuard 6.10.0
+- **Messages is now one quarantine list.** Every channel message SpamGuard read is in one place, like a mail quarantine, with what SpamGuard did and why in plain words: Stopped, Held (possibly genuine), Spam let through, or Passed on. Filter buttons show how many of each, copies of one message are grouped (with how many names sent them), and there is a search box and a choice of the last 24 hours or 7 days. Choose a message to see why, how many copies there were, which way it came in and what SpamGuard knows about the sender, and to let it through, stop copies like it, or label it. Tick several to act on them together. It reads the evidence log when that is on; otherwise it shows the last few hours. The old live feed is still there underneath.
+- **The Overview's numbers are links.** Spam stopped, Likely spam let through, Spam share and Possibly genuine held each open the message list already filtered to those messages.
+- **A repeat spammer is shown as one sender on the map.** Someone whose repeated messages are being held, under one name or several, is drawn as a single purple area placed from the repeaters that hear them first, with lines to each of those repeaters, rather than as several unrelated dots. Every message they send counts towards where they are, not only the copies held, so a spammer whose messages mostly get through still shows up. Nothing is blocked because of it.
+- **Size the map by senders as well as messages,** so one busy spammer doesn't outweigh many one-off ones. Senders are counted by a short code, never by name.
+- **A map key that is always shown,** for sure placements, best guesses, blocked repeaters, repeat spammers and your own repeater, plus how many couldn't be placed.
+- **Show these messages** from any point on the map, or from the table of spam sources, opens the message list filtered to the spam that entered there, or to everything from that sender.
+- **Copies of a message one name kept repeating that went out before the limit** now count as spam let through in the message list, instead of passing as normal.
+
 ## v6.9.1
 ### SpamGuard 6.9.1
 - **Updates no longer leave a small Pi without SpamGuard when a library has just had a new release.** When one of SpamGuard's libraries puts out a new version, it often comes as source code first, with ready-made builds for Raspberry Pis following a day or so later. openHop would then compile it while installing, which on a Pi 3 can take longer than openHop waits, so the install stopped partway and nothing was running. SpamGuard's check before updating now asks for exactly what openHop's install would fetch, and if anything would have to be compiled it stops the update before anything is changed, says which library, and suggests trying again tomorrow (or Update anyway).
