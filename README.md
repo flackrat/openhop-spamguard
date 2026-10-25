@@ -39,11 +39,15 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Settings profiles:** save tuned settings, put them back later, or share them with other operators as a small file (never your channels, keys or exceptions).
 - **Looks after itself:** a simple web page, automatic self-repair, gentle on SD cards, and updates only when you press Update.
 
-![SpamGuard's web page (example data)](docs/screenshot-overview.png)
+![SpamGuard's Overview: mode, protection level and the spam numbers, each of which opens the matching messages (example data)](docs/screenshot-overview.png)
+
+![Messages: every channel message in one quarantine list, with what SpamGuard did and why (example data)](docs/screenshot-messages.png)
+
+![The protection level slider, with what each level would have held on this repeater's own traffic (example data)](docs/screenshot-level.png)
+
+![The Spam sources map: where spam entered the mesh, with a repeat spammer shown as one sender (example data)](docs/screenshot-sources.png)
 
 ![FloodGuard's page while it contains a flood (example data)](docs/screenshot-floodguard.png)
-
-![The Spam sources map, showing where spam entered the mesh (example data)](docs/screenshot-sources.png)
 
 _Example data: names and numbers are made up._
 
@@ -84,15 +88,17 @@ Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](do
 SpamGuard learns from your mesh, so it gets better the longer it runs.
 
 - **A few copies of each brand-new spam wave get through** while it confirms it's a campaign. After that the wave is blocked, and if it comes back later it's stopped from the first copy.
-- **Your regulars become known** and are always let through. For the first day or two a genuine newcomer is more likely to be held, so press **Not spam** on their message and they're let through straight away.
+- **Your regulars become known** and are always let through. For the first day or two a genuine newcomer is more likely to be held, so open **Messages**, choose **Held**, and press **Let it through** on their message; they're let through straight away.
 - **Restarts and updates keep everything it has learnt.**
 
 ## Everyday use
 
 | You want to... | Do this |
 |---|---|
-| Let a genuine person through | Press **Let through** under "Possibly genuine, held", or **Not spam** on their message |
-| Stop something it missed | Press **This is spam** on the message |
+| Let a genuine person through | Open **Messages**, choose **Held** (or click "Possibly genuine held" on the Overview), then **Let it through** |
+| See what SpamGuard stopped, and why | Click **Spam stopped** on the Overview, or open **Messages** |
+| Make it gentler or tougher | Slide the **Protection level** on the Overview; open "What this level would have done" to see the effect on your own traffic |
+| Stop something it missed | In **Messages**, open it and press **Stop copies like this** |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
