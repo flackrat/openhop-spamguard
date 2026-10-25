@@ -42,10 +42,13 @@ those rules expire by themselves.
 4. **FloodGuard.** Measures how busy the radio is from the packets openHop reports, learns what's normal for
    the site, and adds hop limits when the radio is flooded. It also watches the noise floor for interference.
 5. **Web page.** A single page (`ui.html`) served by SpamGuard's built-in web server. It reads one status
-   endpoint and sends changes as JSON. An optional access key protects every change and the evidence
-   download.
-6. **Evidence log.** Optional daily files of what SpamGuard saw and did, for checking its decisions and for
-   the replay tool (`replay.py`), which re-runs a log with different settings.
+   endpoint and sends changes as JSON. The message list (Messages) is asked for separately, as JSON, because
+   it can hold up to 7 days of channel messages. An optional access key protects every change, the message
+   list and the evidence download.
+6. **Evidence log.** Optional daily files of what SpamGuard saw and did, for checking its decisions, for the
+   7-day message list, and for the replay tool (`replay.py`), which re-runs a log with different settings.
+   Once a day SpamGuard runs the replay itself, at the lowest priority, to show what each protection level
+   would have held.
 7. **Updates.** An optional check against this repository's releases. An update downloads the release file
    over HTTPS from this repository only. The files are also signed, so anyone can check them by hand (see
    [SECURITY.md](../SECURITY.md)).

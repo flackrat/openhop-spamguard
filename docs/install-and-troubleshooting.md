@@ -60,7 +60,7 @@ A fresh install ends with SpamGuard running in Monitor mode, so nothing is block
     `active` and `"state": "ok"` mean it is working.
 
 5. **Open the page** at `http://<pi-ip>:8091` and check the Health panel says Healthy and "Restart if it hangs" is on.
-6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". Press **Not spam** on anything genuine, **This is spam** on anything it missed. Then switch to **Protect**. If you don't, SpamGuard switches itself once it has watched for a day and seen enough spam, unless you've marked something as Not spam.
+6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". In **Messages**, press **Let it through** on anything genuine and **Stop copies like this** on anything it missed. Then switch to **Protect**. If you don't, SpamGuard switches itself once it has watched for a day and seen enough spam, unless you've marked something as Not spam.
 7. **Switch to Protect** on the page when you are happy it only catches spam.
 
 Optional: Advanced > Detection settings > **Keep an evidence log**, so detection can be tuned against your real traffic later.
@@ -124,8 +124,8 @@ Start with the Health panel on the page and the last 50 log lines; most problems
 | Times on the page are an hour or more out | Pi's time zone not set (it defaults to UTC) | See Pi housekeeping below. |
 | Newest message is old | Quiet channel, or checking stopped | Check the footer "last checked"; if it is not "just now", restart SpamGuard and send the log. |
 | "Restart if it hangs: off" on the page | Old service settings | Re-run `sudo bash install.sh` from the package folder. |
-| Genuine people being blocked | A rule too broad for your traffic | Press **Not spam** on their message, remove the block, or slide the protection level gentler. |
-| Spam getting through | Spam doesn't match the current signs yet | Press **This is spam**; slide the protection level tougher during an attack; keep the evidence log on for tuning. |
+| Genuine people being blocked | A rule too broad for your traffic | In **Messages**, choose **Held** and press **Let it through**, remove the block, or slide the protection level gentler. |
+| Spam getting through | Spam doesn't match the current signs yet | In **Messages**, choose **Spam let through** and press **Stop copies like this**; slide the protection level tougher during an attack; keep the evidence log on for tuning. |
 | Restart command doesn't return | Service stuck stopping | In a second window: `sudo systemctl kill -s KILL openhop-spamguard` then `sudo systemctl start openhop-spamguard`. |
 
 If something looks wrong, collect these three and send them for diagnosis:
@@ -142,8 +142,8 @@ curl -s http://127.0.0.1:8091/health
 
 | Symptom | Check / fix |
 |---|---|
-| A regular's messages are held by a repeater block | They aren't known yet. Press **Not spam** on their message: that trusts them and lets them through at once. |
-| A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Not spam**, or set Advanced > Known people > Hold links to Never. |
+| A regular's messages are held by a repeater block | They aren't known yet. In **Messages**, open their held message and press **Let it through**: that trusts them and lets them through at once. |
+| A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Let it through** on it in **Messages**, or set Advanced > Known people > Hold links to Never. |
 | Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
 | One named account keeps posting things people don't like | That's a person, not spam, so SpamGuard leaves it alone (see "What SpamGuard blocks, and what it doesn't" in the README). Anyone who doesn't want to read it can block or hide that sender in their own MeshCore app. If they post the same message over and over, the repeat guard holds back the further copies; copy-paste floods and random-name waves are caught as spam too. |
 | openHop shows a policy object called `spamguard` | That's the known-people list. SpamGuard keeps it up to date and the uninstaller removes it. |
