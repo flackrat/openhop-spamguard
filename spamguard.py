@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.9.1"
+VERSION = "6.10.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -1251,6 +1251,9 @@ class SpamGuard:
         self.name_links: dict[str, dict] = {}
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
         self.held_names: dict[str, dict] = {}
+        # Where repeat spammers are heard from: name -> first hops of the route -> day -> messages. Only kept
+        # for names with copies held, so the map can show one sender heard through several repeaters as one.
+        self.sender_paths: dict[str, dict] = {}
         # Your one-tap labels (packet id, or "name|text") -> "spam" / "not_spam", for the replay tool
         self.labels: collections.OrderedDict = collections.OrderedDict()
         self.blocks: dict[str, dict] = {}
@@ -1558,6 +1561,13 @@ class SpamGuard:
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
         day8 = now - 8 * 86400
+        for k, v in (st.get("sender_paths") or {}).items():
+            if isinstance(v, dict):
+                d = {str(pk): {str(dk): int(dn) for dk, dn in pv.items() if float(dk) > day8}
+                     for pk, pv in v.items() if isinstance(pv, dict)}
+                d = {pk: pv for pk, pv in d.items() if pv}
+                if d:
+                    self.sender_paths[str(k)] = d
         for k, v in (st.get("held_names") or {}).items():
             if isinstance(v, dict):
                 d = {str(dk): [int(x) for x in dv][:2] for dk, dv in v.items()
@@ -1636,6 +1646,7 @@ class SpamGuard:
                                 for k, v in list(self.sender_history.items())[-3000:]},
                     "name_links": self.name_links,
                     "held_names": dict(list(self.held_names.items())[-3000:]),
+                    "sender_paths": dict(list(self.sender_paths.items())[-self.SENDER_PATHS_MAX:]),
                     "labels": dict(list(self.labels.items())[-1000:]),
                     "level_preview": self.level_preview,
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
@@ -2347,6 +2358,40 @@ class SpamGuard:
                 del d[k]
         return d.setdefault(day, [0, 0])
 
+    SENDER_PATHS_MAX = 300      # names whose routes are remembered for the map
+    SENDER_PATH_HOPS = 4        # how much of each route: enough to place where it entered the mesh
+    SENDER_MIN_HELD = 2         # copies held over 7 days before a name's routes are remembered
+
+    def repeat_spammer(self, name: str, now: Optional[float] = None) -> bool:
+        """A name with at least two copies held in the last 7 days, or one that carried on another name's
+        repeat count (or was carried on from). Only used to place them on the map, never to block anything."""
+        if not name or name == "?":
+            return False
+        now = time.time() if now is None else now
+        if name in self.name_links or any(name in v.get("after", []) for v in self.name_links.values()):
+            return True
+        d = self.held_names.get(name) or {}
+        return sum(v[1] for k, v in d.items() if float(k) >= now - 7 * 86400) >= self.SENDER_MIN_HELD
+
+    def _note_sender_path(self, e: Event):
+        if not e.path or e.local or not self.repeat_spammer(e.sender, e.ts):
+            return
+        day = str(int(time.mktime(time.localtime(e.ts)[:3] + (0, 0, 0, 0, 0, -1))))
+        d = self.sender_paths.pop(e.sender, None) or {}
+        self.sender_paths[e.sender] = d        # most recently heard last
+        k = ">".join(e.path[:self.SENDER_PATH_HOPS])
+        if k not in d and len(d) >= 40:
+            return
+        days = d.setdefault(k, {})
+        days[day] = days.get(day, 0) + 1
+        for pk in list(d):
+            for dk in [dk for dk in d[pk] if float(dk) < e.ts - 8 * 86400]:
+                del d[pk][dk]
+            if not d[pk]:
+                del d[pk]
+        while len(self.sender_paths) > self.SENDER_PATHS_MAX:
+            self.sender_paths.pop(next(iter(self.sender_paths)))
+
     def most_held(self, now: float) -> list:
         """The names with the most copies held over the last 7 days, with how much they send, and any
         names that carried on another's repeat count, so one person behind several names shows as one."""
@@ -2418,6 +2463,13 @@ class SpamGuard:
         hn = self._held_day(e)
         if hn is not None:
             hn[0] += 1
+        if e.matched and hn is not None and e.path:
+            # count this copy as held first, so the copy that makes a name a repeat spammer is placed too
+            hn[1] += 1
+            self._note_sender_path(e)
+            hn[1] -= 1
+        else:
+            self._note_sender_path(e)
         b = self.blocks.get(e.matched) if e.matched else None
         cc = self.clusters.get(e.campaign) if e.campaign is not None else None
         spammy = e.random or e.obfuscated or bool(cc and cc.get("strong"))
@@ -2454,6 +2506,11 @@ class SpamGuard:
             k = ">".join(e.path)
             if k in ps or len(ps) < 100:
                 ps[k] = ps.get(k, 0) + 1
+                # who sent it, as a short code (never the name), so the map can count senders as well
+                who = hashlib.sha1(e.sender.encode(), usedforsecurity=False).hexdigest()[:6]
+                ss = h.setdefault("s", {}).setdefault(k, [])
+                if who not in ss and len(ss) < 20:
+                    ss.append(who)
         if len(self.hist) > 200:
             for k in sorted(self.hist)[:-192]:
                 del self.hist[k]
@@ -2582,6 +2639,7 @@ class SpamGuard:
         return {"d1": tot(cut24), "d7": tot(cut7), "hourly": hourly, "daily": daily, "by_hour": by_hour,
                 "sources": top, "flood_sources": flood_sources, "most_held": self.most_held(now),
                 "entries": entries, "unplaced": ent["unplaced"],
+                "senders": ent.get("senders") or [], "senders_unplaced": ent.get("senders_unplaced") or 0,
                 "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
                 "map_working": bool(ent.get("working")),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
@@ -2811,9 +2869,13 @@ class SpamGuard:
             return
         now = time.time()
         with self.lock:
-            hist = {k: {"p": dict(v.get("p") or {})} for k, v in self.hist.items()}
+            hist = {k: {"p": dict(v.get("p") or {}), "s": {pk: list(pv) for pk, pv in (v.get("s") or {}).items()}}
+                    for k, v in self.hist.items()}
+            spammers = {n: {pk: dict(pv) for pk, pv in d.items()} for n, d in self.sender_paths.items()
+                        if self.repeat_spammer(n, now)}
+            links = {n: list(v.get("after", [])) for n, v in self.name_links.items() if v.get("ts", 0) >= now - 7 * 86400}
         cut24, cut7 = now - 86400, now - 7 * 86400
-        geo["ent"] = self.spam_entries(cut24, cut7, hist)
+        geo["ent"] = self.spam_entries(cut24, cut7, hist, spammers, links)
         geo["ts"] = time.time()
 
     def map_loop(self, stop: threading.Event):
@@ -2909,7 +2971,8 @@ class SpamGuard:
     AREA_KM = 40         # neighbours of one source further apart than this are treated as separate sources
     SURE_SPREAD_KM = 35  # an area is sure when 2+ known neighbours sit within this of its centre
 
-    def spam_entries(self, cut24: float, cut7: float, hist: Optional[dict] = None) -> dict:
+    def spam_entries(self, cut24: float, cut7: float, hist: Optional[dict] = None,
+                     spammers: Optional[dict] = None, links: Optional[dict] = None) -> dict:
         """Where spam entered the mesh over the last 7 days.
         Learnt repeaters are entries of their own. Spam whose first repeater is unknown (often the
         spammer's own node, never advertised) is placed from the known repeaters it was handed to:
@@ -2970,7 +3033,9 @@ class SpamGuard:
         def entry(k, r, sure):
             return entries.setdefault(k, {"key": k, "name": r["name"], "lat": r["lat"], "lon": r["lon"], "code": r["code"],
                                           "d1": 0, "d7": 0, "exact": 0, "before": collections.Counter(), "codes": collections.Counter(),
-                                          "last": 0, "kind": r.get("kind", "guess"), "near": [], "claims": [], "spread_km": None})
+                                          "last": 0, "kind": r.get("kind", "guess"), "near": [], "claims": [], "spread_km": None,
+                                          "_s7": set(), "_s1": set()})
+        counted_senders = False
 
         for k, v in hist.items():
             t = int(k)
@@ -2979,6 +3044,8 @@ class SpamGuard:
             recent = t >= cut24 - 3600
             for ps, n in (v.get("p") or {}).items():
                 path = ps.split(">")
+                whos = set((v.get("s") or {}).get(ps) or [])
+                counted_senders = counted_senders or bool(whos)
                 r = self.resolve_path(path, distrust)
                 if not r:
                     unplaced["d7"] += n
@@ -2986,17 +3053,23 @@ class SpamGuard:
                         unplaced["d1"] += n
                     continue
                 if r["kind"] == "next":
-                    nb = nexts.setdefault(path[0], {}).setdefault(r["key"], [r["lat"], r["lon"], 0, 0, 0, r["name"], collections.Counter()])
+                    nb = nexts.setdefault(path[0], {}).setdefault(r["key"], [r["lat"], r["lon"], 0, 0, 0, r["name"], collections.Counter(),
+                                                                           set(), set()])
                     nb[2] += n
                     nb[3] += n if recent else 0
                     nb[4] = max(nb[4], t)
+                    nb[7] |= whos
+                    if recent:
+                        nb[8] |= whos
                     if r.get("claims"):
                         nb[6][r["claims"]] += n
                     continue
                 e = entry(r["key"], r, r["sure"])
                 e["d7"] += n
+                e["_s7"] |= whos
                 if recent:
                     e["d1"] += n
+                    e["_s1"] |= whos
                 if r["sure"]:
                     e["exact"] += n
                 if r["index"]:
@@ -3025,6 +3098,7 @@ class SpamGuard:
                 for p in g:
                     claims.update(p[1][6])
                 entries[k] = {"key": k, "name": "", "lat": c[0], "lon": c[1], "code": code, "d1": d1, "d7": d7,
+                              "_s7": set().union(*[p[1][7] for p in g]), "_s1": set().union(*[p[1][8] for p in g]),
                               "exact": d7 if sure else 0, "before": collections.Counter(), "codes": collections.Counter({code: d7}),
                               "last": max(p[1][4] for p in g), "kind": "area",
                               "near": [p[1][5] for p in sorted(g, key=lambda p: -p[1][2])[:4]],
@@ -3032,6 +3106,9 @@ class SpamGuard:
                 by_code.setdefault(code, collections.Counter())[k] += d7
         out = []
         for e in sorted(entries.values(), key=lambda e: -e["d7"])[:25]:
+            s7, s1 = e.pop("_s7", set()), e.pop("_s1", set())
+            # senders are only counted from this version on; older hours only have message counts
+            e["s7"], e["s1"] = (len(s7), len(s1)) if counted_senders else (None, None)
             e["codes"] = [c for c, _ in e["codes"].most_common(8)]
             e["blocked"] = any(f"hop:{c}" in self.blocks for c in e["codes"] + [e["code"]])
             e["typical_before"] = e["before"].most_common(1)[0][0] if e["before"] else 0
@@ -3046,8 +3123,227 @@ class SpamGuard:
                 e = names[k]
                 likely[code] = {"name": e["name"] or (e["near"][0] if e["near"] else ""), "key": k,
                                 "exact": e["kind"] == "id" and e["code"] == code}
-        return {"entries": out, "unplaced": unplaced, "likely": likely,
+        senders, senders_unplaced = self.spam_senders(spammers or {}, links or {}, cut24, cut7, distrust)
+        return {"entries": out, "unplaced": unplaced, "likely": likely, "senders": senders,
+                "senders_unplaced": senders_unplaced,
                 "learned": len(self._learned()), "advert_routes": len(self.adv_routes)}
+
+    SENDER_MIN_MESSAGES = 3     # a repeat spammer heard fewer times than this in 7 days isn't placed
+
+    # ---- the quarantine: every channel message in one list, with what SpamGuard did and why ----
+    Q_REASON = {"repeat": "The same message again and again from this name",
+                "slowrepeat": "The same message many times today from this name",
+                "replay": "An old message sent again by another device",
+                "dedupe": "A copy of a message already sent under another name",
+                "campaign": "The same message sent under several names",
+                "hop": "Came through a repeater sending a burst of made-up names",
+                "suffix": "Came the same way as a repeater sending spam",
+                "rotation": "Came from a repeater that keeps changing its identity",
+                "links": "A link from a name SpamGuard doesn't know, during spam",
+                "lockdown": "Sent during a short lockdown for a big flood",
+                "manual": "Matches a block you added"}
+    Q_STATUSES = ("stopped", "held", "letthrough", "genuine")
+
+    def _q_classify(self, m: dict) -> tuple:
+        """(status, reason) for one message: stopped (spam SpamGuard held back), held (possibly genuine,
+        caught up in a block meant for spam), letthrough (looked like spam but went out), or genuine."""
+        src, kind = m.get("caught_source"), m.get("caught_kind")
+        spammy = bool(m.get("random") or m.get("obfuscated") or (m.get("campaign_senders") or 0) >= 2)
+        if m.get("caught_by"):
+            people = kind in ("hop", "suffix", "links", "lockdown")
+            if people and not spammy:
+                return "held", self.Q_REASON.get(kind) or self.Q_REASON.get(src) or "Held by a block meant for spam"
+            return "stopped", self.Q_REASON.get(src) or self.Q_REASON.get(kind) or "Matched a spam block"
+        if spammy and not m.get("known"):
+            why = ("Hidden or look-alike characters in the name" if m.get("obfuscated")
+                   else "The same message as other names" if (m.get("campaign_senders") or 0) >= 2
+                   else "A made-up looking name")
+            return "letthrough", why + ", but nothing had repeated yet"
+        return "genuine", "Passed on as normal"
+
+    def _q_rows(self, days: int) -> tuple:
+        """The messages of the last `days` days, newest last: from the evidence log when it is on (kept
+        parsed per day file until the file changes), otherwise what is still in memory."""
+        cut = time.time() - days * 86400
+        if self.evidence is None:
+            rows = []
+            with self.lock:
+                for e in list(self.events):
+                    if e.ts < cut or not e.text:
+                        continue
+                    b = self.blocks.get(e.matched) if e.matched else None
+                    cc = self.clusters.get(e.campaign) if e.campaign is not None else None
+                    rows.append({"ts": e.ts, "packet": e.packet, "sender": e.sender, "text": e.text, "path": list(e.path),
+                                 "channel": e.channel, "random": e.random, "obfuscated": e.obfuscated,
+                                 "known": self.is_known(e.sender), "campaign_senders": len(cc["senders"]) if cc else 0,
+                                 "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
+                                 "caught_source": b.get("source") if b else None, "own": self.is_own(e)})
+            return rows, "memory"
+        self.evidence.flush(force=True)
+        cache = self.__dict__.setdefault("_q_cache", {})
+        first = time.strftime("%Y-%m-%d", time.localtime(cut))
+        keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
+                "caught_by", "caught_kind", "caught_source", "own")
+        rows = []
+        files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
+        for f in files:
+            try:
+                stt = os.stat(f)
+            except OSError:
+                continue
+            got = cache.get(f)
+            if not got or got[0] != (stt.st_mtime, stt.st_size):
+                parsed = []
+                try:
+                    with open(f, encoding="utf-8") as fh:
+                        for ln in fh:
+                            if '"type": "msg"' not in ln:
+                                continue
+                            try:
+                                m = json.loads(ln)
+                            except ValueError:
+                                continue
+                            parsed.append({k: m.get(k) for k in keep})
+                except OSError:
+                    continue
+                got = cache[f] = ((stt.st_mtime, stt.st_size), parsed)
+            rows.extend(r for r in got[1] if (r.get("ts") or 0) >= cut)
+        for f in [f for f in cache if f not in files]:
+            del cache[f]
+        return rows, "evidence"
+
+    def quarantine(self, body: dict) -> dict:
+        """One list of channel messages, like a mail quarantine. Filters: status, words, route codes (where
+        it entered the mesh), names (a repeat spammer), 1 or 7 days, and copies of one message grouped."""
+        status = body.get("status") or "all"
+        if status not in ("all",) + self.Q_STATUSES:
+            raise ValueError("Unknown filter")
+        days = 7 if int(body.get("days") or 1) >= 7 else 1
+        q = str(body.get("q") or "").strip().lower()[:80]
+        codes = {str(c).upper() for c in (body.get("codes") or []) if c}
+        names = {str(n) for n in (body.get("names") or []) if n}
+        grouped = bool(body.get("group", True))
+        limit = max(20, min(500, int(body.get("limit") or 100)))
+        raw, source = self._q_rows(days)
+        counts = {k: 0 for k in self.Q_STATUSES}
+        picked = []
+        # copies of a message one name kept repeating that went out before the limit was reached
+        repeated = {(m.get("sender"), normalise(str(m.get("text") or ""))) for m in raw
+                    if m.get("caught_source") in ("repeat", "slowrepeat", "replay")}
+        for m in raw:
+            if m.get("own") or not m.get("text"):
+                continue
+            path = m.get("path") or []
+            if names and m.get("sender") not in names:
+                continue
+            st, why = self._q_classify(m)
+            if st == "genuine" and (m.get("sender"), normalise(str(m.get("text") or ""))) in repeated:
+                st, why = "letthrough", "An earlier copy of a message this name kept repeating"
+            if codes and not (path and str(path[0]).upper() in codes and (st != "genuine" or names)):
+                continue
+            if q and q not in (str(m.get("sender")) + " " + str(m.get("text"))).lower():
+                continue
+            counts[st] += 1
+            if status != "all" and st != status:
+                continue
+            picked.append((m, st, why))
+        picked.sort(key=lambda t: -(t[0].get("ts") or 0))
+        rows, index = [], {}
+        for m, st, why in picked:
+            text = str(m.get("text") or "")
+            key = (st, m.get("channel"), normalise(text)[:120]) if grouped else id(m)
+            if key in index:
+                r = index[key]
+                r["copies"] += 1
+                if m.get("sender") not in r["_names"]:
+                    r["_names"].add(m.get("sender"))
+                continue
+            if len(rows) >= limit:
+                continue
+            path = m.get("path") or []
+            r = index[key] = {"ts": m.get("ts"), "sender": m.get("sender"), "text": text[:300], "channel": m.get("channel"),
+                              "path": ">".join(path) or "direct", "first_hop": path[0] if path else None,
+                              "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
+                              "copies": 1, "_names": {m.get("sender")},
+                              "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
+                              "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}")}
+            rows.append(r)
+        for r in rows:
+            r["senders"] = len(r.pop("_names"))
+        return {"source": source, "days": days, "counts": counts, "total": sum(counts.values()),
+                "shown": len(picked), "rows": rows, "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]}
+
+    def messages_for(self, body: dict) -> dict:
+        """The spam behind a point on the map (route codes), or everything from a repeat spammer (names)."""
+        if not body.get("codes") and not body.get("names"):
+            raise ValueError("Which repeater or sender?")
+        r = self.quarantine({"codes": body.get("codes"), "names": body.get("names"), "days": 7, "group": False,
+                             "limit": 150})
+        return {"source": r["source"], "total": r["shown"],
+                "messages": [{"ts": x["ts"], "sender": x["sender"], "text": x["text"][:200], "path": x["path"],
+                              "channel": x["channel"], "caught": x["status"] == "stopped"} for x in r["rows"]]}
+
+    def spam_senders(self, spammers: dict, links: dict, cut24: float, cut7: float,
+                     distrust: frozenset = frozenset()) -> tuple:
+        """Where each repeat spammer is heard from. Names that carried on each other's repeat count are one
+        sender. Every message they sent counts here (not only the copies held), because it is where they
+        are that matters, not what they said. A sender heard first by several repeaters is shown as one
+        area: the middle of those repeaters, with a radius reaching most of them. They are probably
+        somewhere all of them can hear."""
+        parent: dict[str, str] = {}
+
+        def root(n):
+            while parent.get(n, n) != n:
+                n = parent[n]
+            return n
+        for n, after in links.items():
+            for a in after:
+                if a in spammers or n in spammers:
+                    parent[root(a)] = root(n)
+        groups: dict[str, list] = {}
+        for n in spammers:
+            groups.setdefault(root(n), []).append(n)
+        out, unplaced = [], 0
+        for head, names in groups.items():
+            pts: dict[str, list] = {}
+            n7 = n1 = 0
+            for name in names:
+                for pk, days in spammers[name].items():
+                    c7 = sum(v for k, v in days.items() if float(k) >= cut7 - 86400)
+                    c1 = sum(v for k, v in days.items() if float(k) >= cut24 - 86400)
+                    if not c7:
+                        continue
+                    n7 += c7
+                    n1 += c1
+                    r = self.resolve_path(pk.split(">"), distrust)
+                    if not r or not r.get("sure"):
+                        continue
+                    p = pts.setdefault(r["key"], [r["lat"], r["lon"], 0, r["name"] or "", r["code"], r["kind"]])
+                    p[2] += c7
+            if n7 < self.SENDER_MIN_MESSAGES:
+                continue
+            if not pts:
+                unplaced += 1
+                continue
+            ps = sorted(pts.values(), key=lambda p: -p[2])
+            c = self._geomedian([(p[0], p[1], p[2]) for p in ps]) if len(ps) > 1 else (ps[0][0], ps[0][1])
+            # reach most of the repeaters, weighted by how often each heard them first
+            ds = sorted((self._km(c, (p[0], p[1])), p[2]) for p in ps)
+            acc, need, radius = 0, 0.8 * sum(w for _, w in ds), 0.0
+            for d, w in ds:
+                acc += w
+                radius = d
+                if acc >= need:
+                    break
+            names_sorted = sorted(names, key=lambda x: -sum(sum(d.values()) for d in spammers[x].values()))
+            out.append({"key": "sender:" + hashlib.sha1(head.encode(), usedforsecurity=False).hexdigest()[:8],
+                        "names": names_sorted[:5], "lat": c[0], "lon": c[1],
+                        "radius_km": round(min(max(radius, 3.0), self.AREA_KM), 1), "d7": n7, "d1": n1,
+                        "repeaters": [{"name": p[3], "code": p[4], "n": p[2], "lat": p[0], "lon": p[1],
+                                       "kind": p[5]} for p in ps[:6]],
+                        "spread": len(ps) > 1 and ds[-1][0] > 2 * self.AREA_KM})
+        out.sort(key=lambda x: -x["d7"])
+        return out[:12], unplaced
 
     def code_share(self, code: str, key: Optional[str] = None, now: Optional[float] = None) -> dict:
         """Other repeaters heard here (in adverts, or in openHop's list) whose ID starts with this route
@@ -6685,6 +6981,10 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.start_move_to_plugin())
                 if path == "openhop_fix":
                     return self._send(200, guard.request_openhop_fix("asked for on the page"))
+                if path == "messages_for":
+                    return self._send(200, guard.messages_for(body))
+                if path == "quarantine":
+                    return self._send(200, guard.quarantine(body))
                 if path in ACTIONS:
                     return self._send(200, guard.action(path, body))
                 return self._send(404, {"error": "not found"})
