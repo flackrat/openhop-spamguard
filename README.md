@@ -3,6 +3,7 @@
 ![version](https://img.shields.io/github/v/release/flackrat/openhop-spamguard)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15768/badge)](https://www.bestpractices.dev/projects/15768)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/flackrat/openhop-spamguard/badge)](https://scorecard.dev/viewer/?uri=github.com/flackrat/openhop-spamguard)
+[![Tests](https://github.com/flackrat/openhop-spamguard/actions/workflows/tests.yml/badge.svg)](https://github.com/flackrat/openhop-spamguard/actions/workflows/tests.yml)
 ![CodeQL](https://github.com/flackrat/openhop-spamguard/actions/workflows/codeql.yml/badge.svg)
 ![Audit](https://github.com/flackrat/openhop-spamguard/actions/workflows/audit.yml/badge.svg)
 
@@ -11,6 +12,44 @@
 > **FloodGuard, inside SpamGuard since 6.0** (it has its own version number, shown next to its name). Some floods aren't channel spam at all. They are encrypted packets with a new identity every time and padded routes, repeated until the mesh is unusable. FloodGuard watches the one thing a flood can't fake, which is how busy your repeater's radio is, and holds back flood packets from far away until the airtime is back to normal. Direct messages are never touched.
 
 SpamGuard runs inside [openHop](https://docs.openhop.dev/) as a plugin. It watches the channel messages and airtime your repeater hears and tells openHop not to pass spam and floods on. What it blocks is spam *behaviour*, never people or opinions.
+
+> ### Quick start: five minutes, the plugin way
+> You need a repeater running **openHop 1.1.2 or later** (check under System in openHop's dashboard). This is the recommended way for everyone; you can skip the other install options further down.
+>
+> 1. **Download** the file ending `-py3-none-any.whl` from the [latest release](https://github.com/flackrat/openhop-spamguard/releases/latest).
+> 2. **Install it:** in openHop's dashboard go to **System > Plugins > Install wheel** and choose that file.
+> 3. **Make a token:** openHop dashboard > **System > API Tokens** > create one, and copy it.
+> 4. **Give SpamGuard the token:** on the Plugins page press **Config** in SpamGuard's row, paste the token into `api_key`, press **Save**, then **Enable**.
+> 5. **Open it:** press **Open** in SpamGuard's row. It starts in **Monitor**, which only shows what it *would* stop. After a day, press **Protect** (or let it switch itself once it's sure).
+>
+> That's it. Updates are one press of **Update** on SpamGuard's page. Stuck? See [the full plugin guide](docs/openhop-plugin.md).
+
+**Useful links:** [found a security problem?](SECURITY.md) · [want to help?](CONTRIBUTING.md) · [the two libraries it uses](requirements.txt) · [what changed, and when](CHANGELOG.md) · [words explained](#new-to-meshcore-how-spam-works-and-the-words-used-here)
+
+## New to MeshCore? How spam works, and the words used here
+
+MeshCore radios pass messages on for each other: a message sent on a **channel** (such as Public) is repeated by every **repeater** that hears it, hop by hop, until it has spread across the mesh. That is what makes the mesh work, and also what makes spam so annoying: one spammer's message, sent once, is carried by every repeater to everyone. Spammers make it worse by using a new made-up name for each message, sending the same text under many names, or flooding the radio with packets until nobody else can get a word in. A repeater can't stop someone sending, but it can refuse to pass something on. That's what SpamGuard does, so the spam stops at your repeater instead of travelling on.
+
+| Word | What it means here |
+|---|---|
+| **Repeater** | A radio that passes messages on for others. SpamGuard runs on yours. |
+| **openHop** | The software that runs a MeshCore repeater on a Raspberry Pi or similar. SpamGuard is a plugin for it. |
+| **Channel** | A shared group chat. Public is open to all; hashtag channels such as #chat need only their name; private channels need a key. |
+| **Hop** | One radio passing a message to the next. A message that has come 10 hops has been repeated by 10 repeaters. |
+| **Route (path)** | The list of repeaters a message came through, shown as short codes such as `27>B1>7E`, read from where it entered the mesh. |
+| **Route code (path hash)** | The short code a repeater is known by in a route: the first 2, 4 or 6 characters of its ID. Short codes are shared by many repeaters, which is why working out where spam came from takes some care. |
+| **Advert** | A message a repeater sends now and then to say it exists, often with its location. SpamGuard uses adverts to learn which code is which repeater. |
+| **Airtime** | How much of the time the radio channel is busy. LoRa radios are slow, so airtime is precious; a flood can use it all up. |
+| **Flood packet** | A packet repeated by everyone (most channel messages and adverts). A **direct** message follows a set route instead and isn't touched. |
+| **Unscoped** | A flood packet sent without a region. `flood.max.unscoped` is MeshCore's limit on how many hops those may travel; FloodGuard keeps the same kind of limit. |
+| **Made-up name / rotating identity** | A spammer using a new random name (such as UD6DWREK) for each message, or a repeater that keeps changing its ID, so it can't simply be blocked by name. |
+| **Known people** | Names SpamGuard has seen sending genuine messages. They are let through blocks meant for spam. |
+| **Rules (policy)** | openHop's list of what to pass on and what to drop, kept in its `policy.yaml`. SpamGuard adds its own rules there and never changes yours. |
+| **Monitor / Protect** | Monitor only shows what SpamGuard would stop; Protect actually stops it. |
+| **Protection level** | One slider from Gentle to Tough: how firmly SpamGuard pushes back. |
+| **Evidence log** | An optional daily record, kept only on your repeater, of the channel messages SpamGuard read and what it did. It lets you look back over a week and check its decisions. |
+
+**Version numbers.** The release number is SpamGuard's (6.10.0, for example). FloodGuard, the flood protection inside SpamGuard since 6.0, has its own number (such as 1.2.5) that only goes up when FloodGuard itself changes; both come in the same download. openHop is a separate project with its own numbers; SpamGuard needs openHop 1.1.2 or later. The top of the [changelog](CHANGELOG.md) sums up what changed between the big versions.
 
 ## Why it's different
 
@@ -52,6 +91,8 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 _Example data: names and numbers are made up._
 
 ## Install
+
+The [quick start](#quick-start-five-minutes-the-plugin-way) at the top is all most people need. This section has the same steps with a little more detail, then the other ways to install for older setups.
 
 **SpamGuard runs as an openHop plugin**, installed from openHop's own dashboard. The plugin works however openHop is installed (directly on a Pi, in Docker, on Unraid or as a Home Assistant add-on) and needs openHop 1.1.2 or later. A Raspberry Pi 3 is plenty; see **Requirements** under Advanced for space, memory and what's been tested.
 
@@ -294,7 +335,9 @@ The web page is built to WCAG 2.1 AA and works fully with a keyboard and screen 
 
 ## For developers
 
-`bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine (add `--slow` for the Pi-sized stress test). The suite includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). The script only ever reads the log with names scrambled, and never the lists of people in the status.
+SpamGuard needs only two libraries, [pinned in `requirements.txt`](requirements.txt) with checksums: pycryptodome (to read channel messages) and PyYAML (to read its config file). The tools for tests and checks have their own locked lists in `requirements/`. To report a security problem privately, see [SECURITY.md](SECURITY.md); to suggest or send a change, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+`bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine (add `--slow` for the Pi-sized stress test). The suite includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. The whole suite, plus a lint, a privacy check and a dependency review, [runs automatically on GitHub](https://github.com/flackrat/openhop-spamguard/actions/workflows/tests.yml) for every pull request and every change to `main`, and `main` only accepts changes through a pull request whose tests have passed, so nothing reaches a release untested. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). The script only ever reads the log with names scrambled, and never the lists of people in the status.
 
 ## Other openHop plugins
 

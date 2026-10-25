@@ -3,7 +3,7 @@
 ARG BASE=python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
 FROM ${BASE}
 
-COPY requirements/docker.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 
 # The two libraries SpamGuard needs (locked versions, hash-checked). Some platforms (32-bit Pi) have no ready-made builds, so a
 # compiler is installed just for this step and removed again.

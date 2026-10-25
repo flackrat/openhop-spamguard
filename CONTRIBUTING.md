@@ -9,6 +9,17 @@ For a bug, say which SpamGuard version you run (shown on the Overview page) and 
 (openHop plugin, normal install or Docker). The Evidence log, if you have it switched on, helps a lot, but remove
 channel names and keys before sharing it. Security problems go through private reporting, see `SECURITY.md`.
 
+## Other ways to help
+
+You don't need to write code to help:
+
+1. **Run it in Monitor on your repeater** and report anything it would have stopped that wasn't spam, or spam
+   it missed. The Spam and Fine labels on the Messages page record this for you.
+2. **Suggest plainer wording** for anything on the page that's confusing.
+3. **Share what spam looks like on your mesh,** with every name and message made up, so new kinds can be caught.
+
+For anything bigger than a small fix, please open an issue first to talk it through, so your time isn't wasted.
+
 ## Sending a change
 
 1. Fork the repository and make your change on a branch.
