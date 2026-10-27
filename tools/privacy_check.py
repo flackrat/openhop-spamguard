@@ -35,9 +35,9 @@ GENERIC = {
     "home network address": re.compile(r"\b(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"),
     "phone number": re.compile(r"(?<!\w)(?:\+44\s?7\d{3}|07\d{3})\s?\d{3}\s?\d{3}(?!\w)"),
 }
-# Always fine: no-reply addresses and the documentation's own example values.
+# Always fine: no-reply addresses (including the one GitHub signs Dependabot updates with) and the documentation's own example values.
 ALWAYS_ALLOWED = [
-    re.compile(r"noreply@anthropic\.com|@users\.noreply\.github\.com|@example\.(?:com|org|net)\b|@[\w.-]+\.example\b"),
+    re.compile(r"noreply@anthropic\.com|\bsupport@github\.com\b|@users\.noreply\.github\.com|@example\.(?:com|org|net)\b|@[\w.-]+\.example\b"),
 ]
 SKIP_PATHS = re.compile(r"(^|/)(LICENSE|\.privacy-allow|package-lock\.json)$|\.(png|jpe?g|gif|ico|woff2?|ttf|whl|gz|zip|pdf)$")
 

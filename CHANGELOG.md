@@ -12,7 +12,11 @@ The detail is below, newest first. In short:
 | **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
 | **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
-| **6.8 to 6.10** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, and updates that won't leave a small Pi without SpamGuard. |
+| **6.8 to 6.11** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, and blocking just the route spam starts on. |
+
+## v6.11.0
+
+- **Block a route.** For spam that always starts on the same first repeaters, you can now block just that route, for example `27>B1`, instead of everything through the first repeater. People SpamGuard knows still get through, and other routes through the same repeater are untouched. Type it in **Blocks**, or press **Block route** on a spam message in **Messages**. A route block can be limited to one channel and has the usual time limit. Until openHop can check the order of a route, your repeater holds any message that passes through all of the repeaters you give; SpamGuard's own records check the order exactly. Thanks to Caboosey on the openHop Discord server for the suggestion.
 
 ## v6.10.0
 ### SpamGuard 6.10.0
