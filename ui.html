@@ -619,6 +619,13 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <button class="go" id="hopBtn">Block repeater</button>
   </div>
   <div class="inline-form">
+    <label for="routeIn">Route</label><input id="routeIn" size="12" placeholder="27&gt;B1" autocomplete="off" aria-describedby="routeHelp">
+    <select id="routeChan" aria-label="Which channel"><option value="">on every channel</option></select>
+    <select id="routeTtl" aria-label="How long to block the route"></select>
+    <button class="go" id="routeBtn">Block route</button>
+  </div>
+  <p class="explain" id="routeHelp">A route block holds channel messages whose first repeaters are the ones you give, in that order, for spam that always starts the same way. It is much narrower than blocking the first repeater, and people SpamGuard knows still get through. Until openHop can check the order of a route, your repeater holds any message that passes through all of them.</p>
+  <div class="inline-form">
     <label for="textIn">Text</label><input id="textIn" size="34" placeholder="part of the spam message" autocomplete="off">
     <select id="textChan" aria-label="Which channel"></select>
     <select id="textTtl" aria-label="How long to block the text"></select>
@@ -1102,6 +1109,7 @@ function renderBlocks(d){
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
+      :b.kind==="route"?`Messages that started on route <span class="route">${esc(b.value.join(">"))}</span>, except people SpamGuard knows`+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
       :b.kind==="suffix"?(b.value.length?`Unknown repeaters sending via <span class="route">${esc(b.value.join(">"))}</span>`:"Unknown repeaters right next to yours")
       :esc(cap(b.describe));
     const routes=b.kind==="hop"&&b.mode==="exact_paths"?(b.paths.length?`${b.paths.length} route${b.paths.length===1?"":"s"} blocked`:"waiting to learn its routes")
@@ -1218,7 +1226,7 @@ function renderAdvanced(d){
   $("#trustSenders").innerHTML=chips(d.allow.senders,"/unallow_sender","sender");
   $("#trustHops").innerHTML=chips(d.allow.hops,"/unallow_hop","hop");
   $("#trustTexts").innerHTML=chips(d.allow.texts,"/unallow_text","text");
-  for(const [id,first] of [["#hopChan","on every channel"],["#textChan",null]]){ const sel=$(id), keep=sel.value;
+  for(const [id,first] of [["#hopChan","on every channel"],["#routeChan","on every channel"],["#textChan",null]]){ const sel=$(id), keep=sel.value;
     const opts=(first?[["",first]]:[]).concat(d.channels.map(c=>[c,"on "+c]));
     if(sel.dataset.sig!==JSON.stringify(opts)){ sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.dataset.sig=JSON.stringify(opts); }
     sel.value=opts.some(o=>o[0]===keep)?keep:opts[0][0]; }
@@ -1330,7 +1338,8 @@ $("#resetSet").onclick=()=>{ if(confirm("Reset every setting you changed (FloodG
 
 /* ---------- forms ---------- */
 function ttlOptions(sel,textBlock){ sel.innerHTML=TTLS.filter(([v])=>!textBlock||+v<=604800).map(([v,l])=>`<option value="${v}" ${v==="21600"?"selected":""}>${l}</option>`).join(""); }
-ttlOptions($("#hopTtl")); ttlOptions($("#textTtl"),true);
+ttlOptions($("#hopTtl")); ttlOptions($("#routeTtl")); ttlOptions($("#textTtl"),true);
+$("#routeBtn").onclick=()=>post("/block_route",{route:$("#routeIn").value.trim(),channel:$("#routeChan").value,ttl_seconds:+$("#routeTtl").value}).then(()=>$("#routeIn").value="");
 $("#hopBtn").onclick=()=>post("/block_hop",{hop:$("#hopIn").value.trim(),match:$("#hopMatch").value,channel:$("#hopChan").value,ttl_seconds:+$("#hopTtl").value}).then(()=>$("#hopIn").value="");
 $("#textBtn").onclick=()=>post("/block_text",{text:$("#textIn").value,channel:$("#textChan").value,ttl_seconds:+$("#textTtl").value}).then(()=>$("#textIn").value="");
 $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim()}).then(()=>$("#trustIn").value="");
@@ -1447,6 +1456,10 @@ function qDetail(){
     held:b("Let it through","/not_spam",{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet},"go"),
     letthrough:r.known?"":b("Stop copies like this","/mark_spam",{text:r.text,channel:r.channel,sender:r.sender,path:r.path,packet:r.packet},"go"),
     genuine:""}[r.status];
+  const hops=(r.path||"").split(">").filter(h=>/^[0-9A-F]{2,6}$/i.test(h));
+  const rt=hops.slice(0,2).join(">");
+  const routeBtn=(r.status==="stopped"||r.status==="letthrough")&&hops.length>=2&&!(r.matched||"").startsWith("route:"+rt)
+    ?`<button type="button" class="quiet" data-confirm="Block messages that start on route ${esc(rt)}? People SpamGuard knows still get through." data-p="/block_route" data-b="${esc(JSON.stringify({route:rt}))}" onclick="act(this)">Block route ${esc(rt)}</button>`:"";
   box.innerHTML=`<div class="q-line" style="justify-content:space-between"><span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span><span class="explain">${qWhen(r.ts)}${r.channel?", "+esc(r.channel):""}</span></div>
     <h3 style="margin:10px 0 0;font-size:1rem">${esc(r.sender)}</h3>
     <div class="msg-text">${esc(r.text)}</div>
@@ -1454,7 +1467,7 @@ function qDetail(){
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
       <dt>Sender</dt><dd>${who}</dd></dl>
-    <p class="q-line" style="gap:8px">${acts}${lb("spam","Label as spam")}${lb("not_spam","Label as fine")}</p>
+    <p class="q-line" style="gap:8px">${acts}${routeBtn}${lb("spam","Label as spam")}${lb("not_spam","Label as fine")}</p>
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
     <p class="explain" style="margin:8px 0 0">Labels only record your view, for checking SpamGuard's accuracy. Let it through also trusts the sender from now on.</p>`;
 }

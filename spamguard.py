@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.10.0"
+VERSION = "6.11.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -985,6 +985,21 @@ def hops_related(a: str, b: str) -> bool:
 
 
 HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
+# Blocks that hold people back by where their message came from, rather than by what it says.
+PEOPLE_KINDS = ("hop", "suffix", "links", "lockdown", "route")
+ROUTE_MAX_HOPS = 4
+
+
+def parse_route(text: str) -> list[str]:
+    """'BA>AA', 'ba aa' or '0xBA,0xAA' -> ['BA', 'AA']: the first repeaters a message passed through, in order."""
+    hops = [h[2:] if h.startswith("0X") else h for h in re.split(r"[\s>,]+", str(text or "").upper().strip()) if h]
+    if not 2 <= len(hops) <= ROUTE_MAX_HOPS:
+        raise ValueError(f"Enter the first 2 to {ROUTE_MAX_HOPS} repeaters of the route, e.g. 27>B1")
+    if not all(HEX_HOP.fullmatch(h) for h in hops):
+        raise ValueError("Each repeater is a code of 2, 4 or 6 hex characters, e.g. 27>B1")
+    if len({len(h) for h in hops}) != 1:
+        raise ValueError("Use codes of the same length for every repeater, as shown in the route")
+    return hops
 
 
 # --------------------------------------------------------------------------- service health
@@ -2430,7 +2445,7 @@ class SpamGuard:
         return sorted((r for r in by.values() if r["held"]), key=lambda r: (-r["held"], -r["today"]))[:8]
 
     def _people_block(self, b: Optional[dict]) -> bool:
-        return bool(b) and b["kind"] in ("hop", "suffix", "links", "lockdown")
+        return bool(b) and b["kind"] in PEOPLE_KINDS
 
     def _count(self, e: Event):
         # The same counts again per channel, so the Overview graphs can show one channel at a time.
@@ -3138,6 +3153,7 @@ class SpamGuard:
                 "campaign": "The same message sent under several names",
                 "hop": "Came through a repeater sending a burst of made-up names",
                 "suffix": "Came the same way as a repeater sending spam",
+                "route": "Started on a route you blocked",
                 "rotation": "Came from a repeater that keeps changing its identity",
                 "links": "A link from a name SpamGuard doesn't know, during spam",
                 "lockdown": "Sent during a short lockdown for a big flood",
@@ -3150,7 +3166,7 @@ class SpamGuard:
         src, kind = m.get("caught_source"), m.get("caught_kind")
         spammy = bool(m.get("random") or m.get("obfuscated") or (m.get("campaign_senders") or 0) >= 2)
         if m.get("caught_by"):
-            people = kind in ("hop", "suffix", "links", "lockdown")
+            people = kind in PEOPLE_KINDS
             if people and not spammy:
                 return "held", self.Q_REASON.get(kind) or self.Q_REASON.get(src) or "Held by a block meant for spam"
             return "stopped", self.Q_REASON.get(src) or self.Q_REASON.get(kind) or "Matched a spam block"
@@ -3700,7 +3716,7 @@ class SpamGuard:
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
-        return b["kind"] in ("links", "lockdown") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
+        return b["kind"] in ("links", "lockdown", "route") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
             or (b["kind"] in ("text", "words") and b.get("source") == "manual")
 
     def block_matches(self, b: dict, e: Event) -> bool:
@@ -3716,6 +3732,11 @@ class SpamGuard:
             if self.hop_mode(b) in ("contains", "contains_known"):
                 return b["value"] in e.path
             return ">".join(e.path) in (b.get("paths") or {})
+        if b["kind"] == "route":
+            if b.get("only_channel") and e.channel != b["only_channel"]:
+                return False
+            v = b["value"]
+            return len(e.path) >= len(v) and all(self._same_hop(e.path[i], h) for i, h in enumerate(v))
         if b["kind"] == "repeat":
             return e.sender == b.get("who") and b["value"] in e.text
         if b.get("sender") and e.sender == b["sender"]:
@@ -3862,7 +3883,7 @@ class SpamGuard:
             e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
-            if b and not again and b["kind"] in ("hop", "suffix", "links", "lockdown") \
+            if b and not again and b["kind"] in PEOPLE_KINDS \
                     and not e.random and not e.obfuscated:
                 self.held.append({"ts": e.ts, "sender": e.sender, "text": e.text[:160], "channel": e.channel,
                                   "path": ">".join(e.path) or "direct", "matched": e.matched,
@@ -4095,6 +4116,9 @@ class SpamGuard:
                     f" (only on {b['only_channel']})" if b.get("only_channel") else "")
             how = "messages starting at" if m == "exact_paths" else "anything via"
             return f"{how} repeater {b['value']}" + (f" (only on {b['only_channel']})" if b.get("only_channel") else "")
+        if b["kind"] == "route":
+            return f"messages that started on route {'>'.join(b['value'])}, except people it knows" + (
+                f" (only on {b['only_channel']})" if b.get("only_channel") else "")
         if b["kind"] == "links":
             return "links from names SpamGuard doesn't know"
         if b["kind"] == "lockdown":
@@ -4703,6 +4727,16 @@ class SpamGuard:
                 first = min(forms)
                 conds = [("" if z == first else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": forms[z]}])
                          for z in sorted(forms)]
+            elif b["kind"] == "route":
+                # openHop can check that a route passes through repeaters but not yet in which order, so the
+                # rule asks for all of them. SpamGuard's own records check the order exactly.
+                per = [self._hop_forms(h) for h in b["value"]]
+                sizes = [z for z in self._sizes_now if all(z in f for f, _, _ in per)]
+                self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
+                if not sizes:
+                    continue
+                conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per])
+                         for z in sizes]
             elif b["kind"] in ("text", "words"):
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
@@ -4758,6 +4792,8 @@ class SpamGuard:
             what = "repeats by " + str(b.get("who") or "")[:20]
         elif kind == "hop":
             what = "via " + str(v)
+        elif kind == "route":
+            what = "route " + ">".join(v)
         elif kind == "words":
             what = "words " + "+".join(str(w) for w in v)[:24]
         else:
@@ -6570,6 +6606,17 @@ class SpamGuard:
                 self.learn_paths(list(self.events))
                 if self.hop_mode(self.blocks[key]) == "exact_paths" and not self.blocks[key]["paths"]:
                     msg = f"Blocking repeater {hop}. Routes will be learnt as its messages arrive."
+            elif op == "block_route":
+                hops = parse_route(body.get("route", ""))
+                key = "route:" + ">".join(hops)
+                self.suppressed.pop(key, None)
+                self.blocks.pop(key, None)
+                only = body.get("channel") if body.get("channel") in self.cfg["channels"] else None
+                self._add_block(key, "route", hops, "Added by you", "manual",
+                                ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]),
+                                extra={"only_channel": only} if only else None)
+                msg = (f"Blocking messages that start on route {'>'.join(hops)}. People SpamGuard knows still get through."
+                       + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op in ("block_text", "mark_spam"):
                 if op == "mark_spam":
                     self.ev({"type": "label", "label": "spam", "sender": body.get("sender"), "text": body.get("text"),
@@ -6886,7 +6933,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"unblock", "block_hop", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"unblock", "block_hop", "block_route", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
