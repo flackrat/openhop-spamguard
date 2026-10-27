@@ -33,6 +33,12 @@ async def main():
         await pg.fill("#routeIn","b1"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1200)
         t=await pg.text_content("body")
         check("first 2 to 4 repeaters" in t, "a route of one repeater is explained, not added")
+        g.route_suggest["route:C4>7A"]={"route":["C4","7A"],"names":9,"messages":11,"first":time.time()}
+        await pg.goto("http://127.0.0.1:18171/#/blocks"); await pg.reload(); await pg.wait_for_timeout(1500)
+        t=await pg.text_content("#routeSugSec")
+        check("C4>7A" in t and "9 brand-new names" in t and "Block it" in t, f"a suggested route block is offered with its reason: {t[:200]}")
+        await pg.click("#routeSug [data-p='/accept_route']"); await pg.wait_for_timeout(1500)
+        check("route:C4>7A" in g.blocks and await pg.is_hidden("#routeSugSec"), "Block it blocks the route and the suggestion goes away")
         check(not errs, f"no page errors: {errs}")
         await b.close()
 asyncio.run(main())

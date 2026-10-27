@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.11.0"
+VERSION = "6.12.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -129,6 +129,22 @@ SETTINGS_META: list[dict] = [
      "preset": True, "risk": "Lower = reacts to an identity-changing spammer sooner, but a couple of new genuine repeaters appearing behind the same route at the same time as some odd-looking names could trigger it. Higher = more spam gets through first.",
      "label": "New repeaters before an identity-changing block",
      "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs."},
+    {"key": "route_surge", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "A suggestion costs nothing until you accept it. Turning this off means a spammer who keeps changing names but always starts on the same first repeaters is only caught if you notice and block the route yourself.",
+     "label": "Suggest blocking a route that suddenly carries lots of new names",
+     "help": "When many brand-new names, each posting once or twice, all start on the same first two repeaters within half an hour, SpamGuard suggests blocking that route for a while. People it knows still get through. It looks at routes and names only, never what a message says."},
+    {"key": "route_surge_names", "group": "Blocking by source repeater", "type": "int", "min": 3, "max": 100,
+     "preset": True, "risk": "Lower = notices a surge sooner, but a busy event with lots of newcomers on one route could trigger a suggestion (or a block, if you turned on automatic route blocks). Higher = slower to notice.",
+     "label": "New names on one route before suggesting a block",
+     "help": "How many brand-new names must start on the same first two repeaters within half an hour before SpamGuard suggests blocking that route."},
+    {"key": "route_surge_ttl", "preset": True, "group": "Blocking by source repeater", "type": "int", "min": 600, "max": PERMANENT_SECONDS, "unit": "s",
+     "risk": "Longer = a spammer who pauses and returns is still held, but a genuine newcomer on that route is held longer. Shorter = mistakes clear sooner.",
+     "label": "Route blocks from a suggestion last for",
+     "help": "How long a route block lasts when you accept a suggestion, or when SpamGuard applies one itself. After it ends, a continuing surge is spotted again."},
+    {"key": "route_auto", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "Off by default. When on, SpamGuard blocks a surging route without asking (at most three at a time, each for the time above), so a genuine newcomer on that route is held until the block ends or you release them. Known people always get through.",
+     "label": "Block a surging route automatically",
+     "help": "Instead of only suggesting, apply the route block yourself. Every one is listed under Blocks and in Activity, and can be removed in one tap. The protection level does not turn this on."},
     {"key": "route_memory_days", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 60, "unit": "days",
      "risk": "Shorter = repeaters that only talk occasionally are forgotten and may be treated as unknown during a rotation block. Longer = slightly more memory and disk use.",
      "label": "Remember normal routes for",
@@ -327,17 +343,20 @@ PRESETS: dict[str, dict] = {
                 "hop_random_senders_long": 8, "text_distinct_senders": 4, "similarity": 80,
                 "dedupe_seconds": 600, "dedupe_min_chars": 40, "name_score_threshold": 4,
                 "repeat_max": 4, "slow_repeat_max": 4, "slow_repeat_hold_seconds": 7200,
-                "repeat_block_seconds": 1800, "slow_repeat_window_seconds": 43200, "block_ttl_seconds": 10800},
+                "repeat_block_seconds": 1800, "slow_repeat_window_seconds": 43200, "block_ttl_seconds": 10800,
+                "route_surge_names": 12, "route_surge_ttl": 3600},
     "balanced": {"rotate_first_hops": 3, "hop_random_senders": 3, "hop_new_senders": 6, "hop_campaign_senders": 3,
                  "hop_random_senders_long": 5, "text_distinct_senders": 3, "similarity": 65,
                  "dedupe_seconds": 900, "dedupe_min_chars": 30, "name_score_threshold": 3,
                  "repeat_max": 3, "slow_repeat_max": 3, "slow_repeat_hold_seconds": 10800,
-                 "repeat_block_seconds": 3600, "slow_repeat_window_seconds": 86400, "block_ttl_seconds": 21600},
+                 "repeat_block_seconds": 3600, "slow_repeat_window_seconds": 86400, "block_ttl_seconds": 21600,
+                 "route_surge_names": 8, "route_surge_ttl": 7200},
     "strict": {"rotate_first_hops": 2, "hop_random_senders": 2, "hop_new_senders": 4, "hop_campaign_senders": 2,
                "hop_random_senders_long": 3, "text_distinct_senders": 2, "similarity": 55,
                "dedupe_seconds": 1800, "dedupe_min_chars": 24, "name_score_threshold": 2,
                "repeat_max": 2, "slow_repeat_max": 2, "slow_repeat_hold_seconds": 21600,
-               "repeat_block_seconds": 7200, "slow_repeat_window_seconds": 129600, "block_ttl_seconds": 43200},
+               "repeat_block_seconds": 7200, "slow_repeat_window_seconds": 129600, "block_ttl_seconds": 43200,
+               "route_surge_names": 5, "route_surge_ttl": 14400},
 }
 # The protection level (0-100) slides smoothly between the three presets: 0 is relaxed, 50 balanced and
 # 100 strict, and every value in between is worked out from the two either side. Tougher also means longer.
@@ -401,6 +420,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "flood_max_unscoped": 32,             # recommended; a value you saved yourself (including 0) is kept
     "flood_max_advert": 8,
     "route_memory_days": 7,
+    "route_surge": True,                  # suggest blocking a route that suddenly carries lots of new names
+    "route_auto": False,                  # ...and only apply it without asking if you turn this on
     "interference_watch": True,
     "interference_db": 10,
     "wardrive_block": False,
@@ -986,6 +1007,8 @@ def hops_related(a: str, b: str) -> bool:
 
 HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
 # Blocks that hold people back by where their message came from, rather than by what it says.
+ROUTE_SURGE_SECONDS = 1800   # how far back a route surge is counted
+ROUTE_AUTO_MAX = 3           # most automatic route blocks at once
 PEOPLE_KINDS = ("hop", "suffix", "links", "lockdown", "route")
 ROUTE_MAX_HOPS = 4
 
@@ -1273,6 +1296,7 @@ class SpamGuard:
         self.labels: collections.OrderedDict = collections.OrderedDict()
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
+        self.route_suggest: dict[str, dict] = {}   # routes SpamGuard suggests blocking (not saved: re-worked out)
         # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
         # message with that text counts as a first copy again. {text or "w:word|word": time released}
         self.released: dict[str, float] = {}
@@ -4221,6 +4245,36 @@ class SpamGuard:
             d["senders"].add(e.sender)
         return out
 
+    def route_surges(self, now: float) -> dict:
+        """Routes (the first two repeaters) that suddenly carry many brand-new names. Looks at names, routes and
+        timing only, never at what a message says. People SpamGuard knows, and routes already blocked, don't count."""
+        c = self.cfg
+        need = max(2, int(c.get("route_surge_names", 8)))
+        cutoff = now - ROUTE_SURGE_SECONDS
+        groups: dict[tuple, dict] = {}
+        for e in self.events:
+            if e.ts < cutoff or len(e.path) < 2:
+                continue
+            g = groups.setdefault(tuple(e.path[:2]), {"names": set(), "new": set(), "msgs": 0})
+            g["msgs"] += 1
+            if e.sender in self.allow_senders or self.is_known(e.sender):
+                continue
+            g["names"].add(e.sender)
+            h = self.sender_history.get(e.sender)
+            if h is None or h["count"] <= 2:
+                g["new"].add(e.sender)
+        out = {}
+        for route, g in groups.items():
+            if len(g["new"]) < need or len(g["new"]) < 0.6 * len(g["names"]):
+                continue
+            key = "route:" + ">".join(route)
+            if key in self.blocks or f"hop:{route[0]}" in self.blocks or self.hop_allowed(route[0]):
+                continue
+            if self.suppressed.get(key, 0) > now:
+                continue
+            out[key] = {"route": list(route), "names": len(g["new"]), "messages": g["msgs"]}
+        return out
+
     def decide(self) -> bool:
         c = self.cfg
         now = time.time()
@@ -4431,6 +4485,30 @@ class SpamGuard:
                 if why:
                     reason = why[0][0].upper() + why[0][1:] + (f" (and {len(why) - 1} other sign{'s' if len(why) > 2 else ''})" if len(why) > 1 else "")
                     want(f"hop:{hop}", "hop", hop, reason, "hop", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
+
+        # 3b. A route that suddenly carries many brand-new names (a spammer who keeps changing names but
+        # always starts on the same first repeaters): suggest blocking it, or do so if you allowed that.
+        if c.get("route_surge", True):
+            found = self.route_surges(now)
+            ttl = int(c.get("route_surge_ttl", 7200))
+            auto = sum(1 for b in self.blocks.values() if b.get("source") == "route-auto")
+            for key, d in found.items():
+                if c.get("route_auto") and auto < ROUTE_AUTO_MAX:
+                    want(key, "route", d["route"],
+                         f"{d['names']} brand-new names started on this route within {ROUTE_SURGE_SECONDS // 60} minutes",
+                         "route-auto", ttl=ttl)
+                    auto += 1
+                    found = {k: v for k, v in found.items() if k != key}
+            for key in list(self.route_suggest):
+                if key not in found:
+                    del self.route_suggest[key]
+            for key, d in found.items():
+                if key not in self.route_suggest:
+                    self.note(f"Route {'>'.join(d['route'])} suddenly carries {d['names']} brand-new names. Open Blocks to see the suggestion.")
+                    self._important = True
+                self.route_suggest[key] = dict(d, first=self.route_suggest.get(key, {}).get("first", now))
+        elif self.route_suggest:
+            self.route_suggest = {}
 
         if self.learn_paths(a["long"]):
             changed = True
@@ -6316,7 +6394,7 @@ class SpamGuard:
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "links": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "links": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),
@@ -6370,6 +6448,10 @@ class SpamGuard:
                              "current": self.current_profile(), "keys": profile_keys()},
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
+                "route_suggestions": [{"key": k, "route": ">".join(v["route"]), "names": v["names"],
+                                       "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,
+                                       "ttl": int(c.get("route_surge_ttl", 7200))}
+                                      for k, v in sorted(self.route_suggest.items(), key=lambda kv: -kv[1]["names"])],
                 "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
@@ -6617,6 +6699,19 @@ class SpamGuard:
                                 extra={"only_channel": only} if only else None)
                 msg = (f"Blocking messages that start on route {'>'.join(hops)}. People SpamGuard knows still get through."
                        + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
+            elif op in ("accept_route", "dismiss_route"):
+                hops = parse_route(body.get("route", ""))
+                key = "route:" + ">".join(hops)
+                self.route_suggest.pop(key, None)
+                if op == "dismiss_route":
+                    self.suppressed[key] = time.time() + 86400
+                    msg = f"Won't suggest route {'>'.join(hops)} again for a day."
+                else:
+                    self.suppressed.pop(key, None)
+                    self._add_block(key, "route", hops, "Accepted from SpamGuard's suggestion", "manual",
+                                    ttl=int(self.cfg.get("route_surge_ttl", 7200)))
+                    msg = (f"Blocking messages that start on route {'>'.join(hops)} for {self.fmt_secs(int(self.cfg.get('route_surge_ttl', 7200)))}. People SpamGuard knows still get through."
+                           + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op in ("block_text", "mark_spam"):
                 if op == "mark_spam":
                     self.ev({"type": "label", "label": "spam", "sender": body.get("sender"), "text": body.get("text"),
@@ -6933,7 +7028,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"unblock", "block_hop", "block_route", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"unblock", "block_hop", "block_route", "accept_route", "dismiss_route", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",

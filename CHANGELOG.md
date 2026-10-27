@@ -12,7 +12,14 @@ The detail is below, newest first. In short:
 | **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
 | **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
-| **6.8 to 6.11** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, and blocking just the route spam starts on. |
+| **6.8 to 6.12** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, and spotting a route that suddenly carries lots of new names. |
+
+## v6.12.0
+
+- **A route that suddenly carries lots of new names is spotted.** A spammer who keeps changing names but always starts on the same first two repeaters is easy to miss, and a route block only helps once someone notices. When many brand-new names, each posting once or twice, start on the same first two repeaters within half an hour, **Blocks** now shows a **Suggested block** with a **Block it** button and a **Not now** button. SpamGuard looks only at names, routes and timing, never at what a message says. People SpamGuard knows are never counted and still get through, and nothing is blocked until you press the button.
+- **The protection level sets how quick it is.** Gentle waits for 12 new names and a block lasts an hour, Balanced waits for 8 and two hours, and Tough waits for 5 and four hours. Both numbers are listed under the level's starred settings.
+- **Optional: block it for you.** A new setting, off by default and not changed by the level, lets SpamGuard apply the route block itself, for the time above and with at most three at once. They are marked as automatic in **Blocks** and can be removed in one tap. A route whose first repeater you have already blocked or allowed is left alone.
+- Thanks again to Caboosey on the openHop Discord server, whose question started this.
 
 ## v6.11.0
 
