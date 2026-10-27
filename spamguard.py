@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.12.0"
+VERSION = "6.13.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -129,6 +129,10 @@ SETTINGS_META: list[dict] = [
      "preset": True, "risk": "Lower = reacts to an identity-changing spammer sooner, but a couple of new genuine repeaters appearing behind the same route at the same time as some odd-looking names could trigger it. Higher = more spam gets through first.",
      "label": "New repeaters before an identity-changing block",
      "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs."},
+    {"key": "hop_prefer_route", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "Off means a surge of brand-new names through one repeater always blocks everything through that repeater (except people it knows), even when nearly all of them used one route. On means only that route is blocked, so spam arriving on the repeater's other routes is not stopped by this block.",
+     "label": "Block just the route when new names nearly all use one",
+     "help": "When the only sign against a repeater is brand-new names and at least 80% of them started on one route, block that route instead of everything through the repeater. Made-up names and spam campaigns still block the whole repeater."},
     {"key": "route_surge", "group": "Blocking by source repeater", "type": "bool",
      "risk": "A suggestion costs nothing until you accept it. Turning this off means a spammer who keeps changing names but always starts on the same first repeaters is only caught if you notice and block the route yourself.",
      "label": "Suggest blocking a route that suddenly carries lots of new names",
@@ -421,6 +425,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "flood_max_advert": 8,
     "route_memory_days": 7,
     "route_surge": True,                  # suggest blocking a route that suddenly carries lots of new names
+    "hop_prefer_route": True,             # block just the route when brand-new names nearly all started on one
     "route_auto": False,                  # ...and only apply it without asking if you turn this on
     "interference_watch": True,
     "interference_db": 10,
@@ -4245,6 +4250,26 @@ class SpamGuard:
             d["senders"].add(e.sender)
         return out
 
+    def narrow_route(self, hop: str, h: dict, window, why: list[str]) -> Optional[tuple]:
+        """When the only sign against a repeater is brand-new names and at least 80% of them started on one
+        route (the first two repeaters), that route and how many names. Anything else (made-up names, a
+        spam campaign, names spread over several routes, or a route too short to name) returns None and the
+        whole repeater is blocked as before."""
+        if len(why) != 1 or not why[0].endswith("brand-new names") or f"hop:{hop}" in self.blocks:
+            return None
+        per: dict[tuple, set] = {}
+        for e in window:
+            if e.first_hop == hop and e.sender in h["new"]:
+                if len(e.path) < 2:
+                    return None
+                per.setdefault(tuple(e.path[:2]), set()).add(e.sender)
+        if not per:
+            return None
+        route, names = max(per.items(), key=lambda kv: len(kv[1]))
+        if len(names) < 0.8 * len(h["new"]) or len({len(x) for x in route}) != 1:
+            return None
+        return route, len(names)
+
     def route_surges(self, now: float) -> dict:
         """Routes (the first two repeaters) that suddenly carry many brand-new names. Looks at names, routes and
         timing only, never at what a message says. People SpamGuard knows, and routes already blocked, don't count."""
@@ -4483,6 +4508,15 @@ class SpamGuard:
                     continue
                 why = self.hop_signals(h)
                 if why:
+                    # Only brand-new names, nearly all on one route: block that route, which is narrower than
+                    # everything through the repeater, and leave other routes through it alone.
+                    narrow = self.narrow_route(hop, h, a["window"], why) if c.get("hop_prefer_route", True) else None
+                    if narrow:
+                        route, n = narrow
+                        want("route:" + ">".join(route), "route", list(route),
+                             f"{n} brand-new names started on this route (narrower than blocking repeater {hop})",
+                             "hop-route", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
+                        continue
                     reason = why[0][0].upper() + why[0][1:] + (f" (and {len(why) - 1} other sign{'s' if len(why) > 2 else ''})" if len(why) > 1 else "")
                     want(f"hop:{hop}", "hop", hop, reason, "hop", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
 
@@ -6394,7 +6428,7 @@ class SpamGuard:
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "links": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "links": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),

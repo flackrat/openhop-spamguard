@@ -12,7 +12,11 @@ The detail is below, newest first. In short:
 | **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
 | **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
-| **6.8 to 6.12** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, and spotting a route that suddenly carries lots of new names. |
+| **6.8 to 6.13** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, and spotting a route that suddenly carries lots of new names. |
+
+## v6.13.0
+
+- **A quick burst of new names now blocks the route, not the whole repeater.** When the only sign against a repeater is brand-new names, and at least 80% of them started on the same first two repeaters, SpamGuard now blocks just that route, with the usual time limit and people it knows still let through. Before, it blocked everything through the first repeater, which also held genuine newcomers using that repeater another way. Made-up names and spam campaigns still block the whole repeater, and so do new names spread over several routes. It is listed in **Blocks** as an automatic route block. A new setting, on by default, turns this back to the old behaviour.
 
 ## v6.12.0
 

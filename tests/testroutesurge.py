@@ -89,5 +89,24 @@ m=mock(); g=guard(m, known_min_msgs=3); g.apply_settings({"mode":"protect"})
 for i in range(8): m.add(f"Visitor{i:02d}",f"Completely different thing number {i} about {i*7}",["BA","AA","DE"],ago=1500-i*50)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(a==set(g.route_suggest) and a, "same result whatever the messages say")
+# Quick bursts: the repeater-wide check used to block all of BA; when the new names nearly all share one route,
+# only that route is blocked and a newcomer using the same first repeater another way gets through.
+m=mock(); g=guard(m, known_min_msgs=3); g.apply_settings({"mode":"protect"})
+for i,t in enumerate(["Morning all","Nice and clear","Anyone about"]): m.add("Quarry Pete",t,["BA","AA","DE"],ago=3000-i*60)
+for i,n in enumerate(["Dave","Sarah","Mike","Emma","Paul","Kate","Rob"]): m.add(n,["Lovely day on the hill","Anyone got a spare lead","Traffic is awful near the bridge","Fresh bread at the bakery","Match starts at three","Heading to the market now","Rain coming in from the west"][i],["BA","AA","DE"],ago=400-i*30)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+b=g.blocks.get("route:BA>AA")
+check(b and b["source"]=="hop-route" and "hop:BA" not in g.blocks, f"a quick burst on one route blocks the route, not the repeater: {list(g.blocks)}")
+check(m.decide("Lucy","Hi",["BA","AA","DE"])=="drop", "a newcomer on that route is held")
+check(m.decide("Canal Boat Ted","Out on the lock",["BA","DE","B1"])=="allow", "a newcomer using the same first repeater another way gets through")
+check(m.decide("Quarry Pete","Back again",["BA","AA","DE"])=="allow", "a known regular on the route gets through")
+st=g.status(); check(any(x["key"]=="route:BA>AA" and x["source"]=="hop-route" for x in st["blocks"]), "it is listed as an automatic route block")
+
+# made-up names are stronger evidence: the whole repeater is still blocked
+m=mock(); g=guard(m, known_min_msgs=3); g.apply_settings({"mode":"protect"})
+for i in range(6): m.add(rname(),f"Free thing {i}",["BA","AA","DE"],ago=300-i*20)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+check("hop:BA" in g.blocks and "route:BA>AA" not in g.blocks, f"made-up names still block the repeater: {list(g.blocks)}")
+
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
