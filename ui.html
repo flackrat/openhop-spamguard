@@ -589,7 +589,12 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="scroll"><table id="topSources"></table></div>
 </section>
 </div>
-<div class="page" data-page="blocks"><section>
+<div class="page" data-page="blocks"><section id="routeSugSec" hidden>
+  <h2>Suggested block</h2>
+  <p class="lead">A route that suddenly carries lots of brand-new names. Blocking it holds messages that start that way, for a limited time. People SpamGuard knows still get through, and SpamGuard looks at names, routes and timing, never at what anyone said.</p>
+  <ul class="rows" id="routeSug"></ul>
+</section>
+<section>
   <h2>Blocked right now</h2>
   <p class="lead basic-only">What your repeater is refusing to pass on. Blocks end by themselves once the spam stops. Remove one if it is catching genuine people.</p>
   <p class="lead adv">Every block, including short-lived duplicate blocks. Change how each one acts, how long it lasts, or which routes it covers.</p>
@@ -1099,8 +1104,13 @@ function renderHealth(d){
 /* ---------- blocks ---------- */
 function renderBlocks(d){
   const adv=document.body.classList.contains("advanced");
+  const sug=d.route_suggestions||[];
+  $("#routeSugSec").hidden=!sug.length;
+  $("#routeSug").innerHTML=sug.map(x=>`<li><div><div class="what">Route <span class="route">${esc(x.route)}</span> <span class="tag would">suggested</span></div>
+    <div class="why">${x.names} brand-new name${x.names===1?"":"s"} started on it in the last ${x.minutes} minutes (${x.messages} message${x.messages===1?"":"s"}). Blocking would last ${dur(x.ttl)}.</div></div>
+    <div class="acts">${btn("Block it","/accept_route",{route:x.route},"go")}${btn("Not now","/dismiss_route",{route:x.route},"quiet")}</div></li>`).join("");
   const list=d.blocks.filter(b=>b.source!=="dedupe"), dups=d.blocks.filter(b=>b.source==="dedupe");
-  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>",repeat:"<span class='tag plain'>repeating</span>",replay:"<span class='tag plain'>replay</span>",hop:""}[b.source]||"");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>",repeat:"<span class='tag plain'>repeating</span>",replay:"<span class='tag plain'>replay</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
