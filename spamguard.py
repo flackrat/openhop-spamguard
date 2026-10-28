@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.13.0"
+VERSION = "6.14.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.2.5"
@@ -145,6 +145,18 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = a spammer who pauses and returns is still held, but a genuine newcomer on that route is held longer. Shorter = mistakes clear sooner.",
      "label": "Route blocks from a suggestion last for",
      "help": "How long a route block lasts when you accept a suggestion, or when SpamGuard applies one itself. After it ends, a continuing surge is spotted again."},
+    {"key": "type_surge", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "A suggestion costs nothing until you accept it. Turning this off means a flood of requests or group data (which are not channel messages, so SpamGuard cannot read them) is only slowed by FloodGuard's airtime limits.",
+     "label": "Suggest holding a flood of requests or group data from one repeater",
+     "help": "When one first repeater suddenly sends most of the flooded requests, anonymous requests or group data your repeater hears, SpamGuard suggests holding that kind of packet from that repeater for a while. These packets are encrypted, so it looks only at how many arrive, through which repeater and how they travel. Channel messages and direct messages are never held by this."},
+    {"key": "type_surge_packets", "group": "Blocking by source repeater", "type": "int", "min": 10, "max": 1000,
+     "preset": True, "risk": "Lower = notices a flood sooner, but a busy moment from one genuine repeater (for example an app polling for telemetry) could trigger a suggestion. Higher = slower to notice.",
+     "label": "Flooded packets from one repeater before suggesting a hold",
+     "help": "How many flooded requests, anonymous requests or group data packets must arrive through the same first repeater within 10 minutes, and make up most of that kind of packet, before SpamGuard suggests holding them."},
+    {"key": "type_auto", "group": "Blocking by source repeater", "type": "bool",
+     "risk": "Off by default. When on, SpamGuard holds that kind of packet from that repeater without asking (at most three at a time, for the time set for route blocks). A genuine app using that repeater to ask for telemetry would be held until the hold ends or you remove it.",
+     "label": "Hold a flood of requests or group data automatically",
+     "help": "Instead of only suggesting, apply the hold yourself. Every one is listed under Blocks and in Activity, and can be removed in one tap. The protection level does not turn this on."},
     {"key": "route_auto", "group": "Blocking by source repeater", "type": "bool",
      "risk": "Off by default. When on, SpamGuard blocks a surging route without asking (at most three at a time, each for the time above), so a genuine newcomer on that route is held until the block ends or you release them. Known people always get through.",
      "label": "Block a surging route automatically",
@@ -348,19 +360,19 @@ PRESETS: dict[str, dict] = {
                 "dedupe_seconds": 600, "dedupe_min_chars": 40, "name_score_threshold": 4,
                 "repeat_max": 4, "slow_repeat_max": 4, "slow_repeat_hold_seconds": 7200,
                 "repeat_block_seconds": 1800, "slow_repeat_window_seconds": 43200, "block_ttl_seconds": 10800,
-                "route_surge_names": 12, "route_surge_ttl": 3600},
+                "route_surge_names": 12, "route_surge_ttl": 3600, "type_surge_packets": 60},
     "balanced": {"rotate_first_hops": 3, "hop_random_senders": 3, "hop_new_senders": 6, "hop_campaign_senders": 3,
                  "hop_random_senders_long": 5, "text_distinct_senders": 3, "similarity": 65,
                  "dedupe_seconds": 900, "dedupe_min_chars": 30, "name_score_threshold": 3,
                  "repeat_max": 3, "slow_repeat_max": 3, "slow_repeat_hold_seconds": 10800,
                  "repeat_block_seconds": 3600, "slow_repeat_window_seconds": 86400, "block_ttl_seconds": 21600,
-                 "route_surge_names": 8, "route_surge_ttl": 7200},
+                 "route_surge_names": 8, "route_surge_ttl": 7200, "type_surge_packets": 40},
     "strict": {"rotate_first_hops": 2, "hop_random_senders": 2, "hop_new_senders": 4, "hop_campaign_senders": 2,
                "hop_random_senders_long": 3, "text_distinct_senders": 2, "similarity": 55,
                "dedupe_seconds": 1800, "dedupe_min_chars": 24, "name_score_threshold": 2,
                "repeat_max": 2, "slow_repeat_max": 2, "slow_repeat_hold_seconds": 21600,
                "repeat_block_seconds": 7200, "slow_repeat_window_seconds": 129600, "block_ttl_seconds": 43200,
-               "route_surge_names": 5, "route_surge_ttl": 14400},
+               "route_surge_names": 5, "route_surge_ttl": 14400, "type_surge_packets": 25},
 }
 # The protection level (0-100) slides smoothly between the three presets: 0 is relaxed, 50 balanced and
 # 100 strict, and every value in between is worked out from the two either side. Tougher also means longer.
@@ -426,6 +438,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "route_memory_days": 7,
     "route_surge": True,                  # suggest blocking a route that suddenly carries lots of new names
     "hop_prefer_route": True,             # block just the route when brand-new names nearly all started on one
+    "type_surge": True,                   # suggest holding a flood of requests / group data from one repeater
+    "type_auto": False,                   # ...and only apply it without asking if you turn this on
     "route_auto": False,                  # ...and only apply it without asking if you turn this on
     "interference_watch": True,
     "interference_db": 10,
@@ -1012,6 +1026,12 @@ def hops_related(a: str, b: str) -> bool:
 
 HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
 # Blocks that hold people back by where their message came from, rather than by what it says.
+# Packets that aren't channel text but can still be flooded into the mesh: requests, group data and anonymous
+# requests. Only how many arrive, through which first repeater and how they travel is looked at: they are encrypted.
+TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests"}
+TYPE_SURGE_SECONDS = 600
+TYPE_SURGE_LONG_SECONDS = 7200   # a slow, steady flood is counted over this longer time
+TYPE_AUTO_MAX = 3
 ROUTE_SURGE_SECONDS = 1800   # how far back a route surge is counted
 ROUTE_AUTO_MAX = 3           # most automatic route blocks at once
 PEOPLE_KINDS = ("hop", "suffix", "links", "lockdown", "route")
@@ -1301,6 +1321,9 @@ class SpamGuard:
         self.labels: collections.OrderedDict = collections.OrderedDict()
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
+        self.type_events: collections.deque = collections.deque(maxlen=60000)   # (ts, type, first repeater, packet id)
+        self._type_seen: collections.OrderedDict = collections.OrderedDict()
+        self.type_suggest: dict[str, dict] = {}
         self.route_suggest: dict[str, dict] = {}   # routes SpamGuard suggests blocking (not saved: re-worked out)
         # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
         # message with that text counts as a first copy again. {text or "w:word|word": time released}
@@ -3749,6 +3772,8 @@ class SpamGuard:
             or (b["kind"] in ("text", "words") and b.get("source") == "manual")
 
     def block_matches(self, b: dict, e: Event) -> bool:
+        if b["kind"] == "ptype":
+            return False   # not a channel message: nothing SpamGuard reads is matched by it
         if self.gated(b) and self.is_known(e.sender):
             return False
         if b["kind"] == "lockdown":
@@ -3840,6 +3865,7 @@ class SpamGuard:
             except (TypeError, ValueError):
                 continue
             self.fg_observe(p)
+            self._type_note(p, ptype)
             self._note_hash_size(p)
             if ptype == PAYLOAD_TYPE_ADVERT:
                 self.learn_advert(p)
@@ -4148,6 +4174,8 @@ class SpamGuard:
         if b["kind"] == "route":
             return f"messages that started on route {'>'.join(b['value'])}, except people it knows" + (
                 f" (only on {b['only_channel']})" if b.get("only_channel") else "")
+        if b["kind"] == "ptype":
+            return f"flooded {TYPE_SURGE.get(b['value']['ptype'], 'packets')} that came in through repeater {b['value']['hop']}"
         if b["kind"] == "links":
             return "links from names SpamGuard doesn't know"
         if b["kind"] == "lockdown":
@@ -4269,6 +4297,60 @@ class SpamGuard:
         if len(names) < 0.8 * len(h["new"]) or len({len(x) for x in route}) != 1:
             return None
         return route, len(names)
+
+    def _type_note(self, p: dict, ptype: int):
+        """Count a flooded request, anonymous request or group data packet by the first repeater it came through.
+        Each packet is counted once. Packets this repeater sent itself, and direct (routed) packets, never count."""
+        if ptype not in TYPE_SURGE:
+            return
+        try:
+            route, ts = int(p.get("route", -1)), float(p.get("timestamp") or 0)
+        except (TypeError, ValueError):
+            return
+        if route not in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD) or ("rssi" in p and not p.get("rssi") and not p.get("snr")
+                                                                  and not p.get("rx_radio_id")):
+            return
+        path = parse_path(p.get("original_path"))
+        if not path:
+            return
+        pid = str(p.get("packet_hash") or p.get("id") or f"{ts}:{ptype}:{path[0]}")
+        if pid in self._type_seen:
+            return
+        self._type_seen[pid] = ts
+        while len(self._type_seen) > 20000:
+            self._type_seen.popitem(last=False)
+        self.type_events.append((ts, ptype, path[0].upper(), pid))
+        horizon = time.time() - TYPE_SURGE_LONG_SECONDS
+        while self.type_events and self.type_events[0][0] < horizon:
+            self.type_events.popleft()
+
+    def type_surges(self, now: float) -> dict:
+        """Kinds of packet where one first repeater sent most of what was flooded in, and a lot of it: over the
+        last ten minutes (a burst), or over the last two hours at half the number (a slow, steady flood).
+        Counts only; these packets are encrypted."""
+        need = max(5, int(self.cfg.get("type_surge_packets", 40)))
+        out = {}
+        for secs, floor in ((TYPE_SURGE_SECONDS, need), (TYPE_SURGE_LONG_SECONDS, max(10, need // 2))):
+            cutoff = now - secs
+            total: collections.Counter = collections.Counter()
+            per: collections.Counter = collections.Counter()
+            slots: dict = {}
+            for ts, ptype, hop, _pid in self.type_events:
+                if ts >= cutoff:
+                    total[ptype] += 1
+                    per[(ptype, hop)] += 1
+                    slots.setdefault((ptype, hop), set()).add(int(ts // 900))
+            for (ptype, hop), n in per.items():
+                key = f"ptype:{ptype}:{hop}"
+                if key in out or n < floor or n < 0.6 * total[ptype] or self.hop_allowed(hop):
+                    continue
+                if secs == TYPE_SURGE_LONG_SECONDS and len(slots[(ptype, hop)]) < 4:
+                    continue   # a slow flood is steady: a short burst is judged by the ten-minute count
+                if key in self.blocks or self.suppressed.get(key, 0) > now:
+                    continue
+                out[key] = {"ptype": ptype, "hop": hop, "packets": n, "share": round(100 * n / total[ptype]),
+                            "label": TYPE_SURGE[ptype], "minutes": secs // 60}
+        return out
 
     def route_surges(self, now: float) -> dict:
         """Routes (the first two repeaters) that suddenly carry many brand-new names. Looks at names, routes and
@@ -4543,6 +4625,29 @@ class SpamGuard:
                 self.route_suggest[key] = dict(d, first=self.route_suggest.get(key, {}).get("first", now))
         elif self.route_suggest:
             self.route_suggest = {}
+
+        # 3c. A flood of requests or group data (not channel text) coming through one first repeater.
+        if c.get("type_surge", True):
+            found = self.type_surges(now)
+            ttl = int(c.get("route_surge_ttl", 7200))
+            auto = sum(1 for b in self.blocks.values() if b.get("source") == "type-auto")
+            for key, d in list(found.items()):
+                if c.get("type_auto") and auto < TYPE_AUTO_MAX:
+                    want(key, "ptype", {"ptype": d["ptype"], "hop": d["hop"]},
+                         f"{d['packets']} flooded {d['label']} ({d['share']}% of those heard) came through this repeater in {d['minutes']} minutes",
+                         "type-auto", ttl=ttl)
+                    auto += 1
+                    del found[key]
+            for key in list(self.type_suggest):
+                if key not in found:
+                    del self.type_suggest[key]
+            for key, d in found.items():
+                if key not in self.type_suggest:
+                    self.note(f"Repeater {d['hop']} suddenly floods in {d['packets']} {d['label']}. Open Blocks to see the suggestion.")
+                    self._important = True
+                self.type_suggest[key] = dict(d, first=self.type_suggest.get(key, {}).get("first", now))
+        elif self.type_suggest:
+            self.type_suggest = {}
 
         if self.learn_paths(a["long"]):
             changed = True
@@ -4866,7 +4971,7 @@ class SpamGuard:
         return rules
 
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "replay": "replayed", "campaign": "campaign",
-                   "rotation": "changing identity", "hop": "auto",
+                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours"}
 
     @staticmethod
@@ -4906,6 +5011,8 @@ class SpamGuard:
             what = "via " + str(v)
         elif kind == "route":
             what = "route " + ">".join(v)
+        elif kind == "ptype":
+            what = f"{TYPE_SURGE.get(v['ptype'], 'packets')} via {v['hop']}"
         elif kind == "words":
             what = "words " + "+".join(str(w) for w in v)[:24]
         else:
@@ -4943,6 +5050,20 @@ class SpamGuard:
                                           {"field": "path_hashes", "op": "equals", "value": [f[size] for f, _, _ in per]}]
                                           + self._channel_cond(b)},
                                       "then": {"action": self.rule_action(b)}})
+                continue
+            if b["kind"] == "ptype":
+                forms, nw, sh = self._hop_forms(b["value"]["hop"])
+                self._route_count(nw, sh, bool(forms))
+                first = min(forms) if forms else None
+                for size in sorted(forms):
+                    tag = "" if size == first else f"@{size}"
+                    rules.append({"id": b["id"] if size == first else self._size_id(b, str(size)),
+                                  "name": f"{RULE_PREFIX}{key}{tag}" + self._rule_label(b), "enabled": True,
+                                  "if": {"all": [
+                                      {"field": "payload_type", "op": "equals", "value": b["value"]["ptype"]},
+                                      {"field": "route_type", "op": "in", "value": [ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD]},
+                                      {"field": "path_hashes", "op": "contains", "value": forms[size]}]},
+                                  "then": {"action": self.rule_action(b)}})
                 continue
             if b["kind"] == "hop":
                 forms, nw, sh = self._hop_forms(b["value"])
@@ -6428,7 +6549,7 @@ class SpamGuard:
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "links": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "type-auto": 1, "links": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),
@@ -6482,6 +6603,9 @@ class SpamGuard:
                              "current": self.current_profile(), "keys": profile_keys()},
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
+                "type_suggestions": [{"key": k, "ptype": v["ptype"], "hop": v["hop"], "label": v["label"], "packets": v["packets"],
+                                      "share": v["share"], "minutes": v.get("minutes", TYPE_SURGE_SECONDS // 60), "ttl": int(c.get("route_surge_ttl", 7200))}
+                                     for k, v in sorted(self.type_suggest.items(), key=lambda kv: -kv[1]["packets"])],
                 "route_suggestions": [{"key": k, "route": ">".join(v["route"]), "names": v["names"],
                                        "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,
                                        "ttl": int(c.get("route_surge_ttl", 7200))}
@@ -6745,6 +6869,25 @@ class SpamGuard:
                     self._add_block(key, "route", hops, "Accepted from SpamGuard's suggestion", "manual",
                                     ttl=int(self.cfg.get("route_surge_ttl", 7200)))
                     msg = (f"Blocking messages that start on route {'>'.join(hops)} for {self.fmt_secs(int(self.cfg.get('route_surge_ttl', 7200)))}. People SpamGuard knows still get through."
+                           + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
+            elif op in ("accept_type", "dismiss_type"):
+                try:
+                    ptype = int(body.get("ptype"))
+                except (TypeError, ValueError):
+                    ptype = -1
+                hop = str(body.get("hop", "")).upper().strip()
+                if ptype not in TYPE_SURGE or not HEX_HOP.fullmatch(hop):
+                    raise ValueError("Unknown kind of packet or repeater")
+                key = f"ptype:{ptype}:{hop}"
+                self.type_suggest.pop(key, None)
+                if op == "dismiss_type":
+                    self.suppressed[key] = time.time() + 86400
+                    msg = f"Won't suggest holding {TYPE_SURGE[ptype]} from repeater {hop} again for a day."
+                else:
+                    self.suppressed.pop(key, None)
+                    ttl = int(self.cfg.get("route_surge_ttl", 7200))
+                    self._add_block(key, "ptype", {"ptype": ptype, "hop": hop}, "Accepted from SpamGuard's suggestion", "manual", ttl=ttl)
+                    msg = (f"Holding flooded {TYPE_SURGE[ptype]} that come in through repeater {hop} for {self.fmt_secs(ttl)}. Channel and direct messages are not affected."
                            + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op in ("block_text", "mark_spam"):
                 if op == "mark_spam":
@@ -7062,7 +7205,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"unblock", "block_hop", "block_route", "accept_route", "dismiss_route", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"unblock", "block_hop", "block_route", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",

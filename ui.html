@@ -591,7 +591,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 </div>
 <div class="page" data-page="blocks"><section id="routeSugSec" hidden>
   <h2>Suggested block</h2>
-  <p class="lead">A route that suddenly carries lots of brand-new names. Blocking it holds messages that start that way, for a limited time. People SpamGuard knows still get through, and SpamGuard looks at names, routes and timing, never at what anyone said.</p>
+  <p class="lead">A route that suddenly carries lots of brand-new names, or a flood of requests or group data through one repeater. Blocking holds them for a limited time. People SpamGuard knows still get through, and SpamGuard looks at names, routes, packet types and timing, never at what anyone said.</p>
   <ul class="rows" id="routeSug"></ul>
 </section>
 <section>
@@ -1104,13 +1104,15 @@ function renderHealth(d){
 /* ---------- blocks ---------- */
 function renderBlocks(d){
   const adv=document.body.classList.contains("advanced");
-  const sug=d.route_suggestions||[];
-  $("#routeSugSec").hidden=!sug.length;
-  $("#routeSug").innerHTML=sug.map(x=>`<li><div><div class="what">Route <span class="route">${esc(x.route)}</span> <span class="tag would">suggested</span></div>
+  const sug=d.route_suggestions||[], tsug=d.type_suggestions||[];
+  $("#routeSugSec").hidden=!(sug.length||tsug.length);
+  $("#routeSug").innerHTML=tsug.map(x=>`<li><div><div class="what">Flooded ${esc(x.label)} through repeater <span class="route">${esc(x.hop)}</span> <span class="tag would">suggested</span></div>
+    <div class="why">${x.packets} in the last ${x.minutes} minutes, ${x.share}% of all the ${esc(x.label)} your repeater heard flooding in. These are not channel messages, so only counts are looked at. Holding them would last ${dur(x.ttl)}.</div></div>
+    <div class="acts">${btn("Hold them","/accept_type",{ptype:x.ptype,hop:x.hop},"go")}${btn("Not now","/dismiss_type",{ptype:x.ptype,hop:x.hop},"quiet")}</div></li>`).join("")+sug.map(x=>`<li><div><div class="what">Route <span class="route">${esc(x.route)}</span> <span class="tag would">suggested</span></div>
     <div class="why">${x.names} brand-new name${x.names===1?"":"s"} started on it in the last ${x.minutes} minutes (${x.messages} message${x.messages===1?"":"s"}). Blocking would last ${dur(x.ttl)}.</div></div>
     <div class="acts">${btn("Block it","/accept_route",{route:x.route},"go")}${btn("Not now","/dismiss_route",{route:x.route},"quiet")}</div></li>`).join("");
   const list=d.blocks.filter(b=>b.source!=="dedupe"), dups=d.blocks.filter(b=>b.source==="dedupe");
-  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>",repeat:"<span class='tag plain'>repeating</span>",replay:"<span class='tag plain'>replay</span>",hop:""}[b.source]||"");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>","type-auto":"<span class='tag plain'>automatic hold</span>",repeat:"<span class='tag plain'>repeating</span>",replay:"<span class='tag plain'>replay</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
@@ -1119,6 +1121,7 @@ function renderBlocks(d){
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
+      :b.kind==="ptype"?`Flooded ${esc(({0:"requests",6:"group data",7:"anonymous requests"})[b.value.ptype]||"packets")} that came in through repeater <span class="route">${esc(b.value.hop)}</span>`
       :b.kind==="route"?`Messages that started on route <span class="route">${esc(b.value.join(">"))}</span>, except people SpamGuard knows`+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
       :b.kind==="suffix"?(b.value.length?`Unknown repeaters sending via <span class="route">${esc(b.value.join(">"))}</span>`:"Unknown repeaters right next to yours")
       :esc(cap(b.describe));
