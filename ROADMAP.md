@@ -12,6 +12,8 @@ users report, so this is a direction rather than a promise. Suggestions are welc
 3. **Measure accuracy.** Use the one-tap labels and the replay tool to check how often SpamGuard gets it
    right on real installs, and tune from those numbers rather than guesses.
 4. **Clearer on a phone.** Keep reducing the wording and putting the useful numbers first.
+5. **Include suggested surge blocks in the level preview,** so you can see what each protection level would have
+   suggested on your own traffic. Today the preview covers messages only.
 
 ## Later
 
@@ -23,7 +25,9 @@ users report, so this is a direction rather than a promise. Suggestions are welc
 
 1. **Judge what people say.** It won't filter opinions, words or topics, and it has no "block this person"
    button. Hiding a person is each user's choice in their own app.
-2. **Touch direct messages or acknowledgements.** Only channel spam and floods are its business.
+2. **Touch direct messages or acknowledgements.** Only channel spam and floods are its business. A flood of
+   requests or group data can be held from the repeater it comes through, using counts only; direct messages
+   and acknowledgements never are.
 3. **Report back.** No telemetry, no usage statistics, no calls home. The only outside contact is the
    optional update check and map directory.
 4. **Need the cloud or an account.** It runs entirely on the repeater.
