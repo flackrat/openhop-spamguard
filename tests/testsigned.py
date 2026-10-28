@@ -24,7 +24,8 @@ def signed_payload(priv, sender, text, tamper=False, ts=None):
     shown=f"{sender}: {text}x".encode() if tamper else body
     pt=ts+b"\x00"+shown+sg.SIGNED_MARK+pub[:8]+sig
     pt+=b"\x00"*((-len(pt))%16)
-    ct=AES.new(k[:16],AES.MODE_ECB).encrypt(pt)
+    # MeshCore encrypts each 16-byte block on its own; one block at a time with a zero start value is the same thing
+    ct=b"".join(AES.new(k[:16],AES.MODE_CBC,iv=b"\x00"*16).encrypt(pt[i:i+16]) for i in range(0,len(pt),16))
     return (bytes([sg.channel_hash_byte(KEY)])+hmac.new(k,ct,hashlib.sha256).digest()[:2]+ct).hex()
 def advert_payload(pub, name):
     return (pub+b"\x00"*4+b"\x00"*64+bytes([0x82])+name.encode()+b"\x00").hex()
