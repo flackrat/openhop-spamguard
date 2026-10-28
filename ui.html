@@ -583,6 +583,13 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="legend"><span><i class="sw sw-u"></i>Airtime used</span><span><i class="sw sw-c"></i>Saved by stopping spam</span><span><i class="sw sw-f"></i>Saved by FloodGuard</span></div>
   <div class="chart short" id="chartAir" role="img"></div>
 </section>
+<section id="signedSec" hidden>
+  <h2>Signed messages</h2>
+  <p class="lead">Some apps sign channel messages with the sender's own key. SpamGuard counts them and checks each signature against the key the sender advertised. A signature says who wrote a message, not whether it is spam, so nothing is ever held back for being signed or unsigned. Only counts are kept, never what anyone said.</p>
+  <div id="signedBody"></div>
+  <ul class="rows" id="signedSug"></ul>
+  <ul class="rows" id="signedTrusted"></ul>
+</section>
 <section>
   <div class="health-head"><h2>Where the spam enters the mesh</h2><a href="#/sources" class="quietlink">Map and details</a></div>
   <p class="lead">The first repeater on each spam message's route, last 7 days.</p>
@@ -1164,6 +1171,24 @@ function renderBlocks(d){
     :(dups.length?`<details ${wasOpen?"open":""}><summary>Short-lived duplicate blocks (${dups.length}), each stopping copies of a message seen in the last few minutes</summary><ul class="rows">${dups.map(item).join("")}</ul></details>`:"");
 }
 
+/* ---------- signed messages ---------- */
+function renderSigned(d){
+  const s=d.signed||{}, sec=$("#signedSec");
+  sec.hidden=!s.on;
+  if(!s.on) return;
+  const t=s.today||{}, w=s.week||{};
+  const line=(x,when)=>x.n?`${fmtN(x.n)} signed ${x.n===1?"message":"messages"} ${when} from ${fmtN(x.signers)} ${x.signers===1?"signer":"signers"}: ${fmtN(x.ok)} correctly signed, ${fmtN(x.bad)} not matching, ${fmtN(x.unk)} that could not be checked yet because the signer's advert has not been heard.`:`No signed messages ${when}.`;
+  $("#signedBody").innerHTML=`<p>${esc(line(t,"today"))}</p><p>${esc(line(w,"in the last 7 days"))}</p>`
+    +(s.airtime!=null?`<p class="explain">Signatures made up about ${s.airtime}% of the airtime SpamGuard measured in the last 24 hours. FloodGuard already counts it, because it works from each packet's full length.</p>`:"")
+    +(s.verify?"":`<p class="explain">This copy of SpamGuard has no way to check signatures, so they are counted but not checked.</p>`);
+  const sug=d.signer_suggestions||[], tr=d.signer_trusted||[];
+  $("#signedSug").innerHTML=sug.map(x=>`<li><div><div class="what">Trust this signing key as ${esc(x.name)} <span class="tag would">suggested</span></div>
+    <div class="why">${x.n} messages from ${esc(x.name)}, a name SpamGuard already knows, were correctly signed with key <span class="route">${esc(x.kid.slice(0,8))}</span>. Only accept if you are sure the key really is theirs: a name can be copied, and a signature only proves which key signed. If you trust it, a message correctly signed by that key is never treated as spam. It never holds anyone back.</div></div>
+    <div class="acts">${btn("Trust it","/accept_signer",{kid:x.kid},"go")}${btn("Not now","/dismiss_signer",{kid:x.kid},"quiet")}</div></li>`).join("");
+  $("#signedTrusted").innerHTML=tr.map(x=>`<li><div><div class="what">Trusted key <span class="route">${esc(x.kid.slice(0,8))}</span> as ${esc(x.name)}</div></div>
+    <div class="acts">${btn("Stop trusting","/unbind_signer",{kid:x.kid},"quiet")}</div></li>`).join("");
+}
+
 /* ---------- most held, last 7 days ---------- */
 function renderMostHeld(d){
   const list=((d.metrics||{}).most_held)||[];
@@ -1574,6 +1599,7 @@ function render(d, editing){
   renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
+  renderSigned(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }

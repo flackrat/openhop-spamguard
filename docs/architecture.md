@@ -34,7 +34,9 @@ those rules expire by themselves.
 
 1. **Collector.** Reads new packets from openHop's live feed, with a timed check as a backup, and decrypts
    the channel messages on the channels it has been given, using the channel keys openHop already holds. It also counts flooded requests, anonymous requests and
-   group data by the kind of packet, the first repeater and the time, without opening them.
+   group data by the kind of packet, the first repeater and the time, without opening them. When the optional
+   signed-message setting is on, it also reads the trailer at the end of a decrypted channel message (as bytes), checks the
+   Ed25519 signature against a key learnt from an advert, and keeps only counts and short key ids.
 2. **Analysis.** Looks at recent channel traffic and decides what looks like spam. It also notices a route, or a
    flood of non-text packets through one repeater (or a few that together carry nearly all of it), that suddenly stands out, and suggests a time-limited block
    (it applies one itself only if the operator turned that on). It keeps short-lived
