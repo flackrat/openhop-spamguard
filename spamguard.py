@@ -66,10 +66,18 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.15.0"
+try:
+    from Crypto.Signature import eddsa as _eddsa  # nosec B413
+except ImportError:  # pragma: no cover
+    try:
+        from Cryptodome.Signature import eddsa as _eddsa
+    except ImportError:
+        _eddsa = None
+
+VERSION = "6.16.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.3.0"
+FLOODGUARD_VERSION = "1.3.1"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -254,6 +262,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Turned off, a device that keeps re-sending other people's old messages (usually broken firmware) fills the channel with repeats, often dozens of copies of each. While on, someone whose device clock is badly wrong and who sends the same long message twice may have the second copy held back.",
      "label": "Stop old messages being sent again (replays)",
      "help": "Some devices pick up channel messages and send them out again later, with their own clock (often months or years wrong) and sometimes with the sender's name cut short. When a message turns up again that was first heard a while ago, either with a clock that's badly off or under a cut-short copy of the original name, further copies of it from that name are held back. The original message always went out first, and anything new from anyone is untouched."},
+    {"key": "signed_watch", "group": "Signed messages", "type": "bool",
+     "risk": "Turned on, SpamGuard also reads the signature at the end of signed channel messages. It only counts and checks them and keeps no names or text. Nothing is ever held back because a message is signed, unsigned or fails the check.",
+     "label": "Count and check signed messages",
+     "help": "Some apps sign channel messages with the sender's own key. When this is on, SpamGuard counts how many it hears, checks each signature against the sender's advertised key, and shows the totals on the Overview, with how much airtime signatures use. When a person SpamGuard already knows has sent several correctly signed messages, it suggests trusting that key as theirs. Once you accept, a correctly signed message from that key is never treated as spam. SpamGuard keeps only counts and short key ids, never what anyone said."},
     {"key": "repeat_max", "group": "Copies and repeats", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
      "label": "Copies allowed before repeats are stopped",
@@ -454,6 +466,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "repeat_guard": True,
     "replay_guard": True,
+    "signed_watch": False,
     "repeat_max": 3,
     "repeat_window_seconds": 600,
     "repeat_block_seconds": 3600,
@@ -661,6 +674,45 @@ def oh_sender(name) -> str:
     return str(name or "").strip() or "Unknown"
 
 
+# The fixed label the signing format puts first in the bytes that are signed (24 bytes), written as hex.
+SIGNED_LABEL = bytes.fromhex("4d6573684f53207369676e6564206368616e6e656c207631")
+SIGNED_MARK = b"\x00S\x01"        # marks a signed-message trailer at the end of the decrypted text
+SIGNED_TRAILER = 3 + 8 + 64      # marker, the first 8 bytes of the signer's public key, an Ed25519 signature
+
+
+def split_signed(pt: bytes) -> Optional[tuple]:
+    """(where the visible text ends, key id, signature) when the decrypted text ends in a signed-message trailer:
+    the marker, an 8-byte key id, a 64-byte signature, then zero padding. Works on bytes, never on text,
+    because the marker starts with a zero byte."""
+    i = pt.find(SIGNED_MARK, 5)
+    while i != -1:
+        end = i + SIGNED_TRAILER
+        if end <= len(pt) and not any(pt[end:]):
+            return i, pt[i + 3:i + 11].hex().upper(), pt[i + 11:end]
+        i = pt.find(SIGNED_MARK, i + 1)
+    return None
+
+
+def signed_cover(secret: str, pt: bytes, text_end: int) -> bytes:
+    """The bytes a signed message's signature covers: the label, the first 16 bytes of the SHA-256 of the
+    channel's key, the sender's 4-byte time, and the exact "name: text" bytes."""
+    b = bytes.fromhex(secret)
+    if len(b) >= 32 and b[16:32] == b"\x00" * 16:
+        b = b[:16]
+    return SIGNED_LABEL + hashlib.sha256(b).digest()[:16] + pt[:4] + pt[5:text_end]
+
+
+def verify_signed(pubkey: Optional[bytes], sig: bytes, cover: bytes) -> str:
+    """"ok", "bad" (the signature does not match), or "unknown" (no key to check it against, or no way to check)."""
+    if not pubkey or len(pubkey) != 32 or _eddsa is None:
+        return "unknown"
+    try:
+        _eddsa.new(_eddsa.import_public_key(pubkey), "rfc8032").verify(cover, sig)
+        return "ok"
+    except (ValueError, TypeError):
+        return "bad"
+
+
 def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dict]:
     """Return {'channel','sender','text'} for a GroupText payload, or None."""
     if AES is None or len(payload) < 4:
@@ -680,7 +732,11 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
             # [timestamp 4][flags 1]["sender: text"][zero padding]
             msg = pt[5:].split(b"\x00", 1)[0].decode("utf-8", "replace")
             sender, text = (msg.split(": ", 1) if ": " in msg else ("", msg))
-            return {"channel": name, "sender": sender.strip(), "text": text, "sent": int.from_bytes(pt[:4], "little")}
+            out = {"channel": name, "sender": sender.strip(), "text": text, "sent": int.from_bytes(pt[:4], "little")}
+            tr = split_signed(pt)
+            if tr:
+                out["signed"] = {"kid": tr[1], "sig": tr[2], "cover": signed_cover(secret, pt, tr[0])}
+            return out
         except Exception:
             continue
     return None
@@ -1032,6 +1088,8 @@ TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests"}
 TYPE_SURGE_SECONDS = 600
 TYPE_SURGE_LONG_SECONDS = 7200   # a slow, steady flood is counted over this longer time
 TYPE_GROUP_MAX = 4   # a flood spread over up to this many first repeaters is still caught
+SIGNED_TRUST_MIN = 3     # correctly signed messages from a known person before it suggests trusting their key
+SIGNED_SUGGEST_MAX = 5
 TYPE_AUTO_MAX = 3
 ROUTE_SURGE_SECONDS = 1800   # how far back a route surge is counted
 ROUTE_AUTO_MAX = 3           # most automatic route blocks at once
@@ -1325,6 +1383,12 @@ class SpamGuard:
         self.type_events: collections.deque = collections.deque(maxlen=60000)   # (ts, type, first repeater, packet id)
         self._type_seen: collections.OrderedDict = collections.OrderedDict()
         self.type_suggest: dict[str, dict] = {}
+        self.signer_keys: collections.OrderedDict = collections.OrderedDict()   # key id -> public key, from adverts (memory only)
+        self.signer_bind: dict[str, str] = {}      # key id -> the known person you trusted it as
+        self.signer_suggest: dict[str, dict] = {}
+        self.signed_stats: dict[str, dict] = {}    # day -> counts only
+        self._signed_ids: dict[str, set] = {}      # day -> key ids heard (memory only), for the count of signers
+        self._signed_ok: dict[str, dict] = {}      # key id -> {"name", "n"} while a suggestion builds up
         self.route_suggest: dict[str, dict] = {}   # routes SpamGuard suggests blocking (not saved: re-worked out)
         # Duplicate blocks you removed (or cleared): the copies seen up to then are forgiven, so the next
         # message with that text counts as a first copy again. {text or "w:word|word": time released}
@@ -1629,6 +1693,12 @@ class SpamGuard:
         for k, v in (st.get("name_links") or {}).items():
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
+        for k, v in (st.get("signer_bind") or {}).items():
+            if isinstance(k, str) and isinstance(v, str) and re.fullmatch(r"[0-9A-F]{16}", k):
+                self.signer_bind[k] = v[:60]
+        for d, v in (st.get("signed_stats") or {}).items():
+            if isinstance(v, dict) and re.fullmatch(r"\d{4}-\d\d-\d\d", str(d)):
+                self.signed_stats[str(d)] = {k: int(v.get(k) or 0) for k in ("n", "ok", "bad", "unk", "ids")}
         day8 = now - 8 * 86400
         for k, v in (st.get("sender_paths") or {}).items():
             if isinstance(v, dict):
@@ -1714,6 +1784,8 @@ class SpamGuard:
                     "senders": {k: [round(v["first"], 1), v["count"]]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                     "name_links": self.name_links,
+                    "signer_bind": dict(list(self.signer_bind.items())[-500:]),
+                    "signed_stats": self.signed_stats,
                     "held_names": dict(list(self.held_names.items())[-3000:]),
                     "sender_paths": dict(list(self.sender_paths.items())[-self.SENDER_PATHS_MAX:]),
                     "labels": dict(list(self.labels.items())[-1000:]),
@@ -1732,6 +1804,9 @@ class SpamGuard:
         n = len(self.blocks)
         self.blocks.clear()
         self.suppressed.clear()
+        self.signer_bind.clear()
+        self.signer_suggest.clear()
+        self._signed_ok.clear()
         self.allow_hops.clear()
         self.allow_senders.clear()
         self.allow_texts.clear()
@@ -3878,6 +3953,8 @@ class SpamGuard:
             self._type_note(p, ptype)
             self._note_hash_size(p)
             if ptype == PAYLOAD_TYPE_ADVERT:
+                if self.cfg.get("signed_watch"):
+                    self._note_signer_key(p)
                 self.learn_advert(p)
                 continue
             if ptype != PAYLOAD_TYPE_GRP_TXT:
@@ -3913,7 +3990,9 @@ class SpamGuard:
                 e.length = len(payload)
             e.seen_at = now
             e.sent_ts = int(dec.get("sent") or 0)
-            e.exempt = self.text_allowed(e.text) or self.is_own(e)
+            key_trusted = bool(dec.get("signed")) and bool(self.cfg.get("signed_watch")) \
+                and self._note_signed(dec["signed"], e, key, key in self.counted_packets)
+            e.exempt = self.text_allowed(e.text) or self.is_own(e) or key_trusted
             e.replay = bool(self.cfg.get("replay_guard", True)) and not e.local and not e.exempt and self.replay_of(e)
             trusted = e.sender in self.allow_senders
             e.name_score = name_score(e.sender, self.name_res)
@@ -4308,6 +4387,90 @@ class SpamGuard:
             return None
         return route, len(names)
 
+    def _note_signer_key(self, p: dict):
+        """Remember the public key in an advert, so a signed message can be checked against it. Kept in memory only."""
+        try:
+            adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
+        except ValueError:
+            return
+        if not adv:
+            return
+        kid = adv["key"][:16].upper()
+        self.signer_keys[kid] = bytes.fromhex(adv["key"])
+        self.signer_keys.move_to_end(kid)
+        while len(self.signer_keys) > 6000:
+            self.signer_keys.popitem(last=False)
+
+    def _note_signed(self, s: dict, e, key: str, again: bool) -> bool:
+        """Count and check one signed message. Returns True when it is correctly signed by a key you trusted as
+        this sender, which exempts the message from spam rules. Never holds anything back. Only counts and short
+        key ids are kept, never what anyone said."""
+        kid = s["kid"]
+        res = verify_signed(self.signer_keys.get(kid), s["sig"], s["cover"])
+        bound = self.signer_bind.get(kid)
+        trusted = res == "ok" and bool(bound) and bound.casefold() == e.sender.casefold()
+        if again or e.local:
+            return trusted
+        day = time.strftime("%Y-%m-%d", time.localtime(e.ts))
+        st = self.signed_stats.setdefault(day, {"n": 0, "ok": 0, "bad": 0, "unk": 0, "ids": 0})
+        st["n"] += 1
+        st[{"ok": "ok", "bad": "bad", "unknown": "unk"}[res]] += 1
+        ids = self._signed_ids.setdefault(day, set())
+        ids.add(kid)
+        st["ids"] = max(st["ids"], len(ids))
+        for old in [d for d in self.signed_stats if d < time.strftime("%Y-%m-%d", time.localtime(e.ts - 30 * 86400))]:
+            self.signed_stats.pop(old, None)
+            self._signed_ids.pop(old, None)
+        h = self.hist.setdefault(str(int(e.ts // 3600 * 3600)), {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
+        h["sg"] = h.get("sg", 0) + 1
+        h["sa"] = round(h.get("sa", 0) + self.airtime_ms(SIGNED_TRAILER) * (2 if (self.verdict.get(key) or [False])[0] else 1))
+        if res == "ok" and not bound:
+            o = self._signed_ok.get(kid)
+            if not o or o["name"] != e.sender:
+                o = self._signed_ok[kid] = {"name": e.sender, "n": 0}
+            o["n"] += 1
+            while len(self._signed_ok) > 300:
+                self._signed_ok.pop(next(iter(self._signed_ok)))
+        return trusted
+
+    def signer_suggestions(self, now: float):
+        """Suggest trusting a signing key once a name SpamGuard already knows has sent several correctly signed
+        messages with it. Never trusts anything by itself."""
+        taken = {v.casefold() for v in self.signer_bind.values()}
+        keys_per_name = collections.Counter(o["name"].casefold() for o in self._signed_ok.values())
+        out = {}
+        for kid, o in self._signed_ok.items():
+            if kid in self.signer_bind or o["n"] < SIGNED_TRUST_MIN or not self.is_known(o["name"]):
+                continue
+            if keys_per_name[o["name"].casefold()] > 1:
+                continue   # two keys signing as one name: one of them is not them, so SpamGuard doesn't pick
+            if o["name"].casefold() in taken or self.suppressed.get("signer:" + kid, 0) > now:
+                continue
+            out[kid] = {"name": o["name"], "n": o["n"]}
+            if len(out) >= SIGNED_SUGGEST_MAX:
+                break
+        self.signer_suggest = out
+
+    def signed_summary(self) -> dict:
+        """Counts for the Overview: today, the last seven days, and how much airtime signatures use (last 24 hours)."""
+        now = time.time()
+        today = time.strftime("%Y-%m-%d", time.localtime(now))
+        week = [time.strftime("%Y-%m-%d", time.localtime(now - i * 86400)) for i in range(7)]
+        def total(days):
+            t = {"n": 0, "ok": 0, "bad": 0, "unk": 0}
+            for d in days:
+                for k in t:
+                    t[k] += int((self.signed_stats.get(d) or {}).get(k, 0))
+            t["signers"] = max([int((self.signed_stats.get(d) or {}).get("ids", 0)) for d in days] or [0])
+            return t
+        sa = ar = 0
+        for hr in range(25):
+            h = self.hist.get(str(int((now - hr * 3600) // 3600 * 3600))) or {}
+            sa += h.get("sa", 0)
+            ar += h.get("ar", 0)
+        return {"on": bool(self.cfg.get("signed_watch")), "today": total([today]), "week": total(week),
+                "airtime": round(100 * sa / ar, 1) if ar else None, "verify": _eddsa is not None}
+
     def _type_note(self, p: dict, ptype: int):
         """Count a flooded request, anonymous request or group data packet by the first repeater it came through.
         Each packet is counted once. Packets this repeater sent itself, and direct (routed) packets, never count."""
@@ -4416,6 +4579,11 @@ class SpamGuard:
                 return
             if self._add_block(key, kind, value, reason, source, channel, ttl, from_ts, sender=sender):
                 changed = True
+
+        if c.get("signed_watch"):
+            self.signer_suggestions(now)
+        elif self.signer_suggest:
+            self.signer_suggest = {}
 
         # 1. Spam campaigns: same/similar text from several names -> block the shared text.
         if c.get("enable_text_rules", True):
@@ -6624,6 +6792,9 @@ class SpamGuard:
                              "current": self.current_profile(), "keys": profile_keys()},
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
+                "signed": self.signed_summary(),
+                "signer_suggestions": [{"kid": k, "name": v["name"], "n": v["n"]} for k, v in self.signer_suggest.items()],
+                "signer_trusted": [{"kid": k, "name": v} for k, v in self.signer_bind.items()],
                 "type_suggestions": [{"key": k, "ptype": v["ptype"], "hop": v["hop"], "label": v["label"], "packets": v["packets"],
                                       "share": v["share"], "grouped": bool(v.get("grouped")), "minutes": v.get("minutes", TYPE_SURGE_SECONDS // 60), "ttl": int(c.get("route_surge_ttl", 7200))}
                                      for k, v in sorted(self.type_suggest.items(), key=lambda kv: -kv[1]["packets"])],
@@ -6891,6 +7062,26 @@ class SpamGuard:
                                     ttl=int(self.cfg.get("route_surge_ttl", 7200)))
                     msg = (f"Blocking messages that start on route {'>'.join(hops)} for {self.fmt_secs(int(self.cfg.get('route_surge_ttl', 7200)))}. People SpamGuard knows still get through."
                            + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
+            elif op in ("accept_signer", "dismiss_signer", "unbind_signer"):
+                kid = str(body.get("kid", "")).upper().strip()
+                if not re.fullmatch(r"[0-9A-F]{16}", kid):
+                    raise ValueError("Unknown key id")
+                if op == "unbind_signer":
+                    name = self.signer_bind.pop(kid, None)
+                    msg = f"No longer trusting that key as {name}." if name else "That key was not trusted."
+                elif op == "dismiss_signer":
+                    self.signer_suggest.pop(kid, None)
+                    self._signed_ok.pop(kid, None)
+                    self.suppressed["signer:" + kid] = time.time() + 7 * 86400
+                    msg = "Won't suggest trusting that key again for a week."
+                else:
+                    sug = self.signer_suggest.pop(kid, None)
+                    if not sug:
+                        raise ValueError("That suggestion has gone")
+                    self.signer_bind[kid] = sug["name"]
+                    self._signed_ok.pop(kid, None)
+                    msg = (f"Trusting that key as {sug['name']}. A message correctly signed by it is never treated as spam. "
+                           "It still never holds anyone back for being signed or unsigned.")
             elif op in ("accept_type", "dismiss_type"):
                 try:
                     ptype = int(body.get("ptype"))
@@ -7159,6 +7350,8 @@ class SpamGuard:
                 self.catches.clear()
                 self.held.clear()
                 self.held_names.clear()
+                self.signed_stats.clear()
+                self._signed_ids.clear()
                 self.note(f"Spam history cleared ({n} spam message{'' if n == 1 else 's'} over the last 8 days); "
                           "blocks, settings and the evidence log are unchanged")
                 self._important = True
@@ -7226,7 +7419,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"unblock", "block_hop", "block_route", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
