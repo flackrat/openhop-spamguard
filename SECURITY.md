@@ -15,7 +15,9 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
 1. **As an openHop plugin (the recommended install),** it runs under openHop's plugin manager as openHop's own
    user, not as root. It reads packets from openHop and writes its own rules through openHop's web API, using
    the API token you give it. Its rules are all named `spamguard:...`, and it never changes your own rules.
-   It writes only to its own data folder inside openHop's plugin folder.
+   It writes only to its own data folder inside openHop's plugin folder. Besides channel messages, some rules
+   match the kind of packet and the repeaters in its route (for a flood of requests or group data); SpamGuard
+   never opens those packets.
 2. **Its web page** (port 8091) shows status to anyone on your network, like openHop's own dashboard. Setting
    a page password (`listen_api_key`) protects every change, the message list and the evidence download.
    Changes are only accepted as JSON, so another website can't make them through your browser.
