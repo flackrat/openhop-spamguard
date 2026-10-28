@@ -36,7 +36,7 @@ those rules expire by themselves.
    the channel messages on the channels it has been given, using the channel keys openHop already holds. It also counts flooded requests, anonymous requests and
    group data by the kind of packet, the first repeater and the time, without opening them.
 2. **Analysis.** Looks at recent channel traffic and decides what looks like spam. It also notices a route, or a
-   flood of non-text packets through one repeater, that suddenly stands out, and suggests a time-limited block
+   flood of non-text packets through one repeater (or a few that together carry nearly all of it), that suddenly stands out, and suggests a time-limited block
    (it applies one itself only if the operator turned that on). It keeps short-lived
    records (recent messages, names it has learnt are genuine, routes) in memory and in the state file.
 3. **Rules.** Turns each decision into an openHop rule with a lifetime, writes the full set to openHop's

@@ -1107,7 +1107,7 @@ function renderBlocks(d){
   const sug=d.route_suggestions||[], tsug=d.type_suggestions||[];
   $("#routeSugSec").hidden=!(sug.length||tsug.length);
   $("#routeSug").innerHTML=tsug.map(x=>`<li><div><div class="what">Flooded ${esc(x.label)} through repeater <span class="route">${esc(x.hop)}</span> <span class="tag would">suggested</span></div>
-    <div class="why">${x.packets} in the last ${x.minutes} minutes, ${x.share}% of all the ${esc(x.label)} your repeater heard flooding in. These are not channel messages, so only counts are looked at. Holding them would last ${dur(x.ttl)}.</div></div>
+    <div class="why">${x.packets} in the last ${x.minutes} minutes, ${x.share}% of all the ${esc(x.label)} your repeater heard flooding in${x.grouped?", spread over a few repeaters that together carry nearly all of it":""}. These are not channel messages, so only counts are looked at. Holding them would last ${dur(x.ttl)}.</div></div>
     <div class="acts">${btn("Hold them","/accept_type",{ptype:x.ptype,hop:x.hop},"go")}${btn("Not now","/dismiss_type",{ptype:x.ptype,hop:x.hop},"quiet")}</div></li>`).join("")+sug.map(x=>`<li><div><div class="what">Route <span class="route">${esc(x.route)}</span> <span class="tag would">suggested</span></div>
     <div class="why">${x.names} brand-new name${x.names===1?"":"s"} started on it in the last ${x.minutes} minutes (${x.messages} message${x.messages===1?"":"s"}). Blocking would last ${dur(x.ttl)}.</div></div>
     <div class="acts">${btn("Block it","/accept_route",{route:x.route},"go")}${btn("Not now","/dismiss_route",{route:x.route},"quiet")}</div></li>`).join("");
