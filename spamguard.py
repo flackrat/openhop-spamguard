@@ -66,10 +66,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         AES = None
 
-VERSION = "6.14.0"
+VERSION = "6.15.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.2.5"
+FLOODGUARD_VERSION = "1.3.0"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -1031,6 +1031,7 @@ HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
 TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests"}
 TYPE_SURGE_SECONDS = 600
 TYPE_SURGE_LONG_SECONDS = 7200   # a slow, steady flood is counted over this longer time
+TYPE_GROUP_MAX = 4   # a flood spread over up to this many first repeaters is still caught
 TYPE_AUTO_MAX = 3
 ROUTE_SURGE_SECONDS = 1800   # how far back a route surge is counted
 ROUTE_AUTO_MAX = 3           # most automatic route blocks at once
@@ -1384,6 +1385,7 @@ class SpamGuard:
         self._texts: collections.OrderedDict = collections.OrderedDict()
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
+        self._pulses: collections.deque = collections.deque()
         self._air_mark = 0.0
         # Interference watch: openHop's noise-floor samples (time, dBm) for the last hour, the hours' medians
         # live in hist ("nf"), and the current episode / past episodes in self.jam.
@@ -1933,7 +1935,7 @@ class SpamGuard:
                 wd_heard = any(channel_hash_byte(k) == first for k in self.wardrive_channels().values())
             except ValueError:
                 pass
-        self.air.append((ts, on_air, flood))
+        self.air.append((ts, on_air, flood, route in (2, 3)))
         if counted:
             return
         self.fg["mark"] = ts
@@ -1972,15 +1974,17 @@ class SpamGuard:
         """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
         while self.air and self.air[0][0] < now - 900:
             self.air.popleft()
-        tot = fl = 0.0
+        tot = fl = direct = 0.0
         n = 0
-        for ts, ms, flood in self.air:
+        for ts, ms, flood, routed in self.air:
             if now - self.FG_WINDOW <= ts <= now:
                 tot += ms
+                if routed:
+                    direct += ms   # busy counts it, but it can't dilute the share: routed packets are never held back
                 if flood:
                     fl += ms
                     n += 1
-        return min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)), (fl / tot if tot else 0.0), n
+        return min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)), (fl / (tot - direct) if tot - direct > 0 else 0.0), n
 
     def _fg_compact(self, now: float):
         """Route counts older than a day and a bit are folded into one entry per day (the last day stays
@@ -2085,7 +2089,9 @@ class SpamGuard:
             f["calm_since"] = 0.0
             f["busy_since"] = f.get("busy_since") or now
             if not f.get("limit"):
-                if now - f["busy_since"] >= self.FG_SUSTAIN:
+                recent = [t for t in self._pulses if t > now - 1800]
+                sustain = self.FG_SUSTAIN if len(recent) < 2 else self.FG_SUSTAIN // 3   # bursts that keep coming back
+                if now - f["busy_since"] >= sustain:
                     # Starts just past the routes it normally hears, then tightens a step at a time.
                     f.update(limit=start, since=now, last_step=now, peak=busy, episodes=int(f.get("episodes") or 0) + 1)
                     acting = c["mode"] == "protect" and not c.get("paused") and self.fg_can_act()
@@ -2107,6 +2113,10 @@ class SpamGuard:
             if f.get("limit"):
                 f["peak"] = max(float(f.get("peak") or 0), busy)
         else:
+            if f.get("busy_since") and not f.get("limit") and now - f["busy_since"] < self.FG_SUSTAIN:
+                self._pulses.append(now)   # a burst that ended before FloodGuard stepped in
+                while len(self._pulses) > 20:
+                    self._pulses.popleft()
             f["busy_since"] = 0.0
             if f.get("limit"):
                 if busy < level * 0.7:
@@ -4335,21 +4345,32 @@ class SpamGuard:
             total: collections.Counter = collections.Counter()
             per: collections.Counter = collections.Counter()
             slots: dict = {}
+            longest: dict = {}
             for ts, ptype, hop, _pid in self.type_events:
                 if ts >= cutoff:
+                    base = hop[:2]   # the one-byte and longer forms of one repeater count together
                     total[ptype] += 1
-                    per[(ptype, hop)] += 1
-                    slots.setdefault((ptype, hop), set()).add(int(ts // 900))
-            for (ptype, hop), n in per.items():
-                key = f"ptype:{ptype}:{hop}"
-                if key in out or n < floor or n < 0.6 * total[ptype] or self.hop_allowed(hop):
+                    per[(ptype, base)] += 1
+                    slots.setdefault((ptype, base), set()).add(int(ts // 900))
+                    if len(hop) > len(longest.get((ptype, base), "")):
+                        longest[(ptype, base)] = hop
+            cands = [(k, n, False) for k, n in per.items() if n >= floor and n >= 0.6 * total[k[0]]]
+            # A flood spread over a few repeaters: none has most of it, but together they carry nearly all of it.
+            single = {k[0] for k, _, _ in cands}
+            for ptype, tot in total.items():
+                if tot < 2 * floor or ptype in single:
                     continue
-                if secs == TYPE_SURGE_LONG_SECONDS and len(slots[(ptype, hop)]) < 4:
-                    continue   # a slow flood is steady: a short burst is judged by the ten-minute count
-                if key in self.blocks or self.suppressed.get(key, 0) > now:
+                top = sorted(((n, k) for k, n in per.items() if k[0] == ptype), reverse=True)[:TYPE_GROUP_MAX]
+                if sum(n for n, _ in top) >= 0.75 * tot and all(n >= 0.15 * tot and n >= floor // 2 for n, _ in top):
+                    cands += [(k, n, True) for n, k in top]
+            for k, n, grouped in cands:
+                hop = longest[k]
+                key = f"ptype:{k[0]}:{hop}"
+                steady = secs != TYPE_SURGE_LONG_SECONDS or len(slots[k]) >= 4   # a slow flood is steady
+                if key in out or not steady or self.hop_allowed(hop) or key in self.blocks or self.suppressed.get(key, 0) > now:
                     continue
-                out[key] = {"ptype": ptype, "hop": hop, "packets": n, "share": round(100 * n / total[ptype]),
-                            "label": TYPE_SURGE[ptype], "minutes": secs // 60}
+                out[key] = {"ptype": k[0], "hop": hop, "packets": n, "share": round(100 * n / total[k[0]]),
+                            "label": TYPE_SURGE[k[0]], "minutes": secs // 60, "grouped": grouped}
         return out
 
     def route_surges(self, now: float) -> dict:
@@ -6604,7 +6625,7 @@ class SpamGuard:
                 "channel_choices": sorted(n for n, k in self.openhop_channels.items()
                                           if n not in c["channels"] and k not in set(c["channels"].values())),
                 "type_suggestions": [{"key": k, "ptype": v["ptype"], "hop": v["hop"], "label": v["label"], "packets": v["packets"],
-                                      "share": v["share"], "minutes": v.get("minutes", TYPE_SURGE_SECONDS // 60), "ttl": int(c.get("route_surge_ttl", 7200))}
+                                      "share": v["share"], "grouped": bool(v.get("grouped")), "minutes": v.get("minutes", TYPE_SURGE_SECONDS // 60), "ttl": int(c.get("route_surge_ttl", 7200))}
                                      for k, v in sorted(self.type_suggest.items(), key=lambda kv: -kv[1]["packets"])],
                 "route_suggestions": [{"key": k, "route": ">".join(v["route"]), "names": v["names"],
                                        "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,

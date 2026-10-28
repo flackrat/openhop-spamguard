@@ -332,4 +332,30 @@ gf2=busy_guard(lambda k: 24.0 if k%4==0 else 38.0, lambda k: k%4!=0)   # three q
 check("flood_busy_percent" not in gf2.fg_learnt_values(T) and not gf2.fg.get("busy_site"),"flood hours are most of what it heard: no busy limit is learnt")
 gf3=busy_guard(lambda k: 12.0, lambda k: False)                        # a mildly busy radio: below the ceiling, so unchanged
 check(gf3.fg_learnt_values(T).get("flood_busy_percent")==24,"a busy limit below the ceiling is left exactly as learnt")
+
+# ---- 6.15: routed packets can't dilute the flood share; bursts that keep coming back are acted on sooner
+def air_guard():
+    x=guard(mock()); x.radio=dict(RADIO); x.refresh_openhop_info=lambda *a,**k: None
+    return x
+xa=air_guard(); ms=xa.airtime_ms(60); t0=time.time()
+for i in range(40): xa.air.append((t0-200+i*4, ms*2, True, False))
+for i in range(60): xa.air.append((t0-200+i*3, ms*2, False, True))      # routed packets filling the air
+busy,share,n=xa.fg_load(t0)
+check(share>0.95 and busy>0, f"routed packets add to busy but not to the flood share ({share:.2f})")
+def flooded_guard():
+    x=air_guard(); x.cfg["mode"]="protect"; x.fg.update(ready=1, learn_start=T-5*86400, learnt_at=T); x.fg_can_act=lambda: True
+    return x
+def load(x, now, on):
+    x.air.clear()
+    if on:
+        for i in range(60): x.air.append((now-250+i*4, x.airtime_ms(60)*40, True, False))
+xb=flooded_guard(); t=T+10
+for k in range(2):   # two short bursts, each over before FloodGuard steps in
+    load(xb,t,True); xb.fg_decide(t); t+=10; load(xb,t,False); xb.fg_decide(t); t+=30
+check(len(xb._pulses)==2 and not xb.fg.get("limit"), "short bursts are remembered but do not start a limit")
+load(xb,t,True); xb.fg_decide(t); t+=25; load(xb,t,True); xb.fg_decide(t)
+check(xb.fg.get("limit"), "a third burst that lasts only 25 seconds now starts the limit")
+xc=flooded_guard(); t=T+10
+load(xc,t,True); xc.fg_decide(t); t+=25; load(xc,t,True); xc.fg_decide(t)
+check(not xc.fg.get("limit"), "with no earlier bursts, 25 seconds is still too short")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
