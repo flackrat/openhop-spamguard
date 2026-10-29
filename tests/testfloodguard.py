@@ -338,8 +338,8 @@ def air_guard():
     x=guard(mock()); x.radio=dict(RADIO); x.refresh_openhop_info=lambda *a,**k: None
     return x
 xa=air_guard(); ms=xa.airtime_ms(60); t0=time.time()
-for i in range(40): xa.air.append((t0-200+i*4, ms*2, True, False))
-for i in range(60): xa.air.append((t0-200+i*3, ms*2, False, True))      # routed packets filling the air
+for i in range(40): xa.air.append((t0-200+i*4, ms*2, True, False, False))
+for i in range(60): xa.air.append((t0-200+i*3, ms*2, False, True, False))      # routed packets filling the air
 busy,share,n=xa.fg_load(t0)
 check(share>0.95 and busy>0, f"routed packets add to busy but not to the flood share ({share:.2f})")
 def flooded_guard():
@@ -348,7 +348,7 @@ def flooded_guard():
 def load(x, now, on):
     x.air.clear()
     if on:
-        for i in range(60): x.air.append((now-250+i*4, x.airtime_ms(60)*40, True, False))
+        for i in range(60): x.air.append((now-250+i*4, x.airtime_ms(60)*40, True, False, False))
 xb=flooded_guard(); t=T+10
 for k in range(2):   # two short bursts, each over before FloodGuard steps in
     load(xb,t,True); xb.fg_decide(t); t+=10; load(xb,t,False); xb.fg_decide(t); t+=30

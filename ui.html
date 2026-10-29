@@ -1507,7 +1507,7 @@ function qDetail(){
       <dt>Sender</dt><dd>${who}</dd></dl>
     <p class="q-line" style="gap:8px">${acts}${routeBtn}${lb("spam","Label as spam")}${lb("not_spam","Label as fine")}</p>
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
-    <p class="explain" style="margin:8px 0 0">Labels only record your view, for checking SpamGuard's accuracy. Let it through also trusts the sender from now on.</p>`;
+    <p class="explain" style="margin:8px 0 0">Labels only record your view, for checking SpamGuard's accuracy.${r.status==="stopped"||r.status==="held"?" Let it through also trusts the sender from now on.":""}</p>`;
 }
 $("#qChips").addEventListener("click",e=>{ const b=e.target.closest("[data-q]"); if(!b) return; Q.status=b.dataset.q; Q.sel=-1; Q.ticks={}; Q.limit=100; qLoad(); });
 $("#qFilters").addEventListener("click",e=>{ if(e.target.id==="qClear"){ Q.codes=[]; Q.names=[]; Q.title=""; Q.sel=-1; qLoad(); } });
@@ -1809,6 +1809,8 @@ function renderFloodPage(d){
   const srcs=Object.keys(nm).map(src), same=srcs.every(x=>x===srcs[0]);
   if(fg.enabled) h+=`<p class="explain"><b>Its limits now:</b> ${Object.keys(nm).map(k=>esc(nm[k](cur[k]))+(same?"":` (${src(k)})`)).join(", ")}${same?` (${srcs[0]==="recommended"?"recommended values until it has learnt":srcs[0]==="learnt"?"learnt from this repeater's traffic":"set by you"})`:""}.</p>`;
   const facts=[fg.reach!=null?`Flood packets normally reach this repeater within ${fg.reach} hops.`:"",fg.episodes?`Floods so far: ${fg.episodes}.`:"",
+    fg.damaged&&fg.damaged.packet_share!=null?`In the last 24 hours ${fg.damaged.packet_share}% of the channel packets heard (${fg.damaged.air_share}% of the airtime) failed their check, which mostly means damaged copies of messages. They count towards how busy the radio is, but not towards a flood.${fg.damaged.dropping?` This repeater did not pass on ${fg.damaged.dropped} of them.`:""}`:"",
+    fg.coding_rate&&fg.coding_rate<8?`This radio uses coding rate 4/${fg.coding_rate}, which can spot but not repair a damaged byte; 4/8 can repair a single error. Only change it to match what the other repeaters near you use, because a repeater on a different rate can't hear them.`:"",
     fg.learnt_at?`Last checked against this mesh's traffic ${ago(fg.learnt_at)}; it checks again once a day.`:""].filter(Boolean);
   if(facts.length) h+=`<p class="explain">${esc(facts.join(" "))}</p>`;
   h+=`<div class="switchrow">${fg.enabled?btn("Turn FloodGuard off","/settings",{floodguard:false},"quiet"):btn("Turn FloodGuard on","/settings",{floodguard:true},"go")}${fg.enabled?`<button class="quiet" data-p="/fg_relearn" data-b="{}" data-confirm="Put every FloodGuard setting back to FloodGuard's own values and learn this repeater's traffic again from scratch? Values you set yourself are cleared. Learning takes ${fg.learn_days} days${fg.learning&&!fg.relearning?"":"; it keeps protecting with the recommended values meanwhile"}." onclick="act(this)">Reset and learn again</button>`:""}</div>`;

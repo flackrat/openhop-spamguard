@@ -12,7 +12,16 @@ The detail is below, newest first. In short:
 | **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
 | **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
-| **6.8 to 6.16** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, and optional counting and checking of signed messages. |
+| **6.8 to 6.17** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, and counting damaged copies of messages. |
+
+## v6.17.0
+
+- **Damaged copies are counted.** Radio errors sometimes change a few bytes of a message in flight, and the changed copy is passed on like any other. SpamGuard now counts the channel packets it hears whose check fails, and the FloodGuard page shows how much of the last day's packets and airtime they made up.
+- **FloodGuard no longer reads damaged copies as a flood.** They still count towards how busy the radio is, but up to a quarter of the airtime they are left out of the flood share, so a noisy hour is less likely to make FloodGuard hold back innocent people. Anything beyond a quarter counts as flood traffic as before.
+- **Optional: don't pass on damaged Public copies.** A new setting, off by default, stops this repeater passing on Public channel packets whose check fails, in Protect mode. Direct packets, other channels and packets this repeater sends itself are never touched. One risk is listed with the setting: a packet carries only a one-byte channel code, so a private channel that this repeater doesn't know and that shares Public's code would look damaged. It needs the openHop rule-check fix and is skipped without it.
+- **A note about the radio's coding rate.** When the radio uses coding rate 4/5, the FloodGuard page says it can spot but not repair a damaged byte, and that 4/8 can repair one. It says to match the other repeaters near you before changing it.
+- **The note under a message's buttons** now mentions Let it through only for messages that have that button.
+- **FloodGuard 1.4.0.**
 
 ## v6.16.0
 
