@@ -37,6 +37,8 @@ those rules expire by themselves.
    group data by the kind of packet, the first repeater and the time, without opening them. When the optional
    signed-message setting is on, it also reads the trailer at the end of a decrypted channel message (as bytes), checks the
    Ed25519 signature against a key learnt from an advert, and keeps only counts and short key ids.
+   It also counts channel packets whose check value fails for a channel it holds the key for (copies changed by radio
+   errors). FloodGuard counts their airtime as busy but leaves up to a quarter of the airtime out of the flood share.
 2. **Analysis.** Looks at recent channel traffic and decides what looks like spam. It also notices a route, or a
    flood of non-text packets through one repeater (or a few that together carry nearly all of it), that suddenly stands out, and suggests a time-limited block
    (it applies one itself only if the operator turned that on). It keeps short-lived

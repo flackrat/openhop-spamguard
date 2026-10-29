@@ -57,4 +57,41 @@ g3.ingest(window(0,100,t)); busy,share,n=g3.fg_load(t)
 check(share>=0.6 and n>=60,f"junk with a bad check still counts as a flood: share {share:.2f} n {n}")
 # direct packets don't turn damaged copies into more than they are
 check(g3._dmg_share>0.9,"the damaged share of the airtime is reported as it is")
+
+# ---- dropping damaged copies: off by default, Public only, flood packets only, never without the rule-check fix
+class PK:
+    def __init__(s,hexs,ptype=5): s.payload=bytearray(bytes.fromhex(hexs)); s.path=["69"]; s.transport_codes=[0,0]; s.pt=ptype
+    def get_path_hashes_hex(s): return s.path
+    def get_payload_type(s): return s.pt
+    def get_payload(s): return s.payload
+def verdict(rules, hexs, route=1):
+    pe={"enabled":True,"default_action":"allow","rules":rules,"objects":{}}
+    return PolicyEngine(pe).evaluate(PK(hexs),{"route_type":route,"payload_type":5,"hop_count":2,"local_transmission":False}).action
+g4=guard(mock()); g4.refresh_openhop_info=lambda *a,**k: None
+g4.apply_settings({"mode":"protect"})
+check(g4._build_damaged()==[],"off by default: no rule")
+g4.apply_settings({"drop_damaged":True})
+r=g4._build_damaged()
+check(len(r)==1 and r[0]["then"]["action"]=="drop","on in Protect: one drop rule")
+check(verdict(r,good)=="allow","a good Public packet passes")
+check(verdict(r,damage(good))=="drop","a damaged Public flood packet is not passed on")
+check(verdict(r,damage(good),route=2)=="allow","a direct packet is never touched")
+check(verdict(r,other.hex())=="allow","a packet on another channel code is never touched")
+rid=g4._build_damaged()[0]["id"]
+check(rid in g4.damaged_rule_ids(),"its stops are counted")
+g4.apply_settings({"mode":"monitor"})
+check(g4._build_damaged()[0]["then"]["action"]=="log_only","in Monitor it only logs")
+g4.apply_settings({"mode":"protect"})
+g4.openhop_rulecheck_fix=lambda: False
+check(g4._build_damaged()==[],"without the openHop rule-check fix the rule is not written")
+check("drop_damaged" not in sg.profile_keys(),"not part of a settings profile")
+check(any(m["key"]=="drop_damaged" for m in sg.SETTINGS_META),"shown as a setting with its risk")
+
+# ---- coding rate shown for the FloodGuard page's note
+g5=guard(mock()); g5.radio={"spreading_factor":8,"bandwidth":62500,"coding_rate":5,"preamble_length":16}
+check(g5.coding_rate()==5 and g5.fg_status()["coding_rate"]==5,"coding rate 4/5 is reported")
+g5.radio["coding_rate"]=8
+check(g5.fg_status()["coding_rate"]==8,"coding rate 4/8 is reported")
+g5.radio={}
+check(g5.coding_rate() is None,"unknown when openHop hasn't said")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
