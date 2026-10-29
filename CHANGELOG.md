@@ -14,6 +14,11 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.16** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, and optional counting and checking of signed messages. |
 
+## Unreleased
+
+- **Damaged copies are counted.** Radio errors sometimes change a few bytes of a message in flight, and the changed copy is passed on like any other. SpamGuard now counts the channel packets it hears whose check fails, and the FloodGuard page shows how much of the last day's packets and airtime they made up.
+- **FloodGuard no longer reads damaged copies as a flood.** They still count towards how busy the radio is, but up to a quarter of the airtime they are left out of the flood share, so a noisy hour is less likely to make FloodGuard hold back innocent people. Anything beyond a quarter counts as flood traffic as before.
+
 ## v6.16.0
 
 - **Optional: count and check signed messages.** Some apps now sign channel messages with the sender's own key. A new setting, **Count and check signed messages**, is off by default. When it is on, SpamGuard counts the signed messages it hears, checks each signature against the key the sender advertised, and shows the totals on the **Overview**: how many were signed, from how many signers, and how many were correct, did not match, or could not be checked yet because the signer's advert had not been heard. It also shows how much airtime signatures use. Only counts and short key ids are kept, never names or what anyone said.

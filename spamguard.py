@@ -742,6 +742,27 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
     return None
 
 
+def group_text_state(payload: bytes, channels: dict) -> str:
+    """"ok" when the 2-byte check value of a channel packet matches a channel SpamGuard holds the key for,
+    "bad" when the channel hash byte matches one of ours but the check fails (a damaged copy, or a one in
+    256 chance of another channel sharing the hash byte), "other" when it can't be judged (no held channel
+    has that hash byte, or it is too short)."""
+    if len(payload) < 4:
+        return "other"
+    state = "other"
+    for secret in channels.values():
+        try:
+            if channel_hash_byte(secret) != payload[0]:
+                continue
+            key = _secret32(secret)
+            if hmac.compare_digest(hmac.new(key, payload[3:], hashlib.sha256).digest()[:2], payload[1:3]):
+                return "ok"
+            state = "bad"
+        except Exception:
+            continue
+    return state
+
+
 # --------------------------------------------------------------------------- text analysis
 ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿­᠎"), None)
 # Look-alike letters (Cyrillic/Greek) and leetspeak -> Latin
@@ -1449,6 +1470,7 @@ class SpamGuard:
         self._texts: collections.OrderedDict = collections.OrderedDict()
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
+        self._dmg_share = 0.0   # damaged copies' share of the airtime in the last five minutes
         self._pulses: collections.deque = collections.deque()
         self._air_mark = 0.0
         # Interference watch: openHop's noise-floor samples (time, dBm) for the last hour, the hours' medians
@@ -1961,6 +1983,8 @@ class SpamGuard:
     FG_MIN_FLOOD_SHARE = 0.6   # only when most of the airtime is flood traffic
     FG_MIN_PACKETS = 20        # and there's enough of it to judge
     FG_DEFAULT_REACH = 15      # longest normal route, until it has learnt this mesh's
+    FG_DAMAGED_MAX = 0.25      # damaged copies are set aside from the flood share up to this part of the airtime;
+                               # more than that counts as flood traffic, so junk with a bad check can't hide a flood
     FG_RULE_RE = re.compile(r"^Policy blocked packet \(rule (\d+)")
 
     def fg_rule_ids(self) -> set:
@@ -2010,7 +2034,14 @@ class SpamGuard:
                 wd_heard = any(channel_hash_byte(k) == first for k in self.wardrive_channels().values())
             except ValueError:
                 pass
-        self.air.append((ts, on_air, flood, route in (2, 3)))
+        damaged = keyed = False
+        if ptype == PAYLOAD_TYPE_GRP_TXT and not local and self.cfg.get("channels"):
+            try:
+                state = group_text_state(bytes.fromhex(p.get("payload") or ""), self.cfg["channels"])
+            except ValueError:
+                state = "other"
+            keyed, damaged = state != "other", state == "bad"
+        self.air.append((ts, on_air, flood, route in (2, 3), damaged))
         if counted:
             return
         self.fg["mark"] = ts
@@ -2019,6 +2050,11 @@ class SpamGuard:
         h["ar"] = round(h.get("ar", 0) + on_air)
         if not local:
             h["pk"] = h.get("pk", 0) + 1
+        if keyed:
+            h["gp"] = h.get("gp", 0) + 1            # channel packets we hold a key for
+        if damaged:
+            h["dp"] = h.get("dp", 0) + 1            # ...whose check value failed: damaged copies
+            h["dr"] = round(h.get("dr", 0) + on_air)
         if flood:
             h["af"] = round(h.get("af", 0) + on_air)
         if wd_heard or wd_stopped:
@@ -2046,20 +2082,31 @@ class SpamGuard:
         return bool(self.fg.get("ready")) and (self.fg_reach() is not None or "flood_hop_floor" in self.settings)
 
     def fg_load(self, now: float) -> tuple[float, float, int]:
-        """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
+        """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets).
+        Damaged copies (channel packets whose check value fails) take airtime like anything else, so they
+        count towards busy, but they are nobody's flood: up to FG_DAMAGED_MAX of the airtime they are left
+        out of the flood share, and any more than that counts as flood traffic."""
         while self.air and self.air[0][0] < now - 900:
             self.air.popleft()
-        tot = fl = direct = 0.0
-        n = 0
-        for ts, ms, flood, routed in self.air:
+        tot = fl = direct = dmg = 0.0
+        n = nd = 0
+        for ts, ms, flood, routed, damaged in self.air:
             if now - self.FG_WINDOW <= ts <= now:
                 tot += ms
                 if routed:
                     direct += ms   # busy counts it, but it can't dilute the share: routed packets are never held back
+                elif damaged and flood:
+                    dmg += ms
+                    nd += 1
                 if flood:
                     fl += ms
                     n += 1
-        return min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)), (fl / (tot - direct) if tot - direct > 0 else 0.0), n
+        keep = min(dmg, self.FG_DAMAGED_MAX * tot)      # the part set aside
+        n_eff = n - (int(round(nd * keep / dmg)) if dmg else 0)
+        base = tot - direct - keep
+        self._dmg_share = round(dmg / tot, 3) if tot else 0.0
+        return (min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)),
+                max(0.0, fl - keep) / base if base > 0 else 0.0, max(0, n_eff))
 
     def _fg_compact(self, now: float):
         """Route counts older than a day and a bit are folded into one entry per day (the last day stays
@@ -2472,6 +2519,21 @@ class SpamGuard:
                 "learning": base is None, "episodes": list(reversed(j.get("episodes") or []))[:20],
                 "freq": (self.radio or {}).get("frequency")}
 
+    def damaged_stats(self, now: Optional[float] = None) -> dict:
+        """Damaged copies heard in the last 24 hours: channel packets we hold a key for whose check value fails."""
+        now = now or time.time()
+        gp = dp = ar = dr = 0
+        for k, v in self.hist.items():
+            if now - 86400 <= int(k) <= now:
+                gp += v.get("gp", 0)
+                dp += v.get("dp", 0)
+                ar += v.get("ar", 0)
+                dr += v.get("dr", 0)
+        return {"packets": gp, "damaged": dp,
+                "packet_share": round(100 * dp / gp, 1) if gp >= 20 else None,
+                "air_share": round(100 * dr / ar, 1) if ar > 0 and gp >= 20 else None,
+                "now_share": round(100 * self._dmg_share, 1)}
+
     def fg_status(self) -> dict:
         c, f = self.cfg, self.fg
         reach = self.fg_reach()
@@ -2489,7 +2551,7 @@ class SpamGuard:
                 "busy": f.get("busy_now"), "flood_share": f.get("share_now"), "level": c.get("flood_busy_percent"),
                 "limit": f.get("limit") if c.get("floodguard") else None, "since": f.get("since") if f.get("limit") else None,
                 "peak": f.get("peak") if f.get("limit") else None, "episodes": int(f.get("episodes") or 0),
-                "reach": reach, "floor": c.get("flood_hop_floor"),
+                "reach": reach, "floor": c.get("flood_hop_floor"), "damaged": self.damaged_stats(),
                 "unscoped": int(c.get("flood_max_unscoped") or 0) if c.get("floodguard") else 0,
                 "advert": int(c.get("flood_max_advert") or 0) if c.get("floodguard") else 0,
                 "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
