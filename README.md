@@ -49,7 +49,7 @@ MeshCore radios pass messages on for each other: a message sent on a **channel**
 | **Protection level** | One slider from Gentle to Tough: how firmly SpamGuard pushes back. |
 | **Evidence log** | An optional daily record, kept only on your repeater, of the channel messages SpamGuard read and what it did. It lets you look back over a week and check its decisions. |
 
-**Version numbers.** The release number is SpamGuard's (6.16.0, for example). FloodGuard, the flood protection inside SpamGuard since 6.0, has its own number (such as 1.3.1) that only goes up when FloodGuard itself changes; both come in the same download. openHop is a separate project with its own numbers; SpamGuard needs openHop 1.1.2 or later. The top of the [changelog](CHANGELOG.md) sums up what changed between the big versions.
+**Version numbers.** The release number is SpamGuard's (6.17.0, for example). FloodGuard, the flood protection inside SpamGuard since 6.0, has its own number (such as 1.3.1) that only goes up when FloodGuard itself changes; both come in the same download. openHop is a separate project with its own numbers; SpamGuard needs openHop 1.1.2 or later. The top of the [changelog](CHANGELOG.md) sums up what changed between the big versions.
 
 ## Why it's different
 
@@ -70,6 +70,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Contains floods of any packet type**, including encrypted ones with a new identity every time, by how busy your radio is rather than who sent them. Flood packets that have already come further than your mesh's normal routes aren't passed on while the flood lasts; it tightens a step at a time and lifts by itself. Direct messages and known people's channel messages always get through.
 - **Learns your mesh first:** three days of counting only, then it sets its own limits and keeps them in step, a little at a time. Anything you set yourself is kept, and **Reset and learn again** starts afresh.
 - **Hop limits like MeshCore's `flood.max.unscoped` and `flood.max.advert`** ([openhop_repeater#426](https://github.com/openhop-dev/openhop_repeater/issues/426)), learnt from your traffic, so padded floods can't run to openHop's 64-hop ceiling.
+- **Damaged copies:** counts channel packets whose check fails (a copy changed by radio errors), shows their share of the day's airtime, and keeps them out of the flood share. An optional setting, off by default, stops this repeater passing on damaged Public packets; it needs the openHop rule-check fix.
 - **Interference watch:** tells you when something nearby is drowning the channel (equipment that transmits all the time, or jamming), how much hearing range is left, and records each episode with times and levels to pass on.
 
 **Privacy and principles**

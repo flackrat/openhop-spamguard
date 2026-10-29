@@ -74,10 +74,10 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.16.0"
+VERSION = "6.17.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
-FLOODGUARD_VERSION = "1.3.1"
+FLOODGUARD_VERSION = "1.4.0"
 UPDATE_REPO = "flackrat/openhop-spamguard"  # where updates come from (owner/name on GitHub)
 log = logging.getLogger("spamguard")
 
@@ -198,6 +198,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
      "label": "Most hops for adverts (0 = off)",
      "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt). openHop's own Max flood hops setting also applies to adverts, and the lower of the two is the one that counts."},
+    {"key": "drop_damaged", "group": "FloodGuard", "type": "bool",
+     "risk": "Off by default. A packet only carries a one-byte code for its channel, so a private channel this repeater does not know about that happens to share Public's code would also look damaged and not be passed on through this repeater. Other repeaters are not affected, and nothing is stopped in Monitor.",
+     "label": "Don't pass on damaged copies of Public messages",
+     "help": "Radio errors sometimes change a few bytes of a message in flight, and the changed copy is passed on like any other, using airtime for nothing. When on, this repeater stops passing on Public channel packets whose check fails, in Protect mode. Messages that are fine, direct messages and everything this repeater sends itself are never touched. It needs the openHop rule-check fix, and it is skipped without it."},
     {"key": "interference_watch", "group": "FloodGuard", "type": "bool",
      "risk": "Turned off, SpamGuard won't tell you when something nearby is drowning the channel, so a repeater that has gone half-deaf can go unnoticed for days.",
      "label": "Watch for interference on the channel",
@@ -456,6 +460,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "interference_watch": True,
     "interference_db": 10,
     "wardrive_block": False,
+    "drop_damaged": False,
     "evidence_log": False,
     "evidence_days": 7,
     "level_preview": True,
@@ -513,7 +518,7 @@ KEEP_ON_RESET = {"evidence_log", "evidence_days", "level_preview", "update_check
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
 PROFILE_FORMAT = "spamguard-profile"
-PROFILE_EXCLUDE = KEEP_ON_RESET | {"auto_protect", "poll_seconds", "live_feed", "rules_after_yours", "floodguard"}
+PROFILE_EXCLUDE = KEEP_ON_RESET | {"auto_protect", "poll_seconds", "live_feed", "rules_after_yours", "floodguard", "drop_damaged"}
 MAX_PROFILES = 50
 
 
@@ -740,6 +745,27 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
         except Exception:
             continue
     return None
+
+
+def group_text_state(payload: bytes, channels: dict) -> str:
+    """"ok" when the 2-byte check value of a channel packet matches a channel SpamGuard holds the key for,
+    "bad" when the channel hash byte matches one of ours but the check fails (a damaged copy, or a one in
+    256 chance of another channel sharing the hash byte), "other" when it can't be judged (no held channel
+    has that hash byte, or it is too short)."""
+    if len(payload) < 4:
+        return "other"
+    state = "other"
+    for secret in channels.values():
+        try:
+            if channel_hash_byte(secret) != payload[0]:
+                continue
+            key = _secret32(secret)
+            if hmac.compare_digest(hmac.new(key, payload[3:], hashlib.sha256).digest()[:2], payload[1:3]):
+                return "ok"
+            state = "bad"
+        except Exception:
+            continue
+    return state
 
 
 # --------------------------------------------------------------------------- text analysis
@@ -1449,6 +1475,7 @@ class SpamGuard:
         self._texts: collections.OrderedDict = collections.OrderedDict()
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
+        self._dmg_share = 0.0   # damaged copies' share of the airtime in the last five minutes
         self._pulses: collections.deque = collections.deque()
         self._air_mark = 0.0
         # Interference watch: openHop's noise-floor samples (time, dBm) for the last hour, the hours' medians
@@ -1961,6 +1988,8 @@ class SpamGuard:
     FG_MIN_FLOOD_SHARE = 0.6   # only when most of the airtime is flood traffic
     FG_MIN_PACKETS = 20        # and there's enough of it to judge
     FG_DEFAULT_REACH = 15      # longest normal route, until it has learnt this mesh's
+    FG_DAMAGED_MAX = 0.25      # damaged copies are set aside from the flood share up to this part of the airtime;
+                               # more than that counts as flood traffic, so junk with a bad check can't hide a flood
     FG_RULE_RE = re.compile(r"^Policy blocked packet \(rule (\d+)")
 
     def fg_rule_ids(self) -> set:
@@ -2003,6 +2032,7 @@ class SpamGuard:
         m = self.FG_RULE_RE.match(str(p.get("drop_reason") or ""))
         stopped = bool(m) and int(m.group(1)) in self.fg_rule_ids()
         wd_stopped = bool(m) and int(m.group(1)) in self.wardrive_rule_ids()
+        dd_stopped = bool(m) and int(m.group(1)) in self.damaged_rule_ids()
         wd_heard = False
         if ptype == PAYLOAD_TYPE_GRP_TXT and self.cfg.get("wardrive_block") and not local:
             try:
@@ -2010,7 +2040,14 @@ class SpamGuard:
                 wd_heard = any(channel_hash_byte(k) == first for k in self.wardrive_channels().values())
             except ValueError:
                 pass
-        self.air.append((ts, on_air, flood, route in (2, 3)))
+        damaged = keyed = False
+        if ptype == PAYLOAD_TYPE_GRP_TXT and not local and self.cfg.get("channels"):
+            try:
+                state = group_text_state(bytes.fromhex(p.get("payload") or ""), self.cfg["channels"])
+            except ValueError:
+                state = "other"
+            keyed, damaged = state != "other", state == "bad"
+        self.air.append((ts, on_air, flood, route in (2, 3), damaged))
         if counted:
             return
         self.fg["mark"] = ts
@@ -2019,6 +2056,13 @@ class SpamGuard:
         h["ar"] = round(h.get("ar", 0) + on_air)
         if not local:
             h["pk"] = h.get("pk", 0) + 1
+        if keyed:
+            h["gp"] = h.get("gp", 0) + 1            # channel packets we hold a key for
+        if damaged:
+            h["dp"] = h.get("dp", 0) + 1            # ...whose check value failed: damaged copies
+            h["dr"] = round(h.get("dr", 0) + on_air)
+        if dd_stopped:
+            h["ds"] = h.get("ds", 0) + 1            # damaged copies this repeater did not pass on
         if flood:
             h["af"] = round(h.get("af", 0) + on_air)
         if wd_heard or wd_stopped:
@@ -2046,20 +2090,31 @@ class SpamGuard:
         return bool(self.fg.get("ready")) and (self.fg_reach() is not None or "flood_hop_floor" in self.settings)
 
     def fg_load(self, now: float) -> tuple[float, float, int]:
-        """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets)."""
+        """(% of the last five minutes the radio was busy, share of that which was flood traffic, flood packets).
+        Damaged copies (channel packets whose check value fails) take airtime like anything else, so they
+        count towards busy, but they are nobody's flood: up to FG_DAMAGED_MAX of the airtime they are left
+        out of the flood share, and any more than that counts as flood traffic."""
         while self.air and self.air[0][0] < now - 900:
             self.air.popleft()
-        tot = fl = direct = 0.0
-        n = 0
-        for ts, ms, flood, routed in self.air:
+        tot = fl = direct = dmg = 0.0
+        n = nd = 0
+        for ts, ms, flood, routed, damaged in self.air:
             if now - self.FG_WINDOW <= ts <= now:
                 tot += ms
                 if routed:
                     direct += ms   # busy counts it, but it can't dilute the share: routed packets are never held back
+                elif damaged and flood:
+                    dmg += ms
+                    nd += 1
                 if flood:
                     fl += ms
                     n += 1
-        return min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)), (fl / (tot - direct) if tot - direct > 0 else 0.0), n
+        keep = min(dmg, self.FG_DAMAGED_MAX * tot)      # the part set aside
+        n_eff = n - (int(round(nd * keep / dmg)) if dmg else 0)
+        base = tot - direct - keep
+        self._dmg_share = round(dmg / tot, 3) if tot else 0.0
+        return (min(100.0, 100.0 * tot / (self.FG_WINDOW * 1000)),
+                max(0.0, fl - keep) / base if base > 0 else 0.0, max(0, n_eff))
 
     def _fg_compact(self, now: float):
         """Route counts older than a day and a bit are folded into one entry per day (the last day stays
@@ -2472,6 +2527,30 @@ class SpamGuard:
                 "learning": base is None, "episodes": list(reversed(j.get("episodes") or []))[:20],
                 "freq": (self.radio or {}).get("frequency")}
 
+    def coding_rate(self) -> Optional[int]:
+        """The radio's coding rate as the second number of 4/x (5 to 8), or None when openHop hasn't said."""
+        try:
+            cr = int((getattr(self, "radio", None) or {}).get("coding_rate"))
+        except (TypeError, ValueError):
+            return None
+        return cr if 5 <= cr <= 8 else None
+
+    def damaged_stats(self, now: Optional[float] = None) -> dict:
+        """Damaged copies heard in the last 24 hours: channel packets we hold a key for whose check value fails."""
+        now = now or time.time()
+        gp = dp = ar = dr = ds = 0
+        for k, v in self.hist.items():
+            if now - 86400 <= int(k) <= now:
+                ds += v.get("ds", 0)
+                gp += v.get("gp", 0)
+                dp += v.get("dp", 0)
+                ar += v.get("ar", 0)
+                dr += v.get("dr", 0)
+        return {"packets": gp, "damaged": dp, "dropped": ds, "dropping": bool(self.cfg.get("drop_damaged")),
+                "packet_share": round(100 * dp / gp, 1) if gp >= 20 else None,
+                "air_share": round(100 * dr / ar, 1) if ar > 0 and gp >= 20 else None,
+                "now_share": round(100 * self._dmg_share, 1)}
+
     def fg_status(self) -> dict:
         c, f = self.cfg, self.fg
         reach = self.fg_reach()
@@ -2489,7 +2568,7 @@ class SpamGuard:
                 "busy": f.get("busy_now"), "flood_share": f.get("share_now"), "level": c.get("flood_busy_percent"),
                 "limit": f.get("limit") if c.get("floodguard") else None, "since": f.get("since") if f.get("limit") else None,
                 "peak": f.get("peak") if f.get("limit") else None, "episodes": int(f.get("episodes") or 0),
-                "reach": reach, "floor": c.get("flood_hop_floor"),
+                "reach": reach, "floor": c.get("flood_hop_floor"), "damaged": self.damaged_stats(), "coding_rate": self.coding_rate(),
                 "unscoped": int(c.get("flood_max_unscoped") or 0) if c.get("floodguard") else 0,
                 "advert": int(c.get("flood_max_advert") or 0) if c.get("floodguard") else 0,
                 "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
@@ -4983,7 +5062,7 @@ class SpamGuard:
         # Standing rules are never pushed out by the limit, however many blocks a spam wave creates: the
         # wardriving rule, FloodGuard's rules and the known-people rule they rely on. They count towards
         # the limit; the blocks share what is left.
-        wd = self._not_own(self._build_wardrive())
+        wd = self._not_own(self._build_wardrive() + self._build_damaged())
         keep_ids = {r["id"] for r in flood}
         if flood:
             keep_ids.add(self._rid("known:*"))
@@ -5066,6 +5145,25 @@ class SpamGuard:
                                                                       "op": "starts_with", "value": pre}]},
                               "then": {"action": act}})
         return rules
+
+    def damaged_rule_ids(self) -> set:
+        return {v for k, v in self.rule_ids.items() if k.startswith("damaged:")}
+
+    def _build_damaged(self) -> list[dict]:
+        """Don't pass on damaged copies of Public messages (off by default): flood packets on Public that
+        openHop cannot read although it holds the key. Only Public, only flood packets, and never without the
+        rule-check fix, because a stale rule check could judge a good packet unreadable."""
+        c = self.cfg
+        if not c.get("drop_damaged") or self.openhop_rulecheck_fix() is False:
+            return []
+        act = "drop" if c["mode"] == "protect" and not c.get("paused") else "log_only"
+        return [{"id": self._rid(f"damaged:{PUBLIC_CHANNEL_KEY}"), "name": f"{RULE_PREFIX}damaged copies on Public",
+                 "enabled": True,
+                 "if": {"all": [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                                {"field": "route_type", "op": "in", "value": [ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD]},
+                                {"field": "channel_hash", "op": "equals", "value": PUBLIC_CHANNEL_KEY},
+                                {"field": "channel_decryptable", "op": "equals", "value": False}]},
+                 "then": {"action": act}}]
 
     def wardrive_rule_ids(self) -> set:
         return {v for k, v in self.rule_ids.items() if k.startswith("wardrive:")}
