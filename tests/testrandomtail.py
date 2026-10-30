@@ -80,7 +80,7 @@ lb=[b for b in g.blocks.values() if b["kind"]=="repeat" and "link" in (b.get("re
 check(len(lb)==1 and lb[0]["who"]=="Lee Linker", f"one block for the link, against that name: {[(b['value'],b['reason']) for b in lb]}")
 check(sum(1 for e in g.events if e.sender=="Lee Linker" and e.matched)>=2, "later copies of the link are held, however worded")
 check(not any(e.matched for e in g.events if e.sender=="Other Person"), "someone else sharing the same link is untouched")
-check(not any(e.matched for e in g.events if "other.example.org" in e.text), "a different link from the same name is untouched")
+check(not any(e.matched for e in g.events if e.text.startswith("A different link")), "a different link from the same name is untouched")
 
 # --- a name already held for repeating is treated more strictly
 m=mock(); g=guard(m, known_min_msgs=2, slow_repeat_max=3); g.apply_settings({"mode":"protect"})
