@@ -74,7 +74,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.17.1"
+VERSION = "6.18.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.4.0"
@@ -888,6 +888,44 @@ def strip_mentions(text: str) -> str:
     return MENTION.sub("\n", text)
 
 
+# A made-up token a sender tacks on so every copy of a message is different: letters and digits mixed, 6 to 12 long,
+# standing on its own (not part of a link, a path or a name in a mention).
+RANDOM_TOKEN = re.compile(r"(?<![A-Za-z0-9/.=:_@#-])(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{6,12}(?![A-Za-z0-9/.=:_-])")
+
+
+URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
+
+
+def first_link(text: str) -> Optional[str]:
+    """The first web link in a message, without its scheme and any trailing punctuation, or None when it is
+    too short to tell one page from another."""
+    m = URL.search(text)
+    if not m:
+        return None
+    u = re.sub(r"^https?://", "", m.group(0), flags=re.I).rstrip(".,;:!?…")
+    return u if len(u) >= 20 else None
+
+
+def random_tail_template(text: str) -> Optional[tuple]:
+    """For a message that carries a random-looking token outside its @[mentions]: (template, prefix), where the
+    template is the message with each such token replaced, so copies that differ only in that token share one,
+    and the prefix is the text before the first token. None when there is no token or too little text before it."""
+    spans = [m.span() for m in MENTION.finditer(text)]
+    hits = [m for m in RANDOM_TOKEN.finditer(text) if not any(a <= m.start() < b for a, b in spans)]
+    if not hits:
+        return None
+    prefix = text[:hits[0].start()].strip()
+    if len(prefix) < 6:
+        return None
+    out, last = [], 0
+    for m in hits:
+        out.append(text[last:m.start()])
+        out.append("\x00")
+        last = m.end()
+    out.append(text[last:])
+    return " ".join("".join(out).split()), prefix
+
+
 def longest_piece(text: str) -> str:
     return max((p.strip() for p in text.split("\n")), key=len, default="")
 
@@ -1395,6 +1433,7 @@ class SpamGuard:
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
         # Slow repeating: "name|channel|hash of the message" -> {"who", "ch", "snip", "ts": [times of each separate send]}
         self.slow_sends: dict[str, dict] = {}
+        self.offences: dict[str, list] = {}   # name -> when a repeat hold was started against them
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
@@ -1712,6 +1751,8 @@ class SpamGuard:
         for name, v in (st.get("senders") or {}).items():
             if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
                 self.sender_history[name] = {"first": v[0], "count": int(v[1]), "hops": set()}
+        self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
+                         if isinstance(v, list)}
         for k, v in (st.get("slow_sends") or {}).items():
             if isinstance(v, dict) and v.get("who") and isinstance(v.get("ts"), list):
                 ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
@@ -1817,6 +1858,7 @@ class SpamGuard:
                     "sender_paths": dict(list(self.sender_paths.items())[-self.SENDER_PATHS_MAX:]),
                     "labels": dict(list(self.labels.items())[-1000:]),
                     "level_preview": self.level_preview,
+                    "offences": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.offences.items())[-500:]},
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                 }
@@ -4142,12 +4184,54 @@ class SpamGuard:
             del self.slow_sends[k]
         return new
 
+    REPEAT_OFFENCES = 2   # repeat holds started against one name within a day before it is treated more strictly
+
+    def repeat_offender(self, name: str, now: Optional[float] = None) -> bool:
+        """A name SpamGuard has already had to hold for repeating, more than once, in the last day."""
+        now = now or time.time()
+        return sum(1 for t in self.offences.get(name, ()) if t > now - 86400) >= self.REPEAT_OFFENCES
+
+    def _offence(self, name: str, now: float) -> None:
+        self.offences.setdefault(name, []).append(now)
+        del self.offences[name][:-20]
+        while len(self.offences) > 500:
+            self.offences.pop(next(iter(self.offences)))
+
     def _note_slow_send(self, e) -> None:
         """Remember each separate send of a long message by one name, for the day-long repeat limit. Copies
         of one send that arrive by different routes a moment apart count once."""
         c = self.cfg
         if not c.get("slow_repeat", True) or e.exempt or e.sender in self.allow_senders:
             return
+        tt = random_tail_template(e.text)
+        if tt:
+            # Every copy carries a different made-up token, so no two are the same message: count them by what
+            # is left once the token is taken out.
+            tkey = f"{e.sender}|{e.channel}|T" + hashlib.sha1(tt[0].encode(), usedforsecurity=False).hexdigest()[:11]
+            trec = self.slow_sends.get(tkey)
+            if trec is None:
+                trec = self.slow_sends[tkey] = {"who": e.sender, "ch": e.channel, "snip": tt[1][:int(c["text_rule_chars"])], "ts": []}
+                while len(self.slow_sends) > 1500:
+                    self.slow_sends.pop(next(iter(self.slow_sends)))
+            if trec["ts"] and abs(e.ts - trec["ts"][-1]) < 8:    # the same send heard by two routes
+                trec["ts"][-1] = max(trec["ts"][-1], e.ts)
+            elif not trec["ts"] or e.ts > trec["ts"][-1]:
+                trec["ts"].append(e.ts)
+                del trec["ts"][:-40]
+        link = first_link(e.text)
+        if link:
+            # The same link again and again, whatever is written round it: count it by the link
+            lkey = f"{e.sender}|{e.channel}|L" + hashlib.sha1(link.lower().encode(), usedforsecurity=False).hexdigest()[:11]
+            lrec = self.slow_sends.get(lkey)
+            if lrec is None:
+                lrec = self.slow_sends[lkey] = {"who": e.sender, "ch": e.channel, "snip": link[:int(c["text_rule_chars"])], "ts": []}
+                while len(self.slow_sends) > 1500:
+                    self.slow_sends.pop(next(iter(self.slow_sends)))
+            if lrec["ts"] and abs(e.ts - lrec["ts"][-1]) < 60:    # the same send heard by two routes
+                lrec["ts"][-1] = max(lrec["ts"][-1], e.ts)
+            elif not lrec["ts"] or e.ts > lrec["ts"][-1]:
+                lrec["ts"].append(e.ts)
+                del lrec["ts"][:-40]
         content = longest_piece(strip_mentions(e.text)).strip()
         if len(content) < int(c.get("dedupe_min_chars", 30)):
             return
@@ -4782,10 +4866,13 @@ class SpamGuard:
                 key = "repeat:" + hashlib.sha1(f"{who}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
+                fresh = key not in self.blocks
                 if self._add_block(key, "repeat", snip, f"Sent {len(evs)} times in a few minutes", "repeat",
                                    channel=ch, ttl=int(c["repeat_block_seconds"]), from_ts=evs[-1][0].ts,
                                    extra={"who": who}):
                     changed = True
+                    if fresh:
+                        self._offence(who, now)
 
         # 2b''. Slow repeating: the same long message from one name, spread over hours so the quick check above
         # never sees it. Counts separate sends over a day; further copies are held for a few hours, and one
@@ -4797,6 +4884,8 @@ class SpamGuard:
             # post the same thing at overlapping times are still counted separately.
             same: dict[str, list] = {}
             for skey, rec in self.slow_sends.items():
+                if skey.rsplit("|", 2)[-1][:1] in ("T", "L"):
+                    continue   # counted per name only (a made-up code, or a link), never carried to another
                 same.setdefault(skey.rsplit("|", 2)[-1] + "|" + str(rec["ch"]), []).append(rec)
             for skey, rec in self.slow_sends.items():
                 recent = [t for t in rec["ts"] if t >= now - win_s]
@@ -4812,16 +4901,36 @@ class SpamGuard:
                         recent = theirs + recent
                         if other["who"] not in after:
                             after.append(other["who"])
-                if len(recent) <= int(c["slow_repeat_max"]):
+                limit = int(c["slow_repeat_max"])
+                if self.repeat_offender(rec["who"], now):
+                    limit = max(1, limit - 1)   # held for repeating before: one fewer copy before holding
+                if len(recent) <= limit:
                     continue
                 reason = f"Sent {len(recent)} times today" + ("" if own == len(recent) else ", partly under another name")
+                if skey.rsplit("|", 2)[-1].startswith("T"):
+                    reason = f"Sent {len(recent)} times today, each ending in a different made-up code"
+                elif skey.rsplit("|", 2)[-1].startswith("L"):
+                    reason = f"Sent the same link {len(recent)} times today"
                 key = "slowrepeat:" + hashlib.sha1(skey.encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
+                fresh = key not in self.blocks
                 if self._add_block(key, "repeat", rec["snip"], reason, "slowrepeat",
                                    channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=max(recent),
                                    extra={"who": rec["who"], "after": after[:5]} if after else {"who": rec["who"]}):
                     changed = True
+                    if fresh:
+                        self._offence(rec["who"], now)
+                # A name that keeps being held for sending a link has the whole site held too: its next
+                # picture is a new address, so counting copies of one link could never catch the first.
+                if skey.rsplit("|", 2)[-1].startswith("L") and self.repeat_offender(rec["who"], now):
+                    host = rec["snip"].split("/", 1)[0].lower() + "/"
+                    hkey = "slowhost:" + hashlib.sha1(f"{rec['who']}|{rec['ch']}|{host}".encode(), usedforsecurity=False).hexdigest()[:10]
+                    if self.suppressed.get(hkey, 0) <= now and "." in host and self._add_block(
+                            hkey, "repeat", host, f"Keeps sending links to {host[:-1]} and has been held for repeating before",
+                            "slowrepeat", channel=rec["ch"], ttl=int(c["slow_repeat_hold_seconds"]), from_ts=max(recent),
+                            extra={"who": rec["who"]}):
+                        changed = True
                 if after and len(recent) > int(c["slow_repeat_max"]):
                     old = self.name_links.get(rec["who"], {}).get("after", [])
                     self.name_links[rec["who"]] = {"after": (old + [a for a in after if a not in old])[:10], "ts": now}
