@@ -74,7 +74,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.17.0"
+VERSION = "6.17.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.4.0"
@@ -2661,7 +2661,10 @@ class SpamGuard:
         return sorted((r for r in by.values() if r["held"]), key=lambda r: (-r["held"], -r["today"]))[:8]
 
     def _people_block(self, b: Optional[dict]) -> bool:
-        return bool(b) and b["kind"] in PEOPLE_KINDS
+        """A block of a kind that can catch genuine people (repeater, route, link, lockdown), so what it
+        catches without looking like spam is counted as held, not stopped. A block you added yourself is
+        your own decision about what is spam, so what it catches counts as stopped."""
+        return bool(b) and b["kind"] in PEOPLE_KINDS and b.get("source") != "manual"
 
     def _count(self, e: Event):
         # The same counts again per channel, so the Overview graphs can show one channel at a time.
@@ -2716,6 +2719,7 @@ class SpamGuard:
                 h["l"] = h.get("l", 0) + 1
             hop = e.first_hop
             h["h"][hop] = h["h"].get(hop, 0) + 1
+            self._note_route(h, e)  # spam that got through still entered the mesh somewhere: show it on the map
             return
         if e.matched:
             if self._people_block(b) and not spammy:
@@ -2732,30 +2736,43 @@ class SpamGuard:
             return
         hop = e.first_hop
         h["h"][hop] = h["h"].get(hop, 0) + 1
-        if e.path:  # whole routes, so the map can work out where the spam really entered the mesh
-            ps = h.setdefault("p", {})
-            k = ">".join(e.path)
-            if k in ps or len(ps) < 100:
-                ps[k] = ps.get(k, 0) + 1
-                # who sent it, as a short code (never the name), so the map can count senders as well
-                who = hashlib.sha1(e.sender.encode(), usedforsecurity=False).hexdigest()[:6]
-                ss = h.setdefault("s", {}).setdefault(k, [])
-                if who not in ss and len(ss) < 20:
-                    ss.append(who)
+        self._note_route(h, e)
         if len(self.hist) > 200:
             for k in sorted(self.hist)[:-192]:
                 del self.hist[k]
+
+    @staticmethod
+    def windows(now: float) -> tuple:
+        """Where the Overview's "24 h" and "7 days" figures start, so they equal the sums of the graphs beside them:
+        the 24 hourly columns, and the 7 calendar days (today and the six before)."""
+        this_hour = int(now // 3600 * 3600)
+        day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - 6 * 86400
+        return this_hour - 23 * 3600, day0
+
+    def _note_route(self, h: dict, e: Event):
+        """Whole routes, so the map can work out where the spam really entered the mesh."""
+        if not e.path:
+            return
+        ps = h.setdefault("p", {})
+        k = ">".join(e.path)
+        if k in ps or len(ps) < 100:
+            ps[k] = ps.get(k, 0) + 1
+            # who sent it, as a short code (never the name), so the map can count senders as well
+            who = hashlib.sha1(e.sender.encode(), usedforsecurity=False).hexdigest()[:6]
+            ss = h.setdefault("s", {}).setdefault(k, [])
+            if who not in ss and len(ss) < 20:
+                ss.append(who)
 
     def metrics(self) -> dict:
         now = time.time()
         # Everything is kept, but after "Start again from scratch" the page counts from the reset hour on.
         shown_from = int(getattr(self, "reset_at", 0) // 3600 * 3600)
         hist = {k: v for k, v in self.hist.items() if int(k) >= shown_from} if shown_from else self.hist
-        cut24, cut7 = now - 86400, now - 7 * 86400
+        cut24, cut7 = self.windows(now)
         def tot(cut):
             t = {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "l": 0, "fc": 0, "fx": 0, "fs": 0.0, "wh": 0, "ws": 0}
             for k, v in hist.items():
-                if int(k) >= cut - 3600:
+                if int(k) >= cut:
                     for f in t:
                         t[f] += v.get(f, 0)
             spam = t["c"] + t["x"]
@@ -2800,7 +2817,7 @@ class SpamGuard:
             for hop, n in (v.get("fh") or {}).items():
                 s7 = fsrc.setdefault(hop, {"hop": hop, "d7": 0, "d1": 0, "last": 0})
                 s7["d7"] += n
-                if t >= cut24 - 3600:
+                if t >= cut24:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
         flood_sources = sorted(fsrc.values(), key=lambda s: (-s["d7"], -s["d1"]))[:10]
@@ -2814,14 +2831,14 @@ class SpamGuard:
             for hop, n in (v.get("h") or {}).items():
                 s7 = sources.setdefault(hop, {"hop": hop, "d7": 0, "d1": 0, "last": 0})
                 s7["d7"] += n
-                if t >= cut24 - 3600:
+                if t >= cut24:
                     s7["d1"] += n
                 s7["last"] = max(s7["last"], t)
         # Per channel, for the Overview's channel picker. Only hours counted since v5.16 carry a split.
         ch_since = min((int(k) for k, v in hist.items() if "ch" in v), default=None)
         names = set((self.cfg.get("channels") or {}).keys())
         for k, v in hist.items():
-            if int(k) >= cut7 - 3600:
+            if int(k) >= cut7:
                 names |= set((v.get("ch") or {}).keys())
         per_ch = {}
         for name in sorted(names, key=lambda n: (n != "Public", n.lower())):
@@ -2848,7 +2865,7 @@ class SpamGuard:
                 o = one(v)
                 if t >= cut7:
                     bh[time.localtime(t).tm_hour] += o.get("c", 0) + o.get("x", 0)
-                if t >= cut24 - 3600:
+                if t >= cut24:
                     for f in t24:
                         t24[f] += o.get(f, 0)
             per_ch[name] = {"hourly": hr, "daily": dy, "by_hour": bh, "d1": t24}
@@ -3105,7 +3122,7 @@ class SpamGuard:
             spammers = {n: {pk: dict(pv) for pk, pv in d.items()} for n, d in self.sender_paths.items()
                         if self.repeat_spammer(n, now)}
             links = {n: list(v.get("after", [])) for n, v in self.name_links.items() if v.get("ts", 0) >= now - 7 * 86400}
-        cut24, cut7 = now - 86400, now - 7 * 86400
+        cut24, cut7 = self.windows(now)
         geo["ent"] = self.spam_entries(cut24, cut7, hist, spammers, links)
         geo["ts"] = time.time()
 
@@ -3272,7 +3289,7 @@ class SpamGuard:
             t = int(k)
             if t < cut7:
                 continue
-            recent = t >= cut24 - 3600
+            recent = t >= cut24
             for ps, n in (v.get("p") or {}).items():
                 path = ps.split(">")
                 whos = set((v.get("s") or {}).get(ps) or [])
@@ -3382,7 +3399,7 @@ class SpamGuard:
         src, kind = m.get("caught_source"), m.get("caught_kind")
         spammy = bool(m.get("random") or m.get("obfuscated") or (m.get("campaign_senders") or 0) >= 2)
         if m.get("caught_by"):
-            people = kind in PEOPLE_KINDS
+            people = kind in PEOPLE_KINDS and src != "manual"
             if people and not spammy:
                 return "held", self.Q_REASON.get(kind) or self.Q_REASON.get(src) or "Held by a block meant for spam"
             return "stopped", self.Q_REASON.get(src) or self.Q_REASON.get(kind) or "Matched a spam block"

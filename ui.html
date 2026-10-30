@@ -929,7 +929,7 @@ document.addEventListener("click", e => { const b=e.target.closest("[data-confir
 
 /* ---------- top: hero, banners, mode, protection level ---------- */
 function renderTop(d){
-  const sm=d.summary, n=Math.max(0,sm.caught_24h-((d.metrics&&d.metrics.d1&&d.metrics.d1.l)||0)), plural=n===1?"":"s";
+  const sm=d.summary, n=(d.metrics&&d.metrics.d1)?d.metrics.d1.c:Math.max(0,sm.caught_24h), plural=n===1?"":"s";
   let h1, sub;
   if(!d.health.ok && d.health.error){ h1="SpamGuard can't talk to your repeater."; sub=d.health.error+". SpamGuard keeps trying every few seconds."; }
   else if(d.paused){ h1="Paused. Nothing is being blocked."; sub="SpamGuard is still watching. Press Monitor or Protect to carry on."; }
