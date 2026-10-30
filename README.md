@@ -49,7 +49,7 @@ MeshCore radios pass messages on for each other: a message sent on a **channel**
 | **Protection level** | One slider from Gentle to Tough: how firmly SpamGuard pushes back. |
 | **Evidence log** | An optional daily record, kept only on your repeater, of the channel messages SpamGuard read and what it did. It lets you look back over a week and check its decisions. |
 
-**Version numbers.** The release number is SpamGuard's (6.17.0, for example). FloodGuard, the flood protection inside SpamGuard since 6.0, has its own number (such as 1.3.1) that only goes up when FloodGuard itself changes; both come in the same download. openHop is a separate project with its own numbers; SpamGuard needs openHop 1.1.2 or later. The top of the [changelog](CHANGELOG.md) sums up what changed between the big versions.
+**Version numbers.** The release number is SpamGuard's (6.17.1, for example). FloodGuard, the flood protection inside SpamGuard since 6.0, has its own number (such as 1.3.1) that only goes up when FloodGuard itself changes; both come in the same download. openHop is a separate project with its own numbers; SpamGuard needs openHop 1.1.2 or later. The top of the [changelog](CHANGELOG.md) sums up what changed between the big versions.
 
 ## Why it's different
 
