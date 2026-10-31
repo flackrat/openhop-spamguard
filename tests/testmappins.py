@@ -5,13 +5,13 @@ REPO=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI=open(os.path.join(REPO,'ui.html')).read()
 LF=os.environ.get('LEAFLET_DIST', os.path.join(REPO,'tests','.leaflet','node_modules','leaflet','dist'))+'/'
 now=time.time()
-def ent(name,lat,lon,d7,exact,blocked=False,codes=("98",)): return {"key":name*8,"name":name,"lat":lat,"lon":lon,"code":codes[0],"d1":d7,"d7":d7,"exact":exact,"codes":list(codes),"last":now,"blocked":blocked,"typical_before":1}
+def ent(name,lat,lon,d7,exact,blocked=False,codes=("6F",)): return {"key":name*8,"name":name,"lat":lat,"lon":lon,"code":codes[0],"d1":d7,"d7":d7,"exact":exact,"codes":list(codes),"last":now,"blocked":blocked,"typical_before":1}
 # Confidence pins: "Shared" uses a code two other repeaters heard here also use (one with no location),
 # "Unique" is the only repeater heard with its code. All names and places made up.
-ents=[dict(ent("Shared",51.07,-1.79,12,12,True),kind="id",shared={"others":2,"unlocated":1}),
-      dict(ent("Unique",51.2,-0.2,8,8,codes=("4C",)),kind="id",shared={"others":0,"unlocated":0})]
-st={"version":"5.13.3","metrics":{"d1":{},"d7":{"m":1,"spam":53},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"98","d7":53,"d1":53,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
- "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":51.46,"lon":-0.97},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
+ents=[dict(ent("Shared",51.07,-4.39,12,12,True),kind="id",shared={"others":2,"unlocated":1}),
+      dict(ent("Unique",51.2,-2.8,8,8,codes=("4C",)),kind="id",shared={"others":0,"unlocated":0})]
+st={"version":"5.13.3","metrics":{"d1":{},"d7":{"m":1,"spam":53},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"6F","d7":53,"d1":53,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
+ "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":51.46,"lon":-3.57},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
 async def main():
   async with async_playwright() as p:
     b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":420,"height":900})

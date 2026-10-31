@@ -31,7 +31,7 @@ acts=[a["msg"] for a in g.activity]
 check(any("more copies of" in a and "Quarry Pete" in a for a in acts),"noted in Activity")
 # A couple of repeats (resending once because nobody answered) are fine
 m2=mock(); g2=guard(m2); g2.apply_settings({"mode":"protect"})
-for i in range(3): m2.add("Canal Boat Ted","Is anyone hearing me tonight?",["B1","2F"],ago=300-i*60)
+for i in range(3): m2.add("Canal Boat Ted","Is anyone hearing me tonight?",["D8","2F"],ago=300-i*60)
 g2.poll_once(); g2.poll_once()
 check(not any(b["kind"]=="repeat" for b in g2.blocks.values()),"three copies are allowed")
 # Very short lines ('test') never trigger it

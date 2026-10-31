@@ -1182,7 +1182,7 @@ def text_key(snippet: str) -> str:
 
 
 def hops_related(a: str, b: str) -> bool:
-    """Same repeater at different hash widths: '27' relates to '27AB' and '27AB01'."""
+    """Same repeater at different hash widths: '6A' relates to '6AAB' and '6AAB01'."""
     return a.startswith(b) or b.startswith(a)
 
 
@@ -1207,9 +1207,9 @@ def parse_route(text: str) -> list[str]:
     """'BA>AA', 'ba aa' or '0xBA,0xAA' -> ['BA', 'AA']: the first repeaters a message passed through, in order."""
     hops = [h[2:] if h.startswith("0X") else h for h in re.split(r"[\s>,]+", str(text or "").upper().strip()) if h]
     if not 2 <= len(hops) <= ROUTE_MAX_HOPS:
-        raise ValueError(f"Enter the first 2 to {ROUTE_MAX_HOPS} repeaters of the route, e.g. 27>B1")
+        raise ValueError(f"Enter the first 2 to {ROUTE_MAX_HOPS} repeaters of the route, e.g. 6A>D8")
     if not all(HEX_HOP.fullmatch(h) for h in hops):
-        raise ValueError("Each repeater is a code of 2, 4 or 6 hex characters, e.g. 27>B1")
+        raise ValueError("Each repeater is a code of 2, 4 or 6 hex characters, e.g. 6A>D8")
     if len({len(h) for h in hops}) != 1:
         raise ValueError("Use codes of the same length for every repeater, as shown in the route")
     return hops
@@ -1310,6 +1310,97 @@ def name_shape(name: str) -> str:
     return "".join(out)
 
 
+class RouteCoder:
+    """Replaces repeater codes with made-up ones, for evidence files that are going to be shared.
+    Within one file the same code always becomes the same made-up code, and codes that start the same way
+    (2, 4 and 6 character versions of one repeater) still start the same way, so a replay behaves as it
+    did. The mapping is random every time and never saved, so it can't be reversed or matched up between files."""
+    HEX = "0123456789ABCDEF"
+
+    def __init__(self):
+        self._rng = secrets.SystemRandom()
+        self._first = list(range(256))
+        self._rng.shuffle(self._first)
+        self._map: dict[str, str] = {}
+        self._used: set[str] = set()
+        self.known: set[str] = set()
+
+    @classmethod
+    def is_code(cls, s) -> bool:
+        return isinstance(s, str) and len(s) in (2, 4, 6) and all(ch in cls.HEX for ch in s)
+
+    def code(self, c):
+        if not self.is_code(c):
+            return c
+        self.known.add(c)
+        if c not in self._map:
+            new = "%02X" % self._first[int(c[:2], 16)]
+            if len(c) > 2:
+                while True:
+                    cand = new + "".join(self._rng.choice(self.HEX) for _ in range(len(c) - 2))
+                    if cand not in self._used:
+                        break
+                new = cand
+            self._map[c] = new
+            self._used.add(new)
+        return self._map[c]
+
+    def key(self, k):
+        """A block's key, such as hop:XX, route:XX>YY, suffix:XX>YY or ptype:N:XX."""
+        if not isinstance(k, str):
+            return k
+        kind, sep, rest = k.partition(":")
+        if kind in ("hop", "route", "suffix"):
+            return kind + sep + ">".join(self.code(x) for x in rest.split(">"))
+        if kind == "ptype":
+            n, _, hop = rest.partition(":")
+            return f"{kind}:{n}:{self.code(hop)}"
+        return k
+
+    def learn(self, recs: list):
+        """Find every code in the file first, so a note that mentions one before it appears in a route is still covered."""
+        for r in recs:
+            if r.get("type") == "msg":
+                for x in r.get("path") or []:
+                    self.code(x)
+                self.key(r.get("caught_by"))
+            elif r.get("type") == "block":
+                self.key(r.get("key"))
+
+    def text(self, v):
+        """Free text (a note, a reason): replace the codes found in this file wherever they stand alone."""
+        if isinstance(v, str):
+            if not self.known:
+                return v
+            rx = re.compile(r"(?<![0-9A-Za-z])(" + "|".join(sorted(map(re.escape, self.known), key=len, reverse=True)) + r")(?![0-9A-Za-z])")
+            return rx.sub(lambda m: self._map.get(m.group(1), m.group(1)), v)
+        if isinstance(v, list):
+            return [self.text(x) for x in v]
+        if isinstance(v, dict):
+            return {k: self.text(x) for k, x in v.items()}
+        return v
+
+    def scramble(self, r: dict):
+        t = r.get("type")
+        if t == "msg":
+            if isinstance(r.get("path"), list):
+                r["path"] = [self.code(x) for x in r["path"]]
+            r["caught_by"] = self.key(r.get("caught_by"))
+        elif t in ("block", "note", "settings"):
+            v = r.get("value")
+            if r.get("kind") in ("hop",) and isinstance(v, str):
+                r["value"] = self.code(v)
+            elif r.get("kind") in ("route", "suffix") and isinstance(v, list):
+                r["value"] = [self.code(x) for x in v]
+            elif r.get("kind") == "ptype" and isinstance(v, dict) and "hop" in v:
+                r["value"] = dict(v, hop=self.code(v["hop"]))
+            if "key" in r:
+                r["key"] = self.key(r["key"])
+            for k in list(r):
+                if k not in ("type", "ts", "key", "value", "kind"):
+                    r[k] = self.text(r[k])
+
+
 class EvidenceLog:
     """One JSON line per channel message (plus your labels, block changes and settings), written to a
     file per day. Writes are batched to spare the SD card; old days are deleted automatically."""
@@ -1356,7 +1447,8 @@ class EvidenceLog:
         return {"days": len(fs), "bytes": sum(os.path.getsize(f) for f in fs),
                 "first": os.path.basename(fs[0])[:10] if fs else None, "pending": len(self.buf)}
 
-    def export(self, days: int, scramble: bool) -> str:
+    def export(self, days: int, scramble: bool, routes: bool = False) -> str:
+        """scramble replaces sender names with codes; routes (only with scramble) also replaces repeater codes."""
         self.flush(force=True)
         cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
         lines = []
@@ -1385,6 +1477,9 @@ class EvidenceLog:
                 if r.get(k):
                     code(r[k])
         known = sorted(names, key=len, reverse=True)
+        coder = RouteCoder() if routes else None
+        if coder:
+            coder.learn(recs)
         out = []
         for r in recs:
             for k in ("sender", "exempt_sender"):
@@ -1397,6 +1492,8 @@ class EvidenceLog:
                         if len(n) >= 3:
                             t = t.replace(n, names[n])
                     r[k] = t
+            if coder:
+                coder.scramble(r)
             out.append(json.dumps(r, ensure_ascii=False))
         return "\n".join(out) + ("\n" if out else "")
 
@@ -7956,8 +8053,9 @@ def make_handler(guard: SpamGuard):
                 q = parse_qs(urlparse(self.path).query)
                 days = max(1, min(60, int((q.get("days") or ["7"])[0])))
                 scramble = (q.get("scramble") or ["1"])[0] != "0"
+                routes = scramble and (q.get("routes") or ["1"])[0] != "0"   # repeater codes too, unless asked not to
                 folder = guard.cfg["evidence_dir"]
-                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble).encode("utf-8")
+                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, routes).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
                 self.send_header("Content-Disposition",

@@ -21,11 +21,11 @@ g.action("unblock",{"key":dk[0]})
 check(dk[0] not in g.suppressed,"not held off for 24 hours")
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(dk[0] not in g.blocks,"not rebuilt from the copies already seen")
-time.sleep(0.05); m.add("Canal Boat Ted",MSG,["B1","2F"],ago=0)
+time.sleep(0.05); m.add("Canal Boat Ted",MSG,["D8","2F"],ago=0)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 nb=[b for b in g.blocks.values() if b.get("source")=="dedupe"]
 check(nb and nb[0].get("sender")=="Canal Boat Ted","the next copy is a first copy again: "+str([(b.get('sender'),b['value']) for b in nb]))
-check(m.decide("Canal Boat Ted",MSG,["B1","2F"])=="allow","its sender may re-send")
+check(m.decide("Canal Boat Ted",MSG,["D8","2F"])=="allow","its sender may re-send")
 check(m.decide(rname(),MSG,["9D","2F"])=="drop","copies after it are held back again")
 # clear automatic blocks forgives duplicates too
 g.action("clear_auto",{})

@@ -627,7 +627,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h2>Block something yourself</h2>
   <p class="lead">A repeater's code is the 2, 4 or 6 characters shown for it in message routes (for example 27 in 27&gt;B1&gt;7E). Text blocks match exactly, including capitals. They are for spam messages: use at least 12 characters of the message, they last at most a week, and they never stop people SpamGuard knows.</p>
   <div class="inline-form">
-    <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
+    <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="6A" autocomplete="off">
     <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
     <select id="hopChan" aria-label="Which channel"><option value="">on every channel</option></select>
     <select id="hopTtl" aria-label="How long to block it"></select>
@@ -818,7 +818,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Repeaters never blocked automatically</h3>
   <p class="explain">Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
   <div class="chips" id="trustHops"></div>
-  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
+  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="6A"><button id="trustHopBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:6px 0 0">Text never blocked</h3>
   <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
   <div class="chips" id="trustTexts"></div>
@@ -834,9 +834,10 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="blk-ctl" id="evCtl">
     <select id="evDays" aria-label="How many days"><option value="1">Today</option><option value="3">Last 3 days</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select>
     <button class="go" id="evScr">Download, names scrambled</button>
+    <label class="explain" style="display:inline-flex;gap:.4em;align-items:center"><input type="checkbox" id="evRt" checked> Also replace repeater codes</label>
     <button id="evPlain">Download with real names</button>
   </div>
-  <p class="explain">Scrambled downloads replace every sender name (and @mentions of them) with a code, keeping each name's spam score and shape (e.g. AA9AAAAA), so the file can be shared without revealing who said what. Message text is kept.</p>
+  <p class="explain">Scrambled downloads replace every sender name (and @mentions of them) with a code, keeping each name's spam score and shape (e.g. AA9AAAAA), so the file can be shared without revealing who said what. With “Also replace repeater codes” ticked, the repeater codes in each route (and in block names) are replaced with made-up ones too, the same way throughout the file. Message text is kept.</p>
 </section></div>
 <div class="page" data-page="health"><section id="healthSec">
   <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
@@ -1421,7 +1422,7 @@ $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:
 
 async function download(scramble){
   const days=$("#evDays").value;
-  const r=await fetch(`/evidence?days=${days}&scramble=${scramble?1:0}`,{headers:{"X-API-Key":store.get("sgkey")||""}});
+  const r=await fetch(`/evidence?days=${days}&scramble=${scramble?1:0}&routes=${scramble&&$("#evRt").checked?1:0}`,{headers:{"X-API-Key":store.get("sgkey")||""}});
   if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return download(scramble); }
   if(!r.ok){ toast("Download failed",true); return; }
   const blob=await r.blob();

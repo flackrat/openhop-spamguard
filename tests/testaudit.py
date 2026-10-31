@@ -20,10 +20,10 @@ g.action("block_route",{"route":"9D>4C"})
 g.last_sync=0; g.sync_pending=True; g.poll_once()
 now=time.time()
 for b in g.blocks.values(): b["created"]=now-2000
-m.add("Canal Boat Ted","Anyone out on the lock this morning?",["7E","B1"],ago=330)   # via a blocked repeater
+m.add("Canal Boat Ted","Anyone out on the lock this morning?",["7E","D8"],ago=330)   # via a blocked repeater
 m.add("Reed Warbler","Good evening all",["9D","4C","2F"],ago=320)                    # via a blocked route
-m.add("UD6DWREK","FREE PRIZE claim your gift now",["B1","2F"],ago=310)                  # blocked text
-m.add("Hill Walker","FREE PRIZE claim your gift now",["B1","2F"],ago=300)               # blocked text
+m.add("UD6DWREK","FREE PRIZE claim your gift now",["D8","2F"],ago=310)                  # blocked text
+m.add("Hill Walker","FREE PRIZE claim your gift now",["D8","2F"],ago=300)               # blocked text
 m.add("Quarry Pete","Lovely morning on the quarry road",["9D","4C","2F"],ago=290)       # known person on a blocked route
 g.poll_once()
 met=g.status()["metrics"]
@@ -47,10 +47,10 @@ check(sum(e["d7"] for e in met["entries"])+met["unplaced"]["d7"]<=d7["c"]+d7["x"
 
 # --- the tiles use the same windows as the graphs, including at the edges
 th=int(time.time()//3600*3600)
-g.hist[str(th-24*3600)]={"m":5,"c":5,"x":0,"g":0,"a":0.0,"h":{"B1":5}}      # just outside the 24 hourly columns
-g.hist[str(th-23*3600)]={"m":3,"c":2,"x":1,"g":0,"a":0.0,"h":{"B1":3}}      # the oldest column shown
+g.hist[str(th-24*3600)]={"m":5,"c":5,"x":0,"g":0,"a":0.0,"h":{"D8":5}}      # just outside the 24 hourly columns
+g.hist[str(th-23*3600)]={"m":3,"c":2,"x":1,"g":0,"a":0.0,"h":{"D8":3}}      # the oldest column shown
 d0=int(time.mktime(time.localtime()[:3]+(0,0,0,0,0,-1)))
-g.hist[str(d0-7*86400+3600)]={"m":4,"c":4,"x":0,"g":0,"a":0.0,"h":{"B1":4}} # older than the 7 calendar days
+g.hist[str(d0-7*86400+3600)]={"m":4,"c":4,"x":0,"g":0,"a":0.0,"h":{"D8":4}} # older than the 7 calendar days
 met=g.status()["metrics"]
 check(met["d1"]["c"]==sum(r["c"] for r in met["hourly"]) and met["d1"]["x"]==sum(r["x"] for r in met["hourly"]),
       f"24 h tile equals the hourly graph: {met['d1']['c']}/{met['d1']['x']}")

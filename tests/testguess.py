@@ -5,10 +5,10 @@ REPO=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI=open(os.path.join(REPO,'ui.html')).read()
 LF=os.environ.get('LEAFLET_DIST', os.path.join(REPO,'tests','.leaflet','node_modules','leaflet','dist'))+'/'
 now=time.time()
-def ent(name,lat,lon,d7,exact,blocked=False,codes=("98",)): return {"key":name*8,"name":name,"lat":lat,"lon":lon,"code":codes[0],"d1":d7,"d7":d7,"exact":exact,"codes":list(codes),"last":now,"blocked":blocked,"typical_before":1}
-ents=[dict(ent("",51.1,-1.75,20,20),kind="area",near=["Martinsell","Morgans"],claims=["Liar"],spread_km=12,key="area:98:0"),ent("Sure A",51.07,-1.79,12,12,True),ent("Sure B",51.2,-0.2,6,4),ent("Guess C",51.5,0.27,30,0),ent("Guess D",51.3,-0.8,5,1)]
-st={"version":"5.13.3","metrics":{"d1":{},"d7":{"m":1,"spam":53},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"98","d7":53,"d1":53,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
- "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":51.46,"lon":-0.97},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
+def ent(name,lat,lon,d7,exact,blocked=False,codes=("6F",)): return {"key":name*8,"name":name,"lat":lat,"lon":lon,"code":codes[0],"d1":d7,"d7":d7,"exact":exact,"codes":list(codes),"last":now,"blocked":blocked,"typical_before":1}
+ents=[dict(ent("",51.1,-4.35,20,20),kind="area",near=["Ridge Relay","Dale Relay"],claims=["Liar"],spread_km=12,key="area:6F:0"),ent("Sure A",51.07,-4.39,12,12,True),ent("Sure B",51.2,-2.8,6,4),ent("Guess C",51.5,-2.33,30,0),ent("Guess D",51.3,-3.4,5,1)]
+st={"version":"5.13.3","metrics":{"d1":{},"d7":{"m":1,"spam":53},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"6F","d7":53,"d1":53,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
+ "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":51.46,"lon":-3.57},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
 async def main():
   async with async_playwright() as p:
     b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":420,"height":900})

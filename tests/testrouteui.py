@@ -28,9 +28,9 @@ async def main():
         t=await pg.text_content("body")
         check("started on route 9D>4C" in t, "the route block is listed in plain words")
         await pg.evaluate("document.querySelectorAll('section.adv').forEach(s=>s.style.display='block')")
-        await pg.fill("#routeIn","b1>2f"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1500)
-        check("route:B1>2F" in g.blocks, "the Route form in Blocks adds one too")
-        await pg.fill("#routeIn","b1"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1200)
+        await pg.fill("#routeIn","d8>2f"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1500)
+        check("route:D8>2F" in g.blocks, "the Route form in Blocks adds one too")
+        await pg.fill("#routeIn","d8"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1200)
         t=await pg.text_content("body")
         check("first 2 to 4 repeaters" in t, "a route of one repeater is explained, not added")
         g.route_suggest["route:C4>7A"]={"route":["C4","7A"],"names":9,"messages":11,"first":time.time()}

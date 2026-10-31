@@ -96,7 +96,7 @@ A bigger release, built from a week of real evidence logs, an outside security r
 
 ## v6.11.0
 
-- **Block a route.** For spam that always starts on the same first repeaters, you can now block just that route, for example `27>B1`, instead of everything through the first repeater. People SpamGuard knows still get through, and other routes through the same repeater are untouched. Type it in **Blocks**, or press **Block route** on a spam message in **Messages**. A route block can be limited to one channel and has the usual time limit. Until openHop can check the order of a route, your repeater holds any message that passes through all of the repeaters you give; SpamGuard's own records check the order exactly. Thanks to Caboosey on the openHop Discord server for the suggestion.
+- **Block a route.** For spam that always starts on the same first repeaters, you can now block just that route, for example `6A>D8`, instead of everything through the first repeater. People SpamGuard knows still get through, and other routes through the same repeater are untouched. Type it in **Blocks**, or press **Block route** on a spam message in **Messages**. A route block can be limited to one channel and has the usual time limit. Until openHop can check the order of a route, your repeater holds any message that passes through all of the repeaters you give; SpamGuard's own records check the order exactly. Thanks to Caboosey on the openHop Discord server for the suggestion.
 
 ## v6.10.0
 ### SpamGuard 6.10.0

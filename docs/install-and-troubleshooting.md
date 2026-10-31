@@ -172,7 +172,7 @@ SpamGuard also remembers spam texts for a while (Advanced > Timing), so a text t
 
 ## Evidence log and replay
 
-The evidence log records every channel message with its spam signals and your labels; download it from Advanced > Evidence log, choosing **names scrambled** before sharing it.
+The evidence log records every channel message with its spam signals and your labels; download it from Advanced > Evidence log, choosing **names scrambled** before sharing it. That also replaces repeater codes with made-up ones; add `&routes=0` to the address below to keep the real codes.
 
 Command-line equivalents:
 

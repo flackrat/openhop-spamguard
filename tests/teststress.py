@@ -38,7 +38,7 @@ g.ingest(pk); print("routes",len(g.adv_routes))
 hour=str(int(time.time()//3600*3600)); g.hist={hour:{"m":0,"c":0,"x":0,"g":0,"a":0,"h":{},"p":{}}}
 for _ in range(350):
     i=random.randrange(len(reps)); p=walk(i)
-    if p: g.hist[hour]["p"][">".join(["98"]+[reps[j]["key"][:2] for j in p])]=1
+    if p: g.hist[hour]["p"][">".join(["6F"]+[reps[j]["key"][:2] for j in p])]=1
 stop=threading.Event()
 t0=time.time(); th=threading.Thread(target=g.map_loop,args=(stop,),daemon=True); th.start()
 worst=0; n=0

@@ -12,7 +12,7 @@ def check(c,msg):
 m=mock(); g=guard(m, known_min_msgs=2); g.apply_settings({"mode":"protect"})
 for i,t in enumerate(["Morning all from the hill","Nice and clear today"]):
     m.add("Quarry Pete",t,["4C","2F"],ago=600-i*60)
-m.add("Canal Boat Ted","Anyone hearing me from the lock?",["B1","2F"],ago=300)
+m.add("Canal Boat Ted","Anyone hearing me from the lock?",["D8","2F"],ago=300)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 ppl={p["name"]:p for p in g.status()["known"]["people"]}
 check(ppl.get("Quarry Pete",{}).get("known") and ppl["Quarry Pete"]["msgs"]==2,"known person listed with message count: "+str(ppl.get("Quarry Pete")))

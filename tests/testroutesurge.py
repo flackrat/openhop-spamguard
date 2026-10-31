@@ -46,7 +46,7 @@ check(b and b["kind"]=="route" and b["source"]=="manual" and 7000<b["expires"]-b
 check("route:BA>AA" not in g.route_suggest and not g.status()["route_suggestions"], "and clears the suggestion")
 check(m.decide("Visitor99","Hi",["BA","AA","DE"])=="drop", "a newcomer on the route is held")
 check(m.decide("Quarry Pete","Back again",["BA","AA","DE"])=="allow", "a known regular on the same route still gets through")
-check(m.decide("Canal Boat Ted","Out on the lock",["BA","B1","DE"])=="allow", "the same first repeater on another route is untouched")
+check(m.decide("Canal Boat Ted","Out on the lock",["BA","D8","DE"])=="allow", "the same first repeater on another route is untouched")
 
 m,g=setup(8)
 g.action("dismiss_route",{"route":"BA>AA"}); g.last_sync=0; g.sync_pending=True; g.poll_once()
@@ -98,7 +98,7 @@ g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 b=g.blocks.get("route:BA>AA")
 check(b and b["source"]=="hop-route" and "hop:BA" not in g.blocks, f"a quick burst on one route blocks the route, not the repeater: {list(g.blocks)}")
 check(m.decide("Lucy","Hi",["BA","AA","DE"])=="drop", "a newcomer on that route is held")
-check(m.decide("Canal Boat Ted","Out on the lock",["BA","DE","B1"])=="allow", "a newcomer using the same first repeater another way gets through")
+check(m.decide("Canal Boat Ted","Out on the lock",["BA","DE","D8"])=="allow", "a newcomer using the same first repeater another way gets through")
 check(m.decide("Quarry Pete","Back again",["BA","AA","DE"])=="allow", "a known regular on the route gets through")
 st=g.status(); check(any(x["key"]=="route:BA>AA" and x["source"]=="hop-route" for x in st["blocks"]), "it is listed as an automatic route block")
 

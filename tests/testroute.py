@@ -11,7 +11,7 @@ def check(c,msg):
     else: fail+=1; print("FAIL",msg)
 
 check(sg.parse_route("9d>4c")==["9D","4C"] and sg.parse_route("0x9D, 0x4C")==["9D","4C"] and sg.parse_route("9D 4C 2F")==["9D","4C","2F"], "routes can be typed as 9D>4C, with spaces or commas")
-for bad in ["9D", "9D>4C>2F>B1>7E", "9D>ZZ", "9D>4C11"]:
+for bad in ["9D", "9D>4C>2F>D8>7E", "9D>ZZ", "9D>4C11"]:
     try: sg.parse_route(bad); check(False, f"refused: {bad}")
     except ValueError: check(True, "")
 
@@ -28,8 +28,8 @@ check(b["kind"]=="route" and b["value"]==["9D","4C"] and b["source"]=="manual", 
 g.last_sync=0; g.sync_pending=True; g.poll_once()
 
 check(m.decide("UD6DWREK","FREE PRIZE claim now",["9D","4C","2F"])=="drop", "spam starting 9D>4C is held by openHop")
-check(m.decide("Canal Boat Ted","Anyone out on the lock?",["9D","B1","2F"])=="allow", "someone else whose message starts at 9D but goes another way gets through")
-check(m.decide("Canal Boat Ted","Morning",["B1","2F"])=="allow", "and other routes are untouched")
+check(m.decide("Canal Boat Ted","Anyone out on the lock?",["9D","D8","2F"])=="allow", "someone else whose message starts at 9D but goes another way gets through")
+check(m.decide("Canal Boat Ted","Morning",["D8","2F"])=="allow", "and other routes are untouched")
 check(m.decide("Quarry Pete","Back again",["9D","4C","2F"])=="allow", "a known person on the blocked route still gets through")
 
 # SpamGuard's own records check the order exactly

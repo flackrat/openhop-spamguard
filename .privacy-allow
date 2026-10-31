@@ -1,7 +1,8 @@
 # Values that look personal but are made up, for the privacy check (tools/privacy_check.py).
 # Add a value here only if it is invented: an example address in the docs, or a test's made-up location.
 51.455,-0.971
-51.097,-0.103
+51.455,-3.571
+51.097,-2.703
 192.168.1.20
 192.168.1.50
 # tests/testprivacy.py plants these made-up values to prove the check finds them
