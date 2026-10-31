@@ -75,7 +75,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.21.1"
+VERSION = "6.22.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1404,7 +1404,7 @@ class EvidenceLog:
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified")
+                 "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -1427,6 +1427,7 @@ class Event:
         self.exempt = False
         self.local = False   # sent by this repeater itself (one of its own companions)
         self.sent_ts = 0     # the time the sender's device put in the message (its own clock)
+        self.keyed = False        # correctly signed by a key you trust
         self.unverified = False   # under a name whose signing key you trust, but not signed by that key
         self.replay = False  # an old message sent again by another device
         self.recorded = False
@@ -1543,6 +1544,7 @@ class SpamGuard:
         # Learnt network shape: route -> [first_seen, last_seen, good, bad]; hash -> last time it relayed
         self.routes: dict[str, list] = {}
         self.relays: dict[str, float] = {}
+        self.forged: dict[tuple, dict] = {}   # (route, first hop) -> made-up names that arrived wearing that first hop, and when
         # Names seen sending genuine messages: name -> [first_seen, last_seen, genuine messages]
         self.known: dict[str, list] = {}
         self._important = False  # something worth saving to the SD card straight away
@@ -3759,6 +3761,21 @@ class SpamGuard:
         located = {r["key"] for r in self._cands(code)}
         return {"others": len(heard), "unlocated": len(heard - located)}
 
+    def rule_ceiling(self) -> int:
+        """The most rules SpamGuard writes: the setting, but never outside 20..500 even if the config file says so."""
+        try:
+            v = int(self.cfg["max_total_rules"])
+        except (TypeError, ValueError):
+            v = int(DEFAULT_CONFIG["max_total_rules"])
+        return max(20, min(500, v))
+
+    def code_confidence(self, code: str) -> str:
+        """How surely a route code points at one repeater: "confirmed" (exactly one repeater heard here has
+        it), "probable" (none heard, so the code is only known from routes) or "ambiguous" (two or more
+        repeaters heard here share it)."""
+        n = self.code_share(code)["others"]
+        return "ambiguous" if n >= 2 else "confirmed" if n == 1 else "probable"
+
     def repeaters_for(self, hop: str) -> list:
         """Repeaters openHop has heard adverts from whose key starts with this route code.
         Short codes are shared by many repeaters, so this can be several."""
@@ -4239,6 +4256,7 @@ class SpamGuard:
             e.sent_ts = int(dec.get("sent") or 0)
             key_trusted = bool(dec.get("signed")) and bool(self.cfg.get("signed_watch")) \
                 and self._note_signed(dec["signed"], e, key, key in self.counted_packets)
+            e.keyed = key_trusted
             e.exempt = self.text_allowed(e.text) or self.is_own(e) or key_trusted
             # A name you've tied to a signing key only counts as that person when the message carries their
             # signature. Anything else under the name is treated as a stranger, so copying the name gets nothing.
@@ -4253,6 +4271,8 @@ class SpamGuard:
                 and not self.is_known(e.sender)
             e.random = not trusted and (e.name_score >= self.cfg["name_score_threshold"] or e.obfuscated or e.garbage)
             h = self.sender_history.setdefault(e.sender, {"first": ts, "count": 0, "hops": set()})
+            if e.random and not e.local:
+                self.note_forged(e, ts)
             if trusted and e.first_hop not in h["hops"] and h["hops"] and not any(
                     hops_related(e.first_hop, x) for x in h["hops"]):
                 self.note(f"Trusted name '{e.sender}' arrived from a new place (first hop {e.first_hop}) - "
@@ -4653,6 +4673,38 @@ class SpamGuard:
             self.routes = dict(sorted(self.routes.items(), key=lambda kv: -kv[1][1])[:5000])
             self.relays = {k: v for k, v in self.relays.items() if v >= horizon}
 
+    FORGED_FOR = 6 * 3600   # a first hop that spam has worn is not trusted on that route for this long
+    FORGED_NAMES = 3        # it takes this many different made-up names, so one odd device name changes nothing
+
+    def forged_hop(self, suf: str, first: str, now: float) -> bool:
+        """Has spam been arriving on this route wearing this first hop?"""
+        seen = self.forged.get((suf, first))
+        return bool(seen) and sum(1 for t in seen.values() if t > now - self.FORGED_FOR) >= self.FORGED_NAMES
+
+    def note_forged(self, e: Event, ts: float) -> None:
+        """Spam can put a trusted repeater's code at the front of its path. If several made-up names from
+        nobody established arrive wearing a first hop that is otherwise trusted, that code stops getting a
+        free pass on that route for a while, so the copied code buys the spammer nothing."""
+        if len(e.path) < 2 or not e.random or self.established(e.sender) or not self.known_origin(e.first_hop):
+            return
+        self.forged.setdefault((">".join(e.path[1:]), e.first_hop), {})[e.sender] = ts
+        if len(self.forged) > 2000:
+            keep = ts - self.FORGED_FOR
+            self.forged = {k: {n: t for n, t in v.items() if t >= keep} for k, v in self.forged.items()}
+            self.forged = {k: v for k, v in self.forged.items() if v}
+
+    def identity_of(self, e: Event) -> str:
+        """How far a sender's identity can be trusted: "key" (signed by a key you trust), "copied" (a name
+        you tied to a key, but not signed by it), "name" (a name you trust or know, which anyone could copy)
+        or "unknown"."""
+        if e.keyed:
+            return "key"
+        if e.unverified:
+            return "copied"
+        if e.sender in self.allow_senders or self.is_known(e.sender):
+            return "name"
+        return "unknown"
+
     def known_origin(self, hop: str) -> bool:
         """A repeater with a genuine history: it relays other traffic, or has sent normal messages."""
         if self.hop_allowed(hop) or hop in self.relays:
@@ -4664,9 +4716,11 @@ class SpamGuard:
         """Known repeaters that have sent genuine traffic along this route (plus any you allowed)."""
         suf = ">".join(b["value"])
         out = set(b.get("user_allowed", []))
+        now = time.time()
         for k, v in self.routes.items():
             first, _, rest = k.partition(">")
-            if rest == suf and v[2] > 0 and self.known_origin(first):
+            if rest == suf and v[2] > 0 and self.known_origin(first) \
+                    and not self.forged_hop(suf, first, now):
                 out.add(first)
         return out
 
@@ -5145,6 +5199,15 @@ class SpamGuard:
                              f"{n} brand-new names started on this route (narrower than blocking repeater {hop})",
                              "hop-route", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
                         continue
+                    # A code several repeaters share can't say which of them the spam came through, so one sign
+                    # alone is not enough to block everything with that code; it needs a second, independent one.
+                    if len(why) < 2 and len(hop) <= 2 and f"hop:{hop}" not in self.blocks \
+                            and self.code_confidence(hop) == "ambiguous":
+                        if self.suppressed.get("shared:" + hop, 0) <= now:
+                            self.suppressed["shared:" + hop] = now + 3600
+                            self.note(f"Held back from blocking code {hop}: {why[0]}, but several repeaters heard here "
+                                      "share that code, so it needs a second sign before everything with it is blocked")
+                        continue
                     reason = why[0][0].upper() + why[0][1:] + (f" (and {len(why) - 1} other sign{'s' if len(why) > 2 else ''})" if len(why) > 1 else "")
                     want(f"hop:{hop}", "hop", hop, reason, "hop", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
 
@@ -5410,7 +5473,7 @@ class SpamGuard:
         # Repeater, links and lockdown blocks (and their known-people rule) come first; the main list,
         # whose oldest duplicate rules go first, gets what is left. Trimming the tail from the end drops
         # the newest blocks first and never an 'allow' without the block below it.
-        cap = int(self.cfg["max_total_rules"])
+        cap = self.rule_ceiling()
         # FloodGuard's rules sit straight after the known-people rule, so channel messages from people
         # SpamGuard knows always get through, and before the other blocks, so the rule limit never drops them.
         gated, flood = self._build_gated(), self._build_flood()
@@ -5695,7 +5758,7 @@ class SpamGuard:
         order = sorted(((k, b) for k, b in self.blocks.items() if b["kind"] != "suffix" and not self.gated(b)),
                        key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1]["created"]))
         rules: list[dict] = []
-        limit = int(self.cfg["max_total_rules"]) if limit is None else max(0, limit)
+        limit = self.rule_ceiling() if limit is None else max(0, min(limit, 500))
         for key, b in order:
             if len(rules) >= limit:
                 break
@@ -7211,7 +7274,8 @@ class SpamGuard:
                              "random": len(v["random"]), "new": len(v["new"]), "campaign": len(v["campaign"]),
                              "random_long": len(v["random_long"]), "caught": v["caught"],
                              "blocked": f"hop:{k}" in self.blocks, "allowed": self.hop_allowed(k),
-                             "signals": self.hop_signals(v)})
+                             "signals": self.hop_signals(v),
+                             "confidence": self.code_confidence(k) if k != "DIRECT" else None})
             hops.sort(key=lambda x: (-x["caught"] - x["random"] * 3, -x["messages"]))
             direct = next((h for h in hops if h["hop"] == "DIRECT" and h["signals"]), None)
             campaigns = []
@@ -7228,6 +7292,7 @@ class SpamGuard:
                                "sender": e.sender, "text": e.text[:160], "channel": e.channel,
                                "random": e.random, "name_score": e.name_score, "obfuscated": e.obfuscated, "garbage": e.garbage,
                                "trusted": e.sender in self.allow_senders, "known": self.is_known(e.sender),
+                               "identity": self.identity_of(e),
                                "campaign": e.campaign is not None,
                                "matched": e.matched, "packet": e.packet,
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
