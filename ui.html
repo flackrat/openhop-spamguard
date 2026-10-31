@@ -951,6 +951,9 @@ function renderTop(d){
   const hid=Number(store.get("sgDismissUnread")||0);
   if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
     b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
+  // A new, optional feature: said once, on this browser, and gone for good when dismissed or opened.
+  if(d.settings&&d.settings.text_sense===false&&!store.get("sgDismissSense"))
+    b+=`<div class="banner info dismissable" id="senseHint"><div><b>New and experimental: learn from your spam marks.</b>It notices a name sending reworded versions of spam you marked. It starts in record-only mode and nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('experimental')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
   const m=d.paused?"pause":d.mode;

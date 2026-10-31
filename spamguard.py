@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.22.0"
+VERSION = "6.23.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -314,18 +314,6 @@ SETTINGS_META: list[dict] = [
      "label": "Hold further copies for (slow repeats)",
      "help": "How long further copies of that message from that name are held. While they keep repeating it, one copy gets through each time this period ends."},
     # -- Known people
-    {"key": "text_sense", "group": "Experimental", "type": "bool",
-     "risk": "Experimental. It learns from your own spam marks, so it only helps once you have marked some, and it can be wrong. It keeps counts of letter groups, never the messages, and sends nothing anywhere.",
-     "label": "Learn from my spam marks (experimental)",
-     "help": "Notices when one name sends several messages that read like spam you marked, even when the words change each time. It never holds anything on one message, only on repeats from the same name."},
-    {"key": "text_sense_log_only", "group": "Experimental", "type": "bool",
-     "risk": "On, it only records what it would have held, so you can check it first. Off, it holds those messages for real.",
-     "label": "Only record what it would hold (experimental)",
-     "help": "Keep this on until the page shows it would have held the right things."},
-    {"key": "text_sense_count", "group": "Experimental", "type": "int", "min": 2, "max": 10,
-     "risk": "Lower = held sooner, but a person who talks about spam twice may be held. Higher = more get through first.",
-     "label": "Spam-like messages from one name before holding (experimental)",
-     "help": "How many different messages from one name that read like marked spam, in the repeat window, before the shared part of them is held."},
     {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
      "risk": "1 = names become known very quickly, which is easier to abuse. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
      "label": "Genuine messages before a name counts as known",
@@ -403,6 +391,18 @@ SETTINGS_META: list[dict] = [
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 500,
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
+    {"key": "text_sense", "group": "Experimental", "type": "bool",
+     "risk": "Experimental. It learns from your own spam marks, so it only helps once you have marked some, and it can be wrong. It keeps counts of letter groups, never the messages, and sends nothing anywhere.",
+     "label": "Learn from my spam marks (experimental)",
+     "help": "Notices when one name sends several messages that read like spam you marked, even when the words change each time. It never holds anything on one message, only on repeats from the same name."},
+    {"key": "text_sense_log_only", "group": "Experimental", "type": "bool",
+     "risk": "On, it only records what it would have held, so you can check it first. Off, it holds those messages for real.",
+     "label": "Only record what it would hold (experimental)",
+     "help": "Keep this on until the page shows it would have held the right things."},
+    {"key": "text_sense_count", "group": "Experimental", "type": "int", "min": 2, "max": 10,
+     "risk": "Lower = held sooner, but a person who talks about spam twice may be held. Higher = more get through first.",
+     "label": "Spam-like messages from one name before holding (experimental)",
+     "help": "How many different messages from one name that read like marked spam, in the repeat window, before the shared part of them is held."},
 ]
 META_BY_KEY = {m["key"]: m for m in SETTINGS_META}
 

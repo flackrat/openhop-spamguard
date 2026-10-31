@@ -25,7 +25,7 @@ if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   # Locked, integrity-checked versions (tests/npm/*/package-lock.json), linked to where the browser tests look.
   [ -d .leaflet/node_modules/leaflet ] || ( (cd npm/leaflet && npm ci --ignore-scripts -s >/dev/null 2>&1) && ln -sfn npm/leaflet .leaflet )
   [ -d .axe/node_modules/axe-core ] || ( (cd npm/axe && npm ci --ignore-scripts -s >/dev/null 2>&1) && ln -sfn npm/axe .axe )
-  TESTS="$TESTS testguess testmappins testupdprog testfgcalm testhist testa11y testchpick testlevelui testmapsendersui testquarantineui testrouteui testfgbreakdownui testlabelui"
+  TESTS="$TESTS testguess testmappins testupdprog testfgcalm testhist testa11y testchpick testlevelui testmapsendersui testquarantineui testrouteui testfgbreakdownui testlabelui testsensehintui"
 else
   echo "(skipping the browser test: Playwright or npm not available)"
 fi
