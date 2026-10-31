@@ -61,6 +61,9 @@ Sigstore signature (cosign), using the `.sigstore.json` file next to each downlo
       --certificate-identity-regexp 'https://github.com/flackrat/openhop-spamguard/' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com <file>
 
+Each release also carries a software bill of materials, `spamguard-v<version>.sbom.cdx.json` (CycloneDX), signed the
+same way, from v6.21.0.
+
 The files of releases up to v6.6.2 were rebuilt from their tags and signed again on 23 October 2026, when
 the repository history was tidied up. Their signatures and build attestations carry that date and name the
 one-off `reissue-releases` workflow rather than the release workflow. Both commands above still check them.
