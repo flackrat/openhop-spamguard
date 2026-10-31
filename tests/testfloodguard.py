@@ -49,7 +49,15 @@ st=g.fg_status()
 check(st["learning"] and st["learn_until"]-time.time()>2.9*86400, "and starts by learning for three days")
 check(any("learns how busy" in a["msg"] for a in g.activity),"says so in Activity")
 r=g._build_flood()
-check(r and all(x["then"]["action"]=="log_only" for x in r),"while learning its rules only count, even in Protect")
+rr={x["id"]:x for x in r}; ru=rr.get(g._rid("flood:unscoped")); ra=rr.get(g._rid("flood:advert"))
+check(ru and ru["then"]["action"]=="drop" and "32+" in ru["name"], "while learning, floods with no region beyond 32 hops (the loosest limit it could learn) are already stopped")
+check(ra and ra["then"]["action"]=="drop" and "16+" in ra["name"], "and adverts beyond 16 hops (the loosest advert limit it could learn), not the tighter 8")
+check(all(x["then"]["action"]=="log_only" for x in r if x["id"]==g._rid("flood:limit")), "the busy limit itself only counts while learning")
+gm=guard(mock(), mode="monitor"); gm.fg_decide(time.time())
+check(all(x["then"]["action"]=="log_only" for x in gm._build_flood()), "in Monitor nothing is stopped while learning")
+go=guard(mock(), mode="protect", flood_max_advert=10); go.fg_decide(time.time())
+oa=[x for x in go._build_flood() if x["id"]==go._rid("flood:advert")]
+check(oa and "10+" in oa[0]["name"] and oa[0]["then"]["action"]=="drop", "an advert limit you set yourself is used as set while learning")
 g.fg.update(ready=time.time(), learnt_at=time.time())   # the rest of this test: learning already done
 
 check(g.fg_reach() in (5,6,7), f"learns how far flood packets normally come: {g.fg_reach()}")
@@ -242,7 +250,7 @@ gq.ingest([pkt(t+i*2.4, random.randint(20,40)) for i in range(150)])
 gq.fg_decide(t+360); gq.fg_decide(t+430)
 check(gq.fg.get("limit") and not gq.fg_status()["acting"],"learning: a flood is seen but FloodGuard isn't acting")
 check(any("only counts them" in a["msg"] for a in gq.activity),"and Activity says it's only counting")
-check(all(r["then"]["action"]=="log_only" for r in gq._build_flood()),"and its rules only log")
+check(all(r["then"]["action"]=="log_only" for r in gq._build_flood() if r["id"]==gq._rid("flood:limit")),"and its busy limit only logs")
 
 # ---- radio settings unknown: does nothing
 g3=guard(mock(), floodguard=True); g3.ingest(flood)
@@ -302,7 +310,7 @@ gw=guard(mock()); gw.radio=dict(RADIO); gw.refresh_openhop_info=lambda *a,**k: N
 gw.fg.update(ready=time.time()-60, learnt_at=time.time()); gw.cfg["mode"]="protect"
 check(gw.fg_reach() is None and not gw.fg_can_act(),"too few flood packets heard: route length unknown, so no holding back")
 stw=gw.fg_status(); check(stw["waiting_reach"] and not stw["acting"],"the page is told why")
-check(all(r["then"]["action"]=="log_only" for r in gw._build_flood()),"and the rules only log")
+check(all(r["then"]["action"]=="log_only" for r in gw._build_flood() if r["id"]==gw._rid("flood:limit")),"and the busy limit only logs")
 gw.apply_settings({"flood_hop_floor":10})
 check(gw.fg_can_act() and gw.fg_status()["acting"] and not gw.fg_status()["waiting_reach"],"setting your own lowest hop limit lets it act")
 check(all(r["then"]["action"]=="drop" for r in gw._build_flood()),"and then the rules hold packets back")
