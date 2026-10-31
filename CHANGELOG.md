@@ -14,6 +14,13 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## v6.22.0
+
+- **Harder to borrow trust.** A trusted repeater's code that made-up names keep wearing loses its free pass on that route for a while.
+- **Identity tags.** Messages show whether a sender is signed, a copied name, a known name only, or unknown.
+- **Shared codes.** A short code several repeaters share needs more than one sign before everything with it is blocked, and is marked on the page.
+- **Fixed:** a config file could set the rule limit above its 500 ceiling.
+
 ## v6.21.0
 
 - **Parts list with every release.** Each release now carries a signed software bill of materials (`.sbom.cdx.json`) listing what it is made of.
