@@ -39,6 +39,7 @@ import hmac
 import calendar
 import json
 import math
+import random
 import logging
 import os
 import re
@@ -74,7 +75,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.19.0"
+VERSION = "6.20.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -103,22 +104,18 @@ SETTINGS_META: list[dict] = [
     {"key": "enable_hop_rules", "risk": "Turning this off means a spammer who keeps changing names and wording can only be caught by text rules, so more spam gets through. While on, everyone whose channel messages start at a blocked repeater is blocked too, including genuine users who rely on that repeater.", "group": "Blocking by source repeater", "type": "bool",
      "label": "Block spam at its source repeater",
      "help": "When a lot of spam enters the mesh through one repeater, block channel messages that start at that repeater."},
-    {"key": "hop_match_mode", "risk": "'Anything passing through, except people it knows' still blocks a genuine person on that route until SpamGuard gets to know them, and names can be copied, so it isn't watertight on its own. 'Anything passing through' also blocks known people on any route through the spam repeater, and any other repeater sharing the same short hash. 'Routes starting there' only blocks routes it has already seen, so it misses a lot of spam.", "group": "Blocking by source repeater", "type": "choice",
+    {"key": "hop_match_mode", "risk": "The first still holds newcomers on that route. The last also blocks known people and other repeaters sharing the code. 'Routes starting there' misses a lot of spam.", "group": "Blocking by source repeater", "type": "choice",
      "choices": [["contains_known", "Anything passing through, except people it knows (recommended)"],
                  ["exact_paths", "Routes starting there"],
                  ["contains", "Anything passing through"]],
      "label": "How to block a repeater",
-     "help": "'Except people it knows' blocks every channel message passing through the spam repeater, but lets through names SpamGuard "
-             "has already seen sending genuine messages (see Known people). "
-             "'Routes starting there' blocks only messages that started at the spam repeater, one learnt route at a time. "
-             "'Anything passing through' blocks everything through it, including people it knows."},
+     "help": "'Except people it knows' blocks everything through the repeater except known names. 'Routes starting there' blocks only routes that start there. 'Anything passing through' blocks everything, known people included."},
     {"key": "hop_random_senders", "risk": "Lower = blocks a spam repeater sooner, but a repeater used by a couple of people with code-like names (e.g. M0ABC123) could get blocked. Higher = more spam gets out before the block starts.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 100,
      "preset": True, "label": "Random-looking names before blocking",
      "help": "Block a repeater after this many different made-up looking names (like UD6DWREK) arrive through it within the time set under How far back to count."},
-    {"key": "hop_new_senders", "risk": "Lower = catches spammers using realistic names sooner, but a rally, club meet or any busy event where lots of new people talk through one repeater can trigger a block of that repeater. Higher = safer for events, slower against spam.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 200,
+    {"key": "hop_new_senders", "risk": "Lower catches them sooner, but a busy event can trigger a block. Raise it if you host events.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 200,
      "preset": True, "label": "Brand-new names before blocking",
-     "help": "Block a repeater after this many names never seen before (posting once or twice) arrive through it within the time set under How far back to count. "
-             "Catches spammers who use realistic names. Raise this if you host busy events."},
+     "help": "Block a repeater after this many never-seen names arrive through it in the counting window. Catches spammers using realistic names."},
     {"key": "hop_campaign_senders", "risk": "Lower = quicker to block a repeater carrying a spam campaign, but a few people forwarding the same news (e.g. a road closure) through one repeater could trigger it.", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 100,
      "preset": True, "label": "Spam-campaign senders before blocking",
      "help": "Block a repeater after this many different names send near-identical messages through it."},
@@ -126,25 +123,25 @@ SETTINGS_META: list[dict] = [
      "preset": True, "label": "Slow spam: made-up names over a longer time",
      "help": "Catches a spammer who posts slowly to stay under the limits: block after this many made-up looking names within the longer time set under Timing."},
     {"key": "auto_lockdown", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "During a big flood, people SpamGuard doesn't know yet (newcomers) are held for 15 minutes too. Turning it off lets a flood through that comes from many repeaters at once with made-up names.",
+     "risk": "Newcomers are held for those 15 minutes too.",
      "label": "Short automatic lockdown during a big flood",
-     "help": "When lots of made-up names flood in through many different repeaters at once, faster than blocks on single repeaters can follow, SpamGuard lets only people it knows through for 15 minutes, then stops by itself. It says so in Activity."},
+     "help": "When made-up names flood in through many repeaters at once, only known people get through for 15 minutes, then it stops by itself."},
     {"key": "enable_rotation_guard", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "While a rotation block is active, a genuine repeater that has never been heard before, sitting in the same place in the network as the spammer, is blocked until it builds up history or you allow it. Turning this off lets more spam through from a spammer who keeps changing his repeater's identity.",
+     "risk": "A brand-new genuine repeater in the same spot is blocked until it builds history or you allow it.",
      "label": "Catch a spam repeater that keeps changing its identity",
-     "help": "Some firmware lets a repeater change its ID (and so its code in routes) at will. The spam then arrives from a new first repeater each time, but always through the same next repeaters. SpamGuard learns which repeaters normally appear in front of each route and, when many unknown ones start sending spam the same way, blocks unknown ones there while still letting the known ones through."},
+     "help": "Catches a spam repeater that keeps changing its ID: when many unknown first repeaters send spam through the same next repeaters, unknown ones there are blocked and known ones still get through."},
     {"key": "rotate_first_hops", "group": "Blocking by source repeater", "type": "int", "min": 2, "max": 50,
-     "preset": True, "risk": "Lower = reacts to an identity-changing spammer sooner, but a couple of new genuine repeaters appearing behind the same route at the same time as some odd-looking names could trigger it. Higher = more spam gets through first.",
+     "preset": True, "risk": "Lower reacts sooner but new genuine repeaters could trigger it. Higher lets more spam through first.",
      "label": "New repeaters before an identity-changing block",
-     "help": "How many different never-seen-before first repeaters must deliver spam through the same route before SpamGuard treats it as one spammer changing identity. Only counts messages with strong spam signs."},
+     "help": "How many never-seen first repeaters must send spam through one route before it counts as one spammer changing identity."},
     {"key": "hop_prefer_route", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "Off means a surge of brand-new names through one repeater always blocks everything through that repeater (except people it knows), even when nearly all of them used one route. On means only that route is blocked, so spam arriving on the repeater's other routes is not stopped by this block.",
+     "risk": "On, spam on the repeater's other routes isn't stopped by this block. Off, the whole repeater is blocked (known people still get through).",
      "label": "Block just the route when new names nearly all use one",
-     "help": "When the only sign against a repeater is brand-new names and at least 80% of them started on one route, block that route instead of everything through the repeater. Made-up names and spam campaigns still block the whole repeater."},
+     "help": "When the only sign is brand-new names and at least 80% started on one route, block that route instead of the whole repeater."},
     {"key": "route_surge", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "A suggestion costs nothing until you accept it. Turning this off means a spammer who keeps changing names but always starts on the same first repeaters is only caught if you notice and block the route yourself.",
+     "risk": "A suggestion costs nothing until accepted. Off, a name-changing spammer on one route is only caught if you block it yourself.",
      "label": "Suggest blocking a route that suddenly carries lots of new names",
-     "help": "When many brand-new names, each posting once or twice, all start on the same first two repeaters within half an hour, SpamGuard suggests blocking that route for a while. People it knows still get through. It looks at routes and names only, never what a message says."},
+     "help": "When many brand-new names all start on the same first two repeaters within half an hour, SpamGuard suggests blocking that route for a while. Known people still get through."},
     {"key": "route_surge_names", "group": "Blocking by source repeater", "type": "int", "min": 3, "max": 100,
      "preset": True, "risk": "Lower = notices a surge sooner, but a busy event with lots of newcomers on one route could trigger a suggestion (or a block, if you turned on automatic route blocks). Higher = slower to notice.",
      "label": "New names on one route before suggesting a block",
@@ -154,34 +151,34 @@ SETTINGS_META: list[dict] = [
      "label": "Route blocks from a suggestion last for",
      "help": "How long a route block lasts when you accept a suggestion, or when SpamGuard applies one itself. After it ends, a continuing surge is spotted again."},
     {"key": "type_surge", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "A suggestion costs nothing until you accept it. Turning this off means a flood of requests or group data (which are not channel messages, so SpamGuard cannot read them) is only slowed by FloodGuard's airtime limits.",
+     "risk": "A suggestion costs nothing until accepted. Off, such floods are only slowed by FloodGuard.",
      "label": "Suggest holding a flood of requests or group data from one repeater",
-     "help": "When one first repeater suddenly sends most of the flooded requests, anonymous requests or group data your repeater hears, SpamGuard suggests holding that kind of packet from that repeater for a while. These packets are encrypted, so it looks only at how many arrive, through which repeater and how they travel. Channel messages and direct messages are never held by this."},
+     "help": "When one repeater suddenly carries most of the flooded requests, anonymous requests or group data, SpamGuard suggests holding that type from it for a while. Channel and direct messages are never held by this."},
     {"key": "type_surge_packets", "group": "Blocking by source repeater", "type": "int", "min": 10, "max": 1000,
      "preset": True, "risk": "Lower = notices a flood sooner, but a busy moment from one genuine repeater (for example an app polling for telemetry) could trigger a suggestion. Higher = slower to notice.",
      "label": "Flooded packets from one repeater before suggesting a hold",
      "help": "How many flooded requests, anonymous requests or group data packets must arrive through the same first repeater within 10 minutes, and make up most of that kind of packet, before SpamGuard suggests holding them."},
     {"key": "type_auto", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "Off by default. When on, SpamGuard holds that kind of packet from that repeater without asking (at most three at a time, for the time set for route blocks). A genuine app using that repeater to ask for telemetry would be held until the hold ends or you remove it.",
+     "risk": "A genuine app asking for telemetry through that repeater is held until the hold ends.",
      "label": "Hold a flood of requests or group data automatically",
-     "help": "Instead of only suggesting, apply the hold yourself. Every one is listed under Blocks and in Activity, and can be removed in one tap. The protection level does not turn this on."},
+     "help": "Applies the request or group data hold without asking, at most three at a time. Each is listed under Blocks and can be removed in one tap."},
     {"key": "route_auto", "group": "Blocking by source repeater", "type": "bool",
-     "risk": "Off by default. When on, SpamGuard blocks a surging route without asking (at most three at a time, each for the time above), so a genuine newcomer on that route is held until the block ends or you release them. Known people always get through.",
+     "risk": "A genuine newcomer on that route is held until the block ends. Known people always get through.",
      "label": "Block a surging route automatically",
-     "help": "Instead of only suggesting, apply the route block yourself. Every one is listed under Blocks and in Activity, and can be removed in one tap. The protection level does not turn this on."},
+     "help": "Applies route blocks without asking, at most three at a time. Each is listed under Blocks and can be removed in one tap."},
     {"key": "route_memory_days", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 60, "unit": "days",
      "risk": "Shorter = repeaters that only talk occasionally are forgotten and may be treated as unknown during a rotation block. Longer = slightly more memory and disk use.",
      "label": "Remember normal routes for",
      "help": "How long SpamGuard remembers which repeaters normally send traffic, used to tell genuine repeaters from a spammer's changing identities."},
     # -- FloodGuard: airtime floods of any packet type (not just channel messages)
     {"key": "floodguard", "group": "FloodGuard", "type": "bool",
-     "risk": "While a flood is being contained, flood packets that have already travelled more hops than the limit are not passed on by this repeater, whoever sent them, except channel messages from people SpamGuard knows. A genuine long-distance message or path search can miss this repeater for those minutes. Direct (routed) messages, replies and acknowledgements are never touched.",
+     "risk": "During a flood, long-distance flood packets may miss this repeater for a few minutes. Direct messages and known people's channel messages always get through.",
      "label": "FloodGuard: contain floods when the radio gets too busy",
-     "help": "Some floods aren't channel messages at all: encrypted packets with a new identity every time, sent over and over with long, padded routes. Nothing in them can be blocked by name or text. FloodGuard watches how busy this repeater's radio is instead, which a sender can't fake. When flood traffic keeps the radio busier than the limit below, it stops passing on flood packets that have already come a long way, tightening a step at a time while the flood lasts, and lifts by itself once the radio is quiet again. On by default; it spends its first three days learning this repeater's traffic and only counts meanwhile. It also holds nothing back until it has heard enough flood packets to know how far they normally come here (about 200 in a day), because on a busy mesh ordinary routes can be long."},
+     "help": "Contains floods of any packet type, even encrypted ones, by watching how busy the radio is. When flood traffic keeps it busier than the limit below, flood packets that have come further than normal aren't passed on, tightening step by step and lifting once quiet. It learns this repeater's traffic for three days first."},
     {"key": "flood_busy_percent", "group": "FloodGuard", "type": "int", "min": 5, "max": 90, "unit": "%",
-     "risk": "Lower = steps in sooner, but a genuinely busy evening on a big mesh could trigger it. Higher = a flood has to fill more of the airtime before anything happens.",
+     "risk": "Lower steps in sooner but a busy evening could trigger it. Higher waits for a bigger flood.",
      "label": "Step in when the radio is busier than",
-     "help": "How much of the time, over five minutes, this repeater's radio is receiving or sending packets. Ordinary traffic is usually a few percent. Only counts when most of it is flood traffic. Automatic: learnt as about twice this repeater's normal busy hour, and above the busiest genuine five minutes it has heard."},
+     "help": "How much of five minutes the radio spends receiving or sending, counted only when most of it is flood traffic. Learnt as about twice this repeater's normal busy hour."},
     {"key": "flood_hop_floor", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 2, "max": 32,
      "risk": "Lower = a flood is squeezed harder, but more genuine traffic from further away misses this repeater while it lasts. Higher = gentler, but a flood with short routes isn't contained.",
      "label": "Never limit flood packets to fewer hops than",
@@ -191,42 +188,42 @@ SETTINGS_META: list[dict] = [
      "label": "Lift once the radio has been quiet for",
      "help": "The limit is removed when the radio has been well below the busy level for this long."},
     {"key": "flood_max_unscoped", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
-     "risk": "Flood packets sent without a region that have already travelled this many hops are never passed on, so senders far away who don't use a region can't reach past this repeater. 0 turns it off.",
+     "risk": "Distant senders without a region can't reach past this repeater. 0 turns it off.",
      "label": "Most hops for flood packets with no region (0 = off)",
-     "help": "Applied all the time while FloodGuard is on, busy or not. The same as MeshCore's flood.max.unscoped: packets without a region that have already had this many hops are dropped. Automatic: about twice the longest routes this repeater normally hears, between 16 and 32 (32 until it has learnt). Genuine traffic usually takes 5 to 7 hops, so a padded flood can't run to openHop's 64-hop ceiling. openHop's own Max flood hops setting also applies to flood packets, so whichever limit is lower is the one that bites."},
+     "help": "Like MeshCore's flood.max.unscoped: packets with no region that have had this many hops are dropped, busy or not. Learnt between 16 and 32 hops. openHop's own max flood hops also applies."},
     {"key": "flood_max_advert", "group": "FloodGuard", "type": "int", "unit": "hops", "min": 0, "max": 64,
-     "risk": "Adverts from further away than this stop reaching past this repeater, so distant nodes may not appear on maps or in contact lists beyond it. 0 turns it off.",
+     "risk": "Distant nodes may not appear on maps or contact lists beyond this repeater. 0 turns it off.",
      "label": "Most hops for adverts (0 = off)",
-     "help": "Applied all the time while FloodGuard is on. The same as MeshCore's flood.max.advert: adverts that have already had this many hops are dropped. Automatic: just past the furthest adverts this repeater normally hears, between 6 and 16 (8, MeshCore's own default, until it has learnt). openHop's own Max flood hops setting also applies to adverts, and the lower of the two is the one that counts."},
+     "help": "Like MeshCore's flood.max.advert: adverts that have had this many hops are dropped, busy or not. Learnt between 6 and 16 hops. openHop's own max flood hops also applies."},
     {"key": "drop_damaged", "group": "FloodGuard", "type": "bool",
-     "risk": "Off by default. A packet only carries a one-byte code for its channel, so a private channel this repeater does not know about that happens to share Public's code would also look damaged and not be passed on through this repeater. Other repeaters are not affected, and nothing is stopped in Monitor.",
+     "risk": "A private channel sharing Public's one-byte code would also look damaged here. Other repeaters aren't affected.",
      "label": "Don't pass on damaged copies of Public messages",
-     "help": "Radio errors sometimes change a few bytes of a message in flight, and the changed copy is passed on like any other, using airtime for nothing. When on, this repeater stops passing on Public channel packets whose check fails, in Protect mode. Messages that are fine, direct messages and everything this repeater sends itself are never touched. It needs the openHop rule-check fix, and it is skipped without it."},
+     "help": "Stops this repeater passing on Public packets whose check fails (copies damaged by radio errors), in Protect mode. Good messages, direct messages and your own are untouched. Needs the openHop rule-check fix."},
     {"key": "interference_watch", "group": "FloodGuard", "type": "bool",
-     "risk": "Turned off, SpamGuard won't tell you when something nearby is drowning the channel, so a repeater that has gone half-deaf can go unnoticed for days.",
+     "risk": "Off, a repeater that has gone half-deaf can go unnoticed for days.",
      "label": "Watch for interference on the channel",
-     "help": "openHop measures the noise on the radio channel every 30 seconds. FloodGuard learns what's normal for this site and says so (here, on Health and in Activity) when the noise stays well above it, as happens with a nearby transmitter that never stops (faulty or non-compliant equipment) or deliberate jamming. Nothing can be blocked, but each episode is recorded with times and levels, which is the evidence a radio regulator asks for."},
+     "help": "Learns this site's normal channel noise and tells you when it stays well above it, such as a faulty transmitter or jamming. Each episode is recorded with times and levels, the evidence a regulator asks for."},
     {"key": "interference_db", "group": "FloodGuard", "type": "int", "min": 3, "max": 40, "unit": "dB",
      "risk": "Lower = reports smaller rises, which weather, nearby electronics or a change of antenna can also cause. Higher = only strong interference is reported.",
      "label": "Report noise this far above normal",
      "help": "How much the noise on the channel has to rise above this site's normal level, for five minutes, before it counts as interference. Each 6 dB roughly halves how far away this repeater can hear."},
     # -- Privacy
     {"key": "wardrive_block", "group": "Privacy", "type": "bool",
-     "risk": "This repeater stops appearing on wardriving coverage maps, which many people use to plan where repeaters are needed. Pings sent by this repeater's own companions still go out.",
+     "risk": "This repeater disappears from wardriving coverage maps. Your own companions' pings still go out.",
      "label": "Don't repeat wardriving pings",
-     "help": "Wardriving apps such as MeshMapper send a ping with the phone's GPS position on the #wardriving channel and log every repeater that echoes it, building a precise map of where each repeater can be heard. When on, this repeater still hears those pings but doesn't pass them on, so it isn't logged. Nothing else is affected: other channels, direct messages, adverts and path searches work as normal. Off by default."},
+     "help": "Wardriving apps like MeshMapper map repeaters by logging which ones echo their GPS pings. On, this repeater still hears the pings but doesn't repeat them. Nothing else is affected."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
-     "risk": "Stores channel messages (names and text) on the Pi for the days below. Public channel messages can be heard by anyone with a radio, but think before sharing the file: use 'names scrambled' when sending it to anyone.",
+     "risk": "Stores names and text on the Pi for the days below. Use the scrambled download when sharing.",
      "label": "Keep an evidence log",
-     "help": "Records every channel message SpamGuard reads, with all its spam signals, whether it was caught, and your 'This is spam' / 'Not spam' answers. Download it to review what SpamGuard did, or to have the detection tuned against real traffic."},
+     "help": "Records every channel message SpamGuard reads, what it did and your labels, for review or replaying against other settings."},
     {"key": "evidence_days", "group": "Evidence log", "type": "int", "min": 1, "max": 30, "unit": "days",
      "risk": "Longer = more history for tuning, but more of people's messages kept on the Pi (about 1-3 MB per busy day).",
      "label": "Keep the evidence log for",
      "help": "Older days are deleted automatically."},
     {"key": "level_preview", "group": "Evidence log", "type": "bool",
-     "risk": "Turned off, the Overview can't show what each protection level would have held. While on, the Pi spends a few minutes a day on it, at the lowest priority.",
+     "risk": "Uses a few minutes of the Pi's spare time each day.",
      "label": "Work out what each protection level would have held",
-     "help": "Once a day SpamGuard replays the last two days of the evidence log at eleven points along the protection level, so the Overview can show what each would have held. Nothing is changed by it. Only the Public channel and hashtag channels are replayed."},
+     "help": "Once a day, replays the last two days at eleven protection levels so the Overview can show what each would have held. Changes nothing."},
     {"key": "max_paths_per_hop", "risk": "Higher = more routes blocked for a stubborn spammer, but more rules for openHop to check on every message. Lower = once the limit is hit, new routes from that repeater are not blocked.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 500,
      "label": "Most routes to learn per repeater",
      "help": "Upper limit on exact routes remembered for one blocked repeater."},
@@ -237,18 +234,16 @@ SETTINGS_META: list[dict] = [
     {"key": "text_distinct_senders", "risk": "Lower (2) = blocks a campaign after just two names, but two people sending the same genuine message (a net check-in, a forwarded alert) will get it blocked. Higher = more spam copies get through first.", "group": "Blocking by message text", "type": "int", "min": 2, "max": 50,
      "preset": True, "label": "Senders before a text is blocked",
      "help": "How many different names must send the same or similar message before it is treated as a spam campaign."},
-    {"key": "similarity", "risk": "Lower = catches spam that has been reworded or padded with random words, but unrelated genuine messages with a lot of shared wording (templated bot replies, weather reports) may be grouped with spam. Higher = easier for the spammer to dodge by changing a few words.", "group": "Blocking by message text", "type": "int", "min": 30, "max": 100, "unit": "%",
+    {"key": "similarity", "risk": "Lower catches reworded spam but may group similar genuine messages, like bot replies. Higher is easier to dodge.", "group": "Blocking by message text", "type": "int", "min": 30, "max": 100, "unit": "%",
      "preset": True, "label": "How similar counts as 'the same'",
-     "help": "Messages this similar are grouped together, so adding a random word, changing case or swapping "
-             "look-alike letters does not dodge the filter. 100% means identical only."},
+     "help": "Messages this similar are grouped, so added words, capitals or look-alike letters don't dodge the filter. 100% means identical only."},
     {"key": "min_rule_chars", "risk": "Lower = rules can be built from shorter shared text (helps with heavily varied spam), but a short rule such as 'the meeting' could block genuine messages containing it. Higher = safer, but heavily varied spam may not produce a rule at all.", "group": "Blocking by message text", "type": "int", "min": 8, "max": 80,
      "label": "Shortest text a block may match",
      "help": "A text rule must match at least this many characters, so it never blocks something short and common."},
     # -- Duplicate suppression
-    {"key": "dedupe_enabled", "risk": "While on, anyone who sends the same long message twice (resending because nobody answered, a repeated net call, several people forwarding an alert) only has the first copy forwarded. Turning it off lets a spammer repeat himself freely under new names until other rules catch up.", "group": "Copies and repeats", "type": "bool",
+    {"key": "dedupe_enabled", "risk": "Several people forwarding the same alert, or a repeated net call, only has the first copy passed on.", "group": "Copies and repeats", "type": "bool",
      "label": "Only let the first copy of a message through",
-     "help": "After any channel message is seen, the same text from anyone else is blocked for a while. "
-             "Stops a spammer repeating himself under new names. Short messages are never affected."},
+     "help": "After a long message is seen, the same text from anyone else is held for a while. Stops a spammer repeating himself under new names."},
     {"key": "dedupe_seconds", "risk": "Longer = repeats are blocked for longer, but genuine people re-asking the same question later are blocked for longer too. Shorter = a spammer can wait it out and repeat the message.", "group": "Copies and repeats", "type": "int", "min": 30, "max": 86400, "unit": "s",
      "preset": True, "label": "Block copies for",
      "help": "How long the same text stays blocked after it is first seen."},
@@ -283,13 +278,13 @@ SETTINGS_META: list[dict] = [
      "label": "During spam, hold a known name that arrives the way the spam does",
      "help": "Names can be copied. While spam is being stopped, a known name arriving through the same repeater the spam is coming in by, one it has never been heard through before, is held from there for a while. Their usual way in still works."},
     {"key": "replay_guard", "group": "Copies and repeats", "type": "bool",
-     "risk": "Turned off, a device that keeps re-sending other people's old messages (usually broken firmware) fills the channel with repeats, often dozens of copies of each. While on, someone whose device clock is badly wrong and who sends the same long message twice may have the second copy held back.",
+     "risk": "Off, broken devices can flood the channel with old messages. On, someone with a badly wrong clock repeating a long message may have the repeat held.",
      "label": "Stop old messages being sent again (replays)",
-     "help": "Some devices pick up channel messages and send them out again later, with their own clock (often months or years wrong) and sometimes with the sender's name cut short. When a message turns up again that was first heard a while ago, either with a clock that's badly off or under a cut-short copy of the original name, further copies of it from that name are held back. The original message always went out first, and anything new from anyone is untouched."},
+     "help": "Some devices resend old channel messages later, with a wrong clock or a cut-short name. Further copies like that are held; the original and anything new still go out."},
     {"key": "signed_watch", "group": "Signed messages", "type": "bool",
-     "risk": "Turned on, SpamGuard also reads the signature at the end of signed channel messages and keeps no names or text. A message is never held back just for being signed, unsigned or failing the check. The one exception is a name whose key you have chosen to trust: a message under that name without their signature is treated as a stranger, and held from repeaters they never use.",
+     "risk": "Keeps only counts and short key ids. Nothing is held for being signed or not, except a name whose key you trust: without their signature it is treated as a stranger.",
      "label": "Count and check signed messages",
-     "help": "Some apps sign channel messages with the sender's own key. When this is on, SpamGuard counts how many it hears, checks each signature against the sender's advertised key, and shows the totals on the Overview, with how much airtime signatures use. When a person SpamGuard already knows has sent several correctly signed messages, it suggests trusting that key as theirs. Once you accept, a correctly signed message from that key is never treated as spam. SpamGuard keeps only counts and short key ids, never what anyone said."},
+     "help": "Counts and checks signed channel messages against each sender's advertised key. When someone SpamGuard knows signs often, it suggests trusting their key; a correctly signed message from a trusted key is never treated as spam."},
     {"key": "repeat_max", "group": "Copies and repeats", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but someone re-sending because nobody answered may hit it. Higher = more copies go out first.",
      "label": "Copies allowed before repeats are stopped",
@@ -302,9 +297,9 @@ SETTINGS_META: list[dict] = [
      "label": "Stop further copies for",
      "help": "How long further copies of that message from that name are stopped."},
     {"key": "slow_repeat", "group": "Copies and repeats", "type": "bool",
-     "risk": "Turned off, one name can post the same long message again and again, spread out through the day, and all of it goes out. While on, someone who genuinely posts the same long message more than the limit below in a day has the extra copies held back for a few hours.",
+     "risk": "Off, one name can repeat a long message all day. On, a genuine repeat over the limit is held for a few hours.",
      "label": "Stop slow repeating (the same message spread over hours)",
-     "help": "The repeat guard above only notices copies sent within minutes of each other. This one counts the same long message from the same name over a whole day, so a message posted every hour or so is caught too. Their first few copies, and anything new they say, still go out. It only counts what is repeated, never what the message says."},
+     "help": "Counts the same long message from one name across a day, so posting it every hour is caught too. The first few copies and anything new still go out."},
     {"key": "slow_repeat_max", "group": "Copies and repeats", "type": "int", "preset": True, "min": 2, "max": 20,
      "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
      "label": "Copies allowed before slow repeats are stopped",
@@ -372,22 +367,26 @@ SETTINGS_META: list[dict] = [
      "label": "Use the public MeshCore map for repeater locations",
      "help": "Adds the locations of repeaters too far away for your openHop to hear their adverts, so spam routes can be traced back closer to where they started."},
     {"key": "openhop_autofix", "group": "Updates", "type": "bool",
-     "risk": "When on, SpamGuard edits one line of openHop (with a backup) and restarts openHop for a few seconds whenever an openHop update removes the fix. Turned off, blocked spam can sometimes be let through until you apply the fix by hand.",
+     "risk": "Edits one openHop line (with a backup) and restarts openHop for a few seconds when needed. Off, apply the fix by hand.",
      "label": "Keep openHop's rule-check fix in place",
-     "help": "openHop has a bug that can sometimes let blocked spam through. SpamGuard applies a one-line fix when it updates, and puts it back if an openHop update removes it, until openHop releases its own fix."},
+     "help": "Applies a one-line fix to openHop's rule checker, which can otherwise let blocked spam through, and puts it back if an openHop update removes it."},
     {"key": "auto_protect", "group": "Timing", "type": "bool",
-     "risk": "Turned off, SpamGuard stays in Monitor until you switch it to Protect yourself, so nothing is blocked if you never come back to the page.",
+     "risk": "Off, nothing is blocked until you switch to Protect yourself.",
      "label": "Switch to Protect by itself after watching",
-     "help": "A new SpamGuard starts in Monitor. Once it has watched for at least a day and seen enough spam, with nothing it would block marked as genuine and few genuine-looking messages held, it switches itself to Protect and says so in Activity. Choosing Monitor yourself turns this off."},
+     "help": "A new SpamGuard starts in Monitor and switches itself to Protect after a day, once it has seen enough spam and nothing marked genuine. Choosing Monitor yourself turns this off."},
+    {"key": "vary_limits", "group": "Timing", "type": "bool",
+     "risk": "Off, every repeater at the same level uses exactly the same limits, which anyone can read in the code.",
+     "label": "Vary limits slightly on this repeater",
+     "help": "Some limits are shifted a little around your level, differently on each repeater and each week, so a trick tuned to the published numbers isn't reliable. The values shown are the ones in use. Your own settings are never changed."},
     {"key": "poll_seconds", "risk": "Lower = blocks land faster, but the Pi does a little more work. Higher = more spam copies slip through before a rule exists.", "group": "Timing", "type": "int", "min": 1, "max": 300, "unit": "s",
      "label": "Check for new packets every",
      "help": "Lower is faster to react. 3 seconds is a good balance."},
     {"key": "live_feed", "risk": "Turned off, SpamGuard only looks for new packets on the timer above, so it reacts a second or two later.", "group": "Timing", "type": "bool",
      "label": "React as soon as openHop hears a packet",
      "help": "Listens to openHop's live packet feed and checks straight away when something arrives, instead of waiting for the next timed check. The timed check carries on as a backup."},
-    {"key": "rules_after_yours", "risk": "On = your own openHop rules are checked first, so a broad 'allow' rule of yours (for example letting everything from one repeater through) also lets spam through before SpamGuard's blocks are reached. Off = SpamGuard's text and campaign blocks are checked first. Route blocks, links, lockdown and blocks set to let known people through are checked after your own rules, so one of your allow rules can let them through. Your own rules are never changed either way.", "group": "Timing", "type": "bool",
+    {"key": "rules_after_yours", "risk": "On, a broad 'allow' rule of yours is checked first and can let spam through. Off, SpamGuard's text and campaign blocks come first.", "group": "Timing", "type": "bool",
      "label": "Put SpamGuard's rules after your own openHop rules",
-     "help": "Changes only the order in openHop's policy list. Off by default."},
+     "help": "Only changes the order in openHop's policy list. Your rules are never changed."},
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 500,
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
@@ -497,6 +496,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enable_text_rules": True,
     "min_rule_chars": 14,
     "dedupe_enabled": True,
+    "vary_limits": True,
     "repeat_guard": True,
     "name_budget": True,
     "name_budget_max": 14,
@@ -1638,10 +1638,36 @@ class SpamGuard:
         return out
 
     # ---- configuration layering: defaults < protection level < config file < web page
+    # Limits shifted a little on each repeater (see vary_limits): a whole number of steps, or a share of the value.
+    VARY = {"repeat_max": 1, "slow_repeat_max": 1, "name_budget_max": 2, "link_campaign_names": 1,
+            "repeat_block_seconds": 0.2, "slow_repeat_hold_seconds": 0.2, "slow_repeat_window_seconds": 0.15,
+            "dedupe_seconds": 0.15, "block_ttl_seconds": 0.15, "known_min_minutes": 0.25}
+    VARY_PERIOD = 7 * 86400
+
+    def varied_values(self, base: dict, now: float) -> dict:
+        """This repeater's own shift of some limits around the level, from its private id and the week, so it is
+        the same all week and after a restart, different on every repeater, and never readable from the code."""
+        r = random.Random(hashlib.sha256(f"{self.instance_id}|{int(now // self.VARY_PERIOD)}".encode()).digest())
+        out = {}
+        for k, spread in sorted(self.VARY.items()):
+            v = int(base[k])
+            nv = v + r.randint(-spread, spread) if isinstance(spread, int) else int(round(v * (1 + r.uniform(-spread, spread))))
+            m = META_BY_KEY[k]
+            out[k] = max(m.get("min", nv), min(m.get("max", nv), nv))
+        # keep the limits that depend on each other in order
+        out["name_budget_max"] = max(out["name_budget_max"], out["repeat_max"] + 5, 8)
+        out["slow_repeat_window_seconds"] = max(out["slow_repeat_window_seconds"], out["slow_repeat_hold_seconds"])
+        out["block_ttl_seconds"] = max(out["block_ttl_seconds"], out["repeat_block_seconds"])
+        return out
+
     def rebuild_cfg(self):
         level = self.current_level()
         cfg = json.loads(json.dumps(DEFAULT_CONFIG))
         cfg.update(level_values(level))
+        if {**cfg, **self.file_cfg, **self.settings}.get("vary_limits", True):
+            now = time.time()
+            cfg.update(self.varied_values(cfg, now))   # anything you set yourself still wins, below
+            self._vary_week = int(now // self.VARY_PERIOD)
         cfg.update(self.file_cfg)
         cfg.update(self.settings)
         cfg["level"] = level
@@ -2455,10 +2481,8 @@ class SpamGuard:
             f["learn_start"] = now
             if not f.get("welcomed"):
                 f["welcomed"] = 1
-                self.note(f"FloodGuard is on. For the next {FG_LEARN_DAYS} days it learns how busy this repeater's radio "
-                          "normally gets and how far packets normally travel. Meanwhile it only stops flood packets that have "
-                          "come further than it would ever allow (32 hops with no region, 16 for adverts) and counts the "
-                          "rest. Then it sets its limits from that and starts acting. You can turn it off on the FloodGuard page.")
+                self.note(f"FloodGuard is on and learning this repeater's traffic for {FG_LEARN_DAYS} days. Meanwhile it "
+                          "only stops floods that have come further than it would ever allow.")
         relearn = bool(f.get("relearn"))
         if (not f.get("ready") or relearn) and now - float(f["learn_start"]) < FG_LEARN_DAYS * 86400:
             return False
@@ -2602,10 +2626,9 @@ class SpamGuard:
                 if now - j["above_since"] >= self.JAM_SUSTAIN:
                     j.update(since=j["above_since"], peak=rise, below_since=0.0)
                     self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})["ie"] = 1
-                    self.note(f"Interference: the noise{on} has been {rise:.0f} dB above normal for five minutes "
-                              f"({cur:.0f} dBm against a normal {base:.0f} dBm). This repeater can only hear about "
-                              f"{self.range_share(rise)}% as far as usual. A nearby transmitter that never stops, such as "
-                              "faulty or non-compliant equipment, or jamming, usually causes this.")
+                    self.note(f"Interference: the noise{on} is {rise:.0f} dB above normal ({cur:.0f} dBm, normally "
+                              f"{base:.0f} dBm), so this repeater hears about {self.range_share(rise)}% as far as usual. "
+                              "Usually faulty equipment nearby, or jamming.")
                     self._important = True
             else:
                 j["above_since"] = 0.0
@@ -4869,6 +4892,8 @@ class SpamGuard:
         return out
 
     def decide(self) -> bool:
+        if self.cfg.get("vary_limits") and int(time.time() // self.VARY_PERIOD) != getattr(self, "_vary_week", None):
+            self.rebuild_cfg()   # a new week: this repeater's limits shift again
         c = self.cfg
         now = time.time()
         a = self.analyse()
@@ -5768,7 +5793,8 @@ class SpamGuard:
         that imports another's state still has its own id)."""
         if getattr(self, "_instance_id", None):
             return self._instance_id
-        path = os.path.splitext(self.cfg.get("state_file") or DEFAULT_CONFIG["state_file"])[0] + ".instance.json"
+        path = os.path.splitext((getattr(self, "cfg", None) or {}).get("state_file") or self.file_cfg.get("state_file")
+                                or DEFAULT_CONFIG["state_file"])[0] + ".instance.json"
         iid = None
         try:
             with open(path) as f:
@@ -6062,9 +6088,8 @@ class SpamGuard:
             hours = round((time.time() - s["since"]) / 3600)
             self.settings["mode"] = "protect"
             self.rebuild_cfg()
-            self.note(f"Switched to Protect by itself after watching for {hours} hours: it would have stopped "
-                      f"{s['spam']} spam message{'' if s['spam'] == 1 else 's'}, and nothing it would block was marked "
-                      "as genuine. You can switch back to Monitor at any time on the Overview.")
+            self.note(f"Switched to Protect after {hours} hours of watching: it would have stopped "
+                      f"{s['spam']} spam message{'' if s['spam'] == 1 else 's'}, none marked genuine.")
             self.snapshot_settings("switched to Protect by itself")
             self._save_state(force=True)
             self.sync_policy(force=True)

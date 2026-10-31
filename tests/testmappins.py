@@ -43,7 +43,7 @@ async def main():
     checks = [
       (n_int == 3, "two pins and your repeater stay clickable"),
       (n_all >= n_int + 2, "a ring is drawn for the shared pin (plus its blocked centre)"),
-      ("dotted outer ring" in note, "the note explains the ring"),
+      ("dotted ring" in note, "the note explains the ring"),
       ("also used by 2 other repeaters heard here, 1 with no location" in p_shared, "shared popup says how many"),
       ("No other repeater heard here uses this code." in p_unique, "unique popup says so"),
       (any("code also used by 2 other repeaters" in l for l in labels), "screen readers hear it too"),
