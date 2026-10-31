@@ -34,6 +34,7 @@ import signal
 import socket
 import subprocess
 import difflib
+import zlib
 import hashlib
 import hmac
 import calendar
@@ -313,6 +314,18 @@ SETTINGS_META: list[dict] = [
      "label": "Hold further copies for (slow repeats)",
      "help": "How long further copies of that message from that name are held. While they keep repeating it, one copy gets through each time this period ends."},
     # -- Known people
+    {"key": "text_sense", "group": "Experimental", "type": "bool",
+     "risk": "Experimental. It learns from your own spam marks, so it only helps once you have marked some, and it can be wrong. It keeps counts of letter groups, never the messages, and sends nothing anywhere.",
+     "label": "Learn from my spam marks (experimental)",
+     "help": "Notices when one name sends several messages that read like spam you marked, even when the words change each time. It never holds anything on one message, only on repeats from the same name."},
+    {"key": "text_sense_log_only", "group": "Experimental", "type": "bool",
+     "risk": "On, it only records what it would have held, so you can check it first. Off, it holds those messages for real.",
+     "label": "Only record what it would hold (experimental)",
+     "help": "Keep this on until the page shows it would have held the right things."},
+    {"key": "text_sense_count", "group": "Experimental", "type": "int", "min": 2, "max": 10,
+     "risk": "Lower = held sooner, but a person who talks about spam twice may be held. Higher = more get through first.",
+     "label": "Spam-like messages from one name before holding (experimental)",
+     "help": "How many different messages from one name that read like marked spam, in the repeat window, before the shared part of them is held."},
     {"key": "known_min_msgs", "group": "Known people", "type": "int", "min": 1, "max": 20,
      "risk": "1 = names become known very quickly, which is easier to abuse. Higher = harder to fake, but genuine newcomers wait longer before they get through repeater blocks and lockdowns.",
      "label": "Genuine messages before a name counts as known",
@@ -509,6 +522,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "repeat_window_seconds": 600,
     "repeat_block_seconds": 3600,
     "slow_repeat": True,
+    "text_sense": False,
+    "text_sense_log_only": True,
+    "text_sense_count": 2,
     "slow_repeat_max": 3,
     "slow_repeat_window_seconds": 86400,
     "slow_repeat_hold_seconds": 10800,
@@ -913,6 +929,98 @@ def is_garbage(text: str) -> bool:
 
 
 MENTION = re.compile(r"@\[[^\]\n]{1,48}\]")  # "@[Sam-N0CALL]": who a reply is to, not what it says
+
+
+class TextSense:
+    """EXPERIMENTAL. A very small text classifier that runs on the Pi and learns only from this repeater's own
+    "spam" and "fine" marks and its ordinary chat. It keeps counts of short letter groups, never the messages,
+    and never sends anything anywhere. Its score is one extra sign: on its own it holds nothing."""
+    BITS = 14
+    FLOOR = 12.0       # a score below this never counts, whatever the chat looks like
+    NEED_HAM = 300     # ordinary messages seen before it speaks at all
+    KEEP_HAM = 2000    # recent ordinary-chat scores kept to set the line
+
+    def __init__(self):
+        self.c = [{}, {}]            # letter-group counts: [fine, spam]
+        self.n = [0.0, 0.0]          # messages learned
+        self.t = [0.0, 0.0]          # total counts
+        self.ham_scores: list[float] = []
+
+    @staticmethod
+    def prep(text: str) -> str:
+        t = str(text).lower()
+        t = re.sub(r"https?://([^/\s]+)\S*", lambda m: " url_" + m.group(1) + " ", t)
+        t = re.sub(r"@\[[^\]]*\]", "@mention", t)
+        t = re.sub(r"\b(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]{6,}\b", "rndtok", t)
+        return re.sub(r"\s+", " ", t).strip()
+
+    def feats(self, text: str) -> dict:
+        t = self.prep(text)
+        mask = (1 << self.BITS) - 1
+        out: dict[int, int] = {}
+        s = " " + t + " "
+        for n in (3, 4, 5):
+            for i in range(len(s) - n + 1):
+                k = zlib.crc32(s[i:i + n].encode()) & mask
+                out[k] = out.get(k, 0) + 1
+        for w in t.split():
+            k = zlib.crc32(("w" + w).encode()) & mask
+            out[k] = out.get(k, 0) + 1
+        return out
+
+    def learn(self, text: str, y: int, w: float = 1.0) -> None:
+        f = self.feats(text)
+        self.n[y] = max(0.0, self.n[y] + w)
+        d = self.c[y]
+        for k, v in f.items():
+            x = d.get(k, 0.0) + v * w
+            if x > 0.0001:
+                d[k] = x
+            else:
+                d.pop(k, None)
+            self.t[y] = max(0.0, self.t[y] + v * w)
+
+    def score(self, text: str) -> float:
+        """How much more it reads like spam you marked than like ordinary chat here (0 = no opinion)."""
+        f = self.feats(text)
+        if not f:
+            return 0.0
+        size = 1 << self.BITS
+        c0, c1 = self.c[0], self.c[1]
+        l0 = math.log(self.t[0] + 0.1 * size)
+        l1 = math.log(self.t[1] + 0.1 * size)
+        tot = math.log((self.n[1] + 1) / (self.n[0] + 1))
+        for k, v in f.items():
+            tot += v * ((math.log(c1.get(k, 0.0) + 0.1) - l1) - (math.log(c0.get(k, 0.0) + 0.1) - l0))
+        return tot / math.sqrt(sum(f.values()))
+
+    def ready(self) -> bool:
+        return self.n[1] >= 1 and self.n[0] >= self.NEED_HAM
+
+    def line(self) -> float:
+        """The score a message must beat: above the second-highest of recent ordinary chat, and never below the floor."""
+        hs = sorted(self.ham_scores)
+        return max(self.FLOOR, (hs[-2] if len(hs) >= 2 else self.FLOOR) + 1.0)
+
+    def note_ham(self, score: float) -> None:
+        self.ham_scores.append(round(score, 2))
+        del self.ham_scores[:-self.KEEP_HAM]
+
+    def to_dict(self) -> dict:
+        return {"c": [{str(k): round(v, 2) for k, v in d.items()} for d in self.c],
+                "n": [round(x, 2) for x in self.n], "t": [round(x, 2) for x in self.t],
+                "h": self.ham_scores[-self.KEEP_HAM:]}
+
+    def load(self, d: dict) -> None:
+        try:
+            self.c = [{int(k): float(v) for k, v in dd.items()} for dd in d["c"][:2]]
+            self.n = [float(x) for x in d["n"][:2]]
+            self.t = [float(x) for x in d["t"][:2]]
+            self.ham_scores = [float(x) for x in d.get("h", [])][-self.KEEP_HAM:]
+            if len(self.c) != 2 or len(self.n) != 2 or len(self.t) != 2:
+                raise ValueError
+        except (KeyError, TypeError, ValueError, AttributeError):
+            self.__init__()
 
 
 def strip_mentions(text: str) -> str:
@@ -1477,6 +1585,11 @@ class SpamGuard:
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
         # Slow repeating: "name|channel|hash of the message" -> {"who", "ch", "snip", "ts": [times of each separate send]}
         self.slow_sends: dict[str, dict] = {}
+        self.sense = TextSense()                 # experimental text learner (see TextSense)
+        self.sense_sends: dict[str, list] = {}   # name|channel -> recent spam-like sends [{ts, text}]
+        self.sense_learned: dict[str, str] = {}  # label key -> label already learned from
+        self.sense_seen: collections.OrderedDict = collections.OrderedDict()
+        self.sense_logged: dict[str, float] = {}
         self.offences: dict[str, list] = {}   # name -> when a repeat hold was started against them
         self.homes: dict[str, dict] = {}      # name -> first repeater -> messages heard that way (kept for weeks)
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
@@ -1847,6 +1960,9 @@ class SpamGuard:
                 ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
                 if ts:
                     self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:]}
+        if isinstance(st.get("text_sense"), dict):
+            self.sense.load(st["text_sense"])
+            self.sense_learned = {str(k): str(v) for k, v in (st["text_sense"].get("learned") or {}).items()}
         for k, v in (st.get("name_links") or {}).items():
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
@@ -1957,6 +2073,8 @@ class SpamGuard:
                     "homes": dict(list(self.homes.items())[-3000:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
+                    **({"text_sense": dict(self.sense.to_dict(), learned=dict(list(self.sense_learned.items())[-1000:]))}
+                       if (self.cfg.get("text_sense") or self.sense.n[1] > 0) else {}),
                 }
 
     def reset_all(self):
@@ -3526,6 +3644,7 @@ class SpamGuard:
     # ---- the quarantine: every channel message in one list, with what SpamGuard did and why ----
     Q_REASON = {"repeat": "The same message again and again from this name",
                 "slowrepeat": "The same message many times today from this name",
+                "sense": "Several messages from this name that read like spam you marked",
                 "replay": "An old message sent again by another device",
                 "dedupe": "A copy of a message already sent under another name",
                 "campaign": "The same message sent under several names",
@@ -3626,7 +3745,7 @@ class SpamGuard:
         picked = []
         # copies of a message one name kept repeating that went out before the limit was reached
         repeated = {(m.get("sender"), normalise(str(m.get("text") or ""))) for m in raw
-                    if m.get("caught_source") in ("repeat", "slowrepeat", "replay")}
+                    if m.get("caught_source") in ("repeat", "slowrepeat", "replay", "sense")}
         for m in raw:
             if m.get("own") or not m.get("text"):
                 continue
@@ -4292,6 +4411,8 @@ class SpamGuard:
             if not e.replay and not e.local:
                 self._note_slow_send(e)
             self._match_event(e, count=not again)
+            if not e.replay and not e.local and not again:
+                self._sense_note(e)
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
@@ -4355,6 +4476,48 @@ class SpamGuard:
         del self.offences[name][:-20]
         while len(self.offences) > 500:
             self.offences.pop(next(iter(self.offences)))
+
+    def _sense_label(self, key: str, text: str, lab: str) -> None:
+        """Learn from (or forget) one of your marks. Always runs, so marks made before switching it on still count."""
+        if not text.strip():
+            return
+        old = self.sense_learned.pop(key, None)
+        if old in ("spam", "not_spam"):
+            self.sense.learn(text, 1 if old == "spam" else 0, -3.0)
+        if lab in ("spam", "not_spam"):
+            self.sense.learn(text, 1 if lab == "spam" else 0, 3.0)
+            self.sense_learned[key] = lab
+            while len(self.sense_learned) > 1000:
+                self.sense_learned.pop(next(iter(self.sense_learned)))
+
+    def _sense_note(self, e) -> None:
+        """Experimental: score one message. A spam-like one is remembered against its name (a hold needs several,
+        see the check in decide); anything else teaches the model what ordinary chat here looks like."""
+        c = self.cfg
+        if not c.get("text_sense") or e.exempt or e.sender in self.allow_senders or len(e.text.strip()) < 14:
+            return
+        if e.packet in self.sense_seen:
+            return
+        self.sense_seen[e.packet] = None
+        while len(self.sense_seen) > 3000:
+            self.sense_seen.popitem(last=False)
+        if self.label_of({"packet": e.packet, "sender": e.sender, "text": e.text}) == "spam":
+            return
+        sn = self.sense
+        if sn.ready():
+            sc = sn.score(e.text)
+            if sc >= sn.line():
+                lst = self.sense_sends.setdefault(f"{e.sender}|{e.channel}", [])
+                if not lst or e.ts - lst[-1]["ts"] >= 20 or lst[-1]["text"] != e.text:
+                    lst.append({"ts": e.ts, "text": e.text})
+                    del lst[:-12]
+                    while len(self.sense_sends) > 500:
+                        self.sense_sends.pop(next(iter(self.sense_sends)))
+                return
+            if not e.matched:
+                sn.note_ham(sc)
+        if not e.matched:
+            sn.learn(e.text, 0)
 
     def _note_slow_send(self, e) -> None:
         """Remember each separate send of a long message by one name, for the day-long repeat limit. Copies
@@ -5141,6 +5304,46 @@ class SpamGuard:
                     old = self.name_links.get(rec["who"], {}).get("after", [])
                     self.name_links[rec["who"]] = {"after": (old + [a for a in after if a not in old])[:10], "ts": now}
 
+        # 2b'-x. EXPERIMENTAL: one name sending several different messages that each read like spam you marked.
+        # The messages are all different, so the repeat counts above never see them together. What they share
+        # is held for that name only (or just recorded, in the record-only mode).
+        if c.get("text_sense"):
+            win_s = int(c["slow_repeat_window_seconds"])
+            for skey in list(self.sense_sends):
+                lst = [x for x in self.sense_sends[skey] if x["ts"] >= now - win_s]
+                if not lst:
+                    del self.sense_sends[skey]
+                    continue
+                self.sense_sends[skey] = lst
+                distinct = list(dict.fromkeys(x["text"] for x in lst))
+                if len(distinct) < int(c["text_sense_count"]):
+                    continue
+                who, ch = skey.rsplit("|", 1)
+                piece = common_substring([longest_piece(strip_mentions(t)).strip() for t in distinct],
+                                         int(c.get("min_rule_chars", 14)))
+                if not piece:
+                    continue
+                snip = middle_chunk(piece, 60)
+                key = "sense:" + hashlib.sha1(f"{who}|{ch}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
+                if self.suppressed.get(key, 0) > now:
+                    continue
+                reason = f"Sent {len(distinct)} different messages today that read like spam you marked"
+                if c.get("text_sense_log_only", True):
+                    if self.sense_logged.get(key, 0) < now - 86400:
+                        self.sense_logged[key] = now
+                        self.stats["sense_would_hold"] = self.stats.get("sense_would_hold", 0) + 1
+                        self.ev({"type": "sense", "who": who, "value": snip, "count": len(distinct), "held": False})
+                        self.note(f"Experimental: would have held a shared piece of {len(distinct)} spam-like messages from one name (record-only)")
+                    continue
+                fresh = key not in self.blocks
+                if self._add_block(key, "repeat", snip, reason, "sense", channel=ch,
+                                   ttl=int(c["slow_repeat_hold_seconds"]), from_ts=max(x["ts"] for x in lst),
+                                   extra={"who": who}):
+                    changed = True
+                    if fresh:
+                        self.ev({"type": "sense", "who": who, "value": snip, "count": len(distinct), "held": True})
+                        self._offence(who, now)
+
         # 2b'. Replays: further copies of an old message being sent again, from that name only.
         if c.get("replay_guard", True):
             for e in a["long"]:
@@ -5690,7 +5893,7 @@ class SpamGuard:
                               "then": {"action": self.rule_action(b)}})
         return rules
 
-    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "replay": "replayed", "campaign": "campaign",
+    RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto", "type-auto": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
                    "budget": "too many", "linkhost": "link campaign", "imposter": "borrowed name"}
@@ -7715,6 +7918,7 @@ class SpamGuard:
                     while len(self.labels) > 1000:
                         old, _ = self.labels.popitem(last=False)
                         self.label_at.pop(old, None)
+                self._sense_label(key, text, lab)
                 self._important = True
                 msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "none": "Label cleared"}[lab] + (
                     ". Labels are kept in the evidence log, for checking SpamGuard's accuracy later."
