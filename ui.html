@@ -1212,6 +1212,9 @@ function renderRecent(d){
     if(m.matched) tag=d.mode==="protect"&&!d.paused?"<span class='tag stop'>Stopped</span>":"<span class='tag would'>Would be stopped</span>";
     else if(m.random||m.obfuscated||m.campaign) tag="<span class='tag sus'>Suspicious</span>";
     if(m.trusted) tag+="<span class='tag ok'>Trusted</span>";
+    if(m.identity==="key") tag+="<span class='tag ok' title='Signed by a key you trust'>Signed</span>";
+    else if(m.identity==="copied") tag+="<span class='tag sus' title='Uses the name of someone you tied to a key, but is not signed by it'>Name copied</span>";
+    else if(m.identity==="name") tag+="<span class='tag plain' title='A name SpamGuard knows. Names can be copied'>Name only</span>";
     const why=[]; if(m.garbage) why.push("unreadable random text"); else if(m.garbage) why.push("unreadable random text"); else if(m.random) why.push("made-up looking name"); if(m.obfuscated) why.push("hidden or look-alike characters"); if(m.campaign) why.push("same message as other names");
     const acts=(m.matched||m.random||m.obfuscated||m.campaign)&&!m.trusted
       ? btn("Not spam","/not_spam",{sender:m.sender,matched:m.matched,text:m.text,path:m.path,packet:m.packet},"")+(m.matched||m.known?"":btn("This is spam","/mark_spam",{text:m.text,channel:m.channel,sender:m.sender,path:m.path,packet:m.packet},"danger"))
@@ -1257,7 +1260,7 @@ function renderKnown(d){
 function renderAdvanced(d){
   renderKnown(d);
   $("#hops").innerHTML=`<tr><th>Repeater</th><th class="num">Messages</th><th class="num">Names</th><th class="num">Made-up names</th><th class="num">New names</th><th class="num">Campaign names</th><th class="num">Caught</th><th></th></tr>`+
-    (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
+    (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.confidence==="ambiguous"?"<span class='tag plain' title='Several repeaters heard here share this code, so it needs more evidence before it is blocked'>shared code</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
       <td class="act-cell">${h.hop==="DIRECT"?"":(h.blocked?"":btn("Block","/block_hop",{hop:h.hop},"quiet"))+(h.allowed?btn("Allow blocking","/unallow_hop",{hop:h.hop},"quiet"):btn("Never block","/allow_hop",{hop:h.hop},"quiet"))}</td></tr>`).join("")
      || `<tr><td colspan="8" class="empty">No messages in the last few minutes.</td></tr>`);
