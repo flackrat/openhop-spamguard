@@ -12,7 +12,31 @@ The detail is below, newest first. In short:
 | **5.20 to 5.37** | Becomes an **openHop plugin**, installed and updated from openHop's own dashboard, with one press to move an older install across. Stops one name repeating itself, switches itself from Monitor to Protect once it's sure, and adds settings profiles and a list of known people you can edit. |
 | **6.0 to 6.5** | Adds **FloodGuard**, which contains floods of any kind by how busy the radio is, learns your mesh's normal traffic first, and from 6.2 has its own version number (from 1.0). Also wardriving privacy, catching old messages being sent again, and a watch for radio interference. |
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
-| **6.8 to 6.17** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, and counting damaged copies of messages. |
+| **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
+
+## v6.19.0
+
+A bigger release, built from a week of real evidence logs, an outside security review of 6.18.0, and a look at how a spammer might try to get round SpamGuard.
+
+- **Copies addressed to different people still count as repeats.** A name sending the same emoji and made-up code to a different person each time (`@[Sam]💤` then a code, `@[Kit]💤` then another) is counted as one repeated message. The hold covers only that pattern from that name. Their ordinary replies are left alone.
+- **No free copy for repeat offenders.** A name already held for repeating twice in a day is held until its sends age out of the window (a day or so), instead of getting one copy through each time a hold ends.
+- **A burst limit for one name.** One name sending far more on a channel in ten minutes than anyone normally does, whatever the messages say, is held for a while. It follows the protection level: 20 at Gentle, 14 at Balanced, 10 at Tough. Busy regulars rarely send more than 7. Copies of the same line within a minute count once.
+- **Link campaigns across names.** When several names SpamGuard doesn't know post links to the same website within an hour, a different link each time, links to that site are held from names it doesn't know for a while. People it knows still get through.
+- **Trust can be lost.** A name held for repeating twice in a day stops counting as known for a day, so its messages no longer get through repeater and route blocks as a known person's would.
+- **A copied name can't ride in with the spam.** While several names are spamming, a known name arriving through the very repeater the spam comes in by, one it has never been heard through, is held from there for a while. Its usual way in still works. Where each person is usually heard from is now remembered for weeks.
+- **A name you've tied to a signing key needs their signature.** With signed checking on, once you trust someone's key, a message under their name without that signature is treated as a stranger, and held from repeaters they never use. Their own unsigned messages from their usual way in are left alone.
+- **A minimum time before a name counts as known.** As well as enough genuine messages, a name must have been heard for a while: 30 minutes at Gentle, an hour at Balanced, 3 hours at Tough. A few harmless messages in a row no longer earn trust within minutes. Names already known stay known.
+- **Labels stay visible.** A message you mark as spam or fine shows "Marked spam by you" in the Messages list, and the message itself says when you did it. The button changes to "Clear the label". Labels and their times survive a restart.
+- **A warning while openHop needs its rule-check fix.** The Overview now says so all the time you're protecting without it, not only after spam has got through.
+- **Saved state survives a damaged file.** Each save keeps the last good copy, written fully to the card first, and SpamGuard carries on from it, with a note, if the state file is ever damaged.
+- **Settings checked against the slider.** Every setting the protection level moves is checked at every level, for its range, its direction and how it relates to the others. A new test keeps it that way.
+- **Fixed:** a link on the Overview's "your own settings" note was hard to read in dark mode.
+- **FloodGuard 1.5.0.**
+
+### FloodGuard 1.5.0
+
+- **What FloodGuard stopped, broken down.** The chart on the FloodGuard page splits each hour by what stopped the packets: floods that came too far while the radio was busy, floods with no region that came too far, adverts that came too far, damaged copies not passed on, and wardriving packets. Hours counted before this release keep their total.
+- **Protection from day one.** While it is still learning, FloodGuard now stops flood packets beyond the loosest limits learning could ever choose (32 hops with no region, 16 for adverts), or the limits you set yourself. Before, it only counted while learning. It is never stricter than it will end up once it has learnt.
 
 ## v6.18.0
 

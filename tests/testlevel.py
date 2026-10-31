@@ -28,7 +28,7 @@ check([sg.level_name(x) for x in (0,19,20,50,60,79,80,100)]==["Gentle","Gentle",
       "the five names along the scale")
 
 # --- settings from the page
-m=mock(); g=guard(m)
+m=mock(); g=guard(m); g.file_cfg.pop("known_min_minutes", None)   # the harness pins it for older tests; this test is about levels
 check(g.cfg["level"]==50 and g.cfg["sensitivity"]=="balanced", "a new install starts at 50 (balanced)")
 g.apply_settings({"level":80})
 check(g.cfg["level"]==80 and g.cfg["slow_repeat_max"]==sg.level_values(80)["slow_repeat_max"], "choosing a level sets its values")
@@ -103,7 +103,7 @@ check(sg.suggest_level({"messages":500,"from":0,"to":86400,"levels":[{"level":0,
       {"level":50,"spam":0,"repeats":8,"check":0,"wrong":2}]})==0, "a level that would hold messages you marked as fine is avoided")
 
 # --- the daily run inside SpamGuard (in the background, never touching openHop)
-m4=mock(); g4=guard(m4, evidence_log=True, evidence_dir=d)
+m4=mock(); g4=guard(m4, evidence_log=True, evidence_dir=d); g4.file_cfg.pop("known_min_minutes", None)
 check(g4.preview_summary()["enabled"] and not g4.preview_summary().get("levels"), "nothing to show before the first run")
 g4.refresh_level_preview()   # not due yet: waits ten minutes after starting
 check(not g4._preview_busy, "it doesn't start straight away after a restart")

@@ -100,7 +100,7 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
             first.setdefault(m["sender"], m)
         for name, m in first.items():
             if m.get("known_then"):
-                g.known[name] = [m["ts"], m["ts"], 1000]
+                g.known[name] = [m["ts"] - 30 * 86400, m["ts"], 1000]
     g.cfg["channels"].update(channels)
     keys = {name: key for name, key in g.cfg["channels"].items()}
     step = g.cfg["poll_seconds"]

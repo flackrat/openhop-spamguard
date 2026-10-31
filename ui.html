@@ -308,9 +308,9 @@ body.advanced .stats.adv{display:grid}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 
 /* ---------- app layout: openHop-style side menu ---------- */
-:root{--c-stop:#009096;--c-let:#c2610c;--c-flood:#6b4fc8;--c-used:#9aa7b2;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
-@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
-:root[data-theme=dark]{--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}
+:root{--c-stop:#009096;--c-let:#c2610c;--c-flood:#6b4fc8;--c-fu:#2f6fb5;--c-fa:#b13a8a;--c-fd:#b3322e;--c-fw:#3d8a3d;--c-used:#9aa7b2;--nav:#e6ecf0;--nav-ink:#18232e;--nav-active:#d3e6e7}
+@media (prefers-color-scheme: dark){:root:not([data-theme=light]){--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-fu:#5d9bd8;--c-fa:#d56ab0;--c-fd:#e0675f;--c-fw:#6dbb6d;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}}
+:root[data-theme=dark]{--c-stop:#2ba3a6;--c-let:#cf7a32;--c-flood:#8f78e6;--c-fu:#5d9bd8;--c-fa:#d56ab0;--c-fd:#e0675f;--c-fw:#6dbb6d;--c-used:#5d6b77;--nav:#0f1820;--nav-ink:#cfd8df;--nav-active:#1d3438}
 .app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
 .side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--nav);color:var(--nav-ink);border-right:1px solid var(--line);padding:14px 10px 20px;display:flex;flex-direction:column;gap:2px}
 .side .brand{padding:4px 8px 14px;font-size:1.03125rem}
@@ -374,22 +374,25 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
   .kpis small{font-size:0.6875rem}
   .banner{padding:10px 12px;font-size:0.875rem}
 }
-.kpis a,.callout a,.quietlink{color:var(--signal)}
+.kpis a,.callout a,.quietlink,.explain a,.lead a{color:var(--signal)}
 .kpis div{background:var(--paper);border-radius:8px;padding:10px 12px;min-width:0}
 .kpis dt{font-size:0.78125rem;color:var(--soft)}
 .kpis dd{margin:2px 0 0;font-size:1.5rem;font-weight:650;letter-spacing:-.01em;line-height:1.15}
 .kpis small{display:block;font-size:0.75rem;color:var(--soft);font-weight:400;margin-top:2px}
 /* charts */
+.q-labline{margin:8px 0 0;font-size:0.875rem;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:0.78125rem;color:var(--soft);margin:2px 0 8px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
-.sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)} .sw-f{background:var(--c-flood)} .sw-u{background:var(--c-used)}
+.sw-c{background:var(--c-stop)} .sw-x{background:var(--c-let)} .sw-f,.sw-fl{background:var(--c-flood)} .sw-u,.sw-fo{background:var(--c-used)}
+.sw-fu{background:var(--c-fu)} .sw-fa{background:var(--c-fa)} .sw-fd{background:var(--c-fd)} .sw-fw{background:var(--c-fw)}
 .chart{position:relative;height:150px}
 .chart.short{height:120px}
 .chart svg{width:100%;height:100%;overflow:visible}
 .chart .grid{stroke:var(--line);stroke-width:1}
 .chart .ax{fill:var(--soft);font-size:0.6875rem}
-.chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)} .chart .f{fill:var(--c-flood)} .chart .u{fill:var(--c-used)}
+.chart .c{fill:var(--c-stop)} .chart .x{fill:var(--c-let)} .chart .f,.chart .fl{fill:var(--c-flood)} .chart .u,.chart .fo{fill:var(--c-used)}
+.chart .fu{fill:var(--c-fu)} .chart .fa{fill:var(--c-fa)} .chart .fd{fill:var(--c-fd)} .chart .fw{fill:var(--c-fw)}
 .lbl{display:flex;gap:6px;align-items:center;margin-top:6px} .lbl button{padding:2px 9px;font-size:0.75rem} .lbl button[aria-pressed=true]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .chart .lvl{stroke:var(--soft);stroke-width:1;stroke-dasharray:4 3}
 .chart .ln{fill:none;stroke:var(--c-flood);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
@@ -714,9 +717,9 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="floodguard">
 <section class="fgcard" id="fgCard"></section>
 <section>
-  <h2>Flood packets, last 24 hours</h2>
-  <p class="lead">Per hour. Flood packets FloodGuard stopped, and ones over a limit that were still passed on.</p>
-  <div class="legend"><span><i class="sw sw-f"></i>Stopped by FloodGuard</span><span><i class="sw sw-x"></i>Over the limit but let through (while learning, in Monitor, or before the limit started)</span></div>
+  <h2>What FloodGuard stopped, last 24 hours</h2>
+  <p class="lead">Per hour, by the limit that stopped each packet. Packets over a limit that were still passed on are shown too.</p>
+  <div class="legend" id="floodLegend"></div>
   <div class="chart" id="chartFlood" role="img"></div>
 </section>
 <section id="floodSrcSec">
@@ -941,6 +944,8 @@ function renderTop(d){
 
   let b="";
   if(d.service&&d.service.state==="bad") b+=`<div class="banner bad"><b>SpamGuard needs attention.</b>${esc(d.service.problems[0])}</div>`;
+  // Blocks are only as good as openHop's enforcement of them: say so while protecting without the rule-check fix.
+  if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix===false) b+=`<div class="banner warn"><b>openHop needs a one-line fix before blocks are fully reliable.</b> Its rule checker has a known bug that can occasionally let blocked spam through. <a href="#/health">See Health</a> to apply it.</div>`;
   if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
   if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
   const hid=Number(store.get("sgDismissUnread")||0);
@@ -1119,12 +1124,12 @@ function renderBlocks(d){
     <div class="why">${x.names} brand-new name${x.names===1?"":"s"} started on it in the last ${x.minutes} minutes (${x.messages} message${x.messages===1?"":"s"}). Blocking would last ${dur(x.ttl)}.</div></div>
     <div class="acts">${btn("Block it","/accept_route",{route:x.route},"go")}${btn("Not now","/dismiss_route",{route:x.route},"quiet")}</div></li>`).join("");
   const list=d.blocks.filter(b=>b.source!=="dedupe"), dups=d.blocks.filter(b=>b.source==="dedupe");
-  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>","type-auto":"<span class='tag plain'>automatic hold</span>",repeat:"<span class='tag plain'>repeating</span>",replay:"<span class='tag plain'>replay</span>",hop:""}[b.source]||"");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>","type-auto":"<span class='tag plain'>automatic hold</span>",repeat:"<span class='tag plain'>repeating</span>",slowrepeat:"<span class='tag plain'>repeating all day</span>",replay:"<span class='tag plain'>replay</span>",budget:"<span class='tag plain'>too many messages</span>",linkhost:"<span class='tag plain'>link campaign</span>",imposter:"<span class='tag would'>borrowed name?</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
     const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
-      :b.kind==="links"?"Links from names SpamGuard doesn't know"
+      :b.kind==="links"&&b.source!=="linkhost"?"Links from names SpamGuard doesn't know"
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
@@ -1472,7 +1477,7 @@ function qRender(){
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
     <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b><span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
       <span class="q-txt">${esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
-    <span class="q-line" style="justify-content:flex-end">${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
+    <span class="q-line" style="justify-content:flex-end">${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
     :`<li><p class="empty">${Q.q||fl?"Nothing matches.":"Nothing here for the last "+(d.days===1?"24 hours":"7 days")+"."}</p></li>`;
   $("#qMore").innerHTML=d.rows.length>=Q.limit?`<button type="button" class="quiet" id="qMoreBtn">Show more</button>`:"";
   qBulk();
@@ -1484,12 +1489,16 @@ function qBulk(){
   bulk.hidden=!n;
   bulk.innerHTML=n?`<b>${n} selected</b><button type="button" class="quiet" data-qb="release">Let through</button><button type="button" class="quiet" data-qb="spam">Label as spam</button><button type="button" class="quiet" data-qb="not_spam">Label as fine</button><button type="button" class="quiet" data-qb="clear">Clear</button>`:"";
 }
+// What you said about a message, kept with it for as long as the message is listed.
+const qLabWhen=ts=>"on "+new Date(ts*1000).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+const qLab=r=>r.label==="spam"?"You marked this as spam":r.label==="not_spam"?"You marked this as fine":"";
+const qLabTag=r=>r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"Marked spam":"Marked fine"} by you</span>`:"";
 function qDetail(){
   const d=Q.data, r=d&&d.rows[Q.sel], box=$("#qDetail");
   if(!r){ box.innerHTML=`<p class="explain" style="margin:0">Choose a message to see why SpamGuard did what it did, and to change it.</p>`; return; }
   const who=r.spammer?"Has repeated messages held this week":r.known?"Someone SpamGuard knows from genuine messages":"A name SpamGuard doesn't know yet";
   const b=(label,path,body,cls)=>`<button type="button" class="${cls||"quiet"}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`;
-  const lb=(v,t)=>`<button type="button" class="quiet" aria-pressed="${r.label===v}" data-p="/label" data-b="${esc(JSON.stringify({label:r.label===v?"none":v,sender:r.sender,text:r.text,path:r.path,packet:r.packet}))}" onclick="act(this)">${t}</button>`;
+  const lb=(v,t)=>`<button type="button" class="quiet" aria-pressed="${r.label===v}" data-p="/label" data-b="${esc(JSON.stringify({label:r.label===v?"none":v,sender:r.sender,text:r.text,path:r.path,packet:r.packet}))}" onclick="act(this)">${r.label===v?"Clear the label":t}</button>`;
   const acts={stopped:b("Let it through","/not_spam",{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet},"go"),
     held:b("Let it through","/not_spam",{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet},"go"),
     letthrough:r.known?"":b("Stop copies like this","/mark_spam",{text:r.text,channel:r.channel,sender:r.sender,path:r.path,packet:r.packet},"go"),
@@ -1501,6 +1510,7 @@ function qDetail(){
   box.innerHTML=`<div class="q-line" style="justify-content:space-between"><span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span><span class="explain">${qWhen(r.ts)}${r.channel?", "+esc(r.channel):""}</span></div>
     <h3 style="margin:10px 0 0;font-size:1rem">${esc(r.sender)}</h3>
     <div class="msg-text">${esc(r.text)}</div>
+    ${r.label?`<p class="q-labline"><span class="tag ${r.label==="spam"?"stop":"plain"}">${r.label==="spam"?"Spam":"Fine"}</span> ${esc(qLab(r))}${r.label_at?" "+esc(qLabWhen(r.label_at)):""}. Clear it with the button below.</p>`:""}
     <dl><dt>Why</dt><dd>${esc(r.why)}</dd>
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
@@ -1787,7 +1797,7 @@ function renderFloodPage(d){
     const until=fg.learn_until?new Date(fg.learn_until*1000).toLocaleString([],{weekday:"long",hour:"2-digit",minute:"2-digit"}):"";
     h+=fg.relearning
       ?`<div class="callout info"><span><strong>Learning again, day ${day} of ${fg.learn_days}.</strong> FloodGuard is learning this repeater's traffic from scratch and keeps protecting with the recommended values meanwhile. ${until?`From ${esc(until)}`:"After that"} it switches to what it learnt.</span></div>`
-      :`<div class="callout info"><span><strong>Learning, day ${day} of ${fg.learn_days}.</strong> FloodGuard is learning how busy this repeater's radio normally gets and how far packets normally travel, and only counts what it would stop. ${until?`From ${esc(until)}`:"After that"} it sets its limits from what it heard and starts acting${Date.now()/1000>fg.learn_until?" (it needs a little more traffic first, for up to a week)":""}.</span><span class="cbtns">${btn("Start protecting now","/fg_start_now",{},"quiet")}</span></div>`;
+      :`<div class="callout info"><span><strong>Learning, day ${day} of ${fg.learn_days}.</strong> FloodGuard is learning how busy this repeater's radio normally gets and how far packets normally travel. Meanwhile it only stops flood packets that have come further than it would ever allow, and counts the rest. ${until?`From ${esc(until)}`:"After that"} it sets its limits from what it heard and starts acting${Date.now()/1000>fg.learn_until?" (it needs a little more traffic first, for up to a week)":""}.</span><span class="cbtns">${btn("Start protecting now","/fg_start_now",{},"quiet")}</span></div>`;
   }
   if(!fg.radio_known){
     h+=`<p class="lead">FloodGuard needs openHop's radio settings to measure airtime, and SpamGuard hasn't been able to read them yet.</p>`;
@@ -1821,9 +1831,19 @@ function renderFloodPage(d){
       <td class="num" data-label="24 h">${fmtN(s.d1)}</td><td class="num" data-label="7 days">${fmtN(s.d7)}</td><td data-label="Last stopped">${ago(s.last+3599)}</td></tr>`).join("")
     :`<tr><td colspan="5" class="empty">FloodGuard hasn't stopped any flood packets in the last 7 days.</td></tr>`);
   if(PAGE!=="floodguard") return;   // charts are drawn at their real width, so only while the page is showing
-  columns($("#chartFlood"),m.hourly.map(r=>({f:r.fc||0,x:r.fx||0,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${r.fc||0} flood packets stopped, ${r.fx||0} over the limit let through`})),
-    {every:6,col:"Hour",segs:["f","x"],cols:[["f","Stopped"],["x","Let through"]]});
-  $("#chartFlood").setAttribute("aria-label",`Flood packets per hour, last 24 hours: ${m.d1.fc||0} stopped by FloodGuard. The numbers are in the table below.`);
+  // What stopped each packet. Hours counted before the breakdown only have a total, kept as "not broken down".
+  const KINDS=[["fl","Flood packets that came too far while busy"],["fu","Unscoped floods that came too far"],["fa","Adverts that came too far"],
+    ["fo","Flood packets stopped (older hours, not broken down)"],["fd","Damaged copies not passed on"],["fw","Wardriving packets stopped"],
+    ["x","Over a limit but let through (while learning, in Monitor, or before the limit started)"]];
+  const kv=r=>({fl:r.fcl||0,fu:r.fcu||0,fa:r.fca||0,fo:Math.max(0,(r.fc||0)-(r.fcl||0)-(r.fcu||0)-(r.fca||0)),fd:r.ds||0,fw:r.ws||0,x:r.fx||0});
+  let kinds=KINDS.filter(k=>m.hourly.some(r=>kv(r)[k[0]]>0));
+  if(!kinds.length) kinds=[KINDS[0]];
+  $("#floodLegend").innerHTML=kinds.map(k=>`<span><i class="sw sw-${k[0]}"></i>${esc(k[1])}</span>`).join("");
+  const fRows=m.hourly.map(r=>{ const v=kv(r), parts=kinds.filter(k=>v[k[0]]>0).map(k=>`${v[k[0]]} ${k[1].split(" (")[0].toLowerCase()}`);
+    return {...v,label:hh(r.t),full:hh(r.t),tip:`${hh(r.t)}: ${parts.length?parts.join(", "):"nothing stopped"}`}; });
+  columns($("#chartFlood"),fRows,{every:6,col:"Hour",segs:kinds.map(k=>k[0]),cols:kinds.map(k=>[k[0],k[1].split(" (")[0]])});
+  const tot24=kinds.filter(k=>k[0]!=="x").reduce((n,k)=>n+fRows.reduce((a,r)=>a+r[k[0]],0),0);
+  $("#chartFlood").setAttribute("aria-label",`What FloodGuard stopped per hour, last 24 hours: ${tot24} packets in total. The numbers are in the table below.`);
   $("#busyLead").textContent=fg.enabled?`The dashed line is where FloodGuard steps in (${fg.level}%).`:"Measured whether FloodGuard is on or not.";
   drawBusy($("#chartBusy"),m,fg,hh);
 }
