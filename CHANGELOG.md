@@ -21,6 +21,10 @@ The detail is below, newest first. In short:
 - **Shared codes.** A short code several repeaters share needs more than one sign before everything with it is blocked, and is marked on the page.
 - **Fixed:** a config file could set the rule limit above its 500 ceiling.
 
+## v6.21.1
+
+- **Docker image carries a current pip**, clearing a pip alert in the weekly image scan. The pip version is locked and hash-checked.
+
 ## v6.21.0
 
 - **Parts list with every release.** Each release now carries a signed software bill of materials (`.sbom.cdx.json`) listing what it is made of.
