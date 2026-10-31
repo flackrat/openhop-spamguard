@@ -91,7 +91,7 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
         sg.name_score = lambda name, pats: recorded.get(name, 0)
     state = os.path.join(tempfile.mkdtemp(prefix="sg-replay-"), "state.json")  # a private folder, not a guessable name
     # never the real state file or evidence log, whatever the settings say
-    cfg = {"mode": "protect", **overrides, "state_file": state, "evidence_log": False}
+    cfg = {"mode": "protect", "vary_limits": False, **overrides, "state_file": state, "evidence_log": False}
     g = sg.SpamGuard(cfg)
     g._save_state = lambda *a, **k: None  # a replay keeps nothing, and saving was half its running time
     if known_at_start and msgs:

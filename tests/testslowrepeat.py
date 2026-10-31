@@ -112,7 +112,7 @@ m10=mock(); g10=guard(m10, long_window_seconds=86400); g10.apply_settings({"mode
 sends(m10,"Quarry Pete",TEXT,3,3000,12000)
 cycle(g10)
 g10._save_state(force=True)
-g11=sg.SpamGuard({"state_file":g10.cfg["state_file"],"openhop_url":g10.cfg["openhop_url"],"api_key":"t","mode":"protect"})
+g11=sg.SpamGuard({"state_file":g10.cfg["state_file"],"openhop_url":g10.cfg["openhop_url"],"api_key":"t","mode":"protect","vary_limits":False})
 check(sum(len(v["ts"]) for v in g11.slow_sends.values())==3,"three sends remembered after a restart: "+str(g11.slow_sends)[:120])
 m10.add("Quarry Pete",TEXT,["4C","2F"],ago=60)
 g11.poll_once(); g11.last_sync=0; g11.sync_pending=True; g11.poll_once()

@@ -8,6 +8,11 @@ Please report security problems privately, not in a public issue. Use GitHub's p
 Include the SpamGuard version and what you saw. I aim to reply within 7 days, to have a fix or a clear plan
 within 30 days, and to credit you in the release notes if you wish.
 
+## Ways round SpamGuard
+
+If you find a way to get spam past SpamGuard, please report it the same private way rather than in a public
+issue, so it can be fixed before it is widely known. Please don't post real spam, names or routes anywhere public.
+
 ## What SpamGuard can change on your system
 
 It helps to know what SpamGuard is allowed to touch, both for checking it and for reporting a problem.
