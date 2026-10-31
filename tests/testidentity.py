@@ -56,6 +56,23 @@ check(rows.get("Same name, no signature")=="copied", f"the same name without the
 check(rows.get("Still on the lock")=="name", f"a known name with no key is name only: {rows}")
 check(rows.get("First time here")=="unknown", f"a stranger is unknown: {rows}")
 
+# Borrowed trust and tampering: wearing a trusted repeater's code, or a signature that doesn't match, gives no identity.
+m2=mock(); g2=guard(m2, known_min_msgs=2, signed_watch=True); g2.apply_settings({"mode":"protect"})
+add_advert(m2,pub,"Quarry Pete")
+for i in range(2): m2.add("Quarry Pete",f"Nice and clear {i}",["4C","2F"],ago=3000-i*60)
+run(g2)
+g2.signer_bind[kid]="Quarry Pete"
+g2.allow_senders.add("Lock Keeper Lou")
+spam=[rname() for _ in range(4)]
+for i,n in enumerate(spam): m2.add(n,f"Cheap upgrades {i}",["4C","2F"],ago=300-i)          # made-up names on a trusted code
+add_signed(m2,priv,"Quarry Pete","Altered after signing",tamper=True,ago=100)               # signature no longer matches the text
+m2.add("Lock Keeper Lou","Lock is open",["4C","2F"],ago=90)
+run(g2)
+rows2={r["text"]:r["identity"] for r in g2.status()["recent"]}
+check(all(rows2.get(f"Cheap upgrades {i}")=="unknown" for i in range(4)), f"made-up names on a trusted code stay unknown: {rows2}")
+check(rows2.get("Altered after signingx")=="copied", f"a message whose text no longer matches its signature is flagged as a copied name: {rows2}")
+check(rows2.get("Lock is open")=="name", f"a name you trust but did not key is name only: {rows2}")
+
 ui=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","ui.html")).read()
 check("m.identity===" in ui and "Name copied" in ui and "Name only" in ui, "the Messages list shows the identity tags")
 
