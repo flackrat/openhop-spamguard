@@ -49,7 +49,7 @@ for i,n in enumerate(["Newbie One","Fresh Two","Brand Three","Novel Four"]):
 settle(g)
 lb=[b for b in g.blocks.values() if b.get("source")=="linkhost"]
 check(len(lb)==1 and lb[0]["value"]==["pics.example.net/"], f"links to that site are held: {[b['value'] for b in lb]}")
-check("pics.example.net" in g.describe(lb[0]) if lb else False, "it reads in plain words")
+check(g.describe(lb[0]).startswith("links to pics.example.net ") if lb else False, "it reads in plain words")
 backdate(g)
 m.add("Novel Five","seen this? https://pics.example.net/image/9zz9/q.jpg",["A1"],ago=200)
 m.add("Known Kim","my pic https://pics.example.net/image/kim1234/k.jpg",["C3"],ago=190)
