@@ -1,0 +1,26 @@
+# On every pull request: fails if the change adds a dependency with a known serious vulnerability.
+# Uses GitHub's own dependency-graph comparison through the gh CLI, so no third-party action is needed.
+name: Dependency review
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check added dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/dependency-graph/compare/$BASE...$HEAD" > diff.json
+          jq -r '.[] | select(.change_type=="added") | "added \(.ecosystem) \(.name) \(.version)"' diff.json
+          bad=$(jq -r '.[] | select(.change_type=="added") | . as $d | .vulnerabilities[]? | select(.severity=="high" or .severity=="critical") | "\($d.name) \($d.version): \(.severity) \(.advisory_url)"' diff.json)
+          if [ -n "$bad" ]; then echo "Serious known vulnerabilities in added dependencies:"; echo "$bad"; exit 1; fi
+          echo "No serious vulnerabilities in added dependencies"
