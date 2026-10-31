@@ -66,7 +66,7 @@ async def main():
       (hashv.startswith("#/messages") and "Ridge Relay" in filt, f"Show these messages opens the message list filtered to that place: {hashv} {filt}"),
       (asked and asked[-1].get("codes")==["C4"] and asked[-1].get("days")==7, f"asking for that repeater's code over 7 days: {asked[-1] if asked else None}"),
       ("UD6DWREK" in first, "and lists what came through there"),
-      ("1 more couldn't be placed" in note, "repeat spammers that can't be placed are counted"),
+      ("1 more not placed yet" in note, "repeat spammers that can't be placed are counted"),
       (not errs, f"no page errors: {errs}"),
     ]
     bad=[m for c,m in checks if not c]

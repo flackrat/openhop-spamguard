@@ -74,7 +74,7 @@ async def main():
         res.append(("until it knows your routes" in a["call"] and "info" in a["cls"], "the Overview says it is only counting until it knows the routes: " + a["call"][:70]))
         res.append(("how far packets normally come" in a["page"], "and the page says why nothing is held back"))
         await show(fgd(0.2, acting=False, waiting_reach=True, limit=None, since=None)); a = await info()
-        res.append(("hasn't heard enough flood packets" in a["page"], "also when there is no flood: " + a["page"][:60].replace("\n"," ")))
+        res.append(("needs to hear about 200 flood packets" in a["page"], "also when there is no flood: " + a["page"][:60].replace("\n"," ")))
         for scheme in ("light", "dark"):
             await pg.evaluate(f"document.documentElement.dataset.theme='{scheme}'")
             for age in (0.2, 70):

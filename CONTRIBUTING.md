@@ -40,7 +40,8 @@ allows the merge. The same applies to the maintainer.
 2. **Follow the style already in `spamguard.py`:** plain Python with type hints on new functions, short
    docstrings that say why, no new dependencies unless there is a strong reason (the plugin installs on a
    Raspberry Pi 3).
-3. **Words shown to people are plain and brief.** Many readers use a phone, and many are not technical.
+3. **Words are plain and brief**, on the page, in settings, in Activity and in the docs: one or two short sentences,
+   with the detail in `docs/` rather than on the page. Many readers use a phone, and many are not technical.
 4. **Add a line to `CHANGELOG.md`** under the next version.
 5. **Detection stays behavioural.** SpamGuard blocks spam behaviour, never people or opinions, and never touches
    direct messages or acknowledgements.

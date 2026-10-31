@@ -20,7 +20,7 @@ for i in range(12): g.catches.append(now-3600+i)
 s=g.auto_protect_status(); check(s["due"]<=time.time()+1 and not s["waiting"],"a day plus enough spam: due now: "+str(s))
 g._auto_checked=0; g._maybe_auto_protect()
 check(g.cfg["mode"]=="protect","switched itself to Protect")
-check(any("Switched to Protect by itself" in a["msg"] for a in g.activity),"says so in Activity")
+check(any("Switched to Protect after" in a["msg"] for a in g.activity),"says so in Activity")
 check(g.auto_protect_status() is None,"nothing more to do once in Protect")
 # marked as genuine -> leave it to the user
 m,g=fresh(); g.monitor_since=now-25*3600
