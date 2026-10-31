@@ -79,7 +79,22 @@ def load(path):
     return msgs, labels, settings
 
 
-def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False):
+def load_marks(path) -> list:
+    """Your "spam" / "fine" answers with the moment you gave them, oldest first."""
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("type") == "label" and r.get("label") in ("spam", "not_spam", "none") and r.get("ts"):
+                out.append(r)
+    out.sort(key=lambda r: r["ts"])
+    return out
+
+
+def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False, marks=None):
     """quiet_step: when no message arrives, step the clock this far at a time instead of one poll (quicker).
     known_at_start: begin knowing the people the Pi already knew when the log starts, as it did."""
     sg.time = Clock()  # SpamGuard now runs on log time
@@ -108,7 +123,18 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
     i = 0
     Clock.now = msgs[0]["ts"] if msgs else 0
     end = (msgs[-1]["ts"] + 300) if msgs else 0
+    marks = list(marks or []) if overrides.get("text_sense") else []   # marks only matter to what learns from them
+    mi = 0
     while Clock.now <= end:
+        while mi < len(marks) and marks[mi]["ts"] <= Clock.now:
+            r = marks[mi]
+            mi += 1
+            key = str(r.get("packet") or "") or f"{r.get('sender')}|{r.get('text')}"
+            for kk in {key, f"{r.get('sender')}|{r.get('text')}"}:
+                g.labels.pop(kk, None)
+                if r["label"] != "none":
+                    g.labels[kk] = r["label"]
+            g._sense_label(key, str(r.get("text") or ""), r["label"])
         batch = []
         while i < len(msgs) and msgs[i]["ts"] <= Clock.now:
             m = msgs[i]
@@ -208,11 +234,13 @@ def main():
     a = ap.parse_args()
     logging.disable(logging.WARNING)  # keep the report readable
 
-    msgs, labels = [], {}
+    msgs, labels, marks = [], {}, []
     for p in a.log:
         m, lab, _ = load(p)
         msgs += m
         labels.update(lab)
+        marks += load_marks(p)
+    marks.sort(key=lambda r: r["ts"])
     msgs.sort(key=lambda r: r["ts"])
     if a.since:
         msgs = [m for m in msgs if m["ts"] >= a.since]
@@ -266,8 +294,9 @@ def main():
     results = []
     for sens in runs:
         ov = dict(overrides, sensitivity=sens)
-        caught, _ = run(msgs, ov, channels)
+        caught, g = run(msgs, ov, channels, marks=marks)
         r = summarise(msgs, caught)
+        r["sense"] = (g.stats.get("sense_would_hold", 0), g.sense.n[1])
         results.append((sens, r))
         label = sens + (" + " + ", ".join(a.set) if a.set else "")
         sc = f"{r['spam_caught']}/{r['spam']}" if r["spam"] else "-"
