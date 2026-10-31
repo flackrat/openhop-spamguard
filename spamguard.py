@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.23.0"
+VERSION = "6.24.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -8265,6 +8265,16 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+MAX_POST_BYTES = 1_000_000   # no change sent to the page is anywhere near this; a bigger one is refused unread
+
+# What the browser may do with SpamGuard's page: its own scripts and styles, the map library from one place, map pictures
+# from OpenStreetMap, talking only to SpamGuard itself, and never shown inside another site's frame.
+PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "img-src 'self' data: https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'")
+
+
 def make_handler(guard: SpamGuard):
     page = load_page()
 
@@ -8278,8 +8288,16 @@ def make_handler(guard: SpamGuard):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            self._safety_headers(ctype.startswith("text/html"))
             self.end_headers()
             self.wfile.write(data)
+
+        def _safety_headers(self, html=False):
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if html:
+                self.send_header("Content-Security-Policy", PAGE_CSP)
+                self.send_header("X-Frame-Options", "DENY")
 
         def do_GET(self):
             path = self.path.split("?")[0]
@@ -8316,6 +8334,7 @@ def make_handler(guard: SpamGuard):
                                  f'{"-scrambled" if scramble else ""}.jsonl"')
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
+                self._safety_headers()
                 self.end_headers()
                 self.wfile.write(body)
                 return
@@ -8330,7 +8349,15 @@ def make_handler(guard: SpamGuard):
             if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
                 return self._send(415, {"error": "Changes must be sent as JSON"})
             try:
-                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    return self._send(400, {"error": "The size of the change isn't a number"})
+                if n < 0:
+                    return self._send(400, {"error": "The size of the change isn't valid"})
+                if n > MAX_POST_BYTES:
+                    self.close_connection = True   # not read, so nothing of it is kept
+                    return self._send(413, {"error": "That change is far bigger than SpamGuard ever sends"})
                 body = json.loads(self.rfile.read(n) or b"{}")
                 path = self.path.split("?")[0].strip("/")
                 if path == "settings":
