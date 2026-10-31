@@ -4,3 +4,4 @@
 !replay.py
 !docker-entrypoint.sh
 !requirements.txt
+!requirements-pip.txt

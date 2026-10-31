@@ -41,6 +41,13 @@ def boom(*a,**k): raise OSError("Connection refused")
 g._api=boom; g._maybe_check_plugins(); g._api=real
 check(g._plugins_checked < sg.time.time()-500,"failed plugin check retried soon")
 check("isn't answering yet" in (g.move_summary()["why_not"] or ""),"friendly message while openHop starts: "+str(g.move_summary()["why_not"])[:60])
+# Every file the Dockerfile copies in must be let through by .dockerignore (the build failed once because one wasn't).
+import re
+_root=os.path.join(os.path.dirname(os.path.abspath(__file__)),"..")
+_allowed={l[1:].strip() for l in open(os.path.join(_root,".dockerignore")).read().splitlines() if l.startswith("!")}
+for _m in re.finditer(r"^COPY\s+(.+?)\s+\S+\s*$", open(os.path.join(_root,"Dockerfile")).read(), re.M):
+    for _f in _m.group(1).split():
+        check(_f in _allowed, "the Docker build can see "+_f)
 sg.IN_DOCKER=False
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
