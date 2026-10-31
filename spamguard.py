@@ -4697,9 +4697,12 @@ class SpamGuard:
         """How far a sender's identity can be trusted: "key" (signed by a key you trust), "copied" (a name
         you tied to a key, but not signed by it), "name" (a name you trust or know, which anyone could copy)
         or "unknown"."""
-        if e.keyed: return "key"
-        if e.unverified: return "copied"
-        if e.sender in self.allow_senders or self.is_known(e.sender): return "name"
+        if e.keyed:
+            return "key"
+        if e.unverified:
+            return "copied"
+        if e.sender in self.allow_senders or self.is_known(e.sender):
+            return "name"
         return "unknown"
 
     def known_origin(self, hop: str) -> bool:
