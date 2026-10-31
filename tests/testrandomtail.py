@@ -11,9 +11,11 @@ def check(c,msg):
     else: fail+=1; print("FAIL",msg)
 
 def tmpl(t): return sg.random_tail_template(t)
-check(tmpl("@[Sam-N0CALL]🤡\nrynx95jx") is not None, "a mention, an emoji and a made-up code is a template")
-check(tmpl("@[Sam-N0CALL]🤡\nrynx95jx")[0]==tmpl("@[Sam-N0CALL]🤡\ne8rtb15y")[0], "two codes give one template")
-check(tmpl("@[Sam-N0CALL]🤡\nrynx95jx")[0]!=tmpl("@[Sam-N0CALL]⚠️\nrynx95jx")[0], "a different emoji is a different template")
+check(tmpl("@[Sam-N0CALL]🤡\nqa7mz3kw") is not None, "a mention, an emoji and a made-up code is a template")
+check(tmpl("@[Sam-N0CALL]🤡\nqa7mz3kw")[0]==tmpl("@[Sam-N0CALL]🤡\npl4xt8vn")[0], "two codes give one template")
+check(tmpl("@[Sam-N0CALL]🤡\nqa7mz3kw")[0]!=tmpl("@[Sam-N0CALL]⚠️\nqa7mz3kw")[0], "a different emoji is a different template")
+check(tmpl("@[Sam-N0CALL]🤡\nqa7mz3kw")[0]==tmpl("@[Kit 😺]🤡\npl4xt8vn")[0], "who it is addressed to doesn't matter")
+check(tmpl("@[Sam-N0CALL] qa7mz3kw")is None, "a code straight after a mention, with nothing between, is too little to go on")
 check(tmpl("@[Sam-N0CALL] you still here")is None, "ordinary words are not a template")
 check(tmpl("@[Sam] https://img.example/image/9a8b7c6d5e4f")is None, "a code inside a link is not")
 check(tmpl("@[Sam 7f24f3a1] hello there")is None, "a code inside a mention is not")
@@ -24,7 +26,7 @@ for i in range(3):
     m.add("Sam Troll",f"Hello from the hill number {i}",["A1","B2"],ago=3000-i*100)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(g.is_known("Sam Troll"), "the sender is a known name")
-codes=["rynx95jx","e8rtb15y","rvdek7nz","txvvd5sd","vsj5r6v1","k2m9x4qa"]
+codes=["qa7mz3kw","pl4xt8vn","hj2wq6ry","bn5ke9ud","wc3yf7op","k2m9x4qa"]
 for i,cd in enumerate(codes[:3]):
     m.add("Sam Troll",f"@[Pat-Radio]🤡\n{cd}",["A1","B2"],ago=1500-i*200)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
@@ -41,7 +43,7 @@ bl=[b for b in g.blocks.values() if b["kind"]=="repeat"]
 check(len(bl)==1, f"one repeat block was made: {[(b['value'],b['reason']) for b in bl]}")
 if bl:
     b=bl[0]
-    check(b["who"]=="Sam Troll" and b["value"]=="@[Pat-Radio]🤡", f"it holds that name's copies: {b['value']!r}")
+    check(b["who"]=="Sam Troll" and b["value"]=="]🤡\n", f"it holds that name's copies: {b['value']!r}")
     check("different made-up code" in b["reason"], "the reason says why: "+b["reason"])
     check("Sam Troll" in g.describe(b), "it reads in plain words: "+g.describe(b))
 evs={e.text:e for e in g.events}
@@ -113,5 +115,52 @@ check(not ev["Plain chat, Lee Linker"].matched, "their plain chat is not")
 check(not ev["New picture Pat Regular"].matched, "someone else posting the same site is not")
 g._save_state(force=True); g2=sg.SpamGuard(dict(g.file_cfg))
 check(g2.repeat_offender("Lee Linker"), "being an offender survives a restart")
+
+# --- a name that rotates who it addresses is still counted as one template
+m=mock(); g=guard(m, known_min_msgs=2, slow_repeat_max=2); g.apply_settings({"mode":"protect"})
+for i in range(3):
+    m.add("Rory Rotator",f"Hello from the hill number {i}",["A1","B2"],ago=3000-i*100)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+targets=["Kit 😺","Gus-RPT","Mo","Zed","Ada"]
+for i,tg in enumerate(targets[:3]):
+    m.add("Rory Rotator",f"@[{tg}]💤\n{['gt6ns2la','dm8rv4ex','ux1jb5qi'][i]}",["A1","B2"],ago=1500-i*300)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+for b in g.blocks.values(): b["created"]=time.time()-1000
+m.add("Rory Rotator","@[Zed]💤\nk2m9x4qa",["A1","B2"],ago=300)
+m.add("Rory Rotator","@[Zed]👋 how are you",["A1","B2"],ago=250)
+for _ in range(3):
+    g.poll_once(); g.last_sync=0; g.sync_pending=True
+g.poll_once()
+rb=[b for b in g.blocks.values() if b["kind"]=="repeat" and b.get("who")=="Rory Rotator"]
+check(len(rb)==1 and rb[0]["value"]=="]💤\n", f"one block, whoever it was addressed to: {[b['value'] for b in rb]}")
+ev={e.text[:16]:e for e in g.events if e.sender=="Rory Rotator"}
+check(ev["@[Zed]💤\nk2m9x4qa"].matched, "a new target, same pattern, is held")
+check(not [e for e in g.events if e.text.startswith("@[Zed]👋")][0].matched, "their ordinary reply to the same person is not")
+
+# --- a repeat offender's hold lasts until their sends age out, not for the usual few hours
+m=mock(); g=guard(m, known_min_msgs=2, slow_repeat_max=2, slow_repeat_hold_seconds=3600, slow_repeat_window_seconds=86400); g.apply_settings({"mode":"protect"})
+g._offence("Olly Offender", time.time()-7200); g._offence("Olly Offender", time.time()-3600)
+text="Come and see this lovely page about my radio at the following address"
+for i in range(3):
+    m.add("Olly Offender",f"Hello from the hill number {i}",["A1","B2"],ago=3000-i*100)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+for i in range(3):
+    m.add("Olly Offender",text,["A1","B2"],ago=1500-i*400)
+for _ in range(3):
+    g.poll_once(); g.last_sync=0; g.sync_pending=True
+g.poll_once()
+ob=[b for b in g.blocks.values() if b["kind"]=="repeat" and b.get("who")=="Olly Offender" and b["source"]=="slowrepeat"]
+check(len(ob)==1 and ob[0]["expires"]-time.time()>20*3600, f"held for the window, not the hour: {[round((b['expires']-time.time())/3600,1) for b in ob]} h")
+m=mock(); g=guard(m, known_min_msgs=2, slow_repeat_max=2, slow_repeat_hold_seconds=3600, slow_repeat_window_seconds=86400); g.apply_settings({"mode":"protect"})
+for i in range(3):
+    m.add("Fresh Fran",f"Hello from the hill number {i}",["A1","B2"],ago=3000-i*100)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+for i in range(3):
+    m.add("Fresh Fran",text,["A1","B2"],ago=1500-i*400)
+for _ in range(3):
+    g.poll_once(); g.last_sync=0; g.sync_pending=True
+g.poll_once()
+fb=[b for b in g.blocks.values() if b["kind"]=="repeat" and b.get("who")=="Fresh Fran" and b["source"]=="slowrepeat"]
+check(len(fb)==1 and fb[0]["expires"]-time.time()<3*3600, f"a first-time repeater gets the usual hold: {[round((b['expires']-time.time())/3600,1) for b in fb]} h")
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
