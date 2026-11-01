@@ -38,4 +38,21 @@ check(not any(k.startswith("resend:") for k in g.blocks),"but a word or two is n
 m=mock(); g=guard(m, known_min_msgs=1); g.apply_settings({"mode":"protect"})
 m.add("Dan",T,["4C"],ago=100); m.add("Dan",T,["4C"],ago=40); cycle(g)
 check(g.stats.get("resends",0)==0,"60 s apart is too slow to count")
+# The first copy must have been passed on; an echo through another repeater confirms it
+def pkt(m,sender,text,path,ago,h,**extra):
+    m.add(sender,text,path,ago=ago); m.packets[-1]["packet_hash"]=h; m.packets[-1].update(extra)
+m=mock(); g=guard(m); g.apply_settings({"mode":"protect"}); g.me={"name":"me","hash":"A1"}
+pkt(m,"Eve",T,["4C"],40,"aa"*8,transmitted=False)
+pkt(m,"Eve",T,["4C"],20,"bb"*8,transmitted=True); cycle(g)
+check(g.stats.get("resends",0)==0 and g.stats.get("retries",0)==1,"first copy never passed on: a retry, not a resend")
+check(not any(k.startswith("resend:") for k in g.blocks),"and nothing is held")
+check(g.status()["summary"]["retries_24h"]==1,"retries shown in the summary")
+m=mock(); g=guard(m); g.apply_settings({"mode":"protect"}); g.me={"name":"me","hash":"A1"}
+pkt(m,"Fay",T,["4C"],40,"cc"*8,transmitted=True)
+pkt(m,"Fay",T,["4C"],20,"dd"*8,transmitted=True); cycle(g)
+check(g.stats.get("resends",0)==1 and any(k.startswith("resend:") for k in g.blocks),"first copy passed on: a resend, held")
+check(g.status()["summary"]["resends_confirmed_24h"]==0,"no echo heard: not confirmed")
+g.me={"name":"me","hash":"A1"}
+pkt(m,"Fay",T,["4C","A1","7E"],39,"cc"*8); cycle(g)
+check(g.status()["summary"]["resends_confirmed_24h"]==1,"first copy heard coming back through another repeater: confirmed")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
