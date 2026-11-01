@@ -16,7 +16,7 @@ The detail is below, newest first. In short:
 
 ## Unreleased (quick resend count)
 
-- **Accidental double sends are counted.** When one name sends exactly the same message again within two minutes (the usual "did that go out?" second press), SpamGuard counts it as a resend, adds up the airtime it used, and shows both on the Overview. Any further copies are held for the same short time. The first copy always goes out, short messages (under 15 characters) are never counted, and the hold follows "Stop one name repeating the same message". New settings: count and hold accidental double sends, how soon counts as a resend, and the shortest message counted.
+- **Accidental double sends are counted.** When one name sends exactly the same message again within 45 seconds (the usual "did that go out?" second press), SpamGuard counts it as a resend, adds up the airtime it used, and shows both on the Overview. Any further copies are held for the same short time. The first copy always goes out, there is no minimum length for counting (a hold needs six characters or more), and the hold follows "Stop one name repeating the same message". New settings: count and hold accidental double sends, and how soon counts as a resend (up to 59 seconds).
 
 ## v6.23.0
 

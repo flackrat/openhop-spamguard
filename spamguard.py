@@ -261,15 +261,11 @@ SETTINGS_META: list[dict] = [
     {"key": "quick_resend", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, an accidental double send goes out twice and uses the airtime twice, and the Overview does not count it.",
      "label": "Count and hold accidental double sends",
-     "help": "When one name sends exactly the same message again within a couple of minutes, it is counted as a resend with the airtime it used, and any further copies of it are held for a short while. The first copy always goes out."},
-    {"key": "quick_resend_seconds", "group": "Copies and repeats", "type": "int", "min": 10, "max": 900, "unit": "s",
+     "help": "When one name sends exactly the same message again within under a minute, it is counted as a resend with the airtime it used, and any further copies of it are held for a short while. The first copy always goes out."},
+    {"key": "quick_resend_seconds", "group": "Copies and repeats", "type": "int", "min": 10, "max": 59, "unit": "s",
      "risk": "Longer = more genuine second tries are counted as resends. Shorter = slower double sends are missed.",
      "label": "A resend is the same message within",
      "help": "How soon after the first copy an identical message from the same name counts as an accidental resend."},
-    {"key": "quick_resend_min_chars", "group": "Copies and repeats", "type": "int", "min": 5, "max": 150,
-     "risk": "Lower = short everyday phrases like 'Morning' may be counted. Higher = short double sends are missed.",
-     "label": "Only for messages at least this long",
-     "help": "Shorter messages are never counted as resends."},
     {"key": "name_budget", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can send a stream of different short messages and nothing counts them, because each one is new.",
      "label": "Hold a name that sends far more than anyone normally does",
@@ -524,8 +520,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vary_limits": True,
     "repeat_guard": True,
     "quick_resend": True,
-    "quick_resend_seconds": 120,
-    "quick_resend_min_chars": 15,
+    "quick_resend_seconds": 45,
     "name_budget": True,
     "name_budget_max": 14,
     "link_campaign": True,
@@ -4546,7 +4541,7 @@ class SpamGuard:
         if not c.get("quick_resend", True) or e.sender in self.allow_senders or self.is_own(e):
             return
         content = longest_piece(strip_mentions(e.text)).strip()
-        if len(content) < int(c.get("quick_resend_min_chars", 15)):
+        if not content:
             return
         k = (e.sender, e.channel, normalise(content))
         prev = self.last_sends.get(k)
@@ -4554,7 +4549,7 @@ class SpamGuard:
         self.last_sends.move_to_end(k)
         while len(self.last_sends) > 2000:
             self.last_sends.popitem(last=False)
-        if not prev or prev[1] == packet_key or not 0 <= e.ts - prev[0] <= int(c.get("quick_resend_seconds", 120)):
+        if not prev or prev[1] == packet_key or not 0 <= e.ts - prev[0] <= int(c.get("quick_resend_seconds", 45)):
             return
         v = self.verdict.get(packet_key) or [False]
         ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
@@ -5287,6 +5282,8 @@ class SpamGuard:
         pending, self.resend_new = self.resend_new, []
         if c.get("quick_resend", True) and c.get("repeat_guard", True):
             for who, ch, content, ts in pending:
+                if len(content) < 6:
+                    continue   # counted, but a hold on a word or two would match too much of what they say next
                 snip = middle_chunk(content, c["text_rule_chars"])
                 key = "resend:" + hashlib.sha1(f"{who}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
