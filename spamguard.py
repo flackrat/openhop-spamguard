@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.24.0"
+VERSION = "6.25.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1682,7 +1682,9 @@ class SpamGuard:
         # sent by us?, stopped by FloodGuard?), the current limit, and the hops flood packets normally take.
         # Replay guard: recent channel messages, (channel, text) -> (first heard, sender, the sender's own clock)
         self._texts: collections.OrderedDict = collections.OrderedDict()
-        self.resends: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of accidental double sends
+        self.resends: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms, first copy's packet) of accidental double sends
+        self.retries: collections.deque = collections.deque(maxlen=2000)   # when a repeat followed a first copy this repeater never passed on
+        self.echoed: collections.OrderedDict = collections.OrderedDict()   # packets heard again after another repeater passed them on
         self.last_sends: collections.OrderedDict = collections.OrderedDict()   # (name, channel, text) -> (time, packet)
         self.resend_new: list = []   # resends not yet turned into a short hold
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
@@ -4363,6 +4365,7 @@ class SpamGuard:
                 while len(self.verdict) > 5000:
                     self.verdict.popitem(last=False)
             if key in self.seen_packets:
+                self._note_echo(key, p)
                 continue
             self.seen_packets[key] = now
             try:
@@ -4534,6 +4537,24 @@ class SpamGuard:
         if not e.matched:
             sn.learn(e.text, 0)
 
+    def _note_echo(self, key, p) -> None:
+        """The same packet heard again with this repeater's code in its path and more repeaters after it: another
+        repeater received it from us and passed it on, so it did mesh."""
+        h = str((self.me or {}).get("hash") or "")
+        if not h:
+            return
+        path = parse_path(p.get("original_path"))
+        for i, x in enumerate(path):
+            if i < len(path) - 1 and hops_related(x, h):
+                nxt = path[i + 1]   # the repeater that took it from us: each different one is one more that heard it
+                seen = self.echoed.setdefault(key, set())
+                if not any(hops_related(nxt, y) for y in seen):
+                    seen.add(nxt)
+                self.echoed.move_to_end(key)
+                while len(self.echoed) > 3000:
+                    self.echoed.popitem(last=False)
+                return
+
     def _note_resend(self, e, packet_key) -> None:
         """The same name sending the same message again within a couple of minutes under a new packet (an
         accidental double send). The first copy is left alone; the airtime of the extra copy is counted."""
@@ -4551,11 +4572,17 @@ class SpamGuard:
             self.last_sends.popitem(last=False)
         if not prev or prev[1] == packet_key or not 0 <= e.ts - prev[0] <= int(c.get("quick_resend_seconds", 45)):
             return
+        first = self.verdict.get(prev[1])
+        if first is not None and not first[0]:
+            # This repeater never passed the first copy on, so the repeat is someone trying to be heard.
+            self.stats["retries"] += 1
+            self.retries.append(e.ts)
+            return
         v = self.verdict.get(packet_key) or [False]
         ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
         self.stats["resends"] += 1
         self.stats["resend_ms"] += int(ms)
-        self.resends.append((e.ts, ms))
+        self.resends.append((e.ts, ms, prev[1]))
         self.resend_new.append((e.sender, e.channel, content, e.ts))
 
     def _note_slow_send(self, e) -> None:
@@ -7595,8 +7622,11 @@ class SpamGuard:
                 "summary": {"caught_24h": caught_24h, "last_catch": last_catch, "by_hour": by_hour,
                             "active_blocks": sum(1 for b in blocks if b["source"] != "dedupe"),
                             "dedupe_rules": sum(1 for b in blocks if b["source"] == "dedupe"),
-                            "resends_24h": sum(1 for t, _ in self.resends if t >= time.time() - 86400),
-                            "resend_airtime_s_24h": round(sum(m for t, m in self.resends if t >= time.time() - 86400) / 1000, 1),
+                            "resends_24h": sum(1 for t, _, _ in self.resends if t >= time.time() - 86400),
+                            "resends_confirmed_24h": sum(1 for t, _, k in self.resends if t >= time.time() - 86400 and k in self.echoed),
+                            "resend_echoes_24h": sum(len(self.echoed.get(k, ())) for t, _, k in self.resends if t >= time.time() - 86400),
+                            "retries_24h": sum(1 for t in self.retries if t >= time.time() - 86400),
+                            "resend_airtime_s_24h": round(sum(m for t, m, _ in self.resends if t >= time.time() - 86400) / 1000, 1),
                             "resends_total": self.stats.get("resends", 0),
                             "rules_written": 0 if c.get("paused") else len(self.build_rules()),
                             "channel_messages": self.stats.get("channel_messages", 0),
