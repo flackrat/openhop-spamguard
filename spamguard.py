@@ -266,6 +266,14 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = more genuine second tries are counted as resends. Shorter = slower double sends are missed.",
      "label": "A resend is the same message within",
      "help": "How soon after the first copy an identical message from the same name counts as an accidental resend."},
+    {"key": "public_bots", "group": "Copies and repeats", "type": "bool",
+     "risk": "On and not record-only, bot commands and bot replies on Public are not passed on. A bot using a format not listed gets through, and a person who types a command or a signal report on Public is held too.",
+     "label": "Keep bots off Public",
+     "help": "Public is for people. When one of these shapes shows up there, it is counted with the airtime it used: a message starting with !, one with both SNR and RSSI, one with both Hops: and Path:. Other channels are never touched. Works offline."},
+    {"key": "public_bots_log_only", "group": "Copies and repeats", "type": "bool",
+     "risk": "Off, matching messages on Public are no longer passed on. On, they are only counted, so you can see how much there is first.",
+     "label": "Only count them, don't stop them yet",
+     "help": "While this is on, nothing is blocked. Turn it off once the count on the Overview looks right."},
     {"key": "name_budget", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can send a stream of different short messages and nothing counts them, because each one is new.",
      "label": "Hold a name that sends far more than anyone normally does",
@@ -519,6 +527,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "vary_limits": True,
     "repeat_guard": True,
+    "public_bots": False,
+    "public_bots_log_only": True,
     "quick_resend": True,
     "quick_resend_seconds": 45,
     "name_budget": True,
@@ -1084,6 +1094,17 @@ def random_tail_template(text: str) -> Optional[tuple]:
         last = m.end()
     out.append(text[last:])
     return " ".join(MENTION.sub("@[]", "".join(out)).split()), value
+
+
+# The shapes bot output and bot commands take. openHop's rules match fixed, case-sensitive text, so each shape
+# is one rule, and the counting here uses exactly the same tests: what is counted is what a rule would stop.
+PUBLIC_BOT_SHAPES = (("starts_with", ("!",)), ("contains", ("SNR", "RSSI")), ("contains", ("Hops:", "Path:")))
+
+
+def bot_shaped(text: str) -> bool:
+    t = text or ""
+    return any(all(t.startswith(v) for v in vals) if op == "starts_with" else all(v in t for v in vals)
+               for op, vals in PUBLIC_BOT_SHAPES)
 
 
 def longest_piece(text: str) -> str:
@@ -1686,6 +1707,7 @@ class SpamGuard:
         self.retries: collections.deque = collections.deque(maxlen=2000)   # when a repeat followed a first copy this repeater never passed on
         self.echoed: collections.OrderedDict = collections.OrderedDict()   # packets heard again after another repeater passed them on
         self.last_sends: collections.OrderedDict = collections.OrderedDict()   # (name, channel, text) -> (time, packet)
+        self.pubbots: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of bot-shaped messages on Public
         self.resend_new: list = []   # resends not yet turned into a short hold
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
@@ -4429,6 +4451,8 @@ class SpamGuard:
             self._match_event(e, count=not again)
             if not again and not e.replay and not e.local and not e.exempt:
                 self._note_resend(e, key)
+            if not again and not e.replay and not e.local:
+                self._note_pubbot(e, key)
             if not e.replay and not e.local and not again:
                 self._sense_note(e)
             if not e.matched and not again and not e.replay:
@@ -4536,6 +4560,22 @@ class SpamGuard:
                 sn.note_ham(sc)
         if not e.matched:
             sn.learn(e.text, 0)
+
+    def is_public_channel(self, name: str) -> bool:
+        return (self.cfg.get("channels") or {}).get(name) == PUBLIC_CHANNEL_KEY
+
+    def _note_pubbot(self, e, packet_key) -> None:
+        """A bot command or bot reply on Public: counted with the airtime it used. Nothing is stopped here;
+        the rules (when switched on and not record-only) do that in openHop."""
+        if not self.cfg.get("public_bots") or self.is_own(e) or not self.is_public_channel(e.channel):
+            return
+        if not bot_shaped(e.text):
+            return
+        v = self.verdict.get(packet_key) or [False]
+        ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
+        self.stats["pubbots"] += 1
+        self.stats["pubbot_ms"] += int(ms)
+        self.pubbots.append((e.ts, ms))
 
     def _note_echo(self, key, p) -> None:
         """The same packet heard again with this repeater's code in its path and more repeaters after it: another
@@ -5767,7 +5807,7 @@ class SpamGuard:
         # Standing rules are never pushed out by the limit, however many blocks a spam wave creates: the
         # wardriving rule, FloodGuard's rules and the known-people rule they rely on. They count towards
         # the limit; the blocks share what is left.
-        wd = self._not_own(self._build_wardrive() + self._build_damaged())
+        wd = self._not_own(self._build_wardrive() + self._build_damaged() + self._build_public_bots())
         keep_ids = {r["id"] for r in flood}
         if flood:
             keep_ids.add(self._rid("known:*"))
@@ -5849,6 +5889,23 @@ class SpamGuard:
                               "enabled": True, "if": {"all": conds + [{"field": "channel_message_body",
                                                                       "op": "starts_with", "value": pre}]},
                               "then": {"action": act}})
+        return rules
+
+    def _build_public_bots(self) -> list[dict]:
+        """Keep bots off Public (opt-in, and only counting at first): one rule per bot shape, Public only,
+        readable messages only. This repeater's own companions are never affected (_not_own)."""
+        c = self.cfg
+        if not c.get("public_bots") or c.get("public_bots_log_only", True):
+            return []
+        act = "drop" if c["mode"] == "protect" and not c.get("paused") else "log_only"
+        rules = []
+        for i, (op, vals) in enumerate(PUBLIC_BOT_SHAPES):
+            conds = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                     {"field": "channel_hash", "op": "equals", "value": PUBLIC_CHANNEL_KEY},
+                     {"field": "channel_decryptable", "op": "equals", "value": True}]
+            conds += [{"field": "channel_message_body", "op": op, "value": v} for v in vals]
+            rules.append({"id": self._rid(f"pubbot:{i}"), "name": f"{RULE_PREFIX}bots on Public ({i + 1})",
+                          "enabled": True, "if": {"all": conds}, "then": {"action": act}})
         return rules
 
     def damaged_rule_ids(self) -> set:
@@ -7622,6 +7679,9 @@ class SpamGuard:
                 "summary": {"caught_24h": caught_24h, "last_catch": last_catch, "by_hour": by_hour,
                             "active_blocks": sum(1 for b in blocks if b["source"] != "dedupe"),
                             "dedupe_rules": sum(1 for b in blocks if b["source"] == "dedupe"),
+                            "pubbots_24h": sum(1 for t, _ in self.pubbots if t >= time.time() - 86400),
+                            "pubbot_airtime_s_24h": round(sum(m for t, m in self.pubbots if t >= time.time() - 86400) / 1000, 1),
+                            "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", True) else "stop")),
                             "resends_24h": sum(1 for t, _, _ in self.resends if t >= time.time() - 86400),
                             "resends_confirmed_24h": sum(1 for t, _, k in self.resends if t >= time.time() - 86400 and k in self.echoed),
                             "resend_echoes_24h": sum(len(self.echoed.get(k, ())) for t, _, k in self.resends if t >= time.time() - 86400),
