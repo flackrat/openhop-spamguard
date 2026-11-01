@@ -14,6 +14,13 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## v6.26.0
+
+- **Experimental section, hidden until you ask.** Settings has a "Show experimental features" switch, off by default. Features you have already switched on stay visible. With every experimental switch off, SpamGuard behaves as before.
+- **New, experimental and opt-in: keep bots off Public.** It starts in count-only mode: bot commands (a message starting with !) and bot replies (SNR with RSSI, or Hops: with Path:) on Public are counted with the airtime they used, and the Overview says so. Turn off "Only count them" and they are no longer passed on. Other channels are never touched. It works entirely on this repeater, with no internet.
+- **Holding double sends is now experimental and off.** Counting accidental double sends stays on and is shown on the Overview, but further copies are only held if you switch on the experimental hold.
+- **A repeat is only a resend if this repeater passed the first copy on**, so a retry after a failed first send is left alone.
+
 ## v6.25.0
 
 - **A repeat is only a resend if this repeater passed the first copy on.** If it never did (blocked, dropped or not sent), the repeat is someone trying to be heard: it is counted separately as a retry and left alone, never held.
