@@ -14,6 +14,10 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## Unreleased (quick resend count)
+
+- **Accidental double sends are counted.** When one name sends exactly the same message again within two minutes (the usual "did that go out?" second press), SpamGuard counts it as a resend, adds up the airtime it used, and shows both on the Overview. Any further copies are held for the same short time. The first copy always goes out, short messages (under 15 characters) are never counted, and the hold follows "Stop one name repeating the same message". New settings: count and hold accidental double sends, how soon counts as a resend, and the shortest message counted.
+
 ## v6.23.0
 
 - **New, experimental: learn from your spam marks.** Off by default, in Settings under Experimental. When one name keeps sending reworded versions of spam you marked, SpamGuard can hold what they share. It starts in record-only mode, keeps counts rather than messages, and sends nothing anywhere. A short notice on the Overview points to it and can be dismissed.
