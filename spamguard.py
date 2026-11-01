@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.25.0"
+VERSION = "6.26.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -260,20 +260,12 @@ SETTINGS_META: list[dict] = [
      "help": "When the same name sends the same message again and again in a short time, further copies of that message from that name are not passed on for a while. Their first copies, and anything new they say, still go out."},
     {"key": "quick_resend", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, an accidental double send goes out twice and uses the airtime twice, and the Overview does not count it.",
-     "label": "Count and hold accidental double sends",
-     "help": "When one name sends exactly the same message again within under a minute, it is counted as a resend with the airtime it used, and any further copies of it are held for a short while. The first copy always goes out."},
+     "label": "Count accidental double sends",
+     "help": "When one name sends exactly the same message again within under a minute, it is counted as a resend with the airtime it used, and the Overview says so. Nothing is held unless you turn on the experimental hold. The first copy always goes out."},
     {"key": "quick_resend_seconds", "group": "Copies and repeats", "type": "int", "min": 10, "max": 59, "unit": "s",
      "risk": "Longer = more genuine second tries are counted as resends. Shorter = slower double sends are missed.",
      "label": "A resend is the same message within",
      "help": "How soon after the first copy an identical message from the same name counts as an accidental resend."},
-    {"key": "public_bots", "group": "Copies and repeats", "type": "bool",
-     "risk": "On and not record-only, bot commands and bot replies on Public are not passed on. A bot using a format not listed gets through, and a person who types a command or a signal report on Public is held too.",
-     "label": "Keep bots off Public",
-     "help": "Public is for people. When one of these shapes shows up there, it is counted with the airtime it used: a message starting with !, one with both SNR and RSSI, one with both Hops: and Path:. Other channels are never touched. Works offline."},
-    {"key": "public_bots_log_only", "group": "Copies and repeats", "type": "bool",
-     "risk": "Off, matching messages on Public are no longer passed on. On, they are only counted, so you can see how much there is first.",
-     "label": "Only count them, don't stop them yet",
-     "help": "While this is on, nothing is blocked. Turn it off once the count on the Overview looks right."},
     {"key": "name_budget", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can send a stream of different short messages and nothing counts them, because each one is new.",
      "label": "Hold a name that sends far more than anyone normally does",
@@ -407,6 +399,22 @@ SETTINGS_META: list[dict] = [
     {"key": "max_total_rules", "risk": "Higher = nothing is dropped during a very heavy attack, but every rule is checked against every channel message, which costs CPU on small Pis. Lower = the oldest duplicate rules are dropped first.", "group": "Timing", "type": "int", "min": 20, "max": 500,
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
+    {"key": "show_experimental", "group": "Experimental", "type": "bool",
+     "risk": "Experimental features are off until you switch each one on, and most only count at first. Showing them changes nothing by itself.",
+     "label": "Show experimental features",
+     "help": "Newer ideas that are still being tried out. Each one is off by default and says what it does. Features you have already switched on stay visible."},
+    {"key": "quick_resend_hold", "group": "Experimental", "type": "bool",
+     "risk": "On, further identical copies from the same name are held for the resend time above, once the first copy was passed on. A person genuinely retrying inside that time is held too.",
+     "label": "Hold further copies of an accidental double send (experimental)",
+     "help": "Needs the double-send count and the repeat guard to be on. It never holds the first copy, and never holds a message that is under six characters."},
+    {"key": "public_bots", "group": "Experimental", "type": "bool",
+     "risk": "On and not record-only, bot commands and bot replies on Public are not passed on. A bot using a format not listed gets through, and a person who types a command or a signal report on Public is held too.",
+     "label": "Keep bots off Public (experimental)",
+     "help": "Public is for people. When one of these shapes shows up there, it is counted with the airtime it used: a message starting with !, one with both SNR and RSSI, one with both Hops: and Path:. Other channels are never touched. Works offline."},
+    {"key": "public_bots_log_only", "group": "Experimental", "type": "bool",
+     "risk": "Off, matching messages on Public are no longer passed on. On, they are only counted, so you can see how much there is first.",
+     "label": "Only count them, don't stop them yet (experimental)",
+     "help": "While this is on, nothing is blocked. Turn it off once the count on the Overview looks right."},
     {"key": "text_sense", "group": "Experimental", "type": "bool",
      "risk": "Experimental. It learns from your own spam marks, so it only helps once you have marked some, and it can be wrong. It keeps counts of letter groups, never the messages, and sends nothing anywhere.",
      "label": "Learn from my spam marks (experimental)",
@@ -530,6 +538,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "public_bots": False,
     "public_bots_log_only": True,
     "quick_resend": True,
+    "quick_resend_hold": False,
+    "show_experimental": False,
     "quick_resend_seconds": 45,
     "name_budget": True,
     "name_budget_max": 14,
@@ -582,7 +592,7 @@ FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity", "level"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"evidence_log", "evidence_days", "level_preview", "update_check", "map_directory", "openhop_autofix",
+KEEP_ON_RESET = {"show_experimental", "evidence_log", "evidence_days", "level_preview", "update_check", "map_directory", "openhop_autofix",
                  "wardrive_block"}
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
@@ -5347,7 +5357,7 @@ class SpamGuard:
         # 2b'-r. Accidental double send: the first copy went out, so hold any further identical copy from that
         # name for a short while.
         pending, self.resend_new = self.resend_new, []
-        if c.get("quick_resend", True) and c.get("repeat_guard", True):
+        if c.get("quick_resend", True) and c.get("quick_resend_hold", False) and c.get("repeat_guard", True):
             for who, ch, content, ts in pending:
                 if len(content) < 6:
                     continue   # counted, but a hold on a word or two would match too much of what they say next

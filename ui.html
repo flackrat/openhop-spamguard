@@ -1362,7 +1362,10 @@ function renderSettings(d){
   const q=($("#setFind").value||"").trim().toLowerCase(), hit=m=>!q||(m.label+" "+m.help+" "+m.risk+" "+m.group).toLowerCase().includes(q);
   let shown=0;
   $("#settings").innerHTML=Object.entries(groups).map(([g,ms])=>{
-    const vis=ms.filter(hit); shown+=vis.length; if(!vis.length) return "";
+    let vis=ms.filter(hit);
+    // Experimental features stay out of sight until asked for, or until one is already on.
+    if(g==="Experimental"&&!q&&!(d.settings.show_experimental||ms.some(m=>m.key!=="show_experimental"&&m.type==="bool"&&!/_log_only$/.test(m.key)&&d.settings[m.key]))) vis=ms.filter(m=>m.key==="show_experimental");
+    shown+=vis.length; if(!vis.length) return "";
     const ch=ms.filter(m=>d.overridden.includes(m.key)).length;
     return `<details class="set-group" data-g="${esc(g)}" ${q||setOpen.has(g)?"open":""}><summary><h3>${esc(g)}</h3> <span class="explain">${ms.length} setting${ms.length===1?"":"s"}${ch?`, ${ch} changed by you`:""}</span></summary>`+vis.map(m=>settingRow(d,m)).join("")+`</details>`;}).join("")
     +(!q||"floodguard flood".includes(q)||fgMeta.some(hit)?`<p class="explain set-more">FloodGuard's settings are on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page.</p>`:"")
