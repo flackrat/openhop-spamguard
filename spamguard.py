@@ -4541,12 +4541,16 @@ class SpamGuard:
         """The same packet heard again with this repeater's code in its path and more repeaters after it: another
         repeater received it from us and passed it on, so it did mesh."""
         h = str((self.me or {}).get("hash") or "")
-        if not h or key in self.echoed:
+        if not h:
             return
         path = parse_path(p.get("original_path"))
         for i, x in enumerate(path):
             if i < len(path) - 1 and hops_related(x, h):
-                self.echoed[key] = None
+                nxt = path[i + 1]   # the repeater that took it from us: each different one is one more that heard it
+                seen = self.echoed.setdefault(key, set())
+                if not any(hops_related(nxt, y) for y in seen):
+                    seen.add(nxt)
+                self.echoed.move_to_end(key)
                 while len(self.echoed) > 3000:
                     self.echoed.popitem(last=False)
                 return
@@ -7620,6 +7624,7 @@ class SpamGuard:
                             "dedupe_rules": sum(1 for b in blocks if b["source"] == "dedupe"),
                             "resends_24h": sum(1 for t, _, _ in self.resends if t >= time.time() - 86400),
                             "resends_confirmed_24h": sum(1 for t, _, k in self.resends if t >= time.time() - 86400 and k in self.echoed),
+                            "resend_echoes_24h": sum(len(self.echoed.get(k, ())) for t, _, k in self.resends if t >= time.time() - 86400),
                             "retries_24h": sum(1 for t in self.retries if t >= time.time() - 86400),
                             "resend_airtime_s_24h": round(sum(m for t, m, _ in self.resends if t >= time.time() - 86400) / 1000, 1),
                             "resends_total": self.stats.get("resends", 0),

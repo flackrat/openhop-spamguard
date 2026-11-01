@@ -14,6 +14,11 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## Unreleased (resend checks)
+
+- **A repeat is only a resend if this repeater passed the first copy on.** If it never did (blocked, dropped or not sent), the repeat is someone trying to be heard: it is counted separately as a retry and left alone, never held.
+- **Confirmed resends.** When the first copy is heard coming back through other repeaters, the Overview says so and how many repeaters took it from this one.
+
 ## v6.24.0
 
 - **Accidental double sends are counted.** When one name sends exactly the same message again within 45 seconds (the usual "did that go out?" second press), SpamGuard counts it as a resend, adds up the airtime it used, and shows both on the Overview. Any further copies are held for the same short time. The first copy always goes out, there is no minimum length for counting (a hold needs six characters or more), and the hold follows "Stop one name repeating the same message". New settings: count and hold accidental double sends, and how soon counts as a resend (up to 59 seconds).

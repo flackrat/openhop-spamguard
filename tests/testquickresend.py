@@ -55,4 +55,7 @@ check(g.status()["summary"]["resends_confirmed_24h"]==0,"no echo heard: not conf
 g.me={"name":"me","hash":"A1"}
 pkt(m,"Fay",T,["4C","A1","7E"],39,"cc"*8); cycle(g)
 check(g.status()["summary"]["resends_confirmed_24h"]==1,"first copy heard coming back through another repeater: confirmed")
+check(g.status()["summary"]["resend_echoes_24h"]==1,"one repeater took it from us")
+pkt(m,"Fay",T,["4C","A1","7E"],38,"cc"*8); pkt(m,"Fay",T,["4C","A1","9B"],37,"cc"*8); cycle(g)
+check(g.status()["summary"]["resend_echoes_24h"]==2,"the same repeater twice counts once, a different one counts again")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
