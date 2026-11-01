@@ -940,6 +940,7 @@ function renderTop(d){
   else { h1=n?`Protecting your repeater. ${n} spam message${plural} stopped in the last 24 hours.`:"Protecting your repeater. No spam in the last 24 hours."; sub=`Last spam ${ago(sm.last_catch)}. ${sm.active_blocks} active block${sm.active_blocks===1?"":"s"}.`; }
   if(sm.resends_24h&&d.health.ok){ const r=sm.resends_24h, c=sm.resends_confirmed_24h||0; sub+=` ${r} accidental double send${r===1?"":"s"} in the last 24 hours (${sm.resend_airtime_s_24h} s of airtime${c?`, ${c} confirmed, heard back through ${sm.resend_echoes_24h} repeater${sm.resend_echoes_24h===1?"":"s"}`:""}).`; }
   if(sm.retries_24h&&d.health.ok){ const r=sm.retries_24h; sub+=` ${r} repeat${r===1?"":"s"} of a message this repeater had not passed on, left alone.`; }
+  if(sm.pubbots_mode&&sm.pubbots_mode!=="off"&&d.health.ok){ const b=sm.pubbots_24h; sub+=` ${b} bot message${b===1?"":"s"} on Public in the last 24 hours (${sm.pubbot_airtime_s_24h} s of airtime), ${sm.pubbots_mode==="count"?"counted only":"kept off"}.`; }
   const max=Math.max(1,...sm.by_hour);
   const bars=sm.by_hour.map((v,i)=>`<i class="${v?"":"zero"}" style="height:${v?Math.max(8,v/max*100):4}%" title="${v} caught, ${23-i} h ago"></i>`).join("");
   $("#hero").innerHTML=`<h1>${esc(h1)}</h1><p>${esc(sub)}</p>`;
@@ -1361,7 +1362,10 @@ function renderSettings(d){
   const q=($("#setFind").value||"").trim().toLowerCase(), hit=m=>!q||(m.label+" "+m.help+" "+m.risk+" "+m.group).toLowerCase().includes(q);
   let shown=0;
   $("#settings").innerHTML=Object.entries(groups).map(([g,ms])=>{
-    const vis=ms.filter(hit); shown+=vis.length; if(!vis.length) return "";
+    let vis=ms.filter(hit);
+    // Experimental features stay out of sight until asked for, or until one is already on.
+    if(g==="Experimental"&&!q&&!(d.settings.show_experimental||ms.some(m=>m.key!=="show_experimental"&&m.type==="bool"&&!/_log_only$/.test(m.key)&&d.settings[m.key]))) vis=ms.filter(m=>m.key==="show_experimental");
+    shown+=vis.length; if(!vis.length) return "";
     const ch=ms.filter(m=>d.overridden.includes(m.key)).length;
     return `<details class="set-group" data-g="${esc(g)}" ${q||setOpen.has(g)?"open":""}><summary><h3>${esc(g)}</h3> <span class="explain">${ms.length} setting${ms.length===1?"":"s"}${ch?`, ${ch} changed by you`:""}</span></summary>`+vis.map(m=>settingRow(d,m)).join("")+`</details>`;}).join("")
     +(!q||"floodguard flood".includes(q)||fgMeta.some(hit)?`<p class="explain set-more">FloodGuard's settings are on the <a href="#/floodguard" class="quietlink">FloodGuard</a> page.</p>`:"")
