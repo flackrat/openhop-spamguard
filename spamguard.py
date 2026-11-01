@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.23.0"
+VERSION = "6.24.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -258,6 +258,14 @@ SETTINGS_META: list[dict] = [
      "risk": "Turned off, one name can post the same line over and over and it all goes out, because SpamGuard never blocks a person for what they say.",
      "label": "Stop one name repeating the same message",
      "help": "When the same name sends the same message again and again in a short time, further copies of that message from that name are not passed on for a while. Their first copies, and anything new they say, still go out."},
+    {"key": "quick_resend", "group": "Copies and repeats", "type": "bool",
+     "risk": "Turned off, an accidental double send goes out twice and uses the airtime twice, and the Overview does not count it.",
+     "label": "Count and hold accidental double sends",
+     "help": "When one name sends exactly the same message again within under a minute, it is counted as a resend with the airtime it used, and any further copies of it are held for a short while. The first copy always goes out."},
+    {"key": "quick_resend_seconds", "group": "Copies and repeats", "type": "int", "min": 10, "max": 59, "unit": "s",
+     "risk": "Longer = more genuine second tries are counted as resends. Shorter = slower double sends are missed.",
+     "label": "A resend is the same message within",
+     "help": "How soon after the first copy an identical message from the same name counts as an accidental resend."},
     {"key": "name_budget", "group": "Copies and repeats", "type": "bool",
      "risk": "Turned off, one name can send a stream of different short messages and nothing counts them, because each one is new.",
      "label": "Hold a name that sends far more than anyone normally does",
@@ -511,6 +519,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "vary_limits": True,
     "repeat_guard": True,
+    "quick_resend": True,
+    "quick_resend_seconds": 45,
     "name_budget": True,
     "name_budget_max": 14,
     "link_campaign": True,
@@ -1672,6 +1682,9 @@ class SpamGuard:
         # sent by us?, stopped by FloodGuard?), the current limit, and the hops flood packets normally take.
         # Replay guard: recent channel messages, (channel, text) -> (first heard, sender, the sender's own clock)
         self._texts: collections.OrderedDict = collections.OrderedDict()
+        self.resends: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of accidental double sends
+        self.last_sends: collections.OrderedDict = collections.OrderedDict()   # (name, channel, text) -> (time, packet)
+        self.resend_new: list = []   # resends not yet turned into a short hold
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
         self.air: collections.deque = collections.deque()
         self._dmg_share = 0.0   # damaged copies' share of the airtime in the last five minutes
@@ -4411,6 +4424,8 @@ class SpamGuard:
             if not e.replay and not e.local:
                 self._note_slow_send(e)
             self._match_event(e, count=not again)
+            if not again and not e.replay and not e.local and not e.exempt:
+                self._note_resend(e, key)
             if not e.replay and not e.local and not again:
                 self._sense_note(e)
             if not e.matched and not again and not e.replay:
@@ -4518,6 +4533,30 @@ class SpamGuard:
                 sn.note_ham(sc)
         if not e.matched:
             sn.learn(e.text, 0)
+
+    def _note_resend(self, e, packet_key) -> None:
+        """The same name sending the same message again within a couple of minutes under a new packet (an
+        accidental double send). The first copy is left alone; the airtime of the extra copy is counted."""
+        c = self.cfg
+        if not c.get("quick_resend", True) or e.sender in self.allow_senders or self.is_own(e):
+            return
+        content = longest_piece(strip_mentions(e.text)).strip()
+        if not content:
+            return
+        k = (e.sender, e.channel, normalise(content))
+        prev = self.last_sends.get(k)
+        self.last_sends[k] = (e.ts, packet_key)
+        self.last_sends.move_to_end(k)
+        while len(self.last_sends) > 2000:
+            self.last_sends.popitem(last=False)
+        if not prev or prev[1] == packet_key or not 0 <= e.ts - prev[0] <= int(c.get("quick_resend_seconds", 45)):
+            return
+        v = self.verdict.get(packet_key) or [False]
+        ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
+        self.stats["resends"] += 1
+        self.stats["resend_ms"] += int(ms)
+        self.resends.append((e.ts, ms))
+        self.resend_new.append((e.sender, e.channel, content, e.ts))
 
     def _note_slow_send(self, e) -> None:
         """Remember each separate send of a long message by one name, for the day-long repeat limit. Copies
@@ -5237,6 +5276,21 @@ class SpamGuard:
                     changed = True
                     if fresh:
                         self._offence(who, now)
+
+        # 2b'-r. Accidental double send: the first copy went out, so hold any further identical copy from that
+        # name for a short while.
+        pending, self.resend_new = self.resend_new, []
+        if c.get("quick_resend", True) and c.get("repeat_guard", True):
+            for who, ch, content, ts in pending:
+                if len(content) < 6:
+                    continue   # counted, but a hold on a word or two would match too much of what they say next
+                snip = middle_chunk(content, c["text_rule_chars"])
+                key = "resend:" + hashlib.sha1(f"{who}|{snip}".encode(), usedforsecurity=False).hexdigest()[:10]
+                if self.suppressed.get(key, 0) > now:
+                    continue
+                if self._add_block(key, "repeat", snip, "Sent twice in a row", "repeat",
+                                   channel=ch, ttl=int(c["quick_resend_seconds"]), from_ts=ts, extra={"who": who}):
+                    changed = True
 
         # 2b''. Slow repeating: the same long message from one name, spread over hours so the quick check above
         # never sees it. Counts separate sends over a day; further copies are held for a few hours, and one
@@ -7541,6 +7595,9 @@ class SpamGuard:
                 "summary": {"caught_24h": caught_24h, "last_catch": last_catch, "by_hour": by_hour,
                             "active_blocks": sum(1 for b in blocks if b["source"] != "dedupe"),
                             "dedupe_rules": sum(1 for b in blocks if b["source"] == "dedupe"),
+                            "resends_24h": sum(1 for t, _ in self.resends if t >= time.time() - 86400),
+                            "resend_airtime_s_24h": round(sum(m for t, m in self.resends if t >= time.time() - 86400) / 1000, 1),
+                            "resends_total": self.stats.get("resends", 0),
                             "rules_written": 0 if c.get("paused") else len(self.build_rules()),
                             "channel_messages": self.stats.get("channel_messages", 0),
                             "unreadable": self.stats.get("unreadable", 0)},
@@ -8208,6 +8265,16 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+MAX_POST_BYTES = 1_000_000   # no change sent to the page is anywhere near this; a bigger one is refused unread
+
+# What the browser may do with SpamGuard's page: its own scripts and styles, the map library from one place, map pictures
+# from OpenStreetMap, talking only to SpamGuard itself, and never shown inside another site's frame.
+PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "img-src 'self' data: https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'")
+
+
 def make_handler(guard: SpamGuard):
     page = load_page()
 
@@ -8221,8 +8288,16 @@ def make_handler(guard: SpamGuard):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            self._safety_headers(ctype.startswith("text/html"))
             self.end_headers()
             self.wfile.write(data)
+
+        def _safety_headers(self, html=False):
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if html:
+                self.send_header("Content-Security-Policy", PAGE_CSP)
+                self.send_header("X-Frame-Options", "DENY")
 
         def do_GET(self):
             path = self.path.split("?")[0]
@@ -8259,6 +8334,7 @@ def make_handler(guard: SpamGuard):
                                  f'{"-scrambled" if scramble else ""}.jsonl"')
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
+                self._safety_headers()
                 self.end_headers()
                 self.wfile.write(body)
                 return
@@ -8273,7 +8349,15 @@ def make_handler(guard: SpamGuard):
             if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
                 return self._send(415, {"error": "Changes must be sent as JSON"})
             try:
-                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    return self._send(400, {"error": "The size of the change isn't a number"})
+                if n < 0:
+                    return self._send(400, {"error": "The size of the change isn't valid"})
+                if n > MAX_POST_BYTES:
+                    self.close_connection = True   # not read, so nothing of it is kept
+                    return self._send(413, {"error": "That change is far bigger than SpamGuard ever sends"})
                 body = json.loads(self.rfile.read(n) or b"{}")
                 path = self.path.split("?")[0].strip("/")
                 if path == "settings":

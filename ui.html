@@ -938,6 +938,7 @@ function renderTop(d){
   else if(d.paused){ h1="Paused. Nothing is being blocked."; sub="SpamGuard is still watching. Press Monitor or Protect to carry on."; }
   else if(d.mode==="monitor"){ h1=n?`Watching only. ${n} message${plural} would have been stopped today.`:"Watching only. No spam spotted in the last 24 hours."; sub="Nothing is blocked in Monitor mode. Check the messages below, then switch to Protect."; }
   else { h1=n?`Protecting your repeater. ${n} spam message${plural} stopped in the last 24 hours.`:"Protecting your repeater. No spam in the last 24 hours."; sub=`Last spam ${ago(sm.last_catch)}. ${sm.active_blocks} active block${sm.active_blocks===1?"":"s"}.`; }
+  if(sm.resends_24h&&d.health.ok){ const r=sm.resends_24h; sub+=` ${r} accidental double send${r===1?"":"s"} in the last 24 hours (${sm.resend_airtime_s_24h} s of airtime).`; }
   const max=Math.max(1,...sm.by_hour);
   const bars=sm.by_hour.map((v,i)=>`<i class="${v?"":"zero"}" style="height:${v?Math.max(8,v/max*100):4}%" title="${v} caught, ${23-i} h ago"></i>`).join("");
   $("#hero").innerHTML=`<h1>${esc(h1)}</h1><p>${esc(sub)}</p>`;
