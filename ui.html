@@ -543,6 +543,9 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
   </section>
+  <section id="advSec" hidden>
+    <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
+  </section>
 </div>
 <section id="kpiSec">
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
@@ -1053,8 +1056,10 @@ function lvlDetail(d,p,pv){
     <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><tr><th scope="col">Level</th><th scope="col" class="num">Held back</th><th scope="col" class="num">Repeats${pv.labelled_spam?" or spam":""}</th><th scope="col" class="num">Worth a look</th>${pv.labelled_fine?`<th scope="col" class="num">Marked fine</th>`:""}</tr>
       ${pv.levels.map(x=>`<tr><td>${x.level} ${lvlName(x.level)}</td><td class="num">${x.held}</td><td class="num">${x.repeats+x.spam}</td><td class="num">${x.check}</td>${pv.labelled_fine?`<td class="num">${x.wrong}</td>`:""}</tr>`).join("")}</table></div></details>
     ${near.check_items&&near.check_items.length?`<p class="explain" style="margin:10px 0 0">Worth a look: held, but not just one name repeating itself. Marking them only labels them; nothing is held or trusted because of it.</p>
-      <ul class="lvl-look">${near.check_items.map(m=>{ const lb=(val,t)=>`<button type="button" class="quiet" aria-pressed="${m.label===val}" data-p="/label" data-b="${esc(JSON.stringify({label:m.label===val?"none":val,sender:m.sender,text:m.text,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
-        return `<li><span class="explain">${esc(new Date(m.ts*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}))}</span><b>${esc(m.sender)}</b><span class="msg-text">${esc(m.text)}</span>${lb("spam","Spam")}${lb("not_spam","Fine")}</li>`; }).join("")}</ul>`:""}
+      <div class="q-bulk" id="lkBulk" role="group" aria-label="Label the ticked messages">${lkBarHtml(near.check_items.filter(m=>LK.ticks[lkKey(m)]).length,near.check_items.length)}</div>
+      <ul class="lvl-look" id="lkList">${near.check_items.map(m=>{ const lb=(val,t)=>`<button type="button" class="quiet" aria-pressed="${m.label===val}" data-p="/label" data-b="${esc(JSON.stringify({label:m.label===val?"none":val,sender:m.sender,text:m.text,packet:m.packet}))}" onclick="act(this)">${t}</button>`;
+        const k=lkKey(m);
+        return `<li><input type="checkbox" data-lk="${esc(k)}" ${LK.ticks[k]?"checked":""} aria-label="Tick the message from ${esc(m.sender)}"><span class="explain">${esc(new Date(m.ts*1000).toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"}))}</span><b>${esc(m.sender)}</b><span class="msg-text">${esc(m.text)}</span>${lb("spam","Spam")}${lb("not_spam","Fine")}</li>`; }).join("")}</ul>`:""}
     <p class="explain">Worked out ${ago(pv.ran)}. You have marked ${fmtN(pv.marked)} message${pv.marked===1?"":"s"} as spam or fine. ${pv.early?`The pin on the slider is an early guess from repeats alone, so it never goes past Firm. Mark at least 5 held messages to firm it up.`:"Your marks place the Suggested pin where spam stops and people chatting normally aren't held."}</p>
     <p>${pv.suggested!=null&&pv.suggested!==d.level.value?`<button type="button" onclick="lvlSend(${pv.suggested})">${pv.early?"Try the early guess":"Use the suggested level"} (${lvlName(pv.suggested)}, ${pv.suggested})</button> `:""}${pv.running?"":btn("Work it out again","/preview_now",{},"quiet")}</p>`;
   }
@@ -1498,8 +1503,9 @@ function qRender(){
 }
 function qBulk(){
   const n=Object.values(Q.ticks).filter(Boolean).length, bulk=$("#qBulk");
-  bulk.hidden=!n;
-  bulk.innerHTML=n?`<b>${n} selected</b><button type="button" class="quiet" data-qb="release">Let through</button><button type="button" class="quiet" data-qb="spam">Label as spam</button><button type="button" class="quiet" data-qb="not_spam">Label as fine</button><button type="button" class="quiet" data-qb="clear">Clear</button>`:"";
+  const tot=(Q.data&&Q.data.rows||[]).length;
+  bulk.hidden=!tot;
+  bulk.innerHTML=!tot?"":!n?`<label class="switch"><input type="checkbox" data-qall> Select all ${tot}</label><span class="explain">Tick messages, or shift-click to tick a range, then label them together.</span>`:`<label class="switch"><input type="checkbox" data-qall ${n===tot?"checked":""}> Select all ${tot}</label><b>${n} selected</b><button type="button" class="quiet" data-qb="release">Let through</button><button type="button" class="quiet" data-qb="spam">Label as spam</button><button type="button" class="quiet" data-qb="not_spam">Label as fine</button><button type="button" class="quiet" data-qb="clear">Clear</button>`;
 }
 // What you said about a message, kept with it for as long as the message is listed.
 const qLabWhen=ts=>"on "+new Date(ts*1000).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
@@ -1540,7 +1546,41 @@ $("#qMore").addEventListener("click",e=>{ if(e.target.id==="qMoreBtn"){ Q.limit+
 $("#qList").addEventListener("click",e=>{ const o=e.target.closest("[data-qi]"); if(!o) return; Q.sel=+o.dataset.qi;
   document.querySelectorAll("#qList > li").forEach((li,i)=>li.classList.toggle("sel",i===Q.sel)); qDetail();
   if(window.matchMedia("(max-width:720px)").matches) $("#qDetail").scrollIntoView({block:"start"}); });
+$("#qList").addEventListener("click",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return;
+  const i=+t.dataset.qt;
+  if(e.shiftKey&&Q.last!=null){ const a=Math.min(Q.last,i), z=Math.max(Q.last,i); for(let k=a;k<=z;k++){ Q.ticks[k]=t.checked; const x=document.querySelector(`#qList [data-qt="${k}"]`); if(x) x.checked=t.checked; } }
+  Q.last=i; });
 $("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; qBulk(); });
+
+// Tick several of the "Worth a look" messages on the Overview and label them together.
+const LK={ticks:{},items:{}};
+function lkKey(m){ return String(m.packet||"")+"|"+m.sender+"|"+m.text; }
+function lkBarHtml(n,total){
+  return `<label class="switch"><input type="checkbox" id="lkAll" ${n&&n===total?"checked":""}> Tick all ${total}</label>`+(n?`<b>${n} ticked</b><button type="button" class="quiet" data-lb="spam">Mark as spam</button><button type="button" class="quiet" data-lb="not_spam">Mark as fine</button><button type="button" class="quiet" data-lb="clear">Untick</button>`:`<span class="explain">Tick several to label them in one go.</span>`);
+}
+function lkBar(){
+  const bar=$("#lkBulk"); if(!bar) return;
+  const all=[...document.querySelectorAll("#lkList [data-lk]")];
+  bar.innerHTML=lkBarHtml(all.filter(x=>x.checked).length,all.length);
+}
+document.addEventListener("change",e=>{
+  const t=e.target.closest&&e.target.closest("[data-lk]");
+  if(t){ LK.ticks[t.dataset.lk]=t.checked; lkBar(); return; }
+  if(e.target.id==="lkAll"){ document.querySelectorAll("#lkList [data-lk]").forEach(x=>{ x.checked=e.target.checked; LK.ticks[x.dataset.lk]=x.checked; }); lkBar(); }
+});
+document.addEventListener("click",async e=>{
+  const b=e.target.closest&&e.target.closest("[data-lb]"); if(!b) return;
+  const v=b.dataset.lb;
+  if(v==="clear"){ LK.ticks={}; document.querySelectorAll("#lkList [data-lk]").forEach(x=>x.checked=false); lkBar(); return; }
+  const rows=[...document.querySelectorAll("#lkList li")].filter(li=>li.querySelector("[data-lk]").checked);
+  for(const li of rows){
+    const btn=li.querySelector('button[data-p="/label"]'); if(!btn) continue;
+    const body=JSON.parse(btn.dataset.b); body.label=v;
+    await fetch("/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
+  }
+  toast(rows.length===1?"Labelled":`Labelled ${rows.length} messages`); LK.ticks={}; load(true);
+});
+$("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) return; (Q.data.rows||[]).forEach((r,i)=>{ Q.ticks[i]=e.target.checked; }); document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=e.target.checked); qBulk(); });
 $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-qb]"); if(!b||!Q.data) return; const v=b.dataset.qb;
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
   if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
@@ -1615,10 +1655,21 @@ function renderLockdown(d){
     $("#lBtns").innerHTML=[30,60,120].map(m=>`<button class="quiet"${warn} data-p="/lockdown" data-b="${esc(JSON.stringify({minutes:m}))}" onclick="act(this)">${m<60?m+" min":m/60+" hour"+(m>60?"s":"")}</button>`).join("");
   }
 }
+function renderAdvisor(d){
+  const a=d.advisor, sec=$("#advSec"); if(!a||!sec) return;
+  sec.hidden=false;
+  const n=a.families.filter(f=>f.suggestion).length;
+  $("#advSum").textContent=n?`Settings advisor: ${n} suggestion${n===1?"":"s"}`:(a.steady?"Settings advisor: nothing to suggest":"Settings advisor: still gathering");
+  const open=$("#advBox").open;
+  $("#advBody").innerHTML=`<p class="explain">${a.steady?"Your traffic has settled, so suggestions are based on "+a.days+" days and "+fmtN(a.messages)+" messages.":"It waits until it has seen at least 3 days and 200 messages, and your busy times have stopped moving. So far: "+a.days+" days, "+fmtN(a.messages)+" messages."} It only suggests. Nothing changes unless you press a button.</p>
+    <ul class="rows">${a.families.map(f=>`<li><b>${esc(f.label)}</b> <span class="explain">${esc(f.status)}</span>
+      ${f.suggestion?`<div class="banner"><b>${esc(f.suggestion.text)}</b> ${esc(f.suggestion.why)}${f.suggestion.set?`<div>${btn("Use this",'/settings',f.suggestion.set,"go")}</div>`:""}</div>`:""}</li>`).join("")}</ul>`;
+  $("#advBox").open=open;
+}
 function render(d, editing){
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderTop(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
