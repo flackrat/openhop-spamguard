@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.26.0"
+VERSION = "6.27.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -400,33 +400,33 @@ SETTINGS_META: list[dict] = [
      "label": "Most rules at once",
      "help": "Safety limit on rules written to openHop. The oldest duplicate rules are dropped first."},
     {"key": "show_experimental", "group": "Experimental", "type": "bool",
-     "risk": "Experimental features are off until you switch each one on, and most only count at first. Showing them changes nothing by itself.",
+     "risk": "Showing the list changes nothing. Each feature below is off until you turn it on.",
      "label": "Show experimental features",
-     "help": "Newer ideas that are still being tried out. Each one is off by default and says what it does. Features you have already switched on stay visible."},
+     "help": "Ideas we are still testing. They are hidden by default, and each one is off until you switch it on. Switching this on only shows them; it changes nothing. Any you have already turned on stay visible."},
     {"key": "quick_resend_hold", "group": "Experimental", "type": "bool",
-     "risk": "On, further identical copies from the same name are held for the resend time above, once the first copy was passed on. A person genuinely retrying inside that time is held too.",
-     "label": "Hold further copies of an accidental double send (experimental)",
-     "help": "Needs the double-send count and the repeat guard to be on. It never holds the first copy, and never holds a message that is under six characters."},
+     "risk": "Someone who genuinely retries inside the resend time is stopped too, even if the first copy didn't reach anyone.",
+     "label": "Stop repeat sends of the same message (experimental)",
+     "help": "Someone sends a message, doesn't see it, and sends it again within a minute. Normally the repeat is only counted. With this on, the repeat is not passed on, which saves airtime. The first copy is never stopped, and messages under six characters are left alone. Needs the double-send count and the repeat guard to be on."},
     {"key": "public_bots", "group": "Experimental", "type": "bool",
-     "risk": "On and not record-only, bot commands and bot replies on Public are not passed on. A bot using a format not listed gets through, and a person who types a command or a signal report on Public is held too.",
-     "label": "Keep bots off Public (experimental)",
-     "help": "Public is for people. When one of these shapes shows up there, it is counted with the airtime it used: a message starting with !, one with both SNR and RSSI, one with both Hops: and Path:. Other channels are never touched. Works offline."},
+     "risk": "A bot that uses a format not listed gets through. A person who types a command or signal report on Public is caught too. Only counts until you turn off the setting below.",
+     "label": "Keep bots off the Public channel (experimental)",
+     "help": "Public is meant for people. This spots bot-style messages there: ones starting with !, ones containing both SNR and RSSI, and ones containing both Hops: and Path:. They are counted along with the airtime they used. Other channels are never touched. Works offline."},
     {"key": "public_bots_log_only", "group": "Experimental", "type": "bool",
-     "risk": "Off, matching messages on Public are no longer passed on. On, they are only counted, so you can see how much there is first.",
-     "label": "Only count them, don't stop them yet (experimental)",
-     "help": "While this is on, nothing is blocked. Turn it off once the count on the Overview looks right."},
+     "risk": "On: counting only. Off: those messages on Public are no longer passed on.",
+     "label": "Bots on Public: count only, don't stop (experimental)",
+     "help": "While this is on, nothing is blocked; you just see how many bot messages there are. Turn it off when the count on the Overview looks right and you want them stopped."},
     {"key": "text_sense", "group": "Experimental", "type": "bool",
-     "risk": "Experimental. It learns from your own spam marks, so it only helps once you have marked some, and it can be wrong. It keeps counts of letter groups, never the messages, and sends nothing anywhere.",
-     "label": "Learn from my spam marks (experimental)",
-     "help": "Notices when one name sends several messages that read like spam you marked, even when the words change each time. It never holds anything on one message, only on repeats from the same name."},
+     "risk": "It can be wrong, for example when a person repeats or quotes spam while warning others. Start with the setting below on.",
+     "label": "Spot reworded spam from my spam marks (experimental)",
+     "help": "Some spammers change the wording each time. This compares new messages with messages you have marked as spam. If one name sends several that look similar, the part they share is held for that name only. A single message is never held. It keeps letter counts, not the messages, and sends nothing anywhere. It needs you to have marked some spam first."},
     {"key": "text_sense_log_only", "group": "Experimental", "type": "bool",
-     "risk": "On, it only records what it would have held, so you can check it first. Off, it holds those messages for real.",
-     "label": "Only record what it would hold (experimental)",
-     "help": "Keep this on until the page shows it would have held the right things."},
+     "risk": "On: nothing is held. Off: matching messages from that name are held.",
+     "label": "Reworded spam: record only, don't hold (experimental)",
+     "help": "While this is on, it only notes what it would have held, so you can check it first. Turn it off to hold those messages for real."},
     {"key": "text_sense_count", "group": "Experimental", "type": "int", "min": 2, "max": 10,
-     "risk": "Lower = held sooner, but a person who talks about spam twice may be held. Higher = more get through first.",
-     "label": "Spam-like messages from one name before holding (experimental)",
-     "help": "How many different messages from one name that read like marked spam, in the repeat window, before the shared part of them is held."},
+     "risk": "Lower: held sooner, but a person who talks about spam twice may be held. Higher: more gets through first.",
+     "label": "How many look-alike messages before holding (experimental)",
+     "help": "How many different messages from one name that look like spam you marked, inside the repeat window, before the shared part is held. A lower number holds sooner."},
 ]
 META_BY_KEY = {m["key"]: m for m in SETTINGS_META}
 
@@ -1898,7 +1898,8 @@ class SpamGuard:
         self.ev({"type": "settings", "why": why, "version": VERSION,
                  "sensitivity": self.cfg["sensitivity"], "level": self.cfg.get("level"), "mode": self.cfg["mode"],
                  "paused": bool(self.cfg.get("paused")),
-                 "settings": {m["key"]: self.cfg.get(m["key"]) for m in SETTINGS_META}})
+                 "settings": {m["key"]: self.cfg.get(m["key"]) for m in SETTINGS_META},
+                 "experiments": self.experiments_summary()})
 
     def note(self, msg: str, journal: bool = True):
         if journal:  # routine duplicate notes stay off the system log (fewer SD card writes)
@@ -4574,6 +4575,121 @@ class SpamGuard:
     def is_public_channel(self, name: str) -> bool:
         return (self.cfg.get("channels") or {}).get(name) == PUBLIC_CHANNEL_KEY
 
+    def _hist_bump(self, ts: float, key: str) -> None:
+        """Small per-hour counters (kept 8 days with the rest of the history) that the advisor judges from."""
+        hour = str(int(ts // 3600 * 3600))
+        h = self.hist.setdefault(hour, {"m": 0, "c": 0, "x": 0, "g": 0, "a": 0.0, "h": {}})
+        h[key] = int(h.get(key) or 0) + 1
+
+    def _hist_sum(self, key: str, since: float = 0.0) -> int:
+        return sum(int(v.get(key) or 0) for k, v in self.hist.items() if int(k) >= since)
+
+    def advisor(self) -> dict:
+        """Suggestions only. Each family is ready once the numbers it depends on have settled: at least 3 days of
+        traffic, 200 messages, and an hourly busy-time figure that moved less than 10 percent when the newest day was
+        added. Nothing here changes a setting."""
+        now = time.time()
+        c = self.cfg
+        hrs = {int(k): v for k, v in self.hist.items() if (v.get("m") or 0) > 0}
+        msgs = sum(int(v["m"]) for v in hrs.values())
+        days = (now - min(hrs)) / 86400 if hrs else 0.0
+        days = min(days, 8.0)
+
+        def p95(vals):
+            vals = sorted(vals)
+            return vals[min(len(vals) - 1, int(0.95 * len(vals)))] if vals else 0
+
+        allv = [int(v["m"]) for v in hrs.values()]
+        older = [int(v["m"]) for k, v in hrs.items() if k < now - 86400]
+        moved = None
+        if older and p95(older):
+            moved = abs(p95(allv) - p95(older)) / p95(older)
+        steady = days >= 3 and msgs >= 200 and moved is not None and moved <= 0.10
+        if steady:
+            traffic_note = "Your traffic has settled."
+        elif days < 3 or msgs < 200:
+            traffic_note = f"Gathering: {days:.1f} of 3 days and {msgs} of 200 messages."
+        else:
+            traffic_note = "Your busy-time figure is still moving, so this keeps watching."
+        prog = min(1.0, days / 3.0, msgs / 200.0)
+        fams = []
+        # protection level: the existing preview does the work
+        pv = self.preview_summary()
+        sug = pv.get("suggested")
+        cur = int(c.get("level", 50))
+        lvl = {"key": "level", "label": "Protection level", "ready": bool(steady and pv.get("levels")), "progress": round(prog, 2),
+               "status": traffic_note, "suggestion": None}
+        if lvl["ready"] and sug is not None and not pv.get("early") and int(sug) != cur:
+            lvl["suggestion"] = {"text": f"Try {level_name(sug)} ({sug}) instead of {level_name(cur)} ({cur}).",
+                                 "why": "It is where spam stops and people chatting normally aren't held, from the messages you marked.",
+                                 "set": {"level": int(sug)}}
+        elif lvl["ready"] and pv.get("early"):
+            lvl["status"] = traffic_note + " Mark at least 5 held messages to firm up the level suggestion."
+        fams.append(lvl)
+        d3 = now - 3 * 86400
+        # Public bot filter
+        pb = self._hist_sum("pb", d3)
+        f = {"key": "public_bots", "label": "Bots on Public", "ready": False, "progress": round(prog, 2), "suggestion": None}
+        if not c.get("public_bots"):
+            f["status"] = "Off. Switch it on in count-only mode to find out how many bot messages Public gets."
+        elif c.get("public_bots_log_only", True):
+            f["ready"] = bool(steady)
+            if not steady:
+                f["status"] = traffic_note
+            elif pb >= 5:
+                f["status"] = f"Counted {pb} bot messages on Public in the last 3 days."
+                f["suggestion"] = {"text": "Start stopping them.", "why": f"{pb} bot messages on Public in 3 days. Turn off 'count only' in Experimental settings.",
+                                   "set": {"public_bots_log_only": False}}
+            else:
+                f["status"] = f"Only {pb} bot messages on Public in 3 days. Not worth stopping yet."
+        else:
+            f["ready"] = True
+            f["status"] = f"Stopping them. {pb} seen in the last 3 days."
+        fams.append(f)
+        # reworded spam
+        marks = sum(1 for v in self.labels.values() if v == "spam")
+        sw = self._hist_sum("sw", d3)
+        f = {"key": "text_sense", "label": "Reworded spam", "ready": False, "progress": round(min(1.0, marks / 5.0), 2), "suggestion": None}
+        if not c.get("text_sense"):
+            f["status"] = "Off." + (" You have marked enough spam for it to learn from." if marks >= 5 else f" Mark {5 - marks} more spam messages first.")
+        elif c.get("text_sense_log_only", True):
+            f["ready"] = marks >= 5
+            if marks < 5:
+                f["status"] = f"Learning: {marks} of 5 spam marks."
+            elif sw == 0:
+                f["status"] = "Nothing has looked like reworded spam in the last 3 days, so there is nothing to act on."
+            else:
+                f["status"] = f"It would have held {sw} time{'s' if sw != 1 else ''} in the last 3 days. Check the Activity notes first."
+                if sw >= 3 and steady:
+                    f["suggestion"] = {"text": "Check its notes, then let it hold.", "why": f"{sw} would-have-held records. Read them in Activity; if they are all spam, turn off 'record only'.",
+                                       "set": None}
+        else:
+            f["ready"] = True
+            f["status"] = "Holding for real."
+        fams.append(f)
+        # double sends
+        rs, rt = self._hist_sum("rs", d3), self._hist_sum("rt", d3)
+        f = {"key": "quick_resend_hold", "label": "Double sends", "ready": bool(steady), "progress": round(prog, 2), "suggestion": None}
+        if c.get("quick_resend_hold"):
+            f["status"] = f"Stopping repeats. {rs} double sends and {rt} retries in the last 3 days."
+        elif not steady:
+            f["status"] = traffic_note
+        elif rs >= 10 and rt <= rs * 0.3:
+            f["status"] = f"{rs} double sends in 3 days, only {rt} retries."
+            f["suggestion"] = {"text": "Stop the repeat sends.", "why": f"{rs} double sends cost airtime, and few look like genuine retries ({rt}).",
+                               "set": {"quick_resend_hold": True}}
+        else:
+            f["status"] = f"{rs} double sends and {rt} retries in 3 days. Not enough to be worth stopping."
+        fams.append(f)
+        return {"days": round(days, 1), "messages": msgs, "steady": steady, "families": fams,
+                "note": "Suggestions only. Nothing changes until you press the button."}
+
+    def experiments_summary(self) -> dict:
+        """What the experiments saw over the history kept, for the evidence log and the advisor."""
+        d = time.time() - 3 * 86400
+        return {"public_bots_3d": self._hist_sum("pb", d), "sense_would_hold_3d": self._hist_sum("sw", d),
+                "double_sends_3d": self._hist_sum("rs", d), "retries_3d": self._hist_sum("rt", d)}
+
     def _note_pubbot(self, e, packet_key) -> None:
         """A bot command or bot reply on Public: counted with the airtime it used. Nothing is stopped here;
         the rules (when switched on and not record-only) do that in openHop."""
@@ -4586,6 +4702,7 @@ class SpamGuard:
         self.stats["pubbots"] += 1
         self.stats["pubbot_ms"] += int(ms)
         self.pubbots.append((e.ts, ms))
+        self._hist_bump(e.ts, "pb")
 
     def _note_echo(self, key, p) -> None:
         """The same packet heard again with this repeater's code in its path and more repeaters after it: another
@@ -4627,10 +4744,12 @@ class SpamGuard:
             # This repeater never passed the first copy on, so the repeat is someone trying to be heard.
             self.stats["retries"] += 1
             self.retries.append(e.ts)
+            self._hist_bump(e.ts, "rt")
             return
         v = self.verdict.get(packet_key) or [False]
         ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
         self.stats["resends"] += 1
+        self._hist_bump(e.ts, "rs")
         self.stats["resend_ms"] += int(ms)
         self.resends.append((e.ts, ms, prev[1]))
         self.resend_new.append((e.sender, e.channel, content, e.ts))
@@ -5463,6 +5582,7 @@ class SpamGuard:
                     if self.sense_logged.get(key, 0) < now - 86400:
                         self.sense_logged[key] = now
                         self.stats["sense_would_hold"] = self.stats.get("sense_would_hold", 0) + 1
+                        self._hist_bump(now, "sw")
                         self.ev({"type": "sense", "who": who, "value": snip, "count": len(distinct), "held": False})
                         self.note(f"Experimental: would have held a shared piece of {len(distinct)} spam-like messages from one name (record-only)")
                     continue
@@ -7683,6 +7803,7 @@ class SpamGuard:
                 "level": {"value": c.get("level", 50), "name": level_name(c.get("level", 50)),
                           "names": LEVEL_NAMES, "own": self.own_level_values(), "mine": self.my_level_values(),
                           "preview": self.preview_summary()},
+                "advisor": self.advisor(),
                 "service": self.health(),
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
