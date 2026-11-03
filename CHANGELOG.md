@@ -14,6 +14,13 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## v6.27.0
+
+- **Settings advisor (suggestions only).** The Overview has a new "Settings advisor" box. It waits until it has seen at least 3 days and 200 messages and your busy-time figure has stopped moving, and shows how far along it is. It then suggests changes with a reason and a button: a protection level from the messages you marked, stopping bots on Public, stopping double sends. It changes nothing by itself and nothing is locked.
+- **Several messages can be labelled at once.** The "Worth a look" list on the Overview now has tick boxes, a "tick all" box and one-press "Mark as spam" or "Mark as fine". The Messages screen gets a "select all" box, and shift-click ticks a whole range.
+- **Plainer wording for the experimental settings.** Each one now says what it does in everyday words and what the risk is.
+- **The evidence log records what the experiments saw.** Each settings record now carries three-day totals for bot messages on Public, would-have-held records for reworded spam, double sends and retries, so a replay shows whether an experiment earned its place.
+
 ## v6.26.0
 
 - **Experimental section, hidden until you ask.** Settings has a "Show experimental features" switch, off by default. Features you have already switched on stay visible. With every experimental switch off, SpamGuard behaves as before.
