@@ -39,7 +39,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 **SpamGuard: channel spam**
 - **Campaigns:** the same text under made-up or rotating names, even disguised.
 - **Where spam enters:** blocked at that repeater, with regulars still let through.
-- **Copies and repeats:** copy-paste floods, one name repeating itself (quickly or all day), and replays of old messages.
+- **Copies and repeats:** copy-paste floods, one name repeating itself (quickly or all day), replays of old messages, and accidental double sends counted with the airtime they use.
 - **Ways round a filter:** made-up codes on the end, rotating mentions, the same link reworded, bursts, link campaigns across names, and copied names.
 - **Lockdown:** in a heavy attack, only known people get through for a while.
 
@@ -49,6 +49,10 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Hop limits** like MeshCore's `flood.max.unscoped` and `flood.max.advert`.
 - **Damaged copies** counted, and optionally not passed on.
 - **Interference watch**, with a record of each episode.
+
+**Help with settings**
+- **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It never changes anything by itself.
+- **Experimental features**, hidden until you ask for them. Each is off by default and counts before it acts. Today: keep bots off Public, stop repeat sends, and spot reworded spam from your own marks.
 
 **Principles**
 - **Spam, not opinions:** it stops how spam is sent, never what people say.
@@ -114,6 +118,8 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 |---|---|
 | Let a genuine person through | Open **Messages**, choose **Held** (or click "Possibly genuine held" on the Overview), then **Let it through** |
 | See what SpamGuard stopped, and why | Click **Spam stopped** on the Overview, or open **Messages** |
+| Label several messages at once | In **Messages**, tick them (shift-click ticks a range, or use **Select all**), then **Label as spam** or **Label as fine** |
+| Get a suggestion for your settings | Open **Settings advisor** on the Overview |
 | Make it gentler or tougher | Slide the **Protection level** on the Overview; open "What this level would have done" to see the effect on your own traffic |
 | Stop something it missed | In **Messages**, open it and press **Stop copies like this** |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |

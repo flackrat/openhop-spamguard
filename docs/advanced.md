@@ -10,6 +10,9 @@ Click a heading to expand it.
 - **Overview**: mode, the protection level slider (with what each level would have held on your own traffic), and the numbers at a glance: spam stopped, let through, spam's share of channel traffic, airtime saved, genuine messages held, known people. Charts show the last 24 hours, the last 7 days, and which hours of the day spam usually arrives, with a switch to show FloodGuard's flood packets alongside.
 - **Messages**: every channel message in one quarantine list, filtered by what SpamGuard did (stopped, held for review, spam let through, passed on), with copies grouped, a search box, the reason for each, and Let through, Stop copies like this and label buttons. The Overview's numbers open it already filtered.
 - **Spam sources**: where spam enters the mesh, on a map and in a table with Block / Never block buttons. A repeat spammer heard through several repeaters is shown as one sender, and circles can be sized by messages or senders. SpamGuard works out where each spam message most likely entered the mesh, learning from repeater adverts as it goes, so short repeater codes shared around the country don't scatter the map; it can optionally use the public MeshCore map to place far-away repeaters. By default the map only shows entry points it is sure of; tick "Show best guesses too" to add the rough ones. The map needs internet access on the device viewing the page; the table works without it.
+- **Settings advisor** (on the Overview): waits until it has seen at least 3 days and 200 messages and your busy times have settled, showing how far along it is. Then it suggests a protection level, and whether to start stopping bots on Public or repeat sends, each with the reason and a **Use this** button. It changes nothing by itself.
+- **Labelling several at once**: tick messages in **Messages** (shift-click ticks a range, **Select all** ticks every one shown), or in the Overview's "Worth a look" list, then label them in one go.
+- **Experimental** (in Settings, hidden until you switch on **Show experimental features**): newer ideas still being tested. Each is off by default, says what it does and what could go wrong, and starts by only counting. Features you have switched on always stay visible.
 - **Long lists** (messages, blocks, activity) show 10 at a time with **Show more**.
 - **Advanced** (switch at the bottom of the menu): every setting with what it does and a "Watch out" note on its side-effects, per-block controls, per-repeater statistics, spam campaigns, exceptions (trusted senders, the known people list with Trust and Forget, repeaters and texts never blocked), settings profiles, the evidence log and an activity log. Channels have their own page in the menu.
 
@@ -137,7 +140,9 @@ Replay a log with different settings to see what would have been caught, missed 
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py spamguard-evidence.jsonl --details
 /opt/openhop_repeater/venv/bin/python /opt/openhop_spamguard/replay.py spamguard-evidence.jsonl --set dedupe_seconds=600
 ```
-The more messages you label with the two buttons, the more useful the replay report is.
+`--levels 50,90` replays at the protection levels you name instead of the three presets, so you can test the level you actually use.
+
+The more messages you label, the more useful the replay report is.
 
 </details>
 
