@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.1"
+VERSION = "6.27.2"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -8513,7 +8513,7 @@ MAX_POST_BYTES = 1_000_000   # no change sent to the page is anywhere near this;
 # from OpenStreetMap, talking only to SpamGuard itself, and never shown inside another site's frame.
 PAGE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
             "style-src 'self' 'unsafe-inline' https://unpkg.com; "
-            "img-src 'self' data: https://unpkg.com https://*.tile.openstreetmap.org; connect-src 'self'; "
+            "img-src 'self' data: https://unpkg.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self'; "
             "frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'")
 
 
