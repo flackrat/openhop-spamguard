@@ -17,6 +17,7 @@ The detail is below, newest first. In short:
 ## v6.27.2
 
 - **The map shows again on desktop browsers.** Since 6.24.0 the page asked browsers to send no referrer with any request, and OpenStreetMap now refuses map tiles without one, so the map showed "Access blocked" squares. Map tiles now carry just the dashboard's address (never the page or anything else); everything else still sends nothing.
+- **Up-to-date guides.** The README, roadmap and advanced guide now cover the settings advisor, labelling several messages at once and the experimental section.
 
 ## v6.27.1
 
