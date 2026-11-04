@@ -14,6 +14,14 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## v6.27.1
+
+- **Your own drop rules win while SpamGuard is only watching.** In Monitor, SpamGuard's record-only rules now sit after yours, so a repeater or message you drop with your own openHop rule is still dropped. In Protect nothing changes.
+- **Regulars stay known past the 24-hour mark.** A name's history was cleared a day after it was first heard, even while they were still chatting, so a regular could briefly be treated as new. It is now kept until a day after they were last heard, and saved that way.
+- **Better at spotting made-up names.** More kinds of generated sender names are now recognised, so campaigns from them get the longer block. It only affects campaign blocks, never repeater blocks.
+- **The experimental double-send hold never holds people SpamGuard knows.** Their repeats are still counted. In a replay of three days of real traffic this kept the extra catches and removed the one ordinary message it had stopped.
+- **The settings advisor counts reworded-spam holds** when that experiment is set to hold, and the evidence log carries the total.
+
 ## v6.27.0
 
 - **Settings advisor (suggestions only).** The Overview has a new "Settings advisor" box. It waits until it has seen at least 3 days and 200 messages and your busy-time figure has stopped moving, and shows how far along it is. It then suggests changes with a reason and a button: a protection level from the messages you marked, stopping bots on Public, stopping double sends. It changes nothing by itself and nothing is locked.

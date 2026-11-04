@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.0"
+VERSION = "6.27.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1166,6 +1166,14 @@ def is_obfuscated(text: str, name: bool = False) -> bool:
 CALLSIGN = re.compile(r"(?:[A-Z]{1,2}|[A-Z]\d|\d[A-Z])\d{1,2}[A-Z]{1,4}\d?", re.I)
 
 
+def noise_name(name: str) -> bool:
+    """A throwaway name typed by mashing the keyboard: no lower case, no spaces, and a symbol people don't put in
+    a node name (callsign-style - and / are allowed). Only used to tell a campaign is made-up names."""
+    p = strip_emoji(name).strip()
+    return 7 <= len(p) <= 16 and " " not in p and not re.search("[a-z]", p) \
+        and re.search(r"[^A-Z0-9\-_./]", p) is not None
+
+
 def name_score(name: str, patterns: list) -> int:
     """0-6: how machine-generated a sender name looks. Emoji are ignored, so adding one
     ("UD6DWREK🔥") doesn't hide a random name, and emoji in a genuine name don't count against it."""
@@ -1997,8 +2005,10 @@ class SpamGuard:
         self.profile_in_use = st.get("profile_in_use") if st.get("profile_in_use") in self.profiles else None
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
         for name, v in (st.get("senders") or {}).items():
-            if isinstance(v, list) and len(v) == 2 and v[0] > now - 86400:
-                self.sender_history[name] = {"first": v[0], "count": int(v[1]), "hops": set()}
+            if isinstance(v, list) and len(v) in (2, 3):
+                last = float(v[2]) if len(v) == 3 else float(v[0])
+                if last > now - 86400:
+                    self.sender_history[name] = {"first": v[0], "count": int(v[1]), "last": last, "hops": set()}
         self.homes = {str(k): {str(h): int(n) for h, n in v.items()} for k, v in (st.get("homes") or {}).items()
                       if isinstance(v, dict)}
         self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
@@ -2107,7 +2117,7 @@ class SpamGuard:
                     "genuine_marks": getattr(self, "genuine_marks", [])[-50:],
                     "profiles": self.profiles, "profile_in_use": self.profile_in_use,
                     "rule_ids": self.rule_ids,
-                    "senders": {k: [round(v["first"], 1), v["count"]]
+                    "senders": {k: [round(v["first"], 1), v["count"], round(float(v.get("last") or v["first"]), 1)]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                     "name_links": self.name_links,
                     "signer_bind": dict(list(self.signer_bind.items())[-500:]),
@@ -4439,6 +4449,7 @@ class SpamGuard:
                 and not self.is_known(e.sender)
             e.random = not trusted and (e.name_score >= self.cfg["name_score_threshold"] or e.obfuscated or e.garbage)
             h = self.sender_history.setdefault(e.sender, {"first": ts, "count": 0, "hops": set()})
+            h["last"] = max(float(h.get("last") or 0), ts)
             if e.random and not e.local:
                 self.note_forged(e, ts)
             if trusted and e.first_hop not in h["hops"] and h["hops"] and not any(
@@ -4494,7 +4505,9 @@ class SpamGuard:
                             3600) - 60   # the link-campaign check looks back an hour
         while self.events and self.events[0].ts < horizon:
             self.events.popleft()
-        for s in [s for s, h in self.sender_history.items() if h["first"] < now - 86400]:
+        # Forget a name a day after it was last heard, not a day after it was first heard: a regular who is
+        # still chatting must not turn back into a newcomer at the 24-hour mark.
+        for s in [s for s, h in self.sender_history.items() if float(h.get("last") or h["first"]) < now - 86400]:
             del self.sender_history[s]
         keep = max(int(self.cfg.get("slow_repeat_window_seconds", 86400)), 3600) + 3600
         for k in [k for k, v in self.slow_sends.items() if not v["ts"] or v["ts"][-1] < now - keep]:
@@ -4649,6 +4662,7 @@ class SpamGuard:
         # reworded spam
         marks = sum(1 for v in self.labels.values() if v == "spam")
         sw = self._hist_sum("sw", d3)
+        sh = self._hist_sum("sh", d3)
         f = {"key": "text_sense", "label": "Reworded spam", "ready": False, "progress": round(min(1.0, marks / 5.0), 2), "suggestion": None}
         if not c.get("text_sense"):
             f["status"] = "Off." + (" You have marked enough spam for it to learn from." if marks >= 5 else f" Mark {5 - marks} more spam messages first.")
@@ -4665,7 +4679,7 @@ class SpamGuard:
                                        "set": None}
         else:
             f["ready"] = True
-            f["status"] = "Holding for real."
+            f["status"] = f"Holding for real. Held {sh} time{'s' if sh != 1 else ''} in the last 3 days."
         fams.append(f)
         # double sends
         rs, rt = self._hist_sum("rs", d3), self._hist_sum("rt", d3)
@@ -4687,7 +4701,7 @@ class SpamGuard:
     def experiments_summary(self) -> dict:
         """What the experiments saw over the history kept, for the evidence log and the advisor."""
         d = time.time() - 3 * 86400
-        return {"public_bots_3d": self._hist_sum("pb", d), "sense_would_hold_3d": self._hist_sum("sw", d),
+        return {"public_bots_3d": self._hist_sum("pb", d), "sense_would_hold_3d": self._hist_sum("sw", d), "sense_held_3d": self._hist_sum("sh", d),
                 "double_sends_3d": self._hist_sum("rs", d), "retries_3d": self._hist_sum("rt", d)}
 
     def _note_pubbot(self, e, packet_key) -> None:
@@ -4752,7 +4766,9 @@ class SpamGuard:
         self._hist_bump(e.ts, "rs")
         self.stats["resend_ms"] += int(ms)
         self.resends.append((e.ts, ms, prev[1]))
-        self.resend_new.append((e.sender, e.channel, content, e.ts))
+        if not self.is_known(e.sender):
+            # A regular repeating themselves is retrying to be heard; counted above, never held.
+            self.resend_new.append((e.sender, e.channel, content, e.ts))
 
     def _note_slow_send(self, e) -> None:
         """Remember each separate send of a long message by one name, for the day-long repeat limit. Copies
@@ -4887,7 +4903,8 @@ class SpamGuard:
             # a campaign needs at least two senders that look made-up, disguised or brand new.
             sus = {e.sender for e in cc["events"] if self.suspect(e)}
             cc["suspect"] = len(sus) >= min(2, len(cc["senders"]))
-            strong = {e.sender for e in cc["events"] if (e.random or e.obfuscated) and e.sender not in self.allow_senders}
+            strong = {e.sender for e in cc["events"] if (e.random or e.obfuscated or noise_name(e.sender))
+                      and e.sender not in self.allow_senders and not self.is_known(e.sender)}
             cc["strong"] = len(strong) >= 2
         campaign_senders = {cid: cc["senders"] for cid, cc in campaigns.items()
                             if len(cc["senders"]) >= c["text_distinct_senders"] and cc["suspect"]}
@@ -5592,6 +5609,7 @@ class SpamGuard:
                                    extra={"who": who}):
                     changed = True
                     if fresh:
+                        self._hist_bump(now, "sh")
                         self.ev({"type": "sense", "who": who, "value": snip, "count": len(distinct), "held": True})
                         self._offence(who, now)
 
@@ -6398,7 +6416,10 @@ class SpamGuard:
         self.rules_seen = len(ours_now)
         main, tail = self.build_rule_sets()
         ours_new = main + tail
-        self.rule_summary = {"after_yours": bool(self.cfg.get("rules_after_yours")), "yours": len(user_rules),
+        # Outside Protect SpamGuard's rules only record (log_only), and openHop stops at the first rule that
+        # matches, so they go after yours there: a drop of yours must still win while SpamGuard is only watching.
+        after = bool(self.cfg.get("rules_after_yours")) or self.cfg["mode"] != "protect" or bool(self.cfg.get("paused"))
+        self.rule_summary = {"after_yours": after, "yours": len(user_rules),
                              "rules": [[r.get("id"), r.get("name"), (r.get("then") or {}).get("action"), plain_rule(r)] for r in ours_new]}
         needs_enable = bool(ours_new) and not pe.get("enabled")
         # The known-people list lives in openHop as an object (@spamguard.known_senders).
@@ -6428,7 +6449,7 @@ class SpamGuard:
         pe["objects"] = objects
         # Where SpamGuard's rules sit: normally before your own (so a broad 'allow' of yours can't let spam
         # past), or after them if you asked for that (Advanced, Timing).
-        want = (user_rules + main + tail) if self.cfg.get("rules_after_yours") else (main + user_rules + tail)
+        want = (user_rules + main + tail) if after else (main + user_rules + tail)
         same_order = [r.get("id") for r in existing] == [r.get("id") for r in want]
         if not force and not needs_enable and obj_now == obj_new and keys_now == keys_new and not refresh_owner \
                 and same_order and json.dumps(ours_now, sort_keys=True) == json.dumps(ours_new, sort_keys=True):
