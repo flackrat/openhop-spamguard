@@ -14,6 +14,10 @@ The detail is below, newest first. In short:
 | **6.6 to 6.7** | Catches slow repeating spread through the day, even when the name changes, and adds clearer reports: who has the most held, airtime saved, where floods come in, and one-tap labels. |
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 
+## v6.27.2
+
+- **The map shows again on desktop browsers.** Since 6.24.0 the page asked browsers to send no referrer with any request, and OpenStreetMap now refuses map tiles without one, so the map showed "Access blocked" squares. Map tiles now carry just the dashboard's address (never the page or anything else); everything else still sends nothing.
+
 ## v6.27.1
 
 - **Your own drop rules win while SpamGuard is only watching.** In Monitor, SpamGuard's record-only rules now sit after yours, so a repeater or message you drop with your own openHop rule is still dropped. In Protect nothing changes.
