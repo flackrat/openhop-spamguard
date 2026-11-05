@@ -48,6 +48,14 @@ async def main():
         await pg.click("#lvlApply"); await pg.wait_for_timeout(1800)
         check(asked and "yourself" in asked[0], "it asks before replacing them")
         check(g.cfg["level"]==60 and g.cfg["slow_repeat_max"]==5, "Cancel keeps your own value and still moves the level")
+        # Auto: a switch under the slider; moving the slider yourself switches it off
+        await pg.evaluate("openSettings('')"); await pg.evaluate("location.hash='#/overview'"); await pg.wait_for_timeout(600)
+        await pg.click("#lvlAuto"); await pg.wait_for_timeout(1500)
+        check(g.cfg.get("level_auto") is True, "the Auto switch turns Auto on")
+        await pg.evaluate("const e=document.querySelector('#lvl'); e.value=30; e.dispatchEvent(new Event('input'))")
+        check("switches Auto off" in (await pg.text_content("#lvlPendTxt")), "the pending change says it switches Auto off")
+        await pg.click("#lvlApply"); await pg.wait_for_timeout(1800)
+        check(g.cfg.get("level_auto") is False and g.cfg["level"]==30, "applying a level yourself switches Auto off")
         # an exact number on the Settings page, for those who want one
         await pg.evaluate("openSettings('')"); await pg.wait_for_timeout(600)
         check(await pg.is_visible("#lvlExact"), "the Settings page has the level as a number, reached from the Overview")

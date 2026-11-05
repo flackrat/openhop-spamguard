@@ -127,6 +127,7 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .lvl-pin{position:absolute;top:-14px;transform:translateX(-50%);font-size:0.6875rem;font-weight:650;color:var(--signal-text);white-space:nowrap;pointer-events:none}
 .lvl-range{touch-action:pan-y;-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;padding:0;border:0;box-shadow:none;background:transparent;cursor:pointer}
 .lvl-range:focus{outline:none}
+.lvl-auto{margin:6px 0 0}.lvl-auto label{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-weight:600}.lvl-auto input{width:22px;height:22px;margin:0}
 .lvl-pending{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
 .lvl-pending button{min-height:44px}
 .lvl-range::-webkit-slider-runnable-track{height:12px;border-radius:6px;background:linear-gradient(90deg,#1d8a8c,#5fa36a 25%,#c9a227 50%,#d9731f 75%,#b8322a)}
@@ -541,6 +542,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
       <span class="lvl-now"><span class="lvl-dot" id="lvlDot" aria-hidden="true"></span><b id="lvlName">Balanced</b> <span class="explain" id="lvlNum">50 of 100</span></span></div>
     <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
     <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
+    <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
+    <p class="explain" id="lvlAutoNote"></p>
     <div class="lvl-pending" id="lvlPending" hidden><span id="lvlPendTxt"></span><button class="go" id="lvlApply" type="button">Apply</button><button class="quiet" id="lvlCancel" type="button">Cancel</button></div>
     <p class="explain" id="sensExplain"></p>
     <div id="lvlOwn"></div>
@@ -1022,7 +1025,9 @@ function renderLevel(d){
   if(lvlDrag!=null && lvlDrag===L.value) lvlDrag=null;
   if(lvlDrag==null && document.activeElement!==el) el.value=L.value;
   const pend=$("#lvlPending"); pend.hidden=lvlDrag==null;
-  if(lvlDrag!=null) $("#lvlPendTxt").textContent=`Change to ${lvlName(lvlDrag)} (${lvlDrag})?`;
+  const A=L.auto||{}, ab=$("#lvlAuto"); if(document.activeElement!==ab) ab.checked=!!A.on;
+  $("#lvlAutoNote").textContent=A.on?`Auto is on. It tightens quickly, loosens slowly and never goes above ${A.max}.`+(A.waiting?` Right now: ${A.waiting}.`:"")+(A.last?` Last moved ${ago(A.last)}.`:""):"Off. The Suggested marker shows where SpamGuard would put it.";
+  if(lvlDrag!=null) $("#lvlPendTxt").textContent=`Change to ${lvlName(lvlDrag)} (${lvlDrag})?`+(A.on?" This switches Auto off.":"");
   const heat=lvlHeat(p); $("#lvlSec").style.setProperty("--lvl",heat);
   $("#lvlName").textContent=lvlName(p); $("#lvlNum").textContent=p+" of 100";
   el.setAttribute("aria-valuetext",`${lvlName(p)}, ${p} of 100`);
@@ -1083,6 +1088,7 @@ $("#lvlExactSet").addEventListener("click",()=>{ const v=Number($("#lvlExact").v
 $("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactSet").click(); });
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
+$("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
 $("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
 $("#lvlCancel").addEventListener("click",()=>{ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } });
 window.addEventListener("hashchange",()=>{ if(lvlDrag!=null){ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } } });
