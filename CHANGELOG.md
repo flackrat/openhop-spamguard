@@ -18,6 +18,7 @@ The detail is below, newest first. In short:
 ## v6.27.3
 
 - **Spam that borrows a trusted first repeater is caught by the route after it.** A spammer can write any first repeater into the start of a path, and has started using one that real people use (so SpamGuard rightly refused to block it). When enough made-up names come in on the same two repeaters after the first one, whatever it claims to be, that route is held for people SpamGuard doesn't know. Known people still get through, nothing is held for ordinary-looking names, and a route three regulars use is never blocked. Replayed on 2 to 4 November it held 18 more made-up-name messages on balanced settings and none that were marked fine.
+- **The protection level can't be changed by a stray touch on a phone.** Moving the slider now only previews the level, with Apply and Cancel buttons underneath, and the slider no longer grabs a vertical swipe made while scrolling the page. Before, any touch on the bar saved a new level half a second later.
 - **Retries are counted correctly in the settings advisor.** A repeat of a message that one of your own rules had stopped on purpose is no longer counted as someone retrying, which made the "stop double sends" suggestion look less justified than it was.
 
 ## v6.27.2

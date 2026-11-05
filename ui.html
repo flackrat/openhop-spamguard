@@ -125,8 +125,10 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .lvl-dot{width:12px;height:12px;border-radius:50%;background:var(--lvl,#c9a227);transition:background .15s linear}
 .lvl-track{position:relative;margin:14px 0 2px}
 .lvl-pin{position:absolute;top:-14px;transform:translateX(-50%);font-size:0.6875rem;font-weight:650;color:var(--signal-text);white-space:nowrap;pointer-events:none}
-.lvl-range{-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;padding:0;border:0;box-shadow:none;background:transparent;cursor:pointer}
+.lvl-range{touch-action:pan-y;-webkit-appearance:none;appearance:none;width:100%;height:44px;margin:0;padding:0;border:0;box-shadow:none;background:transparent;cursor:pointer}
 .lvl-range:focus{outline:none}
+.lvl-pending{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
+.lvl-pending button{min-height:44px}
 .lvl-range::-webkit-slider-runnable-track{height:12px;border-radius:6px;background:linear-gradient(90deg,#1d8a8c,#5fa36a 25%,#c9a227 50%,#d9731f 75%,#b8322a)}
 .lvl-range::-moz-range-track{height:12px;border-radius:6px;background:linear-gradient(90deg,#1d8a8c,#5fa36a 25%,#c9a227 50%,#d9731f 75%,#b8322a)}
 .lvl-range::-webkit-slider-thumb{-webkit-appearance:none;width:30px;height:30px;margin-top:-9px;border-radius:50%;background:var(--lvl,#c9a227);border:4px solid var(--panel);box-shadow:0 0 0 1px var(--field),0 2px 5px rgba(0,0,0,.25);transition:background .15s linear}
@@ -539,6 +541,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
       <span class="lvl-now"><span class="lvl-dot" id="lvlDot" aria-hidden="true"></span><b id="lvlName">Balanced</b> <span class="explain" id="lvlNum">50 of 100</span></span></div>
     <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
     <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
+    <div class="lvl-pending" id="lvlPending" hidden><span id="lvlPendTxt"></span><button class="go" id="lvlApply" type="button">Apply</button><button class="quiet" id="lvlCancel" type="button">Cancel</button></div>
     <p class="explain" id="sensExplain"></p>
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
@@ -1016,7 +1019,10 @@ function openSettings(q){
 function renderLevel(d){
   const L=d.level||{value:50}, pv=L.preview||{};
   const p=lvlDrag!=null?lvlDrag:L.value, el=$("#lvl"), own=lvlOwnAt(d,p);
+  if(lvlDrag!=null && lvlDrag===L.value) lvlDrag=null;
   if(lvlDrag==null && document.activeElement!==el) el.value=L.value;
+  const pend=$("#lvlPending"); pend.hidden=lvlDrag==null;
+  if(lvlDrag!=null) $("#lvlPendTxt").textContent=`Change to ${lvlName(lvlDrag)} (${lvlDrag})?`;
   const heat=lvlHeat(p); $("#lvlSec").style.setProperty("--lvl",heat);
   $("#lvlName").textContent=lvlName(p); $("#lvlNum").textContent=p+" of 100";
   el.setAttribute("aria-valuetext",`${lvlName(p)}, ${p} of 100`);
@@ -1076,8 +1082,10 @@ $("#lvlExactSet").addEventListener("click",()=>{ const v=Number($("#lvlExact").v
   if(S&&S.level&&v===S.level.value){ toast("It's already "+v); return; } lvlSend(v); });
 $("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactSet").click(); });
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
-$("#lvl").addEventListener("change",e=>{ const v=+e.target.value; clearTimeout(lvlTimer);
-  lvlTimer=setTimeout(()=>{ if(S && S.level && v===S.level.value){ lvlDrag=null; return; } lvlSend(v); },500); });
+/* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
+$("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
+$("#lvlCancel").addEventListener("click",()=>{ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } });
+window.addEventListener("hashchange",()=>{ if(lvlDrag!=null){ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } } });
 
 /* ---------- health ---------- */
 function dur(sec){ if(sec==null) return "–"; sec=Math.max(0,Math.round(sec)); const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60);
