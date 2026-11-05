@@ -12,7 +12,7 @@ users report, so this is a direction rather than a promise. Suggestions are welc
 3. **Measure accuracy.** Use the labels and the replay tool to check how often SpamGuard gets it right on
    real installs, and tune from those numbers rather than guesses. Every detection change is replayed on real,
    labelled traffic before it ships.
-4. **Settings advisor, next steps.** Today it only suggests. Next: try a suggested change in record-only mode
+4. **Settings advisor, next steps.** Auto level (optional, under the slider) now moves the protection level by itself in small steps. Next: the same for the experiments, and try a suggested change in record-only mode
    first, undo it at once if genuine messages start being held, and later make small, low-risk changes by
    itself if you switch that on.
 5. **Experiments that prove themselves** move out of the Experimental section; ones that don't are removed.
