@@ -4772,8 +4772,8 @@ class SpamGuard:
         today = time.strftime("%Y-%m-%d", time.localtime(e.ts))
         if getattr(self, "_machine_noted", "") != today:
             self._machine_noted = today
-            self.note("Heard messages that look like a program talking, not chat (for example a Reticulum bridge over "
-                      f"a channel), from '{e.sender}' on {e.channel}. SpamGuard counts them and does not hold them for that reason.")
+            self.note(f"Heard messages from '{str(e.sender)[:24]}' on {e.channel} that look like a program, not chat "
+                      "(a Reticulum bridge, say). Counted, not held for that.")
 
     def _note_echo(self, key, p) -> None:
         """The same packet heard again with this repeater's code in its path and more repeaters after it: another
