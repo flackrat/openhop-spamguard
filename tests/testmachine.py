@@ -11,8 +11,16 @@ def check(c,msg):
 def cycle(g):
     g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 b64=lambda n: base64.urlsafe_b64encode(os.urandom(n)).decode().rstrip("=")
+Z85="0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
+def z85(data):   # (base64.z85encode only exists from Python 3.13)
+    out=[]
+    for i in range(0,len(data)-len(data)%4,4):
+        v=int.from_bytes(data[i:i+4],"big"); s=""
+        for _ in range(5): s=Z85[v%85]+s; v//=85
+        out.append(s)
+    return "".join(out)
 check(sg.machine_kind("RNS:"+b64(48))=="reticulum","an RNS: fragment is spotted")
-check(sg.machine_kind(b64(75))=="encoded" and sg.machine_kind(base64.z85encode(os.urandom(76)).decode())=="encoded","a long unbroken encoded run is spotted")
+check(sg.machine_kind(b64(75))=="encoded" and sg.machine_kind(z85(os.urandom(76)))=="encoded","a long unbroken encoded run is spotted")
 for t in ("Morning all, repeater check from the hill","https://www.example.com/a/very/long/link/that/goes/on/and/on/and/on/and/on/forever12345","RNS: is a nice protocol","Supercalifragilisticexpialidocious"*3,"hello"):
     check(sg.machine_kind(t) is None,"ordinary text is not: %s"%t[:30])
 
