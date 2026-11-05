@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.2"
+VERSION = "6.27.3"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1356,7 +1356,7 @@ SIGNED_SUGGEST_MAX = 5
 TYPE_AUTO_MAX = 3
 ROUTE_SURGE_SECONDS = 1800   # how far back a route surge is counted
 ROUTE_AUTO_MAX = 3           # most automatic route blocks at once
-PEOPLE_KINDS = ("hop", "suffix", "links", "lockdown", "route", "imposter")
+PEOPLE_KINDS = ("hop", "suffix", "links", "lockdown", "route", "stem", "imposter")
 ROUTE_MAX_HOPS = 4
 
 
@@ -3709,6 +3709,7 @@ class SpamGuard:
                 "hop": "Came through a repeater sending a burst of made-up names",
                 "suffix": "Came the same way as a repeater sending spam",
                 "route": "Started on a route you blocked",
+                "stem": "Came in on a route a spammer keeps using behind changing first repeaters",
                 "rotation": "Came from a repeater that keeps changing its identity",
                 "links": "A link from a name SpamGuard doesn't know, during spam",
                 "lockdown": "Sent during a short lockdown for a big flood",
@@ -4290,7 +4291,7 @@ class SpamGuard:
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
-        return b["kind"] in ("links", "lockdown", "route") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
+        return b["kind"] in ("links", "lockdown", "route", "stem") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
             or (b["kind"] in ("text", "words") and b.get("source") == "manual")
 
     def block_matches(self, b: dict, e: Event) -> bool:
@@ -4313,6 +4314,11 @@ class SpamGuard:
                 return False
             v = b["value"]
             return len(e.path) >= len(v) and all(self._same_hop(e.path[i], h) for i, h in enumerate(v))
+        if b["kind"] == "stem":   # the route after the first repeater, whatever the first repeater claims to be
+            if b.get("only_channel") and e.channel != b["only_channel"]:
+                return False
+            v = b["value"]
+            return len(e.path) >= len(v) + 1 and all(self._same_hop(e.path[1 + i], h) for i, h in enumerate(v))
         if b["kind"] == "repeat":
             return e.sender == b.get("who") and b["value"] in e.text
         if b["kind"] == "burst":   # (not "sender": that name belongs to 5.10's removed name blocks)
@@ -4754,8 +4760,10 @@ class SpamGuard:
         if not prev or prev[1] == packet_key or not 0 <= e.ts - prev[0] <= int(c.get("quick_resend_seconds", 45)):
             return
         first = self.verdict.get(prev[1])
-        if first is not None and not first[0]:
-            # This repeater never passed the first copy on, so the repeat is someone trying to be heard.
+        if first is not None and not first[0] and not first[1]:
+            # This repeater never passed the first copy on (and no rule of this repeater's stopped it on purpose),
+            # so the repeat is someone trying to be heard. A copy stopped by a rule was stopped as unwanted, so
+            # another copy of it is not a retry.
             self.stats["retries"] += 1
             self.retries.append(e.ts)
             self._hist_bump(e.ts, "rt")
@@ -5017,6 +5025,8 @@ class SpamGuard:
         if b["kind"] == "route":
             return f"messages that started on route {'>'.join(b['value'])}, except people it knows" + (
                 f" (only on {b['only_channel']})" if b.get("only_channel") else "")
+        if b["kind"] == "stem":
+            return f"messages that came in on route {'>'.join(b['value'])} behind any first repeater, except people it knows"
         if b["kind"] == "ptype":
             return f"flooded {TYPE_SURGE.get(b['value']['ptype'], 'packets')} that came in through repeater {b['value']['hop']}"
         if b["kind"] == "links":
@@ -5758,6 +5768,26 @@ class SpamGuard:
                     want(f"suffix:{route}", "suffix", list(suf),
                          f"{len(d['origins'])} never-seen repeaters sent spam {where}"
                          + (" (same route as a blocked spam repeater)" if suf in linked else ""), "rotation")
+            # The same, but the first repeater is ignored: a spammer can write any first repeater into the start of
+            # a path (even a real, trusted one), so the route after it is what counts. Only made-up names count,
+            # and a route that regular chatters depend on is never blocked.
+            names_needed = int(c.get("rotate_first_hops", 3)) + 2
+            stems: dict[tuple, set] = {}
+            regs: dict[tuple, set] = {}
+            for e in a["window"]:
+                if len(e.path) < 3 or e.sender in self.allow_senders:
+                    continue
+                st = tuple(e.path[1:3])
+                if self.established(e.sender) and not e.random:
+                    regs.setdefault(st, set()).add(e.sender)
+                elif not self.is_known(e.sender) and (e.random or e.obfuscated or noise_name(e.sender)):
+                    stems.setdefault(st, set()).add(e.sender)
+            for st, names in stems.items():
+                key = "stem:" + ">".join(st)
+                if len(names) >= names_needed and len(regs.get(st, ())) < 3 and key not in self.blocks:
+                    want(key, "stem", list(st),
+                         f"{len(names)} made-up names came in on route {'>'.join(st)} behind a first repeater that keeps changing",
+                         "rotation", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
             # A trusted person heard through a blocked route: let their repeater through.
             for e in a["window"]:
                 if e.sender in self.allow_senders and e.path:
@@ -6153,7 +6183,7 @@ class SpamGuard:
                 first = min(forms)
                 conds = [("" if z == first else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": forms[z]}])
                          for z in sorted(forms)]
-            elif b["kind"] == "route":
+            elif b["kind"] in ("route", "stem"):
                 # openHop can check that a route passes through repeaters but not yet in which order, so the
                 # rule asks for all of them. SpamGuard's own records check the order exactly.
                 per = [self._hop_forms(h) for h in b["value"]]
@@ -6221,6 +6251,8 @@ class SpamGuard:
             what = "via " + str(v)
         elif kind == "route":
             what = "route " + ">".join(v)
+        elif kind == "stem":
+            what = "route after the first repeater " + ">".join(v)
         elif kind == "ptype":
             what = f"{TYPE_SURGE.get(v['ptype'], 'packets')} via {v['hop']}"
         elif kind == "words":

@@ -1146,6 +1146,7 @@ function renderBlocks(d){
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
       :b.kind==="ptype"?`Flooded ${esc(({0:"requests",6:"group data",7:"anonymous requests"})[b.value.ptype]||"packets")} that came in through repeater <span class="route">${esc(b.value.hop)}</span>`
       :b.kind==="route"?`Messages that started on route <span class="route">${esc(b.value.join(">"))}</span>, except people SpamGuard knows`+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
+      :b.kind==="stem"?`Messages that came in on route <span class="route">${esc(b.value.join(">"))}</span> behind any first repeater, except people SpamGuard knows`
       :b.kind==="suffix"?(b.value.length?`Unknown repeaters sending via <span class="route">${esc(b.value.join(">"))}</span>`:"Unknown repeaters right next to yours")
       :esc(cap(b.describe));
     const routes=b.kind==="hop"&&b.mode==="exact_paths"?(b.paths.length?`${b.paths.length} route${b.paths.length===1?"":"s"} blocked`:"waiting to learn its routes")
