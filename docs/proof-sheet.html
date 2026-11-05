@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpamGuard Proof Sheet</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow reading column, headline numbers first, then a scrubbable 3-hour timeline, then plain-language guarantees and limits. */
+:root{
+  --bg:#f2f5f8; --panel:#ffffff; --ink:#14202b; --ink2:#4a5a69; --line:#d6dee6;
+  --stop:#0b7f6f; --stop-soft:#cfeae5; --leak:#c4552d; --leak-soft:#f6ddd2; --held:#b07a00; --held-soft:#f5e7bd;
+  --focus:#1c5fd1;
+  --sans:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161d; --panel:#16212b; --ink:#e7eef4; --ink2:#9db0c0; --line:#2b3a47;
+  --stop:#3ccbb2; --stop-soft:#14403a; --leak:#ef8a62; --leak-soft:#47261a; --held:#e5b53c; --held-soft:#443410; --focus:#7aa8ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e161d; --panel:#16212b; --ink:#e7eef4; --ink2:#9db0c0; --line:#2b3a47;
+  --stop:#3ccbb2; --stop-soft:#14403a; --leak:#ef8a62; --leak-soft:#47261a; --held:#e5b53c; --held-soft:#443410; --focus:#7aa8ff; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;margin:0;
+  padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:36px}
+h1,h2,h3{text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(30px,6vw,46px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:700;letter-spacing:-.01em}
+p{margin:0;max-width:65ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.lede{color:var(--ink2);font-size:18px;margin-top:12px}
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.num{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px 18px;min-width:0}
+.num b{display:block;font-size:40px;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+.num span{display:block;color:var(--ink2);font-size:14px;margin-top:6px}
+.num.good b{color:var(--stop)} .num.warn b{color:var(--held)}
+section{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px;min-width:0}
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+button,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 14px;cursor:pointer;min-height:40px}
+button:hover{border-color:var(--ink2)} button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+input[type=range]{flex:1 1 220px;min-width:0;accent-color:var(--stop);height:40px}
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:14px}
+.readout div{border-left:3px solid var(--line);padding-left:10px;min-width:0}
+.readout b{font-size:22px;font-variant-numeric:tabular-nums;display:block;line-height:1.2}
+.readout span{font-size:13px;color:var(--ink2)}
+.r-stop{border-color:var(--stop)!important} .r-leak{border-color:var(--leak)!important} .r-held{border-color:var(--held)!important}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink2)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.cols .card h3{font-size:17px;margin-bottom:6px}
+.cols .card p{font-size:15px;color:var(--ink2)}
+code,.mono{font-family:var(--mono);font-size:13px}
+pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:13px}
+.note{font-size:13px;color:var(--ink2);max-width:75ch}
+svg text{fill:var(--ink2);font-family:var(--sans)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">SpamGuard 6.27.3 · test results, 5 November 2026</div>
+    <h1>Does SpamGuard hold back your mesh? We measured it.</h1>
+    <p class="lede">A made-up three-hour attack, ten different random runs, and three days of real traffic replayed. What got stopped, what got caught by mistake, and how to rerun it yourself.</p>
+  </header>
+
+  <section aria-label="Headline numbers">
+    <div class="nums">
+      <div class="num good"><b>96.6%</b><span>of about 11,760 test spam messages stopped (every run between 96.4% and 96.9%)</span></div>
+      <div class="num warn"><b>2.7%</b><span>of ordinary messages held by mistake during the attack hours themselves (35 of 1,282 in three runs, new people included)</span></div>
+      <div class="num warn"><b>0.8%</b><span>of regulars' messages held across whole runs, which include six calm hours first (0.6% to 1.3% per run)</span></div>
+      <div class="num good"><b>2 of 23</b><span>messages marked fine held when three days of real traffic were replayed (Balanced setting)</span></div>
+    </div>
+    <p class="note">The test is built to be harsher than a normal day: many kinds of spam at once, overlapping, while ordinary chat carries on. Nothing in it comes from a real person.</p>
+  </section>
+
+  <section aria-labelledby="tl">
+    <h2 id="tl">Watch a three-hour attack</h2>
+    <p>Each bar is ten minutes. Press play or drag the slider. Spam is on top, ordinary chat (regulars, newcomers, a net check-in) underneath.</p>
+    <div class="card">
+      <div class="controls">
+        <button class="primary" id="play" type="button">Play</button>
+        <input type="range" id="t" min="1" max="18" value="18" aria-label="Minutes into the attack">
+        <label for="run" class="mono">Run</label>
+        <select id="run">
+          <option value="all">All three runs</option>
+          <option value="7">Run A</option>
+          <option value="1">Run B</option>
+          <option value="2">Run C</option>
+        </select>
+      </div>
+      <div class="readout" aria-live="polite">
+        <div class="r-stop"><b id="o-stop">-</b><span>spam stopped so far</span></div>
+        <div class="r-leak"><b id="o-leak">-</b><span>spam that got through</span></div>
+        <div class="r-held"><b id="o-held">-</b><span>ordinary messages held by mistake</span></div>
+      </div>
+      <svg id="chart" viewBox="0 0 720 360" role="img" aria-label="Spam sent per ten minutes, stopped and passed, with ordinary messages held by mistake underneath"></svg>
+      <div class="legend">
+        <span><i style="background:var(--stop)"></i>spam stopped</span>
+        <span><i style="background:var(--leak)"></i>spam passed</span>
+        <span><i style="background:var(--held)"></i>ordinary message held by mistake</span>
+        <span><i style="background:var(--line)"></i>ordinary message passed</span>
+      </div>
+      <p class="note">The last bar is a flood of several hundred messages in ten minutes. Run A, B and C are three of the ten random runs, shown with the same settings a normal install starts with.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="runs">
+    <h2 id="runs">Ten runs, no cherry-picking</h2>
+    <p>Each dot is one complete run with a different random seed. The top row is spam stopped, the bottom row is regulars held by mistake. The test fails above 3%.</p>
+    <div class="card"><svg id="dots" viewBox="0 0 720 150" role="img" aria-label="Ten test runs: spam stopped between 96.4 and 96.9 percent, regulars held between 0.6 and 1.3 percent"></svg></div>
+  </section>
+
+  <section aria-labelledby="real">
+    <h2 id="real">And on real traffic</h2>
+    <p>Three days of logs from a live UK repeater were replayed on the same code, using messages the operator had marked as spam or fine.</p>
+    <div class="cols">
+      <div class="card"><h3>2 of 23</h3><p>messages marked fine were held at the Balanced setting: a link to a public forum and a bot's reply in a test channel. The Strict setting held 6, which is why it is not the default.</p></div>
+      <div class="card"><h3>Not new people</h3><p>Neither of those two was a newcomer. Only messages the operator marked were checked. In the test, new people who arrive through a repeater an attack is also using can be held, so that case stays on the watch list.</p></div>
+      <div class="card"><h3>First minutes</h3><p>Every spam message that got through in the newest log arrived in the first four minutes of a brand-new campaign, before there was enough evidence to build a block.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">What keeps ordinary people safe</h2>
+    <div class="cols">
+      <div class="card"><h3>People it knows go first</h3><p>Anyone SpamGuard has heard chatting normally is exempt from its repeater, route and lockdown blocks.</p></div>
+      <div class="card"><h3>Blocks expire</h3><p>Automatic blocks time out (two hours by default), so a mistake clears itself and a quiet repeater is not blocked for good.</p></div>
+      <div class="card"><h3>Watch first</h3><p>Monitor mode records what it would do without holding anything. You see the evidence before you switch Protect on.</p></div>
+      <div class="card"><h3>Your rules win</h3><p>SpamGuard only adds rules to openHop. It can be paused, and its rules removed, whenever you want.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">What we do not claim</h2>
+    <p>The test uses made-up traffic, so real mesh behaviour can differ. The first few minutes of a new campaign can get through. Some ordinary greetings that many people send can be held as copies. Spammers adapt, so the numbers will move. Attack methods are not published here. Found a way round it? Report it privately using SECURITY.md in the repository.</p>
+  </section>
+
+  <section aria-labelledby="rerun">
+    <h2 id="rerun">Rerun it yourself</h2>
+    <p>The test ships with the code and uses openHop's own rule engine to judge every message. It takes under a minute.</p>
+    <pre>SEED=7 python3 tests/redteam.py</pre>
+    <p class="note">Change the seed to get a different random run. It passes when at least 90% of spam is stopped and at most 3% of regulars are held.</p>
+  </section>
+</main>
+
+<script>
+const RUNS = {
+  "7":[[34,34,20,2],[32,32,16,0],[19,19,21,0],[29,29,39,1],[68,64,19,1],[57,57,26,0],[27,27,21,0],[32,32,21,0],[50,50,27,0],[30,30,25,0],[41,38,16,0],[46,46,24,1],[54,54,18,0],[45,45,29,2],[27,24,27,0],[40,36,22,1],[55,55,21,1],[477,452,26,1]],
+  "1":[[30,27,16,0],[32,32,20,1],[11,11,17,1],[31,31,36,0],[79,75,24,0],[61,61,24,1],[25,25,29,0],[45,45,18,3],[40,40,24,2],[30,30,29,0],[34,31,20,0],[31,31,26,0],[60,60,23,0],[52,52,40,0],[36,33,25,2],[51,47,22,0],[53,53,16,0],[478,453,28,0]],
+  "2":[[26,23,23,0],[28,28,20,1],[17,17,22,0],[29,29,34,0],[70,66,28,2],[54,54,19,2],[29,29,20,2],[40,40,22,1],[61,61,21,1],[31,31,20,1],[42,39,25,1],[34,34,19,0],[51,51,25,1],[58,58,23,1],[27,24,23,1],[44,41,26,0],[56,56,23,1],[482,457,34,0]]
+};
+/* each row: [spam sent, spam stopped, regular messages sent, regular messages held by mistake] */
+const SEEDS_SPAM=[96.4,96.5,96.9,96.6,96.5,96.8,96.6,96.5,96.5,96.6];
+const SEEDS_REG=[0.6,1.3,0.8,0.8,1.0,0.7,0.6,1.0,0.7,0.6];
+const $=id=>document.getElementById(id), NS="http://www.w3.org/2000/svg";
+function el(n,a,p){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+function rows(){const k=$("run").value;if(k!=="all")return RUNS[k];
+  return RUNS["7"].map((_,i)=>[0,1,2,3].map(j=>RUNS["7"][i][j]+RUNS["1"][i][j]+RUNS["2"][i][j]))}
+function draw(){
+  const data=rows(), upto=+$("t").value, svg=$("chart"); svg.innerHTML="";
+  const W=720,L=44,R=10,top=22,mid=214,bot=330, n=data.length, bw=(W-L-R)/n;
+  const maxS=Math.max(...data.slice(0,17).map(d=>d[0]))*1.15; // flood bar is allowed to run off its scale and is labelled
+  const sy=v=>mid-8-(Math.min(v,maxS)/maxS)*(mid-8-top);
+  [0,.5,1].forEach(f=>{const v=maxS*f,y=sy(v);el("line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--line)","stroke-width":1},svg);
+    const t=el("text",{x:L-6,y:y+4,"text-anchor":"end","font-size":11},svg);t.textContent=Math.round(v)});
+  const lab=el("text",{x:L+4,y:top+8,"font-size":11},svg);lab.textContent="spam per 10 minutes";
+  data.forEach((d,i)=>{
+    const x=L+i*bw+3,w=bw-6,on=i<upto, flood=d[0]>maxS;
+    const stopped=d[1],passed=d[0]-d[1];
+    const hs=(Math.min(stopped,maxS)/maxS)*(mid-8-top), hp=(Math.min(d[0],maxS)/maxS)*(mid-8-top)-hs;
+    el("rect",{x,y:mid-8-hs,width:w,height:Math.max(hs,0),fill:"var(--stop)",opacity:on?1:.18},svg);
+    if(passed>0)el("rect",{x,y:mid-8-hs-Math.max(hp,2),width:w,height:Math.max(hp,2),fill:"var(--leak)",opacity:on?1:.18},svg);
+    if(flood&&on){const t=el("text",{x:x-4,y:top+10,"text-anchor":"end","font-size":11,"font-weight":700},svg);t.textContent=d[0]+" spam";
+      }
+    // regulars: bar of passed (grey) with held (amber) on top
+    const maxR=Math.max(...data.map(r=>r[2]))*1.1, ry=v=>(v/maxR)*(bot-mid-30);
+    const held=d[3], ok=d[2]-held;
+    el("rect",{x,y:bot-ry(ok),width:w,height:ry(ok),fill:"var(--line)",opacity:on?1:.4},svg);
+    if(held>0)el("rect",{x,y:bot-ry(ok)-Math.max(ry(held),3),width:w,height:Math.max(ry(held),3),fill:"var(--held)",opacity:on?1:.25},svg);
+    if(i%3===0||i===n-1){const t=el("text",{x:x+w/2,y:bot+16,"text-anchor":"middle","font-size":11},svg);t.textContent=(i*10)+" min"}
+  });
+  const t2=el("text",{x:L,y:mid+16,"font-size":11},svg);t2.textContent="ordinary chat per 10 minutes";
+  el("line",{x1:L+upto*bw,x2:L+upto*bw,y1:top,y2:bot,stroke:"var(--ink)","stroke-width":1.5,"stroke-dasharray":"3 3"},svg);
+  let s=0,p=0,r=0,rh=0; data.slice(0,upto).forEach(d=>{s+=d[0];p+=d[0]-d[1];r+=d[2];rh+=d[3]});
+  $("o-stop").textContent=(100*(s-p)/s).toFixed(1)+"%";
+  $("o-leak").textContent=p+" of "+s;
+  $("o-held").textContent=rh+" of "+r;
+}
+function dots(){
+  const svg=$("dots"),L=190,W=720,R=24;
+  const rowsD=[["Spam stopped (%)",SEEDS_SPAM,95.5,97.5],["Regulars held, whole run (%)",SEEDS_REG,0,3]];
+  rowsD.forEach(([name,vals,lo,hi],ri)=>{
+    const y=40+ri*68, x=v=>L+(v-lo)/(hi-lo)*(W-L-R);
+    const t=el("text",{x:0,y:y+4,"font-size":12},svg);t.textContent=name;
+    el("line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--line)","stroke-width":2},svg);
+    const ticks=ri===0?[95.5,96,96.5,97,97.5]:[0,1,2,3];
+    ticks.forEach(v=>{const tt=el("text",{x:x(v),y:y+30,"text-anchor":"middle","font-size":11},svg);tt.textContent=v;el("line",{x1:x(v),x2:x(v),y1:y-4,y2:y+4,stroke:"var(--ink2)"},svg)});
+    const seen={};
+    vals.forEach(v=>{const k=v.toFixed(1);seen[k]=(seen[k]||0)+1;
+      el("circle",{cx:x(v),cy:y-8-(seen[k]-1)*13,r:6,fill:ri===0?"var(--stop)":"var(--held)"},svg)});
+    if(ri===1){el("line",{x1:x(3),x2:x(3),y1:y-34,y2:y+4,stroke:"var(--leak)","stroke-dasharray":"4 3"},svg);
+      }
+    else{el("line",{x1:x(90),x2:x(90),y1:0,y2:0},svg)}
+  });
+}
+let timer=null;
+function stop(){clearInterval(timer);timer=null;$("play").textContent="Play"}
+$("play").onclick=()=>{ if(timer){stop();return}
+  if(+$("t").value>=18)$("t").value=1; draw(); $("play").textContent="Pause";
+  timer=setInterval(()=>{ if(+$("t").value>=18){stop();return} $("t").value=+$("t").value+1; draw() },
+    matchMedia("(prefers-reduced-motion: reduce)").matches?200:550) };
+$("t").oninput=()=>{stop();draw()}; $("run").onchange=draw;
+draw(); dots();
+</script>
+</body>
+</html>
