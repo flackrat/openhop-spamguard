@@ -131,11 +131,38 @@ fi
 rm -f "$LOG"
 status running "Downloading $TAG..." "$CURRENT" "${TAG#v}" 5
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-# The release's own download file first (GitHub counts these, so the author can see roughly
-# how many updates are installed; nothing else is sent), then GitHub's automatic archive.
-if ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/releases/download/$TAG/spamguard-$TAG.tar.gz" \
-   && ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/archive/refs/tags/$TAG.tar.gz"; then
-  status failed "Download of $TAG failed." "$CURRENT" "${TAG#v}"; exit 1
+# The release's own download file, checked against the checksums published with the release. Releases from
+# 6.28.0 on must pass that check; older ones were published without checksums, so they can still be installed
+# (to go back a version) but are marked as unchecked. GitHub's automatic archive is only used for those.
+LEGACY=0
+[ "$(printf '%s\n%s\n' "${TAG#v}" 6.28.0 | sort -V | head -1)" != "6.28.0" ] && LEGACY=1
+CHECKED=0
+if ! curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/releases/download/$TAG/spamguard-$TAG.tar.gz"; then
+  if [ "$LEGACY" = 1 ] && curl -fsSL --max-time 120 -o "$WORK/release.tar.gz" "$GH_WEB/$REPO/archive/refs/tags/$TAG.tar.gz"; then
+    echo "Note: $TAG was installed from GitHub's automatic archive, which has no checksum to check." >> "$LOG"
+  else
+    status failed "Download of $TAG failed." "$CURRENT" "${TAG#v}"; exit 1
+  fi
+elif curl -fsSL --max-time 30 -o "$WORK/SHA256SUMS" "$GH_WEB/$REPO/releases/download/$TAG/SHA256SUMS"; then
+  WANT_SUM=$(awk -v f="spamguard-$TAG.tar.gz" '($2==f || $2=="*" f) && $1 ~ /^[0-9a-fA-F]{64}$/ {print tolower($1); exit}' "$WORK/SHA256SUMS")
+  HAVE_SUM=$(sha256sum "$WORK/release.tar.gz" | cut -d' ' -f1)
+  if [ -z "$WANT_SUM" ] || [ "$WANT_SUM" != "$HAVE_SUM" ]; then
+    status failed "The download for $TAG does not match the checksum published with the release, so nothing was installed." "$CURRENT" "${TAG#v}"; exit 1
+  fi
+  CHECKED=1
+  # If cosign is installed, also check the checksum file's Sigstore signature (it must come from this repository's release workflow).
+  if command -v cosign >/dev/null 2>&1 && curl -fsSL --max-time 30 -o "$WORK/SHA256SUMS.sigstore.json" "$GH_WEB/$REPO/releases/download/$TAG/SHA256SUMS.sigstore.json"; then
+    if ! cosign verify-blob --bundle "$WORK/SHA256SUMS.sigstore.json" \
+         --certificate-identity-regexp "^https://github.com/$REPO/\.github/workflows/release\.yml@" \
+         --certificate-oidc-issuer https://token.actions.githubusercontent.com "$WORK/SHA256SUMS" >>"$LOG" 2>&1; then
+      status failed "The signature on $TAG's checksums did not verify, so nothing was installed." "$CURRENT" "${TAG#v}"; exit 1
+    fi
+    CHECKED=2
+  fi
+elif [ "$LEGACY" = 0 ]; then
+  status failed "$TAG was published without checksums, so it can't be checked and nothing was installed." "$CURRENT" "${TAG#v}"; exit 1
+else
+  echo "Note: $TAG was published before checksums existed, so the download could not be checked." >> "$LOG"
 fi
 mkdir "$WORK/src" && tar xzf "$WORK/release.tar.gz" -C "$WORK/src" --strip-components=1 || {
   status failed "The download for $TAG was damaged." "$CURRENT" "${TAG#v}"; exit 1; }
@@ -150,7 +177,7 @@ rm -rf "$BACKUP"; mkdir -p "$BACKUP"
 cp -a "$APP/." "$BACKUP/" 2>/dev/null || true
 cp -a /etc/systemd/system/openhop-spamguard.service "$STATE/previous-version.service" 2>/dev/null || true
 
-status running "Installing $TAG..." "$CURRENT" "$NEWVER" 30
+status running "Installing $TAG$([ "$CHECKED" -ge 1 ] && echo " (checksum OK$([ "$CHECKED" = 2 ] && echo ', signature OK'))" )..." "$CURRENT" "$NEWVER" 30
 (cd "$WORK/src" && exec bash install.sh </dev/null >"$LOG" 2>&1) &
 IPID=$!
 while kill -0 "$IPID" 2>/dev/null; do

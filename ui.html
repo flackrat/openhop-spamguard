@@ -927,13 +927,20 @@ function ago(ts){ if(!ts) return "never"; const s=Math.max(0,Date.now()/1000-ts)
 function left(sec, perm){ if(perm) return "Stays until removed"; if(sec<3600) return Math.max(1,Math.round(sec/60))+" min left"; if(sec<172800) return Math.round(sec/3600)+" h left"; return Math.round(sec/86400)+" days left"; }
 function toast(t,bad){ if(bad){ const a=$("#alertBox"); a.textContent=""; setTimeout(()=>a.textContent=t,50); } const e=$("#toast"); e.textContent=t; e.className="show"+(bad?" bad":""); clearTimeout(toast.t); toast.t=setTimeout(()=>e.className="",3500); }
 
+function optLabel(b){ /* show a label at once; the refresh below confirms it */
+  if(typeof Q==="undefined"||!Q.data||!Q.data.rows) return;
+  const lab=b.label==="none"?null:b.label, at=Date.now()/1000;
+  let hit=false;
+  for(const r of Q.data.rows){ if((b.packet&&r.packet===b.packet)||(!b.packet&&r.sender===b.sender&&r.text===b.text)){ r.label=lab; r.label_at=lab?at:null; hit=true; } }
+  if(hit&&typeof qRender==="function") qRender();
+}
 async function post(path, body){
+  if(path==="/label") optLabel(body||{});
   const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body||{})});
   if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return post(path,body); }
   let d={}; try{ d=await r.json(); }catch(e){}
   if(d.error){ toast(d.error,true); } else { toast(d.message || "Saved"); }
-  await load(true);
-  if(typeof PAGE!=="undefined"&&PAGE==="messages") qLoad();
+  await Promise.all([load(true), (typeof PAGE!=="undefined"&&PAGE==="messages")?qLoad():null]);
 }
 function act(el){ post(el.dataset.p, JSON.parse(el.dataset.b)); }
 function btn(label, path, body, cls){ return `<button class="${cls||""}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`; }
@@ -949,6 +956,8 @@ function renderTop(d){
   else { h1=n?`Protecting your repeater. ${n} spam message${plural} stopped in the last 24 hours.`:"Protecting your repeater. No spam in the last 24 hours."; sub=`Last spam ${ago(sm.last_catch)}. ${sm.active_blocks} active block${sm.active_blocks===1?"":"s"}.`; }
   if(sm.resends_24h&&d.health.ok){ const r=sm.resends_24h, c=sm.resends_confirmed_24h||0; sub+=` ${r} accidental double send${r===1?"":"s"} in the last 24 hours (${sm.resend_airtime_s_24h} s of airtime${c?`, ${c} confirmed, heard back through ${sm.resend_echoes_24h} repeater${sm.resend_echoes_24h===1?"":"s"}`:""}).`; }
   if(sm.retries_24h&&d.health.ok){ const r=sm.retries_24h; sub+=` ${r} repeat${r===1?"":"s"} of a message this repeater had not passed on, left alone.`; }
+  if(sm.machine_24h&&d.health.ok){ const m=sm.machine_24h, rn=sm.machine_reticulum_24h||0, bars="▁▂▃▄▅▆▇█", hr=sm.machine_by_hour||[], mx=Math.max(1,...hr);
+    sub+=` ${m} machine message${m===1?"":"s"} in the last 24 hours (${rn?`${rn} Reticulum, `:""}${sm.machine_airtime_s_24h} s of airtime), counted only, never held for being a program. Per hour, oldest to newest: ${hr.map(n=>n?bars[Math.min(7,Math.ceil(n/mx*8)-1)]:"·").join("")}`; }
   if(sm.pubbots_mode&&sm.pubbots_mode!=="off"&&d.health.ok){ const b=sm.pubbots_24h; sub+=` ${b} bot message${b===1?"":"s"} on Public in the last 24 hours (${sm.pubbot_airtime_s_24h} s of airtime), ${sm.pubbots_mode==="count"?"counted only":"kept off"}.`; }
   const max=Math.max(1,...sm.by_hour);
   const bars=sm.by_hour.map((v,i)=>`<i class="${v?"":"zero"}" style="height:${v?Math.max(8,v/max*100):4}%" title="${v} caught, ${23-i} h ago"></i>`).join("");
@@ -1485,7 +1494,7 @@ function showMsgs(spec){
   if(location.hash.split("?")[0]!=="#/messages") location.hash="#/messages"; else qLoad();
 }
 async function qLoad(){
-  if(Q.busy) return; Q.busy=true; Q.t=Date.now();
+  if(Q.busy){ Q.again=true; return; } Q.busy=true; Q.again=false; Q.t=Date.now();
   try{
     const r=await fetch("/quarantine",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
       body:JSON.stringify({status:Q.status,q:Q.q,group:Q.group,days:Q.days,codes:Q.codes,names:Q.names,limit:Q.limit})});
@@ -1494,6 +1503,7 @@ async function qLoad(){
     if(d.error){ $("#qNote").textContent=d.error; } else { Q.data=d; qRender(); }
   }catch(err){ $("#qNote").textContent="SpamGuard couldn't be reached. This list tries again shortly."; }
   Q.busy=false;
+  if(Q.again){ Q.again=false; qLoad(); }   /* a label was applied while this was loading: load again so it shows */
 }
 function qWhen(ts){ return new Date(ts*1000).toLocaleString([],Q.days>1?{weekday:"short",hour:"2-digit",minute:"2-digit"}:{hour:"2-digit",minute:"2-digit"}); }
 function qRender(){
@@ -1588,22 +1598,23 @@ document.addEventListener("click",async e=>{
   const v=b.dataset.lb;
   if(v==="clear"){ LK.ticks={}; document.querySelectorAll("#lkList [data-lk]").forEach(x=>x.checked=false); lkBar(); return; }
   const rows=[...document.querySelectorAll("#lkList li")].filter(li=>li.querySelector("[data-lk]").checked);
-  for(const li of rows){
-    const btn=li.querySelector('button[data-p="/label"]'); if(!btn) continue;
+  await Promise.all(rows.map(li=>{
+    const btn=li.querySelector('button[data-p="/label"]'); if(!btn) return null;
     const body=JSON.parse(btn.dataset.b); body.label=v;
-    await fetch("/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
-  }
+    return fetch("/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
+  }));
   toast(rows.length===1?"Labelled":`Labelled ${rows.length} messages`); LK.ticks={}; load(true);
 });
 $("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) return; (Q.data.rows||[]).forEach((r,i)=>{ Q.ticks[i]=e.target.checked; }); document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=e.target.checked); qBulk(); });
 $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-qb]"); if(!b||!Q.data) return; const v=b.dataset.qb;
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
   if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
-  for(const r of sel){
+  if(v!=="release") sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
+  await Promise.all(sel.map(r=>{
     const body=v==="release"?{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet}:{label:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet};
-    if(v==="release"&&r.status!=="stopped"&&r.status!=="held") continue;
-    await fetch(v==="release"?"/not_spam":"/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
-  }
+    if(v==="release"&&r.status!=="stopped"&&r.status!=="held") return null;
+    return fetch(v==="release"?"/not_spam":"/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
+  }));
   toast(v==="release"?"Let through. Those senders are trusted from now on.":"Labelled"); Q.ticks={}; load(true); qLoad(); });
 setInterval(()=>{ if(PAGE==="messages"&&!document.hidden&&Date.now()-Q.t>30000) qLoad(); },5000);
 

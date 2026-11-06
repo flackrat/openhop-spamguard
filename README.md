@@ -112,7 +112,7 @@ SpamGuard learns from your mesh, so it gets better the longer it runs.
 - **Your regulars become known** and are always let through. For the first day or two a genuine newcomer is more likely to be held, so open **Messages**, choose **Held**, and press **Let it through** on their message; they're let through straight away.
 - **Restarts and updates keep everything it has learnt.**
 
-How well does it work, and what does it get wrong? See the [test results](docs/proof.md).
+How well does it work, and what does it get wrong? See the [test results](docs/proof.md) and the [test scorecard](docs/test-scorecard.md).
 
 ## Everyday use
 
