@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.4"
+VERSION = "6.27.5"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1370,6 +1370,7 @@ def hops_related(a: str, b: str) -> bool:
     return a.startswith(b) or b.startswith(a)
 
 
+STEM_KEY = re.compile(r"(?:[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6})(?:>(?:[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6})){1,3}")
 HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
 # Blocks that hold people back by where their message came from, rather than by what it says.
 # Packets that aren't channel text but can still be flooded into the mesh: requests, group data and anonymous
@@ -2033,8 +2034,10 @@ class SpamGuard:
         self.hidden_sources = {k: float(v) for k, v in (st.get("hidden_sources") or {}).items() if float(v) > now - 8 * 86400}
         self.genuine_marks = [float(t) for t in (st.get("genuine_marks") or []) if float(t) > now - 7 * 86400]
         sm = st.get("stem_memory")
-        self.stem_memory = {k: float(v) for k, v in sm.items() if isinstance(k, str) and isinstance(v, (int, float))
-                            and float(v) > now - self.STEM_MEMORY_DAYS * 86400} if isinstance(sm, dict) else {}
+        self.stem_memory = {k: float(v) for k, v in sm.items()
+                            if isinstance(k, str) and STEM_KEY.fullmatch(k) and isinstance(v, (int, float)) and not isinstance(v, bool)
+                            and math.isfinite(v) and now - self.STEM_MEMORY_DAYS * 86400 < float(v) <= now + 3600
+                            } if isinstance(sm, dict) else {}
         al = st.get("auto_level")
         self._auto_level = {k: v for k, v in al.items() if k in ("up", "down", "back", "below", "last") and isinstance(v, (int, float))} if isinstance(al, dict) else {}
         self.profiles = {k: v for k, v in (st.get("profiles") or {}).items() if isinstance(v, dict)}
@@ -5442,9 +5445,11 @@ class SpamGuard:
         def want(key, kind, value, reason, source, channel=None, ttl=None, from_ts=None, sender=None):
             nonlocal changed
             if self.suppressed.get(key, 0) > now:
-                return
+                return False
             if self._add_block(key, kind, value, reason, source, channel, ttl, from_ts, sender=sender):
                 changed = True
+                return True
+            return False
 
         if c.get("signed_watch"):
             self.signer_suggestions(now)
@@ -5847,12 +5852,14 @@ class SpamGuard:
                 key = "stem:" + ">".join(st)
                 # A route that was blocked in the last few days comes back after fewer names: the same spam keeps
                 # arriving one new name at a time once the first block has run out.
-                need = min(names_needed, self.STEM_REARM_NAMES) if now - mem.get(">".join(st), 0) < self.STEM_MEMORY_DAYS * 86400 else names_needed
+                need = min(names_needed, self.STEM_REARM_NAMES) if 0 <= now - mem.get(">".join(st), -1e18) < self.STEM_MEMORY_DAYS * 86400 else names_needed
                 if len(names) >= need and len(regs.get(st, ())) < 3 and key not in self.blocks:
-                    mem[">".join(st)] = now
-                    want(key, "stem", list(st),
-                         f"{len(names)} made-up names came in on route {'>'.join(st)} behind a first repeater that keeps changing",
-                         "rotation", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
+                    if want(key, "stem", list(st),
+                            f"{len(names)} made-up names came in on route {'>'.join(st)} behind a first repeater that keeps changing",
+                            "rotation", ttl=int(c.get("hop_block_ttl_seconds", 7200))):
+                        mem[">".join(st)] = now      # only a block that was really made is remembered
+                if len(mem) > 400:
+                    self.stem_memory = mem = dict(sorted(mem.items(), key=lambda kv: -kv[1])[:200])
             # A trusted person heard through a blocked route: let their repeater through.
             for e in a["window"]:
                 if e.sender in self.allow_senders and e.path:
@@ -8239,6 +8246,8 @@ class SpamGuard:
                 b = self.blocks.pop(key, None)
                 if b:
                     self.note(f"Removed by hand: {self.describe(b)}")
+                if key.startswith("stem:"):
+                    self.stem_memory.pop(key[5:], None)   # taken off by hand: the count starts again from scratch
                 if b and b.get("source") == "dedupe":
                     self.release_duplicate(b)
                     msg = "Duplicate block removed. The copies so far are forgiven; if the message keeps being copied, the next copy starts a new block."
@@ -8581,6 +8590,8 @@ class SpamGuard:
                 # and it looks like the clear did nothing.
                 for k in [k for k, b in self.blocks.items() if b.get("source") != "manual"]:
                     b = self.blocks.pop(k)
+                    if k.startswith("stem:"):
+                        self.stem_memory.pop(k[5:], None)
                     if b.get("source") == "dedupe":
                         self.release_duplicate(b)   # forgiven: new copies start a new block
                     else:
