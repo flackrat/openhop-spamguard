@@ -36,7 +36,7 @@ base = f"http://127.0.0.1:{srv.server_address[1]}"
 open(os.path.join(BIN, "systemctl"), "w").write("#!/bin/bash\nexit 0\n")
 real = shutil.which("curl")
 open(os.path.join(BIN, "curl"), "w").write(f'#!/bin/bash\nfor a in "$@"; do case "$a" in *127.0.0.1:8091/health*) exit 0;; esac; done\nexec {real} "$@"\n')
-for f in ("systemctl", "curl"): os.chmod(os.path.join(BIN, f), 0o755)
+for f in ("systemctl", "curl"): os.chmod(os.path.join(BIN, f), 0o700)
 MARK = os.path.join(T, "mark")
 env = dict(os.environ, PATH=BIN + ":" + os.environ["PATH"], SG_CONF=os.path.join(T, "config.yaml"), SG_APP=APP, SG_STATE=STATE,
            SG_GH_API=base + "/api", SG_GH_WEB=base, SG_MARK=MARK)
