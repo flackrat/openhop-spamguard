@@ -34,8 +34,10 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    systemd units, `openhop-spamguard-update.path` and `openhop-spamguard-update.service`. They run
    `update.sh` as root only when you press Update. It downloads
    only from this repository's releases over HTTPS, keeps the previous version, and puts it back if the new
-   one doesn't start. It doesn't yet check the release's signature itself, so please check releases by hand
-   (below) if that matters to you, or use the plugin.
+   one doesn't start. From 6.28.0 it checks the download against the SHA-256 checksum published with the release
+   and refuses to install if it doesn't match or is missing (and checks the checksum file's Sigstore signature too
+   if `cosign` is installed). Older releases, which have no checksums, can still be installed to go back a
+   version. You can also check releases by hand (below), or use the plugin.
 5. **Outside contact** is limited to GitHub (only when checking for or installing an update) and, if you turn
    it on, the public MeshCore map. There is no telemetry.
 

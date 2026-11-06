@@ -83,5 +83,47 @@ g3=sg.SpamGuard({"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","ap
                  "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False})
 check(list(g3.stem_memory)==["59>77"],"entries older than a week are not loaded")
 
+# 9. 6.27.5: a suppressed (hand-removed) block does not refresh memory
+m=mock(); g=guard(m, floodguard=False); g.apply_settings({"mode":"protect"})
+old=time.time()-3*86400
+g.stem_memory["04>F0"]=old
+g.suppressed["stem:04>F0"]=time.time()+3600
+two_names(m); cycle(g)
+check(not stems(g),"a suppressed route is not rebuilt")
+check(g.stem_memory.get("04>F0")==old,"a block that was not made does not refresh memory")
+
+# 10. Removing a stem block by hand forgets the route
+m=mock(); g=guard(m, floodguard=False); g.apply_settings({"mode":"protect"})
+g.stem_memory["04>F0"]=time.time()-3600
+two_names(m); cycle(g)
+check(stems(g)==["stem:04>F0"],"rebuilt with memory")
+g.blocks.pop("stem:04>F0"); g.stem_memory.pop("04>F0",None)
+two_names(m); cycle(g)
+check(not stems(g),"after hand removal, two names are not enough")
+
+# 11. Two unrelated newcomers with ordinary names on a remembered route are not held
+m=mock(); g=guard(m, floodguard=False); g.apply_settings({"mode":"protect"})
+g.stem_memory["04>F0"]=time.time()-3600
+for i,n in enumerate(("Pat Walker","Sam Baker")): m.add(n,"Hello from the valley, first time on here %d"%i,["07"]+tails[i],ago=200-i*20)
+cycle(g)
+check(not stems(g) and m.decide("Pat Walker","Hello again",["07","04","F0","91"])!="drop","new ordinary users on a remembered route are not held")
+
+# 12. Malformed or hand-edited state loads safely
+import json
+m=mock(); g=guard(m, floodguard=False)
+g._save_state(force=True)
+st=os.path.join(TMP, f"state_{PORT[0]}.json")
+d=json.load(open(st)); n=time.time()
+d["stem_memory"]={"04>F0":"x","59>77":-5,"AA>BB":float("nan"),"CC>DD":1e300,"EE>FF":True,"nonsense":n,"04>":n,"11>22":n+10*86400,"A"*500:n,"33>44":n-60}
+json.dump(d,open(st,"w"))
+g4=sg.SpamGuard({"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
+                 "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False})
+check(list(g4.stem_memory)==["33>44"],"only well-formed, recent entries load (got %s)"%list(g4.stem_memory))
+for bad in ("text",[1,2],5,None):
+    d["stem_memory"]=bad; json.dump(d,open(st,"w"))
+    g5=sg.SpamGuard({"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
+                     "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False})
+    check(g5.stem_memory=={},"wrong type %r loads as empty"%(bad,))
+
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

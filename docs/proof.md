@@ -1,5 +1,7 @@
 # Tested, with the numbers
 
+For the full suite, coverage and the limits of the testing, see the [test scorecard](test-scorecard.md).
+
 A made-up three-hour attack run ten times with different random seeds, plus three days of real traffic replayed. Nothing in the test comes from a real person, and attack methods are not published.
 
 ![SpamGuard proof sheet: results, attack timeline, ten runs and real-traffic replay](proof-sheet.png)

@@ -90,6 +90,26 @@ else
   echo "Keeping existing /etc/openhop_spamguard/config.yaml"
 fi
 
+# --- web page password (offered on a fresh install; never changed on an update) ---
+# A new install asks whether to protect the web page's changes with a password and makes a random one.
+# Updates, scripted installs and installs that already have a password are left alone. SG_PASSWORD=0 skips it, =1 accepts it.
+SG_CONF_FILE=${SG_CONF_FILE:-/etc/openhop_spamguard/config.yaml}
+if grep -qE '^listen_api_key:\s*(""|'"''"')?\s*(#.*)?$' "$SG_CONF_FILE" 2>/dev/null; then
+  want=${SG_PASSWORD:-}
+  if [ -z "$want" ] && [ -t 0 ] && [ -t 1 ]; then
+    read -r -p "Protect the SpamGuard web page with a password? Anyone on your network can change settings without one. [Y/n] " ans || ans=n
+    case "${ans:-y}" in [nN]*) want=0 ;; *) want=1 ;; esac
+  fi
+  if [ "$want" = 1 ]; then
+    pw=$(/opt/openhop_repeater/venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(18))')
+    sed -i -E "s|^listen_api_key:.*$|listen_api_key: \"$pw\"|" "$SG_CONF_FILE"
+    echo "Web page password set. Write it down, the page asks for it once:  $pw"
+    echo "(It is stored in $SG_CONF_FILE as listen_api_key.)"
+  elif [ -z "$want" ]; then
+    echo "Tip: the web page has no password. To set one, put listen_api_key: \"something long\" in $SG_CONF_FILE."
+  fi
+fi
+
 # openHop rule-check fix: a bug fix for openHop's rule checker (see README), applied
 # automatically, with a backup; undo with: sudo bash /opt/openhop_spamguard/tune-openhop.sh --undo
 echo
