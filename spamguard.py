@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.3"
+VERSION = "6.27.4"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1733,6 +1733,7 @@ class SpamGuard:
         self.clusters: dict[int, dict] = {}
         # Learnt network shape: route -> [first_seen, last_seen, good, bad]; hash -> last time it relayed
         self.routes: dict[str, list] = {}
+        self.stem_memory: dict[str, float] = {}
         self.relays: dict[str, float] = {}
         self.forged: dict[tuple, dict] = {}   # (route, first hop) -> made-up names that arrived wearing that first hop, and when
         # Names seen sending genuine messages: name -> [first_seen, last_seen, genuine messages]
@@ -2031,6 +2032,9 @@ class SpamGuard:
         self.view_marks = {k: float(v) for k, v in (st.get("view_marks") or {}).items()}
         self.hidden_sources = {k: float(v) for k, v in (st.get("hidden_sources") or {}).items() if float(v) > now - 8 * 86400}
         self.genuine_marks = [float(t) for t in (st.get("genuine_marks") or []) if float(t) > now - 7 * 86400]
+        sm = st.get("stem_memory")
+        self.stem_memory = {k: float(v) for k, v in sm.items() if isinstance(k, str) and isinstance(v, (int, float))
+                            and float(v) > now - self.STEM_MEMORY_DAYS * 86400} if isinstance(sm, dict) else {}
         al = st.get("auto_level")
         self._auto_level = {k: v for k, v in al.items() if k in ("up", "down", "back", "below", "last") and isinstance(v, (int, float))} if isinstance(al, dict) else {}
         self.profiles = {k: v for k, v in (st.get("profiles") or {}).items() if isinstance(v, dict)}
@@ -2148,6 +2152,7 @@ class SpamGuard:
                     "hidden_sources": getattr(self, "hidden_sources", {}),
                     "genuine_marks": getattr(self, "genuine_marks", [])[-50:],
                     "auto_level": getattr(self, "_auto_level", {}),
+                    "stem_memory": dict(sorted(getattr(self, "stem_memory", {}).items(), key=lambda kv: -kv[1])[:200]),
                     "profiles": self.profiles, "profile_in_use": self.profile_in_use,
                     "rule_ids": self.rule_ids,
                     "senders": {k: [round(v["first"], 1), v["count"], round(float(v.get("last") or v["first"]), 1)]
@@ -2187,6 +2192,7 @@ class SpamGuard:
         kept = {k: v for k, v in self.settings.items() if k in KEEP_ON_RESET}
         self.settings = dict(kept, **({"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}))
         self.routes.clear()
+        self.stem_memory.clear()
         self.relays.clear()
         self.adv_routes.clear()
         self._adv_stamp += 1
@@ -5149,6 +5155,9 @@ class SpamGuard:
             self.routes = dict(sorted(self.routes.items(), key=lambda kv: -kv[1][1])[:5000])
             self.relays = {k: v for k, v in self.relays.items() if v >= horizon}
 
+    STEM_MEMORY_DAYS = 7    # a route that was blocked this recently is blocked again after fewer new names
+    STEM_REARM_NAMES = 2
+
     FORGED_FOR = 6 * 3600   # a first hop that spam has worn is not trusted on that route for this long
     FORGED_NAMES = 3        # it takes this many different made-up names, so one odd device name changes nothing
 
@@ -5833,9 +5842,14 @@ class SpamGuard:
                     regs.setdefault(st, set()).add(e.sender)
                 elif not self.is_known(e.sender) and (e.random or e.obfuscated or noise_name(e.sender)):
                     stems.setdefault(st, set()).add(e.sender)
+            mem = self.stem_memory
             for st, names in stems.items():
                 key = "stem:" + ">".join(st)
-                if len(names) >= names_needed and len(regs.get(st, ())) < 3 and key not in self.blocks:
+                # A route that was blocked in the last few days comes back after fewer names: the same spam keeps
+                # arriving one new name at a time once the first block has run out.
+                need = min(names_needed, self.STEM_REARM_NAMES) if now - mem.get(">".join(st), 0) < self.STEM_MEMORY_DAYS * 86400 else names_needed
+                if len(names) >= need and len(regs.get(st, ())) < 3 and key not in self.blocks:
+                    mem[">".join(st)] = now
                     want(key, "stem", list(st),
                          f"{len(names)} made-up names came in on route {'>'.join(st)} behind a first repeater that keeps changing",
                          "rotation", ttl=int(c.get("hop_block_ttl_seconds", 7200)))
