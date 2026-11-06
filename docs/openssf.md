@@ -4,7 +4,7 @@ Where the project stands. The badge answers themselves are the owner's to enter 
 
 | Area | Status |
 |---|---|
-| Signed releases | Done: build attestation and Sigstore signature on every file |
+| Signed releases | Done: build attestation and Sigstore signature on every file, plus a signed SHA-256 checksum file that the Update button checks (from 6.28.0) |
 | Software bill of materials | Done: CycloneDX file with each release, from v6.21.0 |
 | Dependency monitoring | Done: Dependabot weekly, `audit` job, dependency review on pull requests |
 | Static analysis | Done: CodeQL for Python and JavaScript |
@@ -13,6 +13,6 @@ Where the project stands. The badge answers themselves are the owner's to enter 
 | Branch protection | `main` needs a pull request and passing checks |
 | Governance, conduct, roadmap | [GOVERNANCE.md](../GOVERNANCE.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), [ROADMAP.md](../ROADMAP.md) |
 | Security reporting | [SECURITY.md](../SECURITY.md) |
-| Design and assurance | [architecture](architecture.md), [assurance case](assurance-case.md) |
+| Design and assurance | [architecture](architecture.md), [assurance case](assurance-case.md), [test scorecard](test-scorecard.md) |
 | Two-factor sign-in for maintainers | Owner's account setting, not visible from the repository |
 | Second maintainer | Not yet: the project has one |

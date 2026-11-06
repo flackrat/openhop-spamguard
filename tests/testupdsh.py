@@ -1,7 +1,7 @@
 # The updater script for normal installs writes how far it has got (a percentage that only goes up) and the
 # last two lines the installer printed, to the status file the Update box reads. Runs update.sh for real
 # against a made-up GitHub (a local web server), a made-up release and fake systemctl/curl. Nothing real is touched.
-import sys, os, json, time, threading, subprocess, tarfile, io, tempfile, http.server, shutil
+import sys, os, json, time, threading, subprocess, tarfile, io, tempfile, http.server, shutil, hashlib
 ok = fail = 0
 def check(c, msg):
     global ok, fail
@@ -22,6 +22,7 @@ def release(tag, install_body):
         add("spamguard.py", f'VERSION = "{tag[1:]}"\n'.encode()); add("install.sh", install_body.encode())
     d = os.path.join(SRV, "made", "up", "releases", "download", tag); os.makedirs(d, exist_ok=True)
     open(os.path.join(d, f"spamguard-{tag}.tar.gz"), "wb").write(buf.getvalue())
+    open(os.path.join(d, "SHA256SUMS"), "w").write(f"{hashlib.sha256(buf.getvalue()).hexdigest()}  spamguard-{tag}.tar.gz\n")
 GOOD = "#!/bin/bash\nfor i in $(seq 1 14); do echo \"[$i/14] Setting up part $i\"; sleep 0.6; done\n"
 BAD = "#!/bin/bash\nfor i in 1 2 3; do echo \"working on part $i\"; sleep 0.5; done\necho 'ERROR: part 4 could not be installed'\nexit 1\n"
 release("v9.9.9", GOOD); release("v9.9.10", BAD)

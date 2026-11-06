@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.27.5"
+VERSION = "6.28.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1755,7 +1755,7 @@ class SpamGuard:
         self.retries: collections.deque = collections.deque(maxlen=2000)   # when a repeat followed a first copy this repeater never passed on
         self.echoed: collections.OrderedDict = collections.OrderedDict()   # packets heard again after another repeater passed them on
         self.last_sends: collections.OrderedDict = collections.OrderedDict()   # (name, channel, text) -> (time, packet)
-        self.machine: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of machine-traffic messages
+        self.machine: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms, kind) of machine-traffic messages
         self.pubbots: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of bot-shaped messages on Public
         self.resend_new: list = []   # resends not yet turned into a short hold
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
@@ -2039,7 +2039,7 @@ class SpamGuard:
                             and math.isfinite(v) and now - self.STEM_MEMORY_DAYS * 86400 < float(v) <= now + 3600
                             } if isinstance(sm, dict) else {}
         al = st.get("auto_level")
-        self._auto_level = {k: v for k, v in al.items() if k in ("up", "down", "back", "below", "last") and isinstance(v, (int, float))} if isinstance(al, dict) else {}
+        self._auto_level = {k: v for k, v in al.items() if k in ("up", "down", "back", "below", "last", "armed") and isinstance(v, (int, float))} if isinstance(al, dict) else {}
         self.profiles = {k: v for k, v in (st.get("profiles") or {}).items() if isinstance(v, dict)}
         self.profile_in_use = st.get("profile_in_use") if st.get("profile_in_use") in self.profiles else None
         self.held.extend(h for h in (st.get("held") or []) if isinstance(h, dict) and h.get("ts", 0) > now - 86400)
@@ -3885,6 +3885,7 @@ class SpamGuard:
                               "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
                               "copies": 1, "_names": {m.get("sender")},
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
+                              "machine": m.get("machine"),
                               "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}"),
                               "label_at": self.label_at.get(str(m.get("packet") or "")) or self.label_at.get(f"{m.get('sender')}|{text}")}
             rows.append(r)
@@ -4770,13 +4771,23 @@ class SpamGuard:
         self.pubbots.append((e.ts, ms))
         self._hist_bump(e.ts, "pb")
 
+    def machine_by_hour(self) -> list:
+        """Machine messages in each of the last 24 hours, oldest first, for the little bar on the page."""
+        now = time.time()
+        out = [0] * 24
+        for t, _, _ in self.machine:
+            age = int((now - t) // 3600)
+            if 0 <= age < 24:
+                out[23 - age] += 1
+        return out
+
     def _note_machine(self, e) -> None:
         """Machine traffic on a channel (for example a Reticulum bridge): counted with its airtime and mentioned
         once a day. Nothing is held for being machine traffic; this only makes it visible. The ordinary checks
         (copies under other names, one name sending far too much) still apply to it as to anything else."""
         ms = self.airtime_ms(e.length)
         self.stats["machine"] = self.stats.get("machine", 0) + 1
-        self.machine.append((e.ts, ms))
+        self.machine.append((e.ts, ms, e.machine))
         self._hist_bump(e.ts, "mt")
         today = time.strftime("%Y-%m-%d", time.localtime(e.ts))
         if getattr(self, "_machine_noted", "") != today:
@@ -6790,9 +6801,11 @@ class SpamGuard:
         fine += [t for k, t in self.label_at.items() if self.labels.get(k) == "not_spam" and t >= now - 86400]
         newest_fine = max(fine) if fine else 0
         new, why = None, ""
-        if newest_fine and al.get("up", 0) and newest_fine > al["up"] and newest_fine > al.get("back", 0):
+        if newest_fine and al.get("armed") and al.get("up", 0) and newest_fine > al["up"]:
+            # One step back per tightening: "armed" is switched off here and only a new tightening switches it on again,
+            # so a run of fine marks cannot walk the level down step by step.
             new, why = max(0, cur - self.AUTO_LEVEL_DOWN), "a message was marked fine after the last tightening"
-            al["back"] = now
+            al["back"], al["armed"] = now, False
         elif target > cur:
             al["below"] = None
             if newest_fine:
@@ -6802,6 +6815,7 @@ class SpamGuard:
                 return
             new, why = min(target, cur + self.AUTO_LEVEL_UP), "spam is getting through at this level"
             al["up"] = now
+            al["armed"] = True
         elif target < cur:
             al["below"] = al.get("below") or now
             if now - al["below"] < self.AUTO_LEVEL_LOOSEN_AFTER:
@@ -8012,8 +8026,10 @@ class SpamGuard:
                 "summary": {"caught_24h": caught_24h, "last_catch": last_catch, "by_hour": by_hour,
                             "active_blocks": sum(1 for b in blocks if b["source"] != "dedupe"),
                             "dedupe_rules": sum(1 for b in blocks if b["source"] == "dedupe"),
-                            "machine_24h": sum(1 for t, _ in self.machine if t >= time.time() - 86400),
-                            "machine_airtime_s_24h": round(sum(m for t, m in self.machine if t >= time.time() - 86400) / 1000, 1),
+                            "machine_24h": sum(1 for t, _, _ in self.machine if t >= time.time() - 86400),
+                            "machine_reticulum_24h": sum(1 for t, _, k in self.machine if t >= time.time() - 86400 and k == "reticulum"),
+                            "machine_airtime_s_24h": round(sum(m for t, m, _ in self.machine if t >= time.time() - 86400) / 1000, 1),
+                            "machine_by_hour": self.machine_by_hour(),
                             "pubbots_24h": sum(1 for t, _ in self.pubbots if t >= time.time() - 86400),
                             "pubbot_airtime_s_24h": round(sum(m for t, m in self.pubbots if t >= time.time() - 86400) / 1000, 1),
                             "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", True) else "stop")),
@@ -8751,7 +8767,7 @@ def make_handler(guard: SpamGuard):
                                                      "watchdog")} | {"version": VERSION})
             if path == "/evidence":
                 key = guard.cfg.get("listen_api_key")
-                if key and self.headers.get("X-API-Key") != key:
+                if key and not hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode()):
                     return self._send(401, {"error": "This SpamGuard needs its access key"})
                 from urllib.parse import parse_qs, urlparse
                 q = parse_qs(urlparse(self.path).query)
@@ -8774,7 +8790,7 @@ def make_handler(guard: SpamGuard):
 
         def do_POST(self):
             key = guard.cfg.get("listen_api_key")
-            if key and self.headers.get("X-API-Key") != key:
+            if key and not hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode()):
                 return self._send(401, {"error": "This SpamGuard needs its access key"})
             # Changes only come as JSON. A browser won't send JSON to another site without asking first, so a
             # web page elsewhere can't quietly change SpamGuard's settings through someone's browser.
