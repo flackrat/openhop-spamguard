@@ -346,9 +346,9 @@ SETTINGS_META: list[dict] = [
      "label": "Hold links from names it doesn't know",
      "help": "Spammers often post links. When on, channel messages containing a link are blocked unless the sender is a known name."},
     {"key": "symbol_junk", "group": "Known people", "type": "bool",
-     "risk": "A newcomer on Public who types one of these symbols (say, curly brackets in code) or has one in their name is held too, as is a recently known person typing one. Other channels are never affected.",
+     "risk": "A newcomer typing one of these (say, curly brackets in code) or with one in their name is held too, as is a recently known person typing one. Other channels are untouched.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
-     "help": "Some spam comes from a new keyboard-mashed name every time, so there is never a second message to learn from. People almost never type { } ` ^ or \\ in chat, or put $ % < : or ; in their name, so on Public those are held unless the sender is a known name (for symbols in the text, known for over a week). Works from the first message."},
+     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` ^ or \\ in chat, or put $ % < : or ; in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
