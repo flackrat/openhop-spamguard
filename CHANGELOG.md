@@ -30,6 +30,7 @@ A private review looked for ways a spammer could get round SpamGuard. This relea
 - **Automatic lockdowns can't be set off all day.** After two in an hour, automatic lockdowns pause for two hours and the page says so; you can still start one by hand.
 - **A repeater many known people use needs two signs before it's blocked**, so made-up names sent with a faked first repeater can't get it blocked for every newcomer behind it.
 - **An allowed phrase only covers messages that are mostly that phrase**, so wrapping spam round it no longer makes the spam exempt.
+- **One symbol taken off the keyboard-junk list.** People use it in ordinary chat ("^ this"), and a reply to a spammer with it in their name carried it too. Replayed: one fewer junk message caught across every log, and one genuine reply no longer held.
 
 ## v6.29.0
 

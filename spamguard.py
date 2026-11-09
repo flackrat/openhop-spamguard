@@ -92,8 +92,9 @@ PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
 PERMANENT_SECONDS = 10 * 365 * 86400
 # Symbols people almost never type in chat but random keyboard junk nearly always contains (checked against
 # every evidence log: about 21,500 messages). The standing junk block holds Public messages with any of them
-# from names SpamGuard doesn't know. '|' is left out: bots and route replies use it all the time.
-JUNK_CHARS = ("{", "}", "`", "^", "\\")
+# from names SpamGuard doesn't know. '|' is left out: bots and route replies use it all the time. '^' is left out
+# too: people write "^ this", and a reply to a spammer whose name has one carries it in the @[name].
+JUNK_CHARS = ("{", "}", "`", "\\")
 # Symbols found in hundreds of keyboard-mashed throwaway names and in no known person's name in those logs.
 JUNK_NAME_CHARS = ("$", "%", "<", ":", ";")
 # SpamGuard stops how spam is sent, not what people say. Blocks on message text can't last for ever,
@@ -348,7 +349,7 @@ SETTINGS_META: list[dict] = [
     {"key": "symbol_junk", "group": "Known people", "type": "bool",
      "risk": "A newcomer typing one of these (say, curly brackets in code) or with one in their name is held too, as is a recently known person typing one. Other channels are untouched.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
-     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` ^ or \\ in chat, or put $ % < : or ; in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
+     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` or \\ in chat, or put $ % < : or ; in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
