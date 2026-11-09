@@ -9,6 +9,7 @@ What is tested, how much, and what is not. Figures are from the full suite run f
 | Statement coverage | Above 80 percent, reported by the `tests` job on every pull request |
 | Spam stopped, simulated attack | 96.6 percent of about 11,760 spam messages over 10 random seeds, every run between 96.4 and 96.9 |
 | Ordinary messages held by mistake | 2.7 percent during attack hours, 0.8 percent of regulars over whole runs |
+| Fresh install, simulated week | Monitor stops nothing; after switching to Protect on day 2, 97.5 percent of spam stopped, 1.7 to 3.2 percent of regulars' messages wrongly held, newcomers worst (harsh test, see proof) |
 | Real traffic replayed | 3 days at Balanced: 2 of 23 messages marked fine were held, neither from a new person |
 | Static analysis and scans | CodeQL (Python and JavaScript), Bandit, Ruff, pip-audit, zizmor, Gitleaks, privacy check, Trivy, ClamAV |
 | Fuzzing | Packet and message parsing, run by the `fuzz` job |
