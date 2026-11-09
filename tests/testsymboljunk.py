@@ -15,7 +15,7 @@ class P:
     def get_path_hashes_hex(s): return ["4C"]
     def get_payload_type(s): return 5
     def get_payload(s): return s.payload
-def act(m, text, sender="Q7%X#Z", key=None, local=False):
+def act(m, text, sender="Pat Moss", key=None, local=False):
     return PolicyEngine(m.policy["policy_engine"]).evaluate(P(key or sg.PUBLIC_CHANNEL_KEY,text,sender),
         {"payload_type":5,"hop_count":1,"route_type":1,"local_transmission":local}).action
 def sync(g): g.last_sync=0; g.sync_pending=True; g.poll_once()
@@ -31,7 +31,7 @@ b=g.blocks.get("junk:symbols")
 check(b is not None and b["kind"]=="links" and b["source"]=="junk" and b.get("only_channel")=="Public","standing block made, Public only")
 check(b and b["expires"]-time.time()>sg.PERMANENT_SECONDS/2,"it does not expire")
 rs=junk_rules(m)
-check(len(rs)==5 and all(r["then"]["action"]=="drop" for r in rs),"five rules, one per symbol, dropping in Protect")
+check(len(rs)==10 and all(r["then"]["action"]=="drop" for r in rs),"ten rules (five text symbols, five name symbols), dropping in Protect")
 names=[r["name"] for r in m.policy["policy_engine"]["rules"]]
 kn=next((i for i,n in enumerate(names) if "known-people" in n),None)
 check(kn is not None and all(names.index(r["name"])>kn for r in rs),"the rules sit after the known-people rule")
@@ -40,6 +40,11 @@ check(kn is not None and all(names.index(r["name"])>kn for r in rs),"the rules s
 check(all(act(m,t)=="drop" for t in SOUP),"symbol junk from a new name is dropped on the first message")
 check(g.is_known("Ann Hill") and act(m,"a { b } ^ c","Ann Hill")=="allow","a known name is passed on")
 check(act(m,"Morning all, lovely clear skies")=="allow","ordinary chat from a new name is passed on")
+check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("J,YSY*%Z","$OY685UKL","AB<CD>EF","X:Y:Z","P;Q")),
+      "an ordinary-looking message from a keyboard-mashed name is dropped on the first message")
+check(all(act(m,"Morning all",n)=="allow" for n in ("Mark~G6BNB/R","Dave M3MHA (Thurrock)","GROC#2","John's T-deck","Bingo | Chris")),
+      "new names with symbols real people use are passed on")
+check(act(m,"Morning","Ann Hill")=="allow","a known name is passed on (name rules too)")
 check(act(m,"@[Sam] Rx5 | 9 hops | 4E>B7>9C","Bot 2")=="allow","route replies with | are passed on")
 check(act(m,"CT[36%X+{/%!R",key=sg.hashtag_secret("#test"))=="allow","other channels are never touched")
 check(act(m,"CT[36%X+{/%!R",local=True)=="allow","this repeater's own companion is never stopped")

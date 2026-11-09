@@ -1163,7 +1163,7 @@ function renderBlocks(d){
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
     const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
-      :b.kind==="links"&&b.source==="junk"?"Keyboard-symbol junk on Public from names SpamGuard doesn't know"
+      :b.kind==="links"&&b.source==="junk"?"Keyboard-symbol junk in the message or the name, on Public, from names SpamGuard doesn't know"
       :b.kind==="links"&&b.source!=="linkhost"?"Links from names SpamGuard doesn't know"
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
       :b.kind==="text"?`Messages containing “${esc(b.value)}”`

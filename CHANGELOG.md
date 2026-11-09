@@ -17,7 +17,7 @@ The detail is below, newest first. In short:
 
 ## v6.29.0
 
-- **Random keyboard-symbol spam on Public is held from the first message.** Some spam is a single message of random symbols from a new name and a new route every time, so there was never a second message to learn from. SpamGuard now keeps a standing block on Public for a few symbols people almost never type in chat. A message containing one is held unless the sender is a known name. Checked against every evidence log we have: no ordinary chat from known people is affected (they pass first), and other channels are never touched. It is on by default and can be switched off under Known people ("Hold keyboard-symbol junk on Public from names it doesn't know"). Removing the block by hand keeps it off for a day, like other automatic blocks.
+- **Random keyboard-symbol spam on Public is held from the first message.** Some spam is a single message of random symbols from a new name and a new route every time, so there was never a second message to learn from. SpamGuard now keeps a standing block on Public for a few symbols people almost never type in chat, and a few that turn up in keyboard-mashed names but never in real ones. A message with one of them, in the text or in the name, is held unless the sender is a known name. Checked against every evidence log we have: known people pass first, and other channels are never touched. It is on by default and can be switched off under Known people ("Hold keyboard-symbol junk on Public from names it doesn't know"). Removing the block by hand keeps it off for a day, like other automatic blocks.
 
 ## v6.28.0
 
