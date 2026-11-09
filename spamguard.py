@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.29.0"
+VERSION = "6.29.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1209,6 +1209,7 @@ def noise_name(name: str) -> bool:
     a node name (callsign-style - and / are allowed). Only used to tell a campaign is made-up names."""
     p = strip_emoji(name).strip()
     return 7 <= len(p) <= 16 and " " not in p and not re.search("[a-z]", p) \
+        and not any(ch.isalpha() and not ch.isascii() for ch in p) \
         and re.search(r"[^A-Z0-9\-_./]", p) is not None
 
 
@@ -2315,6 +2316,8 @@ class SpamGuard:
         """Count a genuine message towards its sender becoming known."""
         if spam or e.random or e.obfuscated or not e.sender or e.sender in ("?", "Unknown"):
             return
+        if noise_name(e.sender) and e.sender not in self.allow_senders:
+            return   # keyboard-mashed throwaway names never earn the known-people pass by sending a few quiet messages
         if e.matched and not self._held_in_passing(e) and not self._wrongly_caught_regular(e):
             return
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
@@ -3779,7 +3782,7 @@ class SpamGuard:
         src, kind = m.get("caught_source"), m.get("caught_kind")
         spammy = bool(m.get("random") or m.get("obfuscated") or (m.get("campaign_senders") or 0) >= 2)
         if m.get("caught_by"):
-            people = kind in PEOPLE_KINDS and src != "manual"
+            people = kind in PEOPLE_KINDS and src not in ("manual", "junk")
             if people and not spammy:
                 return "held", (self.Q_REASON.get(src) if src == "junk" else None) or self.Q_REASON.get(kind) \
                     or self.Q_REASON.get(src) or "Held by a block meant for spam"
@@ -4560,7 +4563,7 @@ class SpamGuard:
             e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
-            if b and not again and b["kind"] in PEOPLE_KINDS \
+            if b and not again and b["kind"] in PEOPLE_KINDS and b.get("source") != "junk" \
                     and not e.random and not e.obfuscated:
                 self.held.append({"ts": e.ts, "sender": e.sender, "text": e.text[:160], "channel": e.channel,
                                   "path": ">".join(e.path) or "direct", "matched": e.matched,
@@ -4604,6 +4607,23 @@ class SpamGuard:
         """A name SpamGuard has already had to hold for repeating, more than once, in the last day."""
         now = now or time.time()
         return sum(1 for t in self.offences.get(name, ()) if t > now - 86400) >= self.REPEAT_OFFENCES
+
+    def _copied_from_elsewhere(self, who: str, hops) -> bool:
+        """A known name whose messages all came in through repeaters that person is never heard through: most likely
+        someone copying the name, so the person themselves shouldn't be held or marked as a repeat offender."""
+        # hops: first repeater -> how many of these very messages came that way. They may already have been
+        # counted as a usual way in when they arrived, so take them off before judging.
+        if isinstance(hops, dict):
+            seen = {h: n for h, n in hops.items() if h}
+        else:
+            seen = dict.fromkeys((h for h in hops if h), 0)
+        if not seen or not self.is_known(who):
+            return False
+        hm = {h: n - seen.get(h, 0) for h, n in (self.homes.get(who) or {}).items()}
+        hm = {h: n for h, n in hm.items() if n > 0}
+        if sum(hm.values()) < 5:
+            return False
+        return all(h not in hm and not any(hops_related(h, x) for x in hm) for h in seen)
 
     def _offence(self, name: str, now: float) -> None:
         self.offences.setdefault(name, []).append(now)
@@ -5590,7 +5610,7 @@ class SpamGuard:
                                    channel=ch, ttl=int(c["repeat_block_seconds"]), from_ts=evs[-1][0].ts,
                                    extra={"who": who}):
                     changed = True
-                    if fresh:
+                    if fresh and not self._copied_from_elsewhere(who, collections.Counter(x[0].first_hop for x in evs)):
                         self._offence(who, now)
 
         # 2b'-r. Accidental double send: the first copy went out, so hold any further identical copy from that
@@ -5903,14 +5923,29 @@ class SpamGuard:
         # none of the repeat limits counts them).
         if c.get("name_budget", True):
             sends: dict[tuple, dict] = {}
+            ways: dict[tuple, collections.Counter] = {}
             for e in a["long"]:
                 if e.ts < now - 600 or e.exempt or e.local or not e.sender or e.sender in ("?", "Unknown") \
                         or e.sender in self.allow_senders:
                     continue
                 # copies of the same line within a minute (a resend, or heard twice) count once
                 sends.setdefault((e.sender, e.channel), {})[(e.text, int(e.ts // 60))] = e.ts
+                w = ways.setdefault((e.sender, e.channel), collections.Counter())
+                w[e.first_hop] += 1
             for (who, ch), d in sends.items():
                 if len(d) <= int(c["name_budget_max"]):
+                    continue
+                hops = ways.get((who, ch), collections.Counter())
+                if self._copied_from_elsewhere(who, hops):
+                    # A known name flooding in only from places that person never uses: hold the name from those
+                    # repeaters (like a borrowed name), never the name everywhere, and don't count it against them.
+                    for hop in sorted(h for h in hops if h):
+                        key = "imposter:" + hashlib.sha1(f"{who}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                        if self.suppressed.get(key, 0) <= now and self._add_block(
+                                key, "imposter", hop, f"Their name sent {len(d)} messages in ten minutes, all through a "
+                                "repeater they never use", "imposter", channel=ch, ttl=int(c["repeat_block_seconds"]),
+                                from_ts=max(d.values()), extra={"who": who}):
+                            changed = True
                     continue
                 key = "budget:" + hashlib.sha1(f"{who}|{ch}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
