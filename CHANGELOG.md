@@ -15,11 +15,21 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
-## v6.29.1
+## v6.30.0
+
+A private review looked for ways a spammer could get round SpamGuard. This release closes the ones SpamGuard can close on its own; the rest need changes in openHop or signed names, and are described only in general terms here.
 
 - **Fixed: keyboard-symbol junk was counted as "possibly genuine".** Messages the new junk block caught were listed under Possibly genuine and counted as genuine-looking held, so on a new install a handful of them stopped SpamGuard switching itself from Monitor to Protect. They are now counted as stopped spam.
 - **Someone copying a known person's name can no longer get that person held.** When a known name suddenly sends far too much, or repeats itself, only through repeaters that person is never heard through, SpamGuard holds the name from those repeaters only and doesn't count it against them. The person still gets through from their usual way in and keeps their known status.
 - **Throwaway names typed by mashing the keyboard never become known**, however quietly they start. Names in other writing systems are not affected.
+- **Text hidden where a reply's name goes is read.** A message made almost entirely of long @[...] brackets is now checked like any other text, so copies of it are caught. Ordinary replies to someone are unaffected.
+- **A copied name can't teach SpamGuard a new way in.** Messages later judged to be someone copying a known name no longer count as that person's usual way in.
+- **Copies of a well-known name are watched at quiet times too.** When there's no attack, a name with a long history sending keyboard junk or a link through a repeater it has never used is held from there.
+- **Keyboard junk needs a long-standing name to get through.** A name known for under a week, or with only a few messages, no longer gets past the keyboard-junk block, so a name that earned the known pass quickly can't use it for junk. Names known for longer are unaffected.
+- **A name of "?" counts towards "far too many messages"**, like any other name.
+- **Automatic lockdowns can't be set off all day.** After two in an hour, automatic lockdowns pause for two hours and the page says so; you can still start one by hand.
+- **A repeater many known people use needs two signs before it's blocked**, so made-up names sent with a faked first repeater can't get it blocked for every newcomer behind it.
+- **An allowed phrase only covers messages that are mostly that phrase**, so wrapping spam round it no longer makes the spam exempt.
 
 ## v6.29.0
 
