@@ -346,7 +346,7 @@ SETTINGS_META: list[dict] = [
      "label": "Hold links from names it doesn't know",
      "help": "Spammers often post links. When on, channel messages containing a link are blocked unless the sender is a known name."},
     {"key": "symbol_junk", "group": "Known people", "type": "bool",
-     "risk": "A newcomer on Public who types one of these symbols (for example a code snippet with curly brackets), or whose name contains one, is held too. People SpamGuard knows are never affected, and other channels are never touched.",
+     "risk": "A newcomer on Public who types one of these symbols (say, curly brackets in code) or has one in their name is held too. Known people and other channels are never affected.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
      "help": "Some spam comes from a new keyboard-mashed name every time, so there is never a second message to learn from. People almost never type { } ` ^ or \\ in chat, or put $ % < : or ; in their name, so on Public those are held unless the sender is a known name. Works from the first message."},
     # -- Names

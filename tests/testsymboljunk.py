@@ -24,7 +24,7 @@ SOUP=["CT[36%X+{/%!R","YF^;ri}12`Rnue/","m{\\F^yG,tzuJA_BHb^D-FK$Xv",".hC*6JrB`M
 
 # 1. On by default, a standing block limited to Public
 check(sg.DEFAULT_CONFIG["symbol_junk"] is True,"on by default")
-m=mock(); g=guard(m, floodguard=False)
+m=mock(); g=guard(m, floodguard=False, symbol_junk=True)
 for i in range(4): m.add("Ann Hill",f"Morning all, day {i}",["4C"],ago=3000-i*60)
 g.apply_settings({"mode":"protect"}); sync(g)
 b=g.blocks.get("junk:symbols")
