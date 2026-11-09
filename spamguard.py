@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.28.0"
+VERSION = "6.29.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -90,6 +90,12 @@ RULE_PREFIX = "spamguard:"
 RULE_ID_BASE = 9000
 PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
 PERMANENT_SECONDS = 10 * 365 * 86400
+# Symbols people almost never type in chat but random keyboard junk nearly always contains (checked against
+# every evidence log: about 21,500 messages). The standing junk block holds Public messages with any of them
+# from names SpamGuard doesn't know. '|' is left out: bots and route replies use it all the time.
+JUNK_CHARS = ("{", "}", "`", "^", "\\")
+# Symbols found in hundreds of keyboard-mashed throwaway names and in no known person's name in those logs.
+JUNK_NAME_CHARS = ("$", "%", "<", ":", ";")
 # SpamGuard stops how spam is sent, not what people say. Blocks on message text can't last for ever,
 # a text you block by hand must be long enough to be a spam message rather than a word or a name, and it
 # never stops people SpamGuard knows (they are only ever de-duplicated or slowed when they repeat).
@@ -339,6 +345,10 @@ SETTINGS_META: list[dict] = [
      "risk": "While on, a genuine first-time poster sharing a link is held too. 'Always' does this all the time; 'while a campaign is under way' only for an hour after spam campaign activity.",
      "label": "Hold links from names it doesn't know",
      "help": "Spammers often post links. When on, channel messages containing a link are blocked unless the sender is a known name."},
+    {"key": "symbol_junk", "group": "Known people", "type": "bool",
+     "risk": "A newcomer on Public who types one of these symbols (say, curly brackets in code) or has one in their name is held too. Known people and other channels are never affected.",
+     "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
+     "help": "Some spam comes from a new keyboard-mashed name every time, so there is never a second message to learn from. People almost never type { } ` ^ or \\ in chat, or put $ % < : or ; in their name, so on Public those are held unless the sender is a known name. Works from the first message."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
@@ -514,6 +524,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "known_min_minutes": 60,
     "known_days": 30,
     "hold_links": "campaign",
+    "symbol_junk": True,
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
     "auto_lockdown": True,
@@ -3758,7 +3769,8 @@ class SpamGuard:
                 "manual": "Matches a block you added",
                 "budget": "Far more messages from this name than anyone normally sends",
                 "linkhost": "A link to a site several new names are posting",
-                "imposter": "A known name arriving from somewhere new during spam"}
+                "imposter": "A known name arriving from somewhere new during spam",
+                "junk": "Random keyboard symbols from a name SpamGuard doesn't know"}
     Q_STATUSES = ("stopped", "held", "letthrough", "genuine")
 
     def _q_classify(self, m: dict) -> tuple:
@@ -3769,7 +3781,8 @@ class SpamGuard:
         if m.get("caught_by"):
             people = kind in PEOPLE_KINDS and src != "manual"
             if people and not spammy:
-                return "held", self.Q_REASON.get(kind) or self.Q_REASON.get(src) or "Held by a block meant for spam"
+                return "held", (self.Q_REASON.get(src) if src == "junk" else None) or self.Q_REASON.get(kind) \
+                    or self.Q_REASON.get(src) or "Held by a block meant for spam"
             return "stopped", self.Q_REASON.get(src) or self.Q_REASON.get(kind) or "Matched a spam block"
         if spammy and not m.get("known"):
             why = ("Hidden or look-alike characters in the name" if m.get("obfuscated")
@@ -4347,7 +4360,9 @@ class SpamGuard:
         if b["kind"] == "lockdown":
             return True
         if b["kind"] == "links":
-            return any(w in e.text for w in b["value"])
+            if b.get("only_channel") and e.channel != b["only_channel"]:
+                return False
+            return any(w in e.text for w in b["value"]) or any(w in e.sender for w in b.get("names") or ())
         if b["kind"] == "hop":
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
@@ -5103,6 +5118,8 @@ class SpamGuard:
         if b["kind"] == "links":
             if b.get("source") == "linkhost":
                 return f"links to {str(b['value'][0]).rstrip('/')} from names SpamGuard doesn't know"
+            if b.get("source") == "junk":
+                return "keyboard-symbol junk (in the message or the name) on Public from names SpamGuard doesn't know"
             return "links from names SpamGuard doesn't know"
         if b["kind"] == "burst":
             return f"everything from {b['value']} for a while" + (f" on {b['channel']}" if b.get("channel") else "")
@@ -5982,6 +5999,20 @@ class SpamGuard:
         if "links:new" in self.blocks:
             self.blocks["links:new"].setdefault("links_mode", hl)
 
+        # 5b. Keyboard-symbol junk on Public: a standing block, so it works on the first message from a new
+        # name (one-off junk never gives a second message to learn from). Known people pass first.
+        if c.get("symbol_junk", True):
+            if "junk:symbols" not in self.blocks and self.suppressed.get("junk:symbols", 0) <= now \
+                    and self._add_block("junk:symbols", "links", list(JUNK_CHARS),
+                                        "Keyboard-symbol junk on Public is held unless the sender is known", "junk",
+                                        ttl=PERMANENT_SECONDS,
+                                        extra={"only_channel": "Public", "names": list(JUNK_NAME_CHARS)}):
+                changed = True
+            elif "junk:symbols" in self.blocks:
+                self.blocks["junk:symbols"].setdefault("names", list(JUNK_NAME_CHARS))
+        elif self.blocks.pop("junk:symbols", None):
+            changed = True
+
         # Blocks that stop everyone, people SpamGuard knows included, never last more than a week from now
         # (a repeater block on 'anything passing through', or text). Others can be kept until removed.
         for b in self.blocks.values():
@@ -6258,6 +6289,7 @@ class SpamGuard:
             only = self._channel_cond(b)
             if b["kind"] == "links":
                 conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
+                conds += [(f"name{w}", [{"field": "channel_sender", "op": "contains", "value": w}]) for w in b.get("names") or ()]
             elif b["kind"] == "hop":
                 forms, nw, sh = self._hop_forms(b["value"])
                 self._route_count(nw, sh, bool(forms))
@@ -6295,7 +6327,7 @@ class SpamGuard:
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto", "type-auto": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
-                   "budget": "too many", "linkhost": "link campaign", "imposter": "borrowed name"}
+                   "budget": "too many", "linkhost": "link campaign", "imposter": "borrowed name", "junk": "symbol junk"}
 
     @staticmethod
     def _named_channels(objs: dict) -> dict[str, str]:
@@ -6346,6 +6378,8 @@ class SpamGuard:
             what = f"{str(b.get('who') or '')[:20]} via {v}"
         elif kind == "links" and b.get("source") == "linkhost":
             what = "links to " + str(v[0]).rstrip("/")[:24]
+        elif kind == "links" and b.get("source") == "junk":
+            what = "symbol junk"
         else:
             what = str(kind or "")
         where = f" on {b['only_channel']}" if b.get("only_channel") else ""
@@ -7985,7 +8019,7 @@ class SpamGuard:
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "type-auto": 1, "links": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "type-auto": 1, "links": 1, "junk": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),

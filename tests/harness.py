@@ -70,7 +70,10 @@ def guard(m, **over):
     if os.path.exists(st): os.remove(st)
     # Most tests were written when one message made a name "known"; they test other things, so keep that.
     cfg={"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
-         "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False}
+         "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False,
+         # The standing symbol-junk block (6.29.0) is tested on its own in testsymboljunk.py; older tests
+         # count blocks and Activity lines from scratch, so it stays off unless a test turns it on.
+         "symbol_junk":False}
     cfg.update(over); return sg.SpamGuard(cfg)
 def mock():
     PORT[0]+=1; return Mock(0)
