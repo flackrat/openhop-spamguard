@@ -434,7 +434,7 @@ SETTINGS_META: list[dict] = [
     {"key": "spoof_watch", "group": "Experimental", "type": "bool",
      "risk": "Someone who usually chats from nearby and posts while far away, through a repeater they never use, is held from that repeater for a while. You can remove it under Blocks.",
      "label": "Spot copied names (experimental)",
-     "help": "Holds a name that is nearly always a few hops away when it arrives from far off through a repeater it never uses, or from far off while it's also heard nearby. Names that differ only by spaces, dashes or capitals count as one person. Each hold says whose name was copied and why. Also records companion adverts and device clocks in the evidence log."},
+     "help": "Holds a name usually a few hops away when it arrives from far off through a repeater it never uses, or far off while also heard nearby. Spellings differing only by spaces, dashes or capitals count as one person. Each hold says whose name was copied. Also logs companion adverts and device clocks."},
     {"key": "public_bots", "group": "Experimental", "type": "bool",
      "risk": "A bot that uses a format not listed gets through. A person who types a command or signal report on Public is caught too. Only counts until you turn off the setting below.",
      "label": "Keep bots off the Public channel (experimental)",
