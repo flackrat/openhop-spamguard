@@ -15,6 +15,21 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.31.0
+
+A second private review looked for more ways round SpamGuard. This release closes or narrows the ones SpamGuard can deal with on its own; the rest need changes in openHop (an exact-text rule can't ignore capital letters) or can't be seen by a repeater at all (private messages), and are described only in general terms here.
+
+- **Disguised copies bring a short newcomer hold.** When the same message keeps arriving from several names with its letters changed each time, so no text rule can match the next copy, only people SpamGuard knows get through for 15 minutes. This counts towards the limit of two automatic lockdowns an hour.
+- **Invisible spaces count as keyboard junk.** Messages from names SpamGuard doesn't know with invisible spacing characters in them are held on Public. The joiners used inside emoji and kaomoji are left alone.
+- **Links without "http" or "www" are links.** Website addresses with a path ("example.com/page"), and "dot com" style spellings, are now held and counted like other links.
+- **Long or wordy @[...] brackets are read** whatever surrounds them, since no MeshCore name is that long.
+- **While automatic lockdowns are paused, a flood still gets holds** on the repeaters it comes in by, for 15 minutes.
+- **A repeater many known people use gets a narrow route block on one sign**: just the route the made-up names take through it, while the whole repeater still needs two.
+- **Adverts from repeaters first heard in the last few hours don't make a code look shared** when deciding whether to block it.
+- **Marking a message as spam ends that name's long-standing pass** for keyboard junk for 30 days, as does tripping limits repeatedly.
+- **Copies of a known name at quiet times are checked for names with less history** (10 messages from their usual way in instead of 20).
+- **New: Mute this name for 7 days.** In Messages, on a message you've labelled as spam, you can hold everything from that name on that channel for 7 days. It's for a name that mixes ordinary chat with spam; anyone using the name is held, so it only happens when you ask, and it lapses on its own.
+
 ## v6.30.0
 
 A private review looked for ways a spammer could get round SpamGuard. This release closes the ones SpamGuard can close on its own; the rest need changes in openHop or signed names, and are described only in general terms here.

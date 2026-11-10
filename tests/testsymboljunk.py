@@ -31,7 +31,7 @@ b=g.blocks.get("junk:symbols")
 check(b is not None and b["kind"]=="links" and b["source"]=="junk" and b.get("only_channel")=="Public","standing block made, Public only")
 check(b and b["expires"]-time.time()>sg.PERMANENT_SECONDS/2,"it does not expire")
 rs=junk_rules(m)
-check(len(rs)==9 and all(r["then"]["action"]=="drop" for r in rs),"nine rules (four text symbols, five name symbols), dropping in Protect")
+check(len(rs)==len(sg.JUNK_CHARS)+len(sg.JUNK_NAME_CHARS) and all(r["then"]["action"]=="drop" for r in rs),"one rule per text symbol and per name symbol, dropping in Protect")
 names=[r["name"] for r in m.policy["policy_engine"]["rules"]]
 kn=next((i for i,n in enumerate(names) if "known-people" in n),None)
 st_=next((i for i,n in enumerate(names) if n.endswith("known-settled")),None)
