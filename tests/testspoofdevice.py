@@ -9,11 +9,7 @@ def check(c,msg):
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
 def enc_at(sender,text,sent,key=sg.PUBLIC_CHANNEL_KEY):
-    k=sg._secret32(key)
-    pt=int(sent).to_bytes(4,"little")+b"\x00"+f"{sender}: {text}".encode()
-    pt+=b"\x00"*((-len(pt))%16)
-    ct=AES.new(k[:16],AES.MODE_ECB).encrypt(pt)
-    return (bytes([sg.channel_hash_byte(key)])+hmac.new(k,ct,hashlib.sha256).digest()[:2]+ct).hex()
+    return enc(sender,text,key,sent=sent)
 def add_at(m,sender,text,path,sent,ago=0):
     m.packets.append({"id":len(m.packets)+1,"timestamp":time.time()-ago,"type":5,"payload":enc_at(sender,text,sent),
         "packet_hash":os.urandom(8).hex(),"original_path":json.dumps(path)})

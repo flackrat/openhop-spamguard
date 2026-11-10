@@ -11,9 +11,9 @@ import spamguard as sg
 from repeater.policy_engine import PolicyEngine
 logging=__import__("logging"); logging.basicConfig(level=logging.ERROR)
 
-def enc(sender, text, key=sg.PUBLIC_CHANNEL_KEY):
+def enc(sender, text, key=sg.PUBLIC_CHANNEL_KEY, sent=None):
     k = sg._secret32(key)
-    pt = int(time.time()).to_bytes(4,"little") + b"\x00" + f"{sender}: {text}".encode()
+    pt = int(time.time() if sent is None else sent).to_bytes(4,"little") + b"\x00" + f"{sender}: {text}".encode()
     pt += b"\x00" * ((-len(pt)) % 16)
     ct = AES.new(k[:16], AES.MODE_ECB).encrypt(pt)
     return (bytes([sg.channel_hash_byte(key)]) + hmac.new(k, ct, hashlib.sha256).digest()[:2] + ct).hex()
