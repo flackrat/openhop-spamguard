@@ -15,6 +15,10 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.32.1
+
+- **Spot copied names (experimental) is harder to dodge.** Near-identical spellings of a name are treated as one person, copies can no longer rewrite who that person is, and a hold stays on while it keeps catching copies.
+
 ## v6.32.0
 
 - **Keeping bots off Public and stopping repeat sends are now standard features, on by default.** Both proved themselves as experiments: nothing anyone marked as fine was stopped. Turn either off in Settings. If you had set them yourself, your choice is kept.

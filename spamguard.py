@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.32.0"
+VERSION = "6.32.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -4555,6 +4555,9 @@ class SpamGuard:
                                  "source": "dedupe", "reason": b.get("reason"), "exempt_sender": b.get("sender")})
                     b["hits"] = b.get("hits", 0) + 1
                     b["last_hit"] = e.ts
+                    if b["kind"] == "imposter" and b.get("source") == "spoof":
+                        # still catching copies: keep holding, but never more than a day from when it started
+                        b["expires"] = max(b["expires"], min(e.ts + self.SPOOF_HOLD_KEEP, b["created"] + 86400))
                     self.stats["caught"] += 1
                     self.catches.append(e.ts)
                 return
@@ -4667,6 +4670,7 @@ class SpamGuard:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
                 if e.path and not e.local and not e.unverified and not self._far_from_home(e) \
+                        and not self._quarantined(e) \
                         and (e.first_hop in self.homes.get(e.sender, {}) or not self.attack_on(e.ts)):
                     near = self.near.setdefault(self.name_family(e.sender), [])
                     near.append(len(e.path))
@@ -4753,12 +4757,42 @@ class SpamGuard:
     LOCAL_HOPS = 4    # a name nearly always heard within this many hops counts as local
     FAR_HOPS = 8      # ...and its name arriving from this far, through a repeater it never uses, looks copied
 
-    @staticmethod
-    def name_family(who: str) -> str:
-        """Names that differ only by spaces, dashes, dots or capitals ("Andy-MacOS", "Andy MacOS") are one person
-        for the copied-name check. Names with no letters or digits stay as they are."""
+    SPOOF_HOLD_KEEP = 3600   # a copy-hold that keeps catching things lasts this much longer each time
+    LOOKALIKE_RATIO = 0.65   # with the copied-name check on, names this alike, starting the same way, count as one
+
+    def name_family(self, who: str) -> str:
+        """Names that differ only by spaces, dashes, dots or capitals ("Sam-Lowmesh", "Sam Lowmesh") are one person
+        for the copied-name check. Names with no letters or digits stay as they are. With the copied-name check
+        on, a near-identical spelling that starts the same way joins the same family, so a copy can't dodge the
+        check by changing a letter or two."""
         f = re.sub(r"[^0-9a-z]", "", str(who or "").casefold())
-        return f if len(f) >= 4 else str(who or "")
+        f = f if len(f) >= 4 else str(who or "")
+        if not self.cfg.get("spoof_watch") or len(f) < 6:
+            return f
+        canon = self.__dict__.setdefault("_fam_canon", {})
+        buckets = self.__dict__.get("_fam_buckets")
+        if buckets is None:
+            # first use (or after a restart): the families already saved are the ones to join, so a newcomer
+            # that arrives first can't take over the key a person's saved history is kept under
+            buckets = self.__dict__["_fam_buckets"] = {}
+            for table in (self.near, self.fam_names, self.clocks):
+                for k in table:
+                    if len(k) >= 6 and k not in canon:
+                        canon[k] = k
+                        buckets.setdefault(k[:5], []).append(k)
+        hit = canon.get(f)
+        if hit is not None:
+            return hit
+        for k in buckets.get(f[:5], ()):
+            if difflib.SequenceMatcher(None, f, k).ratio() >= self.LOOKALIKE_RATIO:
+                canon[f] = k
+                return k
+        buckets.setdefault(f[:5], []).append(f)
+        canon[f] = f
+        if len(canon) > 6000:   # bounded memory: start again rather than grow without limit
+            canon.clear()
+            buckets.clear()
+        return f
 
     def _family_homes(self, who: str) -> dict:
         hm: dict = {}
@@ -4781,6 +4815,17 @@ class SpamGuard:
         if not self.cfg.get("spoof_watch") or not e.path or len(e.path) < self.FAR_HOPS or not self._local(e.sender):
             return False
         hm = self._family_homes(e.sender)
+        return e.first_hop not in hm and not any(hops_related(e.first_hop, x) for x in hm)
+
+    def _quarantined(self, e) -> bool:
+        """A far arrival through a repeater this person (or a near-identical name) is never heard through. It must
+        not count towards who the person is, or a copy could rewrite their usual ways in within a few messages."""
+        if not self.cfg.get("spoof_watch") or not e.path or len(e.path) < self.FAR_HOPS:
+            return False
+        hm = self._family_homes(e.sender)
+        near = self.near.get(self.name_family(e.sender)) or []
+        if len(near) < 3 or sum(hm.values()) < 3 or not self._local(e.sender):
+            return False
         return e.first_hop not in hm and not any(hops_related(e.first_hop, x) for x in hm)
 
     CLOCK_OFF = 86400   # a device clock this far out, under a name whose own device keeps good time
