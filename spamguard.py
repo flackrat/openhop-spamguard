@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.31.1"
+VERSION = "6.32.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -250,6 +250,14 @@ SETTINGS_META: list[dict] = [
     {"key": "similarity", "risk": "Lower catches reworded spam but may group similar genuine messages, like bot replies. Higher is easier to dodge.", "group": "Blocking by message text", "type": "int", "min": 30, "max": 100, "unit": "%",
      "preset": True, "label": "How similar counts as 'the same'",
      "help": "Messages this similar are grouped, so added words, capitals or look-alike letters don't dodge the filter. 100% means identical only."},
+    {"key": "public_bots", "group": "Blocking by message text", "type": "bool",
+     "risk": "A bot using a format SpamGuard doesn't recognise gets through. A person who types a bot command or signal report on Public is stopped too.",
+     "label": "Keep bots off the Public channel",
+     "help": "Public is meant for people. Bot-style messages there (commands and automatic signal reports) are counted with the airtime they used and not passed on. Other channels are never touched."},
+    {"key": "public_bots_log_only", "group": "Blocking by message text", "type": "bool",
+     "risk": "On: counting only. Off: those messages on Public are no longer passed on.",
+     "label": "Bots on Public: count only, don't stop",
+     "help": "Turn this on to only count bot messages on Public without stopping them."},
     {"key": "min_rule_chars", "risk": "Lower = rules can be built from shorter shared text (helps with heavily varied spam), but a short rule such as 'the meeting' could block genuine messages containing it. Higher = safer, but heavily varied spam may not produce a rule at all.", "group": "Blocking by message text", "type": "int", "min": 8, "max": 80,
      "label": "Shortest text a block may match",
      "help": "A text rule must match at least this many characters, so it never blocks something short and common."},
@@ -325,6 +333,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
      "label": "Copies allowed before slow repeats are stopped",
      "help": "How many times one name can send the same long message within the day before further copies are held."},
+    {"key": "quick_resend_hold", "group": "Copies and repeats", "type": "bool",
+     "risk": "Someone who genuinely retries inside the resend time is stopped too, even if the first copy didn't reach anyone. People SpamGuard knows are never stopped.",
+     "label": "Stop repeat sends of the same message",
+     "help": "Someone sends a message, doesn't see it, and sends it again within a minute. With this on, the repeat is not passed on, which saves airtime. The first copy is never stopped, and short messages are left alone. Needs the double-send count and the repeat guard to be on."},
     {"key": "slow_repeat_window_seconds", "group": "Copies and repeats", "type": "int", "preset": True, "min": 3600, "max": 172800, "unit": "s",
      "risk": "Longer = catches slower repeating, but a message re-posted once a day for a week is never counted against the daily limit anyway. Shorter = only quick repeating counts.",
      "label": "Counted over (slow repeats)",
@@ -427,22 +439,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Showing the list changes nothing. Each feature below is off until you turn it on.",
      "label": "Show experimental features",
      "help": "Ideas we are still testing. They are hidden by default, and each one is off until you switch it on. Switching this on only shows them; it changes nothing. Any you have already turned on stay visible."},
-    {"key": "quick_resend_hold", "group": "Experimental", "type": "bool",
-     "risk": "Someone who genuinely retries inside the resend time is stopped too, even if the first copy didn't reach anyone.",
-     "label": "Stop repeat sends of the same message (experimental)",
-     "help": "Someone sends a message, doesn't see it, and sends it again within a minute. Normally the repeat is only counted. With this on, the repeat is not passed on, which saves airtime. The first copy is never stopped, and messages under six characters are left alone. Needs the double-send count and the repeat guard to be on."},
     {"key": "spoof_watch", "group": "Experimental", "type": "bool",
      "risk": "Someone who usually chats from nearby and posts while far away, through a repeater they never use, is held from that repeater for a while. You can remove it under Blocks.",
      "label": "Spot copied names (experimental)",
      "help": "Holds a name usually a few hops away when it arrives from far off through a repeater it never uses, or far off while also heard nearby. Spellings differing only by spaces, dashes or capitals count as one person. Each hold says whose name was copied. Also logs companion adverts and device clocks."},
-    {"key": "public_bots", "group": "Experimental", "type": "bool",
-     "risk": "A bot that uses a format not listed gets through. A person who types a command or signal report on Public is caught too. Only counts until you turn off the setting below.",
-     "label": "Keep bots off the Public channel (experimental)",
-     "help": "Public is meant for people. This spots bot-style messages there: ones starting with !, ones containing both SNR and RSSI, and ones containing both Hops: and Path:. They are counted along with the airtime they used. Other channels are never touched. Works offline."},
-    {"key": "public_bots_log_only", "group": "Experimental", "type": "bool",
-     "risk": "On: counting only. Off: those messages on Public are no longer passed on.",
-     "label": "Bots on Public: count only, don't stop (experimental)",
-     "help": "While this is on, nothing is blocked; you just see how many bot messages there are. Turn it off when the count on the Overview looks right and you want them stopped."},
     {"key": "text_sense", "group": "Experimental", "type": "bool",
      "risk": "It can be wrong, for example when a person repeats or quotes spam while warning others. Start with the setting below on.",
      "label": "Spot reworded spam from my spam marks (experimental)",
@@ -564,10 +564,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "vary_limits": True,
     "repeat_guard": True,
-    "public_bots": False,
-    "public_bots_log_only": True,
+    "public_bots": True,
+    "public_bots_log_only": False,
     "quick_resend": True,
-    "quick_resend_hold": False,
+    "quick_resend_hold": True,
     "spoof_watch": False,
     "show_experimental": False,
     "quick_resend_seconds": 45,
@@ -1724,6 +1724,7 @@ class SpamGuard:
         self.spam_marked: dict[str, list] = {}   # name -> when you marked one of their messages as spam
         self.near: dict[str, list] = {}   # name family -> hop counts of its recent messages from its usual ways in
         self.fam_names: dict[str, set] = {}   # name family -> the names in it heard from their usual ways in
+        self.clocks: dict[str, list] = {}    # name family -> [time heard, how far its device clock was out]
         self._adv_logged: dict[str, float] = {}
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
@@ -2119,6 +2120,13 @@ class SpamGuard:
             if isinstance(v, dict) and re.fullmatch(r"\d{4}-\d\d-\d\d", str(d)):
                 self.signed_stats[str(d)] = {k: int(v.get(k) or 0) for k in ("n", "ok", "bad", "unk", "ids")}
         day8 = now - 8 * 86400
+        for k, v in (st.get("clocks") or {}).items():
+            if isinstance(v, list):
+                d = [[int(x[0]), int(x[1])] for x in v if isinstance(x, list) and len(x) == 2
+                     and all(isinstance(y, int) and not isinstance(y, bool) for y in x) and 0 < x[0] <= now + 60
+                     and abs(x[1]) < 10 ** 10][-20:]
+                if d:
+                    self.clocks[str(k)[:40]] = d
         for k, v in (st.get("fam_names") or {}).items():
             if isinstance(v, list):
                 names = {str(x)[:40] for x in v if isinstance(x, str) and x}
@@ -2232,6 +2240,7 @@ class SpamGuard:
                     "labels": dict(list(self.labels.items())[-1000:]),
                     "near": {k: v[-30:] for k, v in list(self.near.items())[-3000:] if v},
                     "fam_names": {k: sorted(v)[:8] for k, v in list(self.fam_names.items())[-3000:] if v},
+                    "clocks": {k: v[-20:] for k, v in list(self.clocks.items())[-3000:] if v},
                     "spam_marked": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.spam_marked.items())[-2000:]
                                     if v and v[-1] > time.time() - 30 * 86400},
                     "label_at": {k: round(self.label_at[k], 1) for k in list(self.labels)[-1000:] if k in self.label_at},
@@ -4648,6 +4657,12 @@ class SpamGuard:
                 self._note_machine(e)
             if not e.replay and not e.local and not again:
                 self._sense_note(e)
+            if not again and not e.local and e.sent_ts and e.sender and not e.matched:
+                ck = self.clocks.setdefault(self.name_family(e.sender), [])
+                ck.append([round(e.ts), round(e.ts - e.sent_ts)])
+                del ck[:-20]
+                while len(self.clocks) > 3000:
+                    self.clocks.pop(next(iter(self.clocks)))
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
@@ -4767,6 +4782,24 @@ class SpamGuard:
             return False
         hm = self._family_homes(e.sender)
         return e.first_hop not in hm and not any(hops_related(e.first_hop, x) for x in hm)
+
+    CLOCK_OFF = 86400   # a device clock this far out, under a name whose own device keeps good time
+
+    def _other_device(self, e) -> bool:
+        """The name's device clock is far out, but the same name (or family) was heard with a good clock in the
+        last week: a different device using the name. Experimental."""
+        if not self.cfg.get("spoof_watch") or not e.sent_ts or abs(e.ts - e.sent_ts) < self.CLOCK_OFF:
+            return False
+        return any(abs(off) < 600 and e.ts - t < 7 * 86400
+                   for t, off in self.clocks.get(self.name_family(e.sender), ()))
+
+    def _forget_way_in(self, who: str, hop: str) -> None:
+        """A repeater a copy of this name came through is not one of the person's usual ways in."""
+        for n in self.fam_names.get(self.name_family(who), ()) or (who,):
+            hm = self.homes.get(n)
+            if hm:
+                for h in [h for h in hm if h == hop or hops_related(h, hop)]:
+                    hm.pop(h, None)
 
     def _two_places(self, e, window) -> bool:
         """The same name (or family) heard nearby through a usual way in, and from far off through somewhere it
@@ -4912,13 +4945,13 @@ class SpamGuard:
         f = {"key": "public_bots", "label": "Bots on Public", "ready": False, "progress": round(prog, 2), "suggestion": None}
         if not c.get("public_bots"):
             f["status"] = "Off. Switch it on in count-only mode to find out how many bot messages Public gets."
-        elif c.get("public_bots_log_only", True):
+        elif c.get("public_bots_log_only", False):
             f["ready"] = bool(steady)
             if not steady:
                 f["status"] = traffic_note
             elif pb >= 5:
                 f["status"] = f"Counted {pb} bot messages on Public in the last 3 days."
-                f["suggestion"] = {"text": "Start stopping them.", "why": f"{pb} bot messages on Public in 3 days. Turn off 'count only' in Experimental settings.",
+                f["suggestion"] = {"text": "Start stopping them.", "why": f"{pb} bot messages on Public in 3 days. Turn off 'count only' in the settings.",
                                    "set": {"public_bots_log_only": False}}
             else:
                 f["status"] = f"Only {pb} bot messages on Public in 3 days. Not worth stopping yet."
@@ -6226,14 +6259,15 @@ class SpamGuard:
                     continue
                 if not self.is_known(e.sender) and not (fam_on and self._local(e.sender)):
                     continue   # (with the copied-name check on, a new spelling of a nearby person's name counts too)
+                device = self._other_device(e)
                 # This name's recent messages from here may already have been counted as a usual way in.
                 here = sum(1 for x in a["window"] if x.sender == e.sender and x.first_hop == e.first_hop)
                 base = self._family_homes(e.sender) if fam_on else (self.homes.get(e.sender) or {})
                 hm = {h: n - (here if h == e.first_hop else 0) for h, n in base.items()}
                 hm = {h: n for h, n in hm.items() if n > 0}
-                if sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm):
+                if not device and (sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm)):
                     continue
-                far = self._far_from_home(e) or self._two_places(e, a["window"])
+                far = device or self._far_from_home(e) or self._two_places(e, a["window"])
                 if far:
                     pass   # a local name from far away, through a repeater it never uses: a copy, attack or not
                 elif calm:
@@ -6252,12 +6286,17 @@ class SpamGuard:
                     fhm = self._family_homes(e.sender)
                     usual = self._usual_hops(e.sender)
                     via = max(fhm, key=fhm.get) if fhm else None
-                    two = self._two_places(e, a["window"])
+                    two = not device and self._two_places(e, a["window"])
                     extra["spoof"] = {"of": e.sender, "hops": len(e.path), "via": e.first_hop, "usual_hops": usual,
-                                      "usual_via": via, "why": "two places" if two else "far"}
-                    why = (f"Spoofed name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
-                           + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
-                           + (", while they were also heard nearby" if two else ""))
+                                      "usual_via": via, "why": "device" if device else "two places" if two else "far"}
+                    if device:
+                        self._forget_way_in(e.sender, e.first_hop)
+                        why = (f"Spoofed name: {e.sender} sent from a different device than the one they usually use; "
+                               f"this came {len(e.path)} hops via {e.first_hop}")
+                    else:
+                        why = (f"Spoofed name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
+                               + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
+                               + (", while they were also heard nearby" if two else ""))
                 else:
                     why = ("A well-known name sending something spam-shaped through a repeater it has never used" if calm
                            else "A known name heard through the repeater spam is coming in by, which it has never used")
@@ -6496,7 +6535,7 @@ class SpamGuard:
         """Keep bots off Public (opt-in, and only counting at first): one rule per bot shape, Public only,
         readable messages only. This repeater's own companions are never affected (_not_own)."""
         c = self.cfg
-        if not c.get("public_bots") or c.get("public_bots_log_only", True):
+        if not c.get("public_bots") or c.get("public_bots_log_only", False):
             return []
         act = "drop" if c["mode"] == "protect" and not c.get("paused") else "log_only"
         rules = []
@@ -8396,7 +8435,7 @@ class SpamGuard:
                             "machine_by_hour": self.machine_by_hour(),
                             "pubbots_24h": sum(1 for t, _ in self.pubbots if t >= time.time() - 86400),
                             "pubbot_airtime_s_24h": round(sum(m for t, m in self.pubbots if t >= time.time() - 86400) / 1000, 1),
-                            "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", True) else "stop")),
+                            "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", False) else "stop")),
                             "resends_24h": sum(1 for t, _, _ in self.resends if t >= time.time() - 86400),
                             "resends_confirmed_24h": sum(1 for t, _, k in self.resends if t >= time.time() - 86400 and k in self.echoed),
                             "resend_echoes_24h": sum(len(self.echoed.get(k, ())) for t, _, k in self.resends if t >= time.time() - 86400),
@@ -8680,6 +8719,22 @@ class SpamGuard:
                                 extra={"only_channel": only} if only else None)
                 msg = (f"Blocking messages that start on route {'>'.join(hops)}. People SpamGuard knows still get through."
                        + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
+            elif op == "hold_name_hop":
+                # You hold one name, only when it arrives through one repeater (someone copying it from there),
+                # for a week. The person still gets through from anywhere else.
+                who = str(body.get("sender") or "").strip()
+                hop = str(body.get("hop") or "").strip().upper()
+                if not who or who in ("?", "Unknown") or not re.fullmatch(r"[0-9A-F]{2,6}", hop):
+                    raise ValueError("Which name and repeater?")
+                ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else "Public"
+                key = "imposter:" + hashlib.sha1(f"{who}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                self.suppressed.pop(key, None)
+                self.blocks.pop(key, None)
+                self._forget_way_in(who, hop)
+                self._add_block(key, "imposter", hop, f"Held by you: copies of {who} through repeater {hop}", "manual",
+                                channel=ch, ttl=7 * 86400, extra={"who": who})
+                msg = (f"Holding '{who}' when it arrives through repeater {hop} for 7 days. The real person still gets "
+                       "through from anywhere else." + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op == "mute":
                 # A name you choose to hold everywhere on one channel for a few days, then it lapses on its own.
                 # For a known name that mixes ordinary chat with spam: name blocks were removed in 5.10 because a
@@ -9077,7 +9132,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",

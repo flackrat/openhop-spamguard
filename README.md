@@ -52,7 +52,8 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 
 **Help with settings**
 - **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps (tightening quickly, loosening slowly, never above a ceiling you can set, and stopping the moment you drag the slider yourself). Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
-- **Experimental features**, hidden until you ask for them. Each is off by default and counts before it acts. Today: keep bots off Public, stop repeat sends, and spot reworded spam from your own marks.
+- **Bots kept off Public and repeat sends stopped**, on by default, both with a switch in Settings.
+- **Experimental features**, hidden until you ask for them. Each is off by default. Today: spot copied names, and spot reworded spam from your own marks.
 
 **Principles**
 - **Spam, not opinions:** it stops how spam is sent, never what people say.
