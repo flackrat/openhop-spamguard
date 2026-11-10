@@ -15,6 +15,10 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.31.1
+
+- **The keyboard-junk block recognises more mashed names.** Three more symbols that turn up in throwaway keyboard-mashed names, and almost never in real ones, now count. Replayed on the 10 Nov evidence: at Strict, 6 of 6 marked spam caught instead of 5, at Balanced 5 instead of 4, with one extra message held, also spam. People SpamGuard knows pass first, as before.
+
 ## v6.31.0
 
 A second private review looked for more ways round SpamGuard. This release closes or narrows the ones SpamGuard can deal with on its own; the rest need changes in openHop (an exact-text rule can't ignore capital letters) or can't be seen by a repeater at all (private messages), and are described only in general terms here.

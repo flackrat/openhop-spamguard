@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.31.0"
+VERSION = "6.31.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -99,7 +99,9 @@ PERMANENT_SECONDS = 10 * 365 * 86400
 # the emoji joiner U+200D are left out: kaomoji and emoji use them).
 JUNK_CHARS = ("{", "}", "`", "\\", "\u200b", "\u200c", "\ufeff", "\u180e")
 # Symbols found in hundreds of keyboard-mashed throwaway names and in no known person's name in those logs.
-JUNK_NAME_CHARS = ("$", "%", "<", ":", ";")
+# > = and £ added on 10 Nov 2026 (in 391 of 502 mashed names with the first five; the only other names using
+# them were the spammers' own and one ordinary name, and known people pass first anyway).
+JUNK_NAME_CHARS = ("$", "%", "<", ":", ";", ">", "=", "£")
 # SpamGuard stops how spam is sent, not what people say. Blocks on message text can't last for ever,
 # a text you block by hand must be long enough to be a spam message rather than a word or a name, and it
 # never stops people SpamGuard knows (they are only ever de-duplicated or slowed when they repeat).
@@ -352,7 +354,7 @@ SETTINGS_META: list[dict] = [
     {"key": "symbol_junk", "group": "Known people", "type": "bool",
      "risk": "A newcomer typing one of these (say, curly brackets in code) or with one in their name is held too, as is a recently known person typing one. Other channels are untouched.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
-     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` or \\ in chat, or put $ % < : or ; in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
+     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` or \\ in chat, or put $ % < : ; > = or £ in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
