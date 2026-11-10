@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.31.2"
+VERSION = "6.32.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -250,6 +250,14 @@ SETTINGS_META: list[dict] = [
     {"key": "similarity", "risk": "Lower catches reworded spam but may group similar genuine messages, like bot replies. Higher is easier to dodge.", "group": "Blocking by message text", "type": "int", "min": 30, "max": 100, "unit": "%",
      "preset": True, "label": "How similar counts as 'the same'",
      "help": "Messages this similar are grouped, so added words, capitals or look-alike letters don't dodge the filter. 100% means identical only."},
+    {"key": "public_bots", "group": "Blocking by message text", "type": "bool",
+     "risk": "A bot using a format SpamGuard doesn't recognise gets through. A person who types a bot command or signal report on Public is stopped too.",
+     "label": "Keep bots off the Public channel",
+     "help": "Public is meant for people. Bot-style messages there (commands and automatic signal reports) are counted with the airtime they used and not passed on. Other channels are never touched."},
+    {"key": "public_bots_log_only", "group": "Blocking by message text", "type": "bool",
+     "risk": "On: counting only. Off: those messages on Public are no longer passed on.",
+     "label": "Bots on Public: count only, don't stop",
+     "help": "Turn this on to only count bot messages on Public without stopping them."},
     {"key": "min_rule_chars", "risk": "Lower = rules can be built from shorter shared text (helps with heavily varied spam), but a short rule such as 'the meeting' could block genuine messages containing it. Higher = safer, but heavily varied spam may not produce a rule at all.", "group": "Blocking by message text", "type": "int", "min": 8, "max": 80,
      "label": "Shortest text a block may match",
      "help": "A text rule must match at least this many characters, so it never blocks something short and common."},
@@ -325,6 +333,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Lower = a repeated message is cut off sooner, but a notice that is genuinely re-posted a few times a day may be held. Higher = more copies go out first.",
      "label": "Copies allowed before slow repeats are stopped",
      "help": "How many times one name can send the same long message within the day before further copies are held."},
+    {"key": "quick_resend_hold", "group": "Copies and repeats", "type": "bool",
+     "risk": "Someone who genuinely retries inside the resend time is stopped too, even if the first copy didn't reach anyone. People SpamGuard knows are never stopped.",
+     "label": "Stop repeat sends of the same message",
+     "help": "Someone sends a message, doesn't see it, and sends it again within a minute. With this on, the repeat is not passed on, which saves airtime. The first copy is never stopped, and short messages are left alone. Needs the double-send count and the repeat guard to be on."},
     {"key": "slow_repeat_window_seconds", "group": "Copies and repeats", "type": "int", "preset": True, "min": 3600, "max": 172800, "unit": "s",
      "risk": "Longer = catches slower repeating, but a message re-posted once a day for a week is never counted against the daily limit anyway. Shorter = only quick repeating counts.",
      "label": "Counted over (slow repeats)",
@@ -427,22 +439,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Showing the list changes nothing. Each feature below is off until you turn it on.",
      "label": "Show experimental features",
      "help": "Ideas we are still testing. They are hidden by default, and each one is off until you switch it on. Switching this on only shows them; it changes nothing. Any you have already turned on stay visible."},
-    {"key": "quick_resend_hold", "group": "Experimental", "type": "bool",
-     "risk": "Someone who genuinely retries inside the resend time is stopped too, even if the first copy didn't reach anyone.",
-     "label": "Stop repeat sends of the same message (experimental)",
-     "help": "Someone sends a message, doesn't see it, and sends it again within a minute. Normally the repeat is only counted. With this on, the repeat is not passed on, which saves airtime. The first copy is never stopped, and messages under six characters are left alone. Needs the double-send count and the repeat guard to be on."},
     {"key": "spoof_watch", "group": "Experimental", "type": "bool",
      "risk": "Someone who usually chats from nearby and posts while far away, through a repeater they never use, is held from that repeater for a while. You can remove it under Blocks.",
      "label": "Spot copied names (experimental)",
      "help": "Holds a name usually a few hops away when it arrives from far off through a repeater it never uses, or far off while also heard nearby. Spellings differing only by spaces, dashes or capitals count as one person. Each hold says whose name was copied. Also logs companion adverts and device clocks."},
-    {"key": "public_bots", "group": "Experimental", "type": "bool",
-     "risk": "A bot that uses a format not listed gets through. A person who types a command or signal report on Public is caught too. Only counts until you turn off the setting below.",
-     "label": "Keep bots off the Public channel (experimental)",
-     "help": "Public is meant for people. This spots bot-style messages there: ones starting with !, ones containing both SNR and RSSI, and ones containing both Hops: and Path:. They are counted along with the airtime they used. Other channels are never touched. Works offline."},
-    {"key": "public_bots_log_only", "group": "Experimental", "type": "bool",
-     "risk": "On: counting only. Off: those messages on Public are no longer passed on.",
-     "label": "Bots on Public: count only, don't stop (experimental)",
-     "help": "While this is on, nothing is blocked; you just see how many bot messages there are. Turn it off when the count on the Overview looks right and you want them stopped."},
     {"key": "text_sense", "group": "Experimental", "type": "bool",
      "risk": "It can be wrong, for example when a person repeats or quotes spam while warning others. Start with the setting below on.",
      "label": "Spot reworded spam from my spam marks (experimental)",
@@ -564,10 +564,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dedupe_enabled": True,
     "vary_limits": True,
     "repeat_guard": True,
-    "public_bots": False,
-    "public_bots_log_only": True,
+    "public_bots": True,
+    "public_bots_log_only": False,
     "quick_resend": True,
-    "quick_resend_hold": False,
+    "quick_resend_hold": True,
     "spoof_watch": False,
     "show_experimental": False,
     "quick_resend_seconds": 45,
@@ -4945,13 +4945,13 @@ class SpamGuard:
         f = {"key": "public_bots", "label": "Bots on Public", "ready": False, "progress": round(prog, 2), "suggestion": None}
         if not c.get("public_bots"):
             f["status"] = "Off. Switch it on in count-only mode to find out how many bot messages Public gets."
-        elif c.get("public_bots_log_only", True):
+        elif c.get("public_bots_log_only", False):
             f["ready"] = bool(steady)
             if not steady:
                 f["status"] = traffic_note
             elif pb >= 5:
                 f["status"] = f"Counted {pb} bot messages on Public in the last 3 days."
-                f["suggestion"] = {"text": "Start stopping them.", "why": f"{pb} bot messages on Public in 3 days. Turn off 'count only' in Experimental settings.",
+                f["suggestion"] = {"text": "Start stopping them.", "why": f"{pb} bot messages on Public in 3 days. Turn off 'count only' in the settings.",
                                    "set": {"public_bots_log_only": False}}
             else:
                 f["status"] = f"Only {pb} bot messages on Public in 3 days. Not worth stopping yet."
@@ -6535,7 +6535,7 @@ class SpamGuard:
         """Keep bots off Public (opt-in, and only counting at first): one rule per bot shape, Public only,
         readable messages only. This repeater's own companions are never affected (_not_own)."""
         c = self.cfg
-        if not c.get("public_bots") or c.get("public_bots_log_only", True):
+        if not c.get("public_bots") or c.get("public_bots_log_only", False):
             return []
         act = "drop" if c["mode"] == "protect" and not c.get("paused") else "log_only"
         rules = []
@@ -8435,7 +8435,7 @@ class SpamGuard:
                             "machine_by_hour": self.machine_by_hour(),
                             "pubbots_24h": sum(1 for t, _ in self.pubbots if t >= time.time() - 86400),
                             "pubbot_airtime_s_24h": round(sum(m for t, m in self.pubbots if t >= time.time() - 86400) / 1000, 1),
-                            "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", True) else "stop")),
+                            "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", False) else "stop")),
                             "resends_24h": sum(1 for t, _, _ in self.resends if t >= time.time() - 86400),
                             "resends_confirmed_24h": sum(1 for t, _, k in self.resends if t >= time.time() - 86400 and k in self.echoed),
                             "resend_echoes_24h": sum(len(self.echoed.get(k, ())) for t, _, k in self.resends if t >= time.time() - 86400),

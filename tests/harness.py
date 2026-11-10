@@ -73,7 +73,10 @@ def guard(m, **over):
          "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False,
          # The standing symbol-junk block (6.29.0) is tested on its own in testsymboljunk.py; older tests
          # count blocks and Activity lines from scratch, so it stays off unless a test turns it on.
-         "symbol_junk":False}
+         "symbol_junk":False,
+         # On by default from 6.32.0; older tests describe them switched on one at a time (testmigrated632.py
+         # checks the new defaults), so the harness starts with them as they were.
+         "public_bots":False, "public_bots_log_only":True, "quick_resend_hold":False}
     cfg.update(over); return sg.SpamGuard(cfg)
 def mock():
     PORT[0]+=1; return Mock(0)
