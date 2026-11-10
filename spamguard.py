@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.29.0"
+VERSION = "6.30.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -92,8 +92,9 @@ PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
 PERMANENT_SECONDS = 10 * 365 * 86400
 # Symbols people almost never type in chat but random keyboard junk nearly always contains (checked against
 # every evidence log: about 21,500 messages). The standing junk block holds Public messages with any of them
-# from names SpamGuard doesn't know. '|' is left out: bots and route replies use it all the time.
-JUNK_CHARS = ("{", "}", "`", "^", "\\")
+# from names SpamGuard doesn't know. '|' is left out: bots and route replies use it all the time. '^' is left out
+# too: people write "^ this", and a reply to a spammer whose name has one carries it in the @[name].
+JUNK_CHARS = ("{", "}", "`", "\\")
 # Symbols found in hundreds of keyboard-mashed throwaway names and in no known person's name in those logs.
 JUNK_NAME_CHARS = ("$", "%", "<", ":", ";")
 # SpamGuard stops how spam is sent, not what people say. Blocks on message text can't last for ever,
@@ -346,9 +347,9 @@ SETTINGS_META: list[dict] = [
      "label": "Hold links from names it doesn't know",
      "help": "Spammers often post links. When on, channel messages containing a link are blocked unless the sender is a known name."},
     {"key": "symbol_junk", "group": "Known people", "type": "bool",
-     "risk": "A newcomer on Public who types one of these symbols (say, curly brackets in code) or has one in their name is held too. Known people and other channels are never affected.",
+     "risk": "A newcomer typing one of these (say, curly brackets in code) or with one in their name is held too, as is a recently known person typing one. Other channels are untouched.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
-     "help": "Some spam comes from a new keyboard-mashed name every time, so there is never a second message to learn from. People almost never type { } ` ^ or \\ in chat, or put $ % < : or ; in their name, so on Public those are held unless the sender is a known name. Works from the first message."},
+     "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. People rarely type { } ` or \\ in chat, or put $ % < : or ; in a name, so on Public those are held unless the sender is known (for the symbols in text, known for a week). Works from the first message."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
@@ -1091,9 +1092,20 @@ class TextSense:
             self.__init__()
 
 
+def smuggled(text: str) -> bool:
+    """A message that is (nearly) nothing but long @[...] brackets: words hidden where a reply's name goes, so
+    they would otherwise be left out of every text check. Real replies have a short name and their own words."""
+    rest = re.sub(r"[^0-9A-Za-z]", "", MENTION.sub(" ", text))
+    inside = "".join(re.sub(r"[^0-9A-Za-z]", "", m[2:-1]) for m in MENTION.findall(text))
+    return len(rest) < 8 and len(inside) >= 24
+
+
 def strip_mentions(text: str) -> str:
     """Replace @[name] mentions with a line break, so shared text is never just someone's name
-    and rule text never spans a mention (each piece stays a real part of the message)."""
+    and rule text never spans a mention (each piece stays a real part of the message). Text smuggled
+    inside the brackets is kept (see smuggled)."""
+    if smuggled(text):
+        return re.sub(r"@\[|\]", "\n", text)
     return MENTION.sub("\n", text)
 
 
@@ -1162,7 +1174,7 @@ def longest_piece(text: str) -> str:
 def normalise(text: str) -> str:
     """Fold case, strip invisible characters and emoji, map look-alikes, collapse punctuation.
     @[name] mentions are left out. Messages that are (nearly) all emoji are described by their emoji instead."""
-    text = MENTION.sub(" ", text)
+    text = re.sub(r"@\[|\]", " ", text) if smuggled(text) else MENTION.sub(" ", text)
     t = unicodedata.normalize("NFKC", TAG_CHARS.sub("", text)).translate(ZERO_WIDTH).casefold()
     t = "".join(ch for ch in unicodedata.normalize("NFKD", t) if not unicodedata.combining(ch))
     t = t.translate(CONFUSABLES)
@@ -1209,6 +1221,7 @@ def noise_name(name: str) -> bool:
     a node name (callsign-style - and / are allowed). Only used to tell a campaign is made-up names."""
     p = strip_emoji(name).strip()
     return 7 <= len(p) <= 16 and " " not in p and not re.search("[a-z]", p) \
+        and not any(ch.isalpha() and not ch.isascii() for ch in p) \
         and re.search(r"[^A-Z0-9\-_./]", p) is not None
 
 
@@ -2274,8 +2287,11 @@ class SpamGuard:
         return any(hops_related(hop, a) for a in self.allow_hops)
 
     def text_allowed(self, text: str) -> bool:
+        """A message you let through by its text: it has to be mostly that text, so wrapping spam round an allowed
+        phrase doesn't make the spam exempt."""
         low = text.casefold()
-        return any(a.casefold() in low for a in self.allow_texts if a)
+        size = len(re.sub(r"\s+", " ", MENTION.sub(" ", low)).strip())
+        return any(a.casefold() in low and size <= 2 * len(a.strip()) + 20 for a in self.allow_texts if a)
 
     # ---- matching (mirrors the openHop rules SpamGuard writes) ----
     def hop_mode(self, b: dict) -> str:
@@ -2290,6 +2306,21 @@ class SpamGuard:
         v = self.known.get(name)
         return bool(v) and v[2] >= int(self.cfg.get("known_min_msgs", 1)) \
             and time.time() - v[0] >= 60 * int(self.cfg.get("known_min_minutes", 0))
+
+    SETTLED_DAYS = 7      # known this long, with this many messages, before keyboard junk from the name is let through
+    SETTLED_MSGS = 10
+
+    def settled(self, name: str) -> bool:
+        """A long-standing known name. Junk-text rules let only these through, so a name that earned the known pass
+        quickly (a sleeper) can't use it to send keyboard junk."""
+        if name in self.allow_senders:
+            return True
+        v = self.known.get(name)
+        return self.is_known(name) and bool(v) and v[2] >= self.SETTLED_MSGS \
+            and time.time() - v[0] >= self.SETTLED_DAYS * 86400
+
+    def settled_list(self) -> list[str]:
+        return [n for n in self.known_list() if self.settled(n)]
 
     def known_list(self) -> list[str]:
         """The names written to openHop for 'let known people through' (most recently heard kept)."""
@@ -2315,6 +2346,8 @@ class SpamGuard:
         """Count a genuine message towards its sender becoming known."""
         if spam or e.random or e.obfuscated or not e.sender or e.sender in ("?", "Unknown"):
             return
+        if noise_name(e.sender) and e.sender not in self.allow_senders:
+            return   # keyboard-mashed throwaway names never earn the known-people pass by sending a few quiet messages
         if e.matched and not self._held_in_passing(e) and not self._wrongly_caught_regular(e):
             return
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
@@ -3779,7 +3812,7 @@ class SpamGuard:
         src, kind = m.get("caught_source"), m.get("caught_kind")
         spammy = bool(m.get("random") or m.get("obfuscated") or (m.get("campaign_senders") or 0) >= 2)
         if m.get("caught_by"):
-            people = kind in PEOPLE_KINDS and src != "manual"
+            people = kind in PEOPLE_KINDS and src not in ("manual", "junk")
             if people and not spammy:
                 return "held", (self.Q_REASON.get(src) if src == "junk" else None) or self.Q_REASON.get(kind) \
                     or self.Q_REASON.get(src) or "Held by a block meant for spam"
@@ -4355,6 +4388,9 @@ class SpamGuard:
     def block_matches(self, b: dict, e: Event) -> bool:
         if b["kind"] == "ptype":
             return False   # not a channel message: nothing SpamGuard reads is matched by it
+        if b.get("source") == "junk" and not (b.get("only_channel") and e.channel != b["only_channel"]) \
+                and any(w in e.text for w in b["value"]) and not (self.settled(e.sender) and not e.unverified):
+            return True   # keyboard junk in the text: only long-standing known names get past it
         if self.gated(b) and self.is_known(e.sender) and not e.unverified:
             return False
         if b["kind"] == "lockdown":
@@ -4560,7 +4596,7 @@ class SpamGuard:
             e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
-            if b and not again and b["kind"] in PEOPLE_KINDS \
+            if b and not again and b["kind"] in PEOPLE_KINDS and b.get("source") != "junk" \
                     and not e.random and not e.obfuscated:
                 self.held.append({"ts": e.ts, "sender": e.sender, "text": e.text[:160], "channel": e.channel,
                                   "path": ">".join(e.path) or "direct", "matched": e.matched,
@@ -4604,6 +4640,47 @@ class SpamGuard:
         """A name SpamGuard has already had to hold for repeating, more than once, in the last day."""
         now = now or time.time()
         return sum(1 for t in self.offences.get(name, ()) if t > now - 86400) >= self.REPEAT_OFFENCES
+
+    def _copied_from_elsewhere(self, who: str, hops) -> bool:
+        """A known name whose messages all came in through repeaters that person is never heard through: most likely
+        someone copying the name, so the person themselves shouldn't be held or marked as a repeat offender."""
+        # hops: first repeater -> how many of these very messages came that way. They may already have been
+        # counted as a usual way in when they arrived, so take them off before judging.
+        if isinstance(hops, dict):
+            seen = {h: n for h, n in hops.items() if h}
+        else:
+            seen = dict.fromkeys((h for h in hops if h), 0)
+        if not seen or not self.is_known(who):
+            return False
+        hm = {h: n - seen.get(h, 0) for h, n in (self.homes.get(who) or {}).items()}
+        hm = {h: n for h, n in hm.items() if n > 0}
+        if sum(hm.values()) < 5:
+            return False
+        return all(h not in hm and not any(hops_related(h, x) for x in hm) for h in seen)
+
+    BUSY_HOME_PEOPLE = 5   # known people who usually start at a repeater before one sign can't block it alone
+
+    def _busy_home(self, hop: str) -> bool:
+        n = 0
+        for who, hm in self.homes.items():
+            if hm.get(hop, 0) >= 3 and self.is_known(who):
+                n += 1
+                if n >= self.BUSY_HOME_PEOPLE:
+                    return True
+        return False
+
+    def _unlearn_homes(self, who: str, hops) -> None:
+        """Take back usual-way-in counts that came from messages now judged to be someone copying the name."""
+        hm = self.homes.get(who)
+        if not hm:
+            return
+        for h, n in hops.items():
+            if h in hm:
+                left = hm[h] - max(1, n)
+                if left > 0:
+                    hm[h] = left
+                else:
+                    hm.pop(h)
 
     def _offence(self, name: str, now: float) -> None:
         self.offences.setdefault(name, []).append(now)
@@ -5122,7 +5199,7 @@ class SpamGuard:
                 return "keyboard-symbol junk (in the message or the name) on Public from names SpamGuard doesn't know"
             return "links from names SpamGuard doesn't know"
         if b["kind"] == "burst":
-            return f"everything from {b['value']} for a while" + (f" on {b['channel']}" if b.get("channel") else "")
+            return f"everything from {b['value'] or 'senders with no name'} for a while" + (f" on {b['channel']}" if b.get("channel") else "")
         if b["kind"] == "imposter":
             return f"messages under the name {b.get('who')} arriving through repeater {b['value']}"
         if b["kind"] == "lockdown":
@@ -5590,7 +5667,10 @@ class SpamGuard:
                                    channel=ch, ttl=int(c["repeat_block_seconds"]), from_ts=evs[-1][0].ts,
                                    extra={"who": who}):
                     changed = True
-                    if fresh:
+                    ways_in = collections.Counter(x[0].first_hop for x in evs)
+                    if self._copied_from_elsewhere(who, ways_in):
+                        self._unlearn_homes(who, ways_in)
+                    elif fresh:
                         self._offence(who, now)
 
         # 2b'-r. Accidental double send: the first copy went out, so hold any further identical copy from that
@@ -5750,7 +5830,16 @@ class SpamGuard:
             recent = [e for e in a["window"] if e.ts >= now - 120 and e.random and not self.is_known(e.sender)]
             names = {e.sender for e in recent}
             entries = {e.first_hop for e in recent}
-            if len(names) >= 12 and len(entries) >= 6:
+            self.auto_lockdowns = [t for t in getattr(self, "auto_lockdowns", []) if t > now - 3600]
+            if len(names) >= 12 and len(entries) >= 6 and len(self.auto_lockdowns) >= 2:
+                # Two automatic lockdowns in an hour already: a few made-up names every quarter of an hour could
+                # otherwise keep newcomers out all day. The other blocks carry on; you can still start one by hand.
+                self.suppressed["lockdown"] = now + 7200
+                self.note("Not starting a third automatic lockdown within an hour, so newcomers aren't kept out all day. "
+                          "Automatic lockdowns are paused for two hours; you can still start one by hand")
+                self._important = True
+            elif len(names) >= 12 and len(entries) >= 6:
+                self.auto_lockdowns.append(now)
                 self._add_block("lockdown", "lockdown", None,
                                 f"Automatic 15-minute lockdown: {len(names)} made-up names through {len(entries)} repeaters in two minutes",
                                 "auto-lockdown", ttl=900)
@@ -5776,6 +5865,14 @@ class SpamGuard:
                         continue
                     # A code several repeaters share can't say which of them the spam came through, so one sign
                     # alone is not enough to block everything with that code; it needs a second, independent one.
+                    if len(why) < 2 and f"hop:{hop}" not in self.blocks and self._busy_home(hop):
+                        # Many people SpamGuard knows start here: made-up names sent with a faked first repeater could
+                        # otherwise get it blocked for every newcomer behind it. Wait for a second, independent sign.
+                        if self.suppressed.get("busy:" + hop, 0) <= now:
+                            self.suppressed["busy:" + hop] = now + 3600
+                            self.note(f"Held back from blocking repeater {hop}: {why[0]}, but it's the usual way in for many "
+                                      "people SpamGuard knows, so it needs a second sign")
+                        continue
                     if len(why) < 2 and len(hop) <= 2 and f"hop:{hop}" not in self.blocks \
                             and self.code_confidence(hop) == "ambiguous":
                         if self.suppressed.get("shared:" + hop, 0) <= now:
@@ -5903,14 +6000,30 @@ class SpamGuard:
         # none of the repeat limits counts them).
         if c.get("name_budget", True):
             sends: dict[tuple, dict] = {}
+            ways: dict[tuple, collections.Counter] = {}
             for e in a["long"]:
-                if e.ts < now - 600 or e.exempt or e.local or not e.sender or e.sender in ("?", "Unknown") \
-                        or e.sender in self.allow_senders:
+                if e.ts < now - 600 or e.exempt or e.local or (e.sender and e.sender in self.allow_senders):
                     continue
                 # copies of the same line within a minute (a resend, or heard twice) count once
                 sends.setdefault((e.sender, e.channel), {})[(e.text, int(e.ts // 60))] = e.ts
+                w = ways.setdefault((e.sender, e.channel), collections.Counter())
+                w[e.first_hop] += 1
             for (who, ch), d in sends.items():
                 if len(d) <= int(c["name_budget_max"]):
+                    continue
+                hops = ways.get((who, ch), collections.Counter())
+                if self._copied_from_elsewhere(who, hops):
+                    # A known name flooding in only from places that person never uses: hold the name from those
+                    # repeaters (like a borrowed name), never the name everywhere, and don't count it against them.
+                    # Those messages were counted as a usual way in when they arrived: take that back.
+                    self._unlearn_homes(who, hops)
+                    for hop in sorted(h for h in hops if h):
+                        key = "imposter:" + hashlib.sha1(f"{who}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                        if self.suppressed.get(key, 0) <= now and self._add_block(
+                                key, "imposter", hop, f"Their name sent {len(d)} messages in ten minutes, all through a "
+                                "repeater they never use", "imposter", channel=ch, ttl=int(c["repeat_block_seconds"]),
+                                from_ts=max(d.values()), extra={"who": who}):
+                            changed = True
                     continue
                 key = "budget:" + hashlib.sha1(f"{who}|{ch}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
@@ -5939,7 +6052,8 @@ class SpamGuard:
 
         # 5c. While several names are spamming, a known name heard through a repeater it has never used may be
         # someone copying it: hold that name from there for a while (its usual ways in still work).
-        if c.get("imposter_guard", True) and self.attack_on(now):
+        calm = not self.attack_on(now)
+        if c.get("imposter_guard", True):
             # Where the spam itself is coming in: real people's routes vary a lot, so a new way in alone means
             # little. A known name turning up through the very repeater the spam enters by is what a copy looks like.
             spam_in = {x.first_hop for x in a["long"] if x.ts > now - 3600 and x.path and not x.local and (
@@ -5947,15 +6061,26 @@ class SpamGuard:
             for e in a["window"]:
                 if e.matched or not e.path or e.local or e.exempt or not self.is_known(e.sender):
                     continue
-                hm = self.homes.get(e.sender) or {}
-                if sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm) \
-                        or not any(e.first_hop == x or hops_related(e.first_hop, x) for x in spam_in):
+                # This name's recent messages from here may already have been counted as a usual way in.
+                here = sum(1 for x in a["window"] if x.sender == e.sender and x.first_hop == e.first_hop)
+                hm = {h: n - (here if h == e.first_hop else 0) for h, n in (self.homes.get(e.sender) or {}).items()}
+                hm = {h: n for h, n in hm.items() if n > 0}
+                if sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm):
+                    continue
+                if calm:
+                    # No attack on: only a name with a long history, from a repeater it has never used, sending
+                    # something spam-shaped (keyboard junk or a link) looks like a copy.
+                    if sum(hm.values()) < 20 or not (any(ch in e.text for ch in JUNK_CHARS) or first_link(e.text)):
+                        continue
+                elif not any(e.first_hop == x or hops_related(e.first_hop, x) for x in spam_in):
                     continue
                 key = "imposter:" + hashlib.sha1(f"{e.sender}|{e.first_hop}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
+                self._unlearn_homes(e.sender, {e.first_hop: here})
                 if self._add_block(key, "imposter", e.first_hop,
-                                   "A known name heard through the repeater spam is coming in by, which it has never used",
+                                   "A well-known name sending something spam-shaped through a repeater it has never used" if calm
+                                   else "A known name heard through the repeater spam is coming in by, which it has never used",
                                    "imposter", channel=e.channel, ttl=int(c["repeat_block_seconds"]), from_ts=e.ts,
                                    extra={"who": e.sender}):
                     changed = True
@@ -6094,7 +6219,8 @@ class SpamGuard:
         # SpamGuard knows always get through, and before the other blocks, so the rule limit never drops them.
         gated, flood = self._build_gated(), self._build_flood()
         if flood:
-            gated = (gated[:1] if gated else [self._known_rule()]) + flood + gated[1:]
+            k = next((i for i, r in enumerate(gated) if str(r.get("name", "")).endswith("known-people")), None)
+            gated = (gated[:k + 1] + flood + gated[k + 1:]) if k is not None else [self._known_rule()] + flood
         tail = self._not_own(tail + gated)
         # Standing rules are never pushed out by the limit, however many blocks a spam wave creates: the
         # wardriving rule, FloodGuard's rules and the known-people rule they rely on. They count towards
@@ -6283,12 +6409,31 @@ class SpamGuard:
             return []
         readable = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
                     {"field": "channel_decryptable", "op": "equals", "value": True}]
-        rules: list[dict] = [self._known_rule()]
+        rules: list[dict] = []
+        junk = [(k, b) for k, b in gated if b.get("source") == "junk"]
+        if junk:
+            # Long-standing known names first, then the junk-text rules, then everyone else SpamGuard knows.
+            rules.append({"id": self._rid("known:settled"), "name": f"{RULE_PREFIX}known-settled", "enabled": True,
+                          "if": {"all": readable + [{"field": "channel_sender", "op": "in",
+                                                     "value": "@spamguard.settled_senders"}]},
+                          "then": {"action": "allow"}})
+            for key, b in junk:
+                ids = b.setdefault("ids", {})
+                for w in b["value"]:
+                    rk = f"*|{w}"
+                    if rk not in ids:
+                        ids[rk] = self._new_id()
+                    rules.append({"id": ids[rk], "name": f"{RULE_PREFIX}{key}:{w}" + self._rule_label(b), "enabled": True,
+                                  "if": {"all": readable + self._channel_cond(b)
+                                         + [{"field": "channel_message_body", "op": "contains", "value": w}]},
+                                  "then": {"action": self.rule_action(b)}})
+        rules.append(self._known_rule())
         for key, b in gated:
             ids = b.setdefault("ids", {})
             only = self._channel_cond(b)
             if b["kind"] == "links":
-                conds = [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
+                conds = [] if b.get("source") == "junk" else \
+                    [(w, [{"field": "channel_message_body", "op": "contains", "value": w}]) for w in b["value"]]
                 conds += [(f"name{w}", [{"field": "channel_sender", "op": "contains", "value": w}]) for w in b.get("names") or ()]
             elif b["kind"] == "hop":
                 forms, nw, sh = self._hop_forms(b["value"])
@@ -6373,7 +6518,7 @@ class SpamGuard:
         elif kind == "words":
             what = "words " + "+".join(str(w) for w in v)[:24]
         elif kind == "burst":
-            what = "everything from " + str(v)[:20]
+            what = "everything from " + (str(v)[:20] or "no name")
         elif kind == "imposter":
             what = f"{str(b.get('who') or '')[:20]} via {v}"
         elif kind == "links" and b.get("source") == "linkhost":
@@ -6576,6 +6721,8 @@ class SpamGuard:
         obj_now = objects.get("spamguard")
         obj_new = {"known_senders": self.known_list()} if any(
             r.get("then", {}).get("action") == "allow" and "known-people" in str(r.get("name")) for r in tail) else None
+        if obj_new is not None and any(str(r.get("name", "")).endswith("known-settled") for r in tail):
+            obj_new["settled_senders"] = self.settled_list()
         if obj_new is None:
             objects.pop("spamguard", None)
         else:

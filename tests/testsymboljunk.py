@@ -1,5 +1,5 @@
 # Keyboard-symbol junk on Public: a standing block (on by default) that holds Public messages containing
-# { } ` ^ or \ unless the sender is known. It works on the first message from a new name. Checked against
+# { } ` or \ unless the sender is known. It works on the first message from a new name. Checked against
 # openHop's own rule engine. All names and messages are made up.
 import sys, logging
 from harness import *
@@ -31,15 +31,24 @@ b=g.blocks.get("junk:symbols")
 check(b is not None and b["kind"]=="links" and b["source"]=="junk" and b.get("only_channel")=="Public","standing block made, Public only")
 check(b and b["expires"]-time.time()>sg.PERMANENT_SECONDS/2,"it does not expire")
 rs=junk_rules(m)
-check(len(rs)==10 and all(r["then"]["action"]=="drop" for r in rs),"ten rules (five text symbols, five name symbols), dropping in Protect")
+check(len(rs)==9 and all(r["then"]["action"]=="drop" for r in rs),"nine rules (four text symbols, five name symbols), dropping in Protect")
 names=[r["name"] for r in m.policy["policy_engine"]["rules"]]
 kn=next((i for i,n in enumerate(names) if "known-people" in n),None)
-check(kn is not None and all(names.index(r["name"])>kn for r in rs),"the rules sit after the known-people rule")
+st_=next((i for i,n in enumerate(names) if n.endswith("known-settled")),None)
+txt=[r for r in rs if ":name" not in r["name"]]; nm=[r for r in rs if ":name" in r["name"]]
+check(st_ is not None and kn is not None and st_<kn,"long-standing known names are let through first")
+check(all(st_<names.index(r["name"])<kn for r in txt),"the junk-text rules sit between long-standing and other known names")
+check(all(names.index(r["name"])>kn for r in nm),"the junk-name rules sit after the known-people rule")
 
 # 2. What openHop does with them
 check(all(act(m,t)=="drop" for t in SOUP),"symbol junk from a new name is dropped on the first message")
-check(g.is_known("Ann Hill") and act(m,"a { b } ^ c","Ann Hill")=="allow","a known name is passed on")
+check(g.is_known("Ann Hill") and not g.settled("Ann Hill") and act(m,"a { b } ^ c","Ann Hill")=="drop",
+      "a recently known name sending junk text is held (a sleeper can't use its pass for junk)")
+g.known["Ann Hill"][0]-=8*86400; g.known["Ann Hill"][2]=40; sync(g)
+check(g.settled("Ann Hill") and act(m,"a { b } ^ c \\o/","Ann Hill")=="allow","a long-standing known name is passed on")
 check(act(m,"Morning all, lovely clear skies")=="allow","ordinary chat from a new name is passed on")
+check(act(m,"@[SAY>NO^] it isn't all one person's fault though")=="allow" and act(m,"^ this")=="allow",
+      "a reply to a name with ^ in it, or \"^ this\", is passed on")
 check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("J,YSY*%Z","$OY685UKL","AB<CD>EF","X:Y:Z","P;Q")),
       "an ordinary-looking message from a keyboard-mashed name is dropped on the first message")
 check(all(act(m,"Morning all",n)=="allow" for n in ("Mark~G6BNB/R","Dave M3MHA (Thurrock)","GROC#2","John's T-deck","Bingo | Chris")),
@@ -55,7 +64,7 @@ e=next(x for x in g.events if x.sender=="J,YSY*%Z")
 check(e.matched=="junk:symbols","the junk message is recorded as caught by the junk block")
 m.add("Ann Hill","code is {x}",["4C"],ago=0); sync(g)
 e=next(x for x in g.events if x.sender=="Ann Hill" and "{x}" in x.text)
-check(e.matched!="junk:symbols","the known name's message is not recorded as caught")
+check(e.matched!="junk:symbols","the long-standing known name's message is not recorded as caught")
 check("symbol junk" in g.describe(b) and g.Q_REASON["junk"],"described in plain words")
 
 # 4. Monitor only logs
