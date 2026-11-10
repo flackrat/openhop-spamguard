@@ -49,7 +49,7 @@ check(g.settled("Ann Hill") and act(m,"a { b } ^ c \\o/","Ann Hill")=="allow","a
 check(act(m,"Morning all, lovely clear skies")=="allow","ordinary chat from a new name is passed on")
 check(act(m,"@[SAY>NO^] it isn't all one person's fault though")=="allow" and act(m,"^ this")=="allow",
       "a reply to a name with ^ in it, or \"^ this\", is passed on")
-check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("J,YSY*%Z","$OY685UKL","AB<CD>EF","X:Y:Z","P;Q")),
+check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("J,YSY*%Z","$OY685UKL","AB<CD>EF","X:Y:Z","P;Q","J++BXP2>","4A=XHV4Z","£O_*B_Q")),
       "an ordinary-looking message from a keyboard-mashed name is dropped on the first message")
 check(all(act(m,"Morning all",n)=="allow" for n in ("Mark~G6BNB/R","Dave M3MHA (Thurrock)","GROC#2","John's T-deck","Bingo | Chris")),
       "new names with symbols real people use are passed on")
