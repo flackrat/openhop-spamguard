@@ -1,5 +1,4 @@
-# 6.31.2: the copied-name experiment also notices a different device using a regular's name, even through a
-# repeater the copies had already made look usual, and you can hold a name from one repeater yourself.
+# 6.31.2: further copied-name experiment cases, and holding a name from one repeater yourself.
 # Checked against openHop's own rule engine. All names and messages are made up.
 import sys, logging, json, os
 from harness import *
