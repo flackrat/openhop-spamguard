@@ -76,7 +76,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.31.1"
+VERSION = "6.31.2"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1724,6 +1724,7 @@ class SpamGuard:
         self.spam_marked: dict[str, list] = {}   # name -> when you marked one of their messages as spam
         self.near: dict[str, list] = {}   # name family -> hop counts of its recent messages from its usual ways in
         self.fam_names: dict[str, set] = {}   # name family -> the names in it heard from their usual ways in
+        self.clocks: dict[str, list] = {}    # name family -> [time heard, how far its device clock was out]
         self._adv_logged: dict[str, float] = {}
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
@@ -2119,6 +2120,13 @@ class SpamGuard:
             if isinstance(v, dict) and re.fullmatch(r"\d{4}-\d\d-\d\d", str(d)):
                 self.signed_stats[str(d)] = {k: int(v.get(k) or 0) for k in ("n", "ok", "bad", "unk", "ids")}
         day8 = now - 8 * 86400
+        for k, v in (st.get("clocks") or {}).items():
+            if isinstance(v, list):
+                d = [[int(x[0]), int(x[1])] for x in v if isinstance(x, list) and len(x) == 2
+                     and all(isinstance(y, int) and not isinstance(y, bool) for y in x) and 0 < x[0] <= now + 60
+                     and abs(x[1]) < 10 ** 10][-20:]
+                if d:
+                    self.clocks[str(k)[:40]] = d
         for k, v in (st.get("fam_names") or {}).items():
             if isinstance(v, list):
                 names = {str(x)[:40] for x in v if isinstance(x, str) and x}
@@ -2232,6 +2240,7 @@ class SpamGuard:
                     "labels": dict(list(self.labels.items())[-1000:]),
                     "near": {k: v[-30:] for k, v in list(self.near.items())[-3000:] if v},
                     "fam_names": {k: sorted(v)[:8] for k, v in list(self.fam_names.items())[-3000:] if v},
+                    "clocks": {k: v[-20:] for k, v in list(self.clocks.items())[-3000:] if v},
                     "spam_marked": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.spam_marked.items())[-2000:]
                                     if v and v[-1] > time.time() - 30 * 86400},
                     "label_at": {k: round(self.label_at[k], 1) for k in list(self.labels)[-1000:] if k in self.label_at},
@@ -4648,6 +4657,12 @@ class SpamGuard:
                 self._note_machine(e)
             if not e.replay and not e.local and not again:
                 self._sense_note(e)
+            if not again and not e.local and e.sent_ts and e.sender and not e.matched:
+                ck = self.clocks.setdefault(self.name_family(e.sender), [])
+                ck.append([round(e.ts), round(e.ts - e.sent_ts)])
+                del ck[:-20]
+                while len(self.clocks) > 3000:
+                    self.clocks.pop(next(iter(self.clocks)))
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
@@ -4767,6 +4782,24 @@ class SpamGuard:
             return False
         hm = self._family_homes(e.sender)
         return e.first_hop not in hm and not any(hops_related(e.first_hop, x) for x in hm)
+
+    CLOCK_OFF = 86400   # a device clock this far out, under a name whose own device keeps good time
+
+    def _other_device(self, e) -> bool:
+        """The name's device clock is far out, but the same name (or family) was heard with a good clock in the
+        last week: a different device using the name. Experimental."""
+        if not self.cfg.get("spoof_watch") or not e.sent_ts or abs(e.ts - e.sent_ts) < self.CLOCK_OFF:
+            return False
+        return any(abs(off) < 600 and e.ts - t < 7 * 86400
+                   for t, off in self.clocks.get(self.name_family(e.sender), ()))
+
+    def _forget_way_in(self, who: str, hop: str) -> None:
+        """A repeater a copy of this name came through is not one of the person's usual ways in."""
+        for n in self.fam_names.get(self.name_family(who), ()) or (who,):
+            hm = self.homes.get(n)
+            if hm:
+                for h in [h for h in hm if h == hop or hops_related(h, hop)]:
+                    hm.pop(h, None)
 
     def _two_places(self, e, window) -> bool:
         """The same name (or family) heard nearby through a usual way in, and from far off through somewhere it
@@ -6226,14 +6259,15 @@ class SpamGuard:
                     continue
                 if not self.is_known(e.sender) and not (fam_on and self._local(e.sender)):
                     continue   # (with the copied-name check on, a new spelling of a nearby person's name counts too)
+                device = self._other_device(e)
                 # This name's recent messages from here may already have been counted as a usual way in.
                 here = sum(1 for x in a["window"] if x.sender == e.sender and x.first_hop == e.first_hop)
                 base = self._family_homes(e.sender) if fam_on else (self.homes.get(e.sender) or {})
                 hm = {h: n - (here if h == e.first_hop else 0) for h, n in base.items()}
                 hm = {h: n for h, n in hm.items() if n > 0}
-                if sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm):
+                if not device and (sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm)):
                     continue
-                far = self._far_from_home(e) or self._two_places(e, a["window"])
+                far = device or self._far_from_home(e) or self._two_places(e, a["window"])
                 if far:
                     pass   # a local name from far away, through a repeater it never uses: a copy, attack or not
                 elif calm:
@@ -6252,12 +6286,17 @@ class SpamGuard:
                     fhm = self._family_homes(e.sender)
                     usual = self._usual_hops(e.sender)
                     via = max(fhm, key=fhm.get) if fhm else None
-                    two = self._two_places(e, a["window"])
+                    two = not device and self._two_places(e, a["window"])
                     extra["spoof"] = {"of": e.sender, "hops": len(e.path), "via": e.first_hop, "usual_hops": usual,
-                                      "usual_via": via, "why": "two places" if two else "far"}
-                    why = (f"Spoofed name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
-                           + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
-                           + (", while they were also heard nearby" if two else ""))
+                                      "usual_via": via, "why": "device" if device else "two places" if two else "far"}
+                    if device:
+                        self._forget_way_in(e.sender, e.first_hop)
+                        why = (f"Spoofed name: {e.sender} sent from a different device than the one they usually use; "
+                               f"this came {len(e.path)} hops via {e.first_hop}")
+                    else:
+                        why = (f"Spoofed name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
+                               + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
+                               + (", while they were also heard nearby" if two else ""))
                 else:
                     why = ("A well-known name sending something spam-shaped through a repeater it has never used" if calm
                            else "A known name heard through the repeater spam is coming in by, which it has never used")
@@ -8680,6 +8719,22 @@ class SpamGuard:
                                 extra={"only_channel": only} if only else None)
                 msg = (f"Blocking messages that start on route {'>'.join(hops)}. People SpamGuard knows still get through."
                        + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
+            elif op == "hold_name_hop":
+                # You hold one name, only when it arrives through one repeater (someone copying it from there),
+                # for a week. The person still gets through from anywhere else.
+                who = str(body.get("sender") or "").strip()
+                hop = str(body.get("hop") or "").strip().upper()
+                if not who or who in ("?", "Unknown") or not re.fullmatch(r"[0-9A-F]{2,6}", hop):
+                    raise ValueError("Which name and repeater?")
+                ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else "Public"
+                key = "imposter:" + hashlib.sha1(f"{who}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                self.suppressed.pop(key, None)
+                self.blocks.pop(key, None)
+                self._forget_way_in(who, hop)
+                self._add_block(key, "imposter", hop, f"Held by you: copies of {who} through repeater {hop}", "manual",
+                                channel=ch, ttl=7 * 86400, extra={"who": who})
+                msg = (f"Holding '{who}' when it arrives through repeater {hop} for 7 days. The real person still gets "
+                       "through from anywhere else." + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op == "mute":
                 # A name you choose to hold everywhere on one channel for a few days, then it lapses on its own.
                 # For a known name that mixes ordinary chat with spam: name blocks were removed in 5.10 because a
@@ -9077,7 +9132,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
