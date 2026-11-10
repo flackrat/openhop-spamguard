@@ -17,8 +17,8 @@ The detail is below, newest first. In short:
 
 ## v6.31.1
 
-- **New experiment: Spot copied names** (off by default, under Experimental). A name that is nearly always heard within a few hops is held from a far repeater it never uses when it arrives from far off, or when it is heard nearby and far off within ten minutes. Names that differ only by spaces, dashes or capitals count as one person. Each hold says whose name was copied, how far away they usually are and how far this came, in Activity, Blocks, Messages and the evidence log (a new "spoofed" field). Replayed over four days of evidence: 16 copies of one regular's names held, including threats and a posted address, and nothing else. With it on, the evidence log also records companion adverts, the sender's clock offset and route code size, so later versions can judge whether they help.
-- **The keyboard-junk block recognises more mashed names.** Three more symbols that turn up in throwaway keyboard-mashed names, and almost never in real ones, now count. Replayed on the 10 Nov evidence: at Strict, 6 of 6 marked spam caught instead of 5, at Balanced 5 instead of 4, with one extra message held, also spam. People SpamGuard knows pass first, as before.
+- **New experiment: Spot copied names** (off by default, under Experimental). Helps spot messages sent under a copy of a regular's name. Each hold says whose name it was, so you can check it and remove it if it was really them.
+- **Keyboard-junk detection improved.**
 
 ## v6.31.0
 
