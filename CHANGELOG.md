@@ -17,6 +17,7 @@ The detail is below, newest first. In short:
 
 ## v6.31.1
 
+- **Copies of a local name from far away are held.** When a name that is nearly always heard within a few hops suddenly arrives from far off, through a repeater it is never heard through, SpamGuard holds that name from that repeater, whatever the message says and whether or not an attack is under way. The person still gets through from nearby. Replayed over four days of evidence: five copies of a regular's name held, nothing else.
 - **The keyboard-junk block recognises more mashed names.** Three more symbols that turn up in throwaway keyboard-mashed names, and almost never in real ones, now count. Replayed on the 10 Nov evidence: at Strict, 6 of 6 marked spam caught instead of 5, at Balanced 5 instead of 4, with one extra message held, also spam. People SpamGuard knows pass first, as before.
 
 ## v6.31.0

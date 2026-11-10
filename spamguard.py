@@ -1717,6 +1717,7 @@ class SpamGuard:
         # Your one-tap labels (packet id, or "name|text") -> "spam" / "not_spam", for the replay tool
         self.labels: collections.OrderedDict = collections.OrderedDict()
         self.spam_marked: dict[str, list] = {}   # name -> when you marked one of their messages as spam
+        self.near: dict[str, list] = {}   # name -> hop counts of its recent messages from its usual ways in
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
@@ -2108,6 +2109,11 @@ class SpamGuard:
             if isinstance(v, dict) and re.fullmatch(r"\d{4}-\d\d-\d\d", str(d)):
                 self.signed_stats[str(d)] = {k: int(v.get(k) or 0) for k in ("n", "ok", "bad", "unk", "ids")}
         day8 = now - 8 * 86400
+        for k, v in (st.get("near") or {}).items():
+            if isinstance(v, list):
+                d = [int(x) for x in v if isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= 64][-30:]
+                if d:
+                    self.near[str(k)] = d
         for k, v in (st.get("spam_marked") or {}).items():
             if isinstance(v, list):
                 ts = [float(t) for t in v if isinstance(t, (int, float)) and math.isfinite(t) and 0 < t <= now + 60][-20:]
@@ -2209,6 +2215,7 @@ class SpamGuard:
                     "held_names": dict(list(self.held_names.items())[-3000:]),
                     "sender_paths": dict(list(self.sender_paths.items())[-self.SENDER_PATHS_MAX:]),
                     "labels": dict(list(self.labels.items())[-1000:]),
+                    "near": {k: v[-30:] for k, v in list(self.near.items())[-3000:] if v},
                     "spam_marked": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.spam_marked.items())[-2000:]
                                     if v and v[-1] > time.time() - 30 * 86400},
                     "label_at": {k: round(self.label_at[k], 1) for k in list(self.labels)[-1000:] if k in self.label_at},
@@ -4615,8 +4622,11 @@ class SpamGuard:
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
-                if e.path and not e.local and not e.unverified \
+                if e.path and not e.local and not e.unverified and not self._far_from_home(e) \
                         and (e.first_hop in self.homes.get(e.sender, {}) or not self.attack_on(e.ts)):
+                    near = self.near.setdefault(e.sender, [])
+                    near.append(len(e.path))
+                    del near[:-30]
                     hm = self.homes.pop(e.sender, {})
                     hm[e.first_hop] = hm.get(e.first_hop, 0) + 1
                     if len(hm) > 8:   # keep the eight ways in heard most
@@ -4624,6 +4634,8 @@ class SpamGuard:
                     self.homes[e.sender] = hm   # most recently heard last
                     while len(self.homes) > 3000:
                         self.homes.pop(next(iter(self.homes)))
+                    while len(self.near) > 3000:
+                        self.near.pop(next(iter(self.near)))
             e.in_passing = self._held_in_passing(e)
             b = self.blocks.get(e.matched) if e.matched else None
             # Only blocks that hold PEOPLE back (repeater, route, link, lockdown), not spam-text blocks
@@ -4688,6 +4700,21 @@ class SpamGuard:
         if sum(hm.values()) < 5:
             return False
         return all(h not in hm and not any(hops_related(h, x) for x in hm) for h in seen)
+
+    LOCAL_HOPS = 4    # a name nearly always heard within this many hops counts as local
+    FAR_HOPS = 8      # ...and its name arriving from this far, through a repeater it never uses, looks copied
+
+    def _local(self, who: str) -> bool:
+        d = sorted(self.near.get(who) or ())
+        return len(d) >= 6 and d[int(0.9 * (len(d) - 1))] <= self.LOCAL_HOPS
+
+    def _far_from_home(self, e) -> bool:
+        """A local name (usually a few hops away) suddenly arriving from far off through a repeater it is never
+        heard through: someone copying the name from elsewhere on the mesh, not the person."""
+        if not e.path or len(e.path) < self.FAR_HOPS or not self._local(e.sender):
+            return False
+        hm = self.homes.get(e.sender) or {}
+        return e.first_hop not in hm and not any(hops_related(e.first_hop, x) for x in hm)
 
     BUSY_HOME_PEOPLE = 5   # known people who usually start at a repeater before one sign can't block it alone
 
@@ -6135,7 +6162,10 @@ class SpamGuard:
                 hm = {h: n for h, n in hm.items() if n > 0}
                 if sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm):
                     continue
-                if calm:
+                far = self._far_from_home(e)
+                if far:
+                    pass   # a local name from far away, through a repeater it never uses: a copy, attack or not
+                elif calm:
                     # No attack on: only a name with a long history, from a repeater it has never used, sending
                     # something spam-shaped (keyboard junk or a link) looks like a copy.
                     if sum(hm.values()) < 10 or not (any(ch in e.text for ch in JUNK_CHARS) or first_link(e.text)):
@@ -6147,7 +6177,9 @@ class SpamGuard:
                     continue
                 self._unlearn_homes(e.sender, {e.first_hop: here})
                 if self._add_block(key, "imposter", e.first_hop,
-                                   "A well-known name sending something spam-shaped through a repeater it has never used" if calm
+                                   f"A name usually heard within {self.LOCAL_HOPS} hops, arriving from {len(e.path)} hops away "
+                                   "through a repeater it has never used" if far
+                                   else "A well-known name sending something spam-shaped through a repeater it has never used" if calm
                                    else "A known name heard through the repeater spam is coming in by, which it has never used",
                                    "imposter", channel=e.channel, ttl=int(c["repeat_block_seconds"]), from_ts=e.ts,
                                    extra={"who": e.sender}):
