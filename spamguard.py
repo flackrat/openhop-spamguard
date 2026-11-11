@@ -6655,7 +6655,7 @@ class SpamGuard:
                             changed = True
                     continue
                 before = sum(max(0, n - hops.get(h, 0)) for h, n in (self.homes.get(who) or {}).items())
-                if self.is_known(who) and before >= 5 and hops and all(hops):
+                if self.is_known(who) and before >= 5 and hops and all(HEX_HOP.fullmatch(str(h or "")) for h in hops):
                     # A person SpamGuard knows, flooding through a repeater they do use: it may be them, or someone
                     # copying the name and that repeater's code. Hold the name through the repeaters the flood
                     # used only, so the person still gets through any other way, and don't count it against them.
@@ -7418,6 +7418,8 @@ class SpamGuard:
         """SpamGuard's own rules: its name prefix and one of its rule numbers. A rule of yours that merely has a
         similar name is left alone."""
         rid = r.get("id")
+        if isinstance(rid, str) and rid.isdigit():
+            rid = int(rid)   # however openHop hands the number back
         return (str(r.get("name", "")).startswith(RULE_PREFIX) and isinstance(rid, int) and not isinstance(rid, bool)
                 and rid >= RULE_ID_BASE)
 
