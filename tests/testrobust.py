@@ -97,4 +97,22 @@ g8.allow_senders=set(f"n{i}" for i in range(g8.ACTION_LIST_MAX))
 try: g8.action("allow_sender",{"sender":"one more"}); full_ok=False
 except ValueError: full_ok=True
 check(full_ok,"a full allow list takes no more")
+# The page still gets an answer while SpamGuard is busy waiting on openHop
+import threading
+m9=mock(); g9=guard(m9); first=g9.status_now()
+hold=threading.Event(); done=threading.Event()
+def busy():
+    with g9.lock: hold.set(); done.wait(8)
+threading.Thread(target=busy,daemon=True).start(); hold.wait(2)
+t0=time.time(); st=g9.status_now(wait=0.5); took=time.time()-t0; done.set()
+check(took<2 and st.get("busy") is True and st.get("mode")==first.get("mode"),f"the page is answered at once with the last picture ({took:.1f}s)")
+check(not g9.status_now().get("busy"),"and the live picture returns when SpamGuard is free")
+# Both saved copies unreadable: SpamGuard starts afresh, but keeps them aside and says so
+m10=mock(); g10=guard(m10); g10._save_state(force=True); g10._save_state(force=True)
+p10=g10.file_cfg["state_file"]
+for f in (p10,p10+".bak"): open(f,"w").write("{not json")
+g11=sg.SpamGuard(dict(g10.file_cfg))
+import os
+check(os.path.exists(p10+".unreadable") and open(p10+".unreadable").read()=="{not json","the unreadable file is kept aside")
+check(any("could not be read" in w for w in g11.health()["warnings"]),"and Health says it started afresh")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

@@ -18,6 +18,19 @@ RestartSec=5
 TimeoutStartSec=60
 TimeoutStopSec=20
 StateDirectory=openhop_spamguard
+# SpamGuard needs no extra rights: it can't gain any, can't change the system's own files, and gets a
+# private temporary folder. Its saved data is for SpamGuard only.
+NoNewPrivileges=yes
+ProtectSystem=full
+PrivateTmp=yes
+UMask=0077
+StateDirectoryMode=0700
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 # Keep the repeater itself first in line for CPU and memory.
 Nice=5
 MemoryHigh=250M

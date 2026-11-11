@@ -6,8 +6,12 @@ def check(c,msg):
     global ok,fail
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
+# The long-running service is confined: these settings must stay in its unit file
+unit=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","openhop-spamguard.service")).read()
+for d in ("NoNewPrivileges=yes","ProtectSystem=full","PrivateTmp=yes","UMask=0077","RestrictAddressFamilies=","User=repeater"):
+    check(d in unit,"the service file keeps "+d)
 if os.geteuid()!=0:
-    print("(skipping: the updater runs as root)"); print("0 passed, 0 failed"); sys.exit(0)
+    print("(skipping the rest: the updater runs as root)"); print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
 HERE=os.path.dirname(os.path.abspath(__file__))
 T=tempfile.mkdtemp(prefix="sgupd-")
 STATE=os.path.join(T,"state"); ROOT=os.path.join(T,"rootstate"); os.makedirs(STATE)

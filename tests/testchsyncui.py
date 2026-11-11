@@ -40,6 +40,14 @@ async def main():
                 if os.environ.get("SHOT"):
                     await pg.goto(URL+"#/blocks"); await pg.wait_for_timeout(1000)
                     await pg.locator("#blocks").scroll_into_view_if_needed(); await pg.screenshot(path=os.environ["SHOT"])
+            await pg.goto(URL+"#/channels"); await pg.wait_for_timeout(1000)
+            box=pg.locator("#channels [data-chb='#trailchat']")
+            check(await box.count()==1 and await box.is_checked() and await pg.is_visible("#crossRow"),"each channel has a Block spam here switch, and the follow-across option shows")
+            if vp["width"]==1280:
+                await box.uncheck(); await pg.wait_for_timeout(900)
+                check("#trailchat" in g.watch_channels and "Read and counted only" in await pg.inner_text("#channels"),"switching it off makes the channel read-only")
+                await pg.locator("#channels [data-chb='#trailchat']").check(); await pg.wait_for_timeout(900)
+                check("#trailchat" not in g.watch_channels,"and on again")
             sw=await pg.evaluate("document.documentElement.scrollWidth<=innerWidth")
             check(sw,f"no sideways scroll at {vp['width']}px")
             check(not e,"no page errors "+str(e))
