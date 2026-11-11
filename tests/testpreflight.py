@@ -2,7 +2,7 @@
 # version's libraries can be installed from ready-made builds. A clear "no build exists" stops the update
 # with nothing changed (and an Update anyway button); no network, no pip or any other doubt lets it go ahead.
 # Nothing here touches the network: pip and the download are replaced. All data is made up.
-import sys, io, zipfile, time, subprocess, urllib.request
+import hashlib, sys, io, zipfile, time, subprocess, urllib.request
 from harness import *
 ok=fail=0
 def check(c,msg):
@@ -87,7 +87,11 @@ try:
         def read(s,n=-1): return s.b.read(n)
         def __enter__(s): return s
         def __exit__(s,*a): pass
-    real_open=urllib.request.urlopen; urllib.request.urlopen=lambda *a,**k: Resp()
+    SUMS=f"{hashlib.sha256(W).hexdigest()}  openhop_spamguard-{sg.plugin_version('9.9.9')}-py3-none-any.whl\n".encode()
+    class Sums(Resp):
+        def __init__(s): s.b=io.BytesIO(SUMS)
+    real_open=urllib.request.urlopen
+    urllib.request.urlopen=lambda url,*a,**k: Sums() if str(getattr(url,"full_url",url)).endswith("SHA256SUMS") else Resp()
     def wait():
         for _ in range(100):
             if g.plugin_update.get("state")!="running": return
@@ -109,6 +113,27 @@ try:
     g.update_action("install_update",{"version":"9.9.9"}); wait()
     check(uploaded and not calls,"with the check turned off in the config it isn't run")
     g.cfg["plugin_preflight"]=True
+
+    # ---- the download is checked against the release's checksum list before anything is handed to openHop
+    for label,sums in (("a changed download",f"{'0'*64}  openhop_spamguard-{sg.plugin_version('9.9.9')}-py3-none-any.whl\n".encode()),
+                       ("a download the list doesn't name",b"abc123  something-else.whl\n")):
+        SUMS_NOW=sums
+        class Bad(Resp):
+            def __init__(s): s.b=io.BytesIO(SUMS_NOW)
+        urllib.request.urlopen=lambda url,*a,**k: Bad() if str(getattr(url,"full_url",url)).endswith("SHA256SUMS") else Resp()
+        g.plugin_update={}; uploaded.clear(); restarted.clear()
+        g.update_action("install_update",{"version":"9.9.9","force":True}); wait()
+        pu=g.plugin_update
+        check(pu.get("state")=="failed" and "checksum" in pu.get("message","") and not uploaded and not restarted,
+              f"{label} is refused and nothing is installed: "+str(pu.get("message"))[:80])
+    urllib.request.urlopen=lambda url,*a,**k: Sums() if str(getattr(url,"full_url",url)).endswith("SHA256SUMS") else Resp()
+
+    # ---- the page only installs newer versions
+    try:
+        g.update_action("install_update",{"version":"1.0.0"}); refused=False
+    except ValueError as e:
+        refused="only installs newer" in str(e)
+    check(refused,"an older version is refused from the page")
     g.plugin_update={}; uploaded.clear(); with_pip(R(0))
     g.update_action("install_update",{"version":"9.9.9"}); wait()
     check(uploaded,"with builds available the update goes ahead as before")

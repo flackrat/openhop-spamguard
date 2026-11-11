@@ -15,6 +15,16 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.33.0
+
+- **Fixes from a full security and reliability review.** Detection is more consistent with what openHop enforces, and a few ways round it are closed.
+- **Spot copied names (experimental):** fewer false holds of genuine people.
+- **Your spam marks do more.** Marking a message from a known name as spam now acts on it, and the page says what it did.
+- **The page password now also protects viewing.** Without a password, the page only answers on your own network's addresses and names (see `allowed_hosts`).
+- **Updates are checked more strictly.** Plugin updates are checked against the release's checksums, and the page only installs newer versions.
+- **More robust.** A damaged state file, an unexpected config value, a clock jump or a failing check no longer stops SpamGuard; the Health panel says what went wrong.
+- **SpamGuard's saved data is now readable by SpamGuard only.** Use the page or the evidence download to see it.
+
 ## v6.32.1
 
 - **Spot copied names (experimental) is harder to dodge.** Near-identical spellings of a name are treated as one person, copies can no longer rewrite who that person is, and a hold stays on while it keeps catching copies.

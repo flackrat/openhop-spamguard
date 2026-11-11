@@ -12,7 +12,7 @@
   const since = window.SG_SINCE || now - 12.5 * 3600;
   const key = (() => { try { return localStorage.getItem("sgkey") || ""; } catch (e) { return ""; } })();
   const t0 = performance.now();
-  const full = await (await fetch("/status", { cache: "no-store" })).json();
+  const full = await (await fetch("/status", { cache: "no-store", headers: { "X-API-Key": key } })).json();
   const d = { version: full.version, health: full.health, metrics: full.metrics,
               held: { length: (full.held || []).length }, blocks: { length: (full.blocks || []).length } };
   const ms = Math.round(performance.now() - t0);

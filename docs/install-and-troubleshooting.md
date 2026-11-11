@@ -101,7 +101,7 @@ All run on the Pi; the `sudo` ones ask for your password.
 | Only decisions and errors, last hour | `sudo journalctl -u openhop-spamguard --since "1 hour ago" --no-pager -l \| grep -E "INFO\|WARNING\|ERROR"` |
 | Edit the config | `sudo nano /etc/openhop_spamguard/config.yaml`, then restart |
 | Show the token in the config | `sudo grep api_key /etc/openhop_spamguard/config.yaml` |
-| SpamGuard rules openHop holds | `curl -s http://127.0.0.1:8091/rules` |
+| SpamGuard rules openHop holds | `curl -s http://127.0.0.1:8091/rules` (with a page password set, send it in an `X-API-Key` header) |
 | Is openHop running? | `systemctl is-active openhop-repeater` |
 | Restart openHop | `sudo systemctl restart openhop-repeater` |
 
