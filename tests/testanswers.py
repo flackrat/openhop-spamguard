@@ -59,4 +59,18 @@ check(len(g.quarantine({"status":"all","packets":pk,"group":False})["rows"])==1,
 ui=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","ui.html")).read()
 check('data-page="held"' not in ui and "liveBox" not in ui and "lkList" not in ui,"message lists live only in Messages")
 check("Label as" not in ui and "spoofed name" not in ui and "borrowed name" not in ui,"one set of words")
+# A campaign that changes a little each time: answering one answers its reworded copies too
+m5=mock()
+for i in range(6): m5.add(rname(),"FREE PRIZE claim now at the usual place today ref "+rname(5),["C4","9D","E1"],ago=60-i)
+m5.add("Hilltop Hiker","Morning all, clear skies up here on the ridge",["A7","2F"],ago=30)
+g5=guard(m5); g5.poll_once(); g5.poll_once()
+q5=g5.quarantine({"status":"review"}); n5=q5["counts"]["review"]
+if n5>=2:
+    g5.give_verdict(body(q5["rows"][0],"spam"))
+    q6=g5.quarantine({"status":"review"})
+    check(q6["counts"]["review"]==0,f"the reworded copies leave To review too ({n5} -> {q6['counts']['review']})")
+    rv=g5.quarantine({"status":"reviewed","group":False})["rows"]
+    check(any(x["like"]=="spam" and not x["label"] for x in rv) and not any("Hilltop" in x["sender"] for x in rv),"they are listed as like one you answered; other messages are untouched")
+else:
+    check(False,"expected several messages to review: "+str(q5["counts"]))
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

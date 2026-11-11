@@ -794,8 +794,9 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
-  <p class="explain" style="margin:6px 0 0"><b>Reading and protecting now</b>. Spam is caught on each of these, and blocks you add yourself cover all of them unless you choose one.</p>
-  <div class="chips" id="channels"></div>
+  <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Switch off "Block spam here" to only read and count a channel. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
+  <ul class="rows" id="channels"></ul>
+  <p style="margin:10px 0 0" id="crossRow" hidden><label class="switch"><input type="checkbox" id="crossCh"> Spam blocked on one channel is blocked on all of them</label> <span class="tag would">experimental</span><br><span class="explain">Off: SpamGuard's own holds stay on the channel where the spam was seen. On: they follow it to every channel. A different person using the same name on another channel would be held too.</span></p>
   <div id="chChoiceBox" hidden>
     <p class="explain" style="margin:10px 0 0"><b>In openHop's policy settings, not read yet</b> <span id="chChoiceCount"></span>. Add the ones SpamGuard should protect; their keys come from openHop, so there's nothing to type.</p>
     <div class="chips" id="chChoices"></div>
@@ -1238,8 +1239,12 @@ function renderChannels(d){
   $("#chFindRow").hidden=!many;
   const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
   $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
-  $("#channels").innerHTML=chShown.map(c=>`<span class="chip">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":btn("✕","/remove_channel",{name:c})}</span>`).join("")
-    +(d.channels.length>chShown.length&&!q?`<span class="explain">and ${d.channels.length-chShown.length} more (search, or Show all)</span>`:"");
+  const watch=d.watch_channels||[];
+  $("#channels").innerHTML=chShown.map(c=>{ const on=!watch.includes(c);
+    return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${on?"Spam is blocked here":"Read and counted only: nothing is blocked here"}</div></div>
+      <div class="acts"><label class="switch"><input type="checkbox" data-chb="${esc(c)}" ${on?"checked":""}> Block spam here</label>${c==="Public"?"":btn("Remove","/remove_channel",{name:c},"quiet danger")}</div></li>`; }).join("")
+    +(d.channels.length>chShown.length&&!q?`<li><span class="explain">and ${d.channels.length-chShown.length} more (search, or Show all)</span></li>`:"");
+  $("#crossRow").hidden=d.channels.length<2; if(document.activeElement!==$("#crossCh")) $("#crossCh").checked=!!d.cross_channel_blocks;
   $("#chChoiceBox").hidden=!choices.length;
   const pick=choices.filter(hit), pickShown=chAll||q?pick.slice(0,300):pick.slice(0,12);
   $("#chChoiceCount").textContent=`(${choices.length})`;
@@ -1328,6 +1333,8 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
+$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,on:t.checked}); });
+$("#crossCh").onchange=e=>{ if(e.target.checked&&!confirm("Let SpamGuard's own holds follow spam to every channel? A different person using the same name on another channel would be held too.")){ e.target.checked=false; return; } post("/settings",{cross_channel_blocks:e.target.checked}); };
 $("#decExport").onclick=async()=>{
   const r=await fetch("/decisions_export",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:"{}"});
   if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(k){ store.set("sgkey",k); $("#decExport").click(); } return; }
@@ -1516,7 +1523,7 @@ function qBulk(){
 // What you said about a message, kept with it for as long as the message is listed.
 const qLabWhen=ts=>"on "+new Date(ts*1000).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 const qLab=r=>r.label==="spam"?"You marked this as spam":r.label==="not_spam"?"You marked this as not spam":"";
-const qLabTag=r=>r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"You said spam":"You said not spam"}</span>`:"";
+const qLabTag=r=>!r.label&&r.like?`<span class="tag plain q-lab">Like one you said was spam</span>`:r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"You said spam":"You said not spam"}</span>`:"";
 function qDetail(){
   const d=Q.data, r=d&&d.rows[Q.sel], box=$("#qDetail");
   if(!r){ box.innerHTML=`<p class="explain" style="margin:0">Choose a message to see why SpamGuard did what it did, and to change it.</p>`; return; }
@@ -1539,7 +1546,7 @@ function qDetail(){
     <p class="q-line" style="gap:8px" role="group" aria-label="Your answer">${acts}</p>
     ${routeBtn||(r.label==="spam"&&r.sender&&r.sender!=="?")?`<details class="q-more"><summary>More options</summary><p class="q-line" style="gap:8px;margin:8px 0 0">${routeBtn}${r.label==="spam"&&r.sender&&r.sender!=="?"?(()=>{ const every=((S||{}).channels||[]).length>1, ch=every?"*":r.channel; return `<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on ${every?"every channel":esc(r.channel||"Public")} for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:ch,days:7}))}" onclick="act(this)">Mute this name for 7 days</button>`; })():""}${r.label==="spam"&&r.sender&&r.sender!=="?"&&r.path&&r.path.length?`<button type="button" class="quiet" data-confirm="Hold ${esc(r.sender)} only when it comes through repeater ${esc(r.path[0])}, for 7 days? The real person still gets through from anywhere else." data-p="/hold_name_hop" data-b="${esc(JSON.stringify({sender:r.sender,channel:((S||{}).channels||[]).length>1?"*":r.channel,hop:r.path[0]}))}" onclick="act(this)">Hold this name from ${esc(r.path[0])}</button>`:""}</p></details>`:""}
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
-    <p class="explain" style="margin:8px 0 0">${r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam lets it through and trusts the sender from now on.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. SpamGuard never blocks a person for one answer.":"Your answer helps SpamGuard check itself."}</p>`;
+    <p class="explain" style="margin:8px 0 0">${!r.label&&r.like?"This is a reworded copy of a message you said was spam, so it counts as answered. You can still answer it yourself.":r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam lets it through and trusts the sender from now on.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. SpamGuard never blocks a person for one answer.":"Your answer helps SpamGuard check itself."}</p>`;
 }
 $("#qChips").addEventListener("click",e=>{ const b=e.target.closest("[data-q]"); if(!b) return; Q.status=b.dataset.q; Q.sel=-1; Q.ticks={}; Q.limit=100; qLoad(); });
 $("#qFilters").addEventListener("click",e=>{ if(e.target.id==="qClear"){ Q.codes=[]; Q.names=[]; Q.packets=[]; Q.title=""; Q.sel=-1; qLoad(); } });

@@ -15,9 +15,15 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
-## v6.35.1
+## v6.36.0
 
-- **Answered messages are listed once.** A message you have answered now leaves every list in Messages except **Answered**, and "Held for review" is now just **Held**.
+- **Answered messages are listed once.** A message you have answered leaves every list in Messages except **Answered**, and so do reworded copies of a message you said was spam. "Held for review" is now just **Held**.
+- **Channels: choose where spam is blocked.** Each channel has a **Block spam here** switch; off means SpamGuard only reads and counts it. An experimental option, off by default, lets SpamGuard's own holds follow spam to every channel.
+- **Narrower holds for people you know.** A flood under a known person's name is held only through the repeaters it used, and a busy repeater your regulars use is not blocked on the strength of made-up names alone.
+- **One more disguise caught**, and after you remove a block on a repeater SpamGuard holds only the spam's route instead of leaving it open.
+- **What the page says was held is what openHop held.** SpamGuard's own records now use the same tests as its rules in openHop.
+- **More careful with your openHop.** It only touches its own rules, no longer switches openHop's rule engine back on if you switched it off (Health says so, with a button), and a later change in the config file wins over an earlier one on the page.
+- **Sturdier.** The page keeps answering while SpamGuard waits on openHop, unreadable saved data is kept aside instead of overwritten, and the standalone service runs with fewer rights.
 
 ## v6.35.0
 
