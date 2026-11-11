@@ -4116,8 +4116,8 @@ class SpamGuard:
         did = self.verdict_done.pop(key, None) or {}
         if did.get("block") and (self.blocks.get(did["block"]) or {}).get("source") == "manual":
             self.action("unblock", {"key": did["block"]})
-        if did.get("trusted"):
-            self.action("unallow_sender", {"sender": did["trusted"]})
+        if did.get("let_in"):
+            self.action("unallow_sender", {"sender": did["let_in"]})
         if v == "none":
             self.action("label", dict(item, label="none"))
             return {"ok": True, "message": "Answer taken back" + (", and what it did was undone." if did else ".")}
@@ -4138,7 +4138,7 @@ class SpamGuard:
             fresh = sender not in self.allow_senders
             msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"))).get("message", "")
             if fresh:
-                did["trusted"] = sender
+                did["let_in"] = sender
         if did:
             self.verdict_done[key] = did
             while len(self.verdict_done) > 200:
