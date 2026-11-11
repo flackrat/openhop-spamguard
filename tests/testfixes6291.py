@@ -54,13 +54,13 @@ sync(g)
 check(any(b["kind"]=="repeat" for b in g.blocks.values()),"the repeated line is still held")
 check(not g.offences.get("Ann Hill") and g.is_known("Ann Hill"),"she keeps her known pass")
 
-# 4. A real burst from her own way in is still held as before
+# 4. A burst from a known person's own way in is held through that repeater only
 m=mock(); g=guard(m,floodguard=False,known_min_msgs=3,known_min_minutes=60)
 for i in range(6): m.add("Bob Lee",f"Evening all, chat {i}",["4C","2F"],ago=7200-i*600)
 g.apply_settings({"mode":"protect"}); sync(g)
 for i in range(16): m.add("Bob Lee",f"message number {i} from bob",["4C","2F"],ago=500-i*20)
 sync(g)
-check(any(b["kind"]=="burst" and b["value"]=="Bob Lee" for b in g.blocks.values()),"a burst from the person's usual way in is held as before")
+check(any(b["kind"]=="imposter" and b.get("who")=="Bob Lee" and b["value"]=="4C" for b in g.blocks.values()) and not any(b["kind"]=="burst" for b in g.blocks.values()),"a burst from the person's usual way in is held there, not everywhere")
 
 # 5. Keyboard-mashed names never become known; ordinary and non-Latin names still do
 m=mock(); g=guard(m,floodguard=False,known_min_msgs=3,known_min_minutes=60)
