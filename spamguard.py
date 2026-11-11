@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.34.0"
+VERSION = "6.35.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -3973,6 +3973,7 @@ class SpamGuard:
                     rows.append({"ts": e.ts, "packet": e.packet, "sender": e.sender, "text": e.text, "path": list(e.path),
                                  "channel": e.channel, "random": e.random, "obfuscated": e.obfuscated,
                                  "known": self.is_known(e.sender), "campaign_senders": len(cc["senders"]) if cc else 0,
+                                 "identity": self.identity_of(e),
                                  "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
                                  "caught_source": b.get("source") if b else None, "own": self.is_own(e), "machine": e.machine})
             return rows, "memory"
@@ -3980,7 +3981,7 @@ class SpamGuard:
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -4082,7 +4083,7 @@ class SpamGuard:
                               "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
                               "copies": 1, "_names": {m.get("sender")},
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
-                              "machine": m.get("machine"),
+                              "machine": m.get("machine"), "identity": m.get("identity"),
                               "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}"),
                               "label_at": self.label_at.get(str(m.get("packet") or "")) or self.label_at.get(f"{m.get('sender')}|{text}")}
             rows.append(r)
@@ -4124,10 +4125,10 @@ class SpamGuard:
         msg = msg.replace("Labelled as spam", "Marked as spam").replace("Labelled as fine", "Marked as not spam")
         did = {}
         if v == "spam" and status in ("letthrough", "genuine") and sender not in self.allow_senders and not self.is_known(sender):
-            had = set(self.blocks)
+            had, t0 = set(self.blocks), time.time()
             try:
                 self.action("mark_spam", dict(item))
-                new = [k for k in self.blocks if k not in had]
+                new = [k for k, b in self.blocks.items() if k not in had or (b.get("source") == "manual" and b["created"] >= t0)]
                 if new:
                     did["block"] = new[0]
                     msg += ". Copies of it are now stopped"

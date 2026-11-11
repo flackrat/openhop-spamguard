@@ -110,7 +110,7 @@ Step-by-step guide and troubleshooting: [docs/install-and-troubleshooting.md](do
 SpamGuard learns from your mesh, so it gets better the longer it runs.
 
 - **A few copies of each brand-new spam wave get through** while it confirms it's a campaign. After that the wave is blocked, and if it comes back later it's stopped from the first copy.
-- **Your regulars become known** and are always let through. For the first day or two a genuine newcomer is more likely to be held, so open **Messages**, choose **Held**, and press **Let it through** on their message; they're let through straight away.
+- **Your regulars become known** and are always let through. For the first day or two a genuine newcomer is more likely to be held, so open **Messages** (it opens on **To review**) and press **Not spam** on their message; they're let through straight away.
 - **Restarts and updates keep everything it has learnt.**
 
 How well does it work, and what does it get wrong? See the [test results](docs/proof.md) and the [test scorecard](docs/test-scorecard.md).
@@ -119,12 +119,12 @@ How well does it work, and what does it get wrong? See the [test results](docs/p
 
 | You want to... | Do this |
 |---|---|
-| Let a genuine person through | Open **Messages**, choose **Held** (or click "Possibly genuine held" on the Overview), then **Let it through** |
+| Let a genuine person through | Open **Messages** (or tap **To review** on the Overview), open their message and press **Not spam** |
 | See what SpamGuard stopped, and why | Click **Spam stopped** on the Overview, or open **Messages** |
-| Label several messages at once | In **Messages**, tick them (shift-click ticks a range, or use **Select all**), then **Label as spam** or **Label as fine** |
+| Answer several messages at once | In **Messages**, tick them (shift-click ticks a range, or use **Select all**), then **Spam** or **Not spam** |
 | Get a suggestion for your settings | Open **Settings advisor** on the Overview |
 | Make it gentler or tougher | Slide the **Protection level** on the Overview; open "What this level would have done" to see the effect on your own traffic |
-| Stop something it missed | In **Messages**, open it and press **Stop copies like this** |
+| Stop something it missed | In **Messages**, open it and press **Spam** |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |

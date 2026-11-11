@@ -60,7 +60,7 @@ A fresh install ends with SpamGuard running in Monitor mode, so nothing is block
     `active` and `"state": "ok"` mean it is working.
 
 5. **Open the page** at `http://<pi-ip>:8091` and check the Health panel says Healthy and "Restart if it hangs" is on.
-6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". In **Messages**, press **Let it through** on anything genuine and **Stop copies like this** on anything it missed. Then switch to **Protect**. If you don't, SpamGuard switches itself once it has watched for a day and seen enough spam, unless you've marked something as Not spam.
+6. **Leave it in Monitor for a day.** Messages it would have stopped are tagged "Would be stopped". In **Messages**, press **Not spam** on anything genuine and **Spam** on anything it missed. Then switch to **Protect**. If you don't, SpamGuard switches itself once it has watched for a day and seen enough spam, unless you've marked something as Not spam.
 7. **Switch to Protect** on the page when you are happy it only catches spam.
 
 Optional: Advanced > Detection settings > **Keep an evidence log**, so detection can be tuned against your real traffic later.
@@ -125,7 +125,7 @@ Start with the Health panel on the page and the last 50 log lines; most problems
 | Newest message is old | Quiet channel, or checking stopped | Check the footer "last checked"; if it is not "just now", restart SpamGuard and send the log. |
 | "Restart if it hangs: off" on the page | Old service settings | Re-run `sudo bash install.sh` from the package folder. |
 | Genuine people being blocked | A rule too broad for your traffic | In **Messages**, choose **Held** and press **Let it through**, remove the block, or slide the protection level gentler. |
-| Spam getting through | Spam doesn't match the current signs yet | In **Messages**, choose **Spam let through** and press **Stop copies like this**; slide the protection level tougher during an attack; keep the evidence log on for tuning. |
+| Spam getting through | Spam doesn't match the current signs yet | In **Messages**, choose **Missed spam** and press **Spam**; slide the protection level tougher during an attack; keep the evidence log on for tuning. |
 | Restart command doesn't return | Service stuck stopping | In a second window: `sudo systemctl kill -s KILL openhop-spamguard` then `sudo systemctl start openhop-spamguard`. |
 
 If something looks wrong, collect these three and send them for diagnosis:
