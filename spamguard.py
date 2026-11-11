@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.33.0"
+VERSION = "6.34.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -91,6 +91,7 @@ ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD = 0, 1    # MeshCore route types; 2 and 3 are
 RULE_PREFIX = "spamguard:"
 RULE_ID_BASE = 9000
 PUBLIC_CHANNEL_KEY = "8b3387e9c5cdea6ac9e5edbaa115cd72"
+ALL_CHANNELS = "*"   # a block you chose to apply on every channel SpamGuard reads
 PERMANENT_SECONDS = 10 * 365 * 86400
 # Symbols people almost never type in chat but random keyboard junk nearly always contains (checked against
 # every evidence log: about 21,500 messages). The standing junk block holds Public messages with any of them
@@ -4570,10 +4571,12 @@ class SpamGuard:
                 return False
             v = b["value"]
             return len(e.path) >= len(v) + 1 and all(self._same_hop(e.path[1 + i], h) for i, h in enumerate(v))
+        if b["kind"] in ("repeat", "burst", "imposter", "text", "words") and not self._on_block_channel(b, e):
+            return False   # the same channels as the rule written to openHop
         if b["kind"] == "repeat":
             return e.sender == b.get("who") and b["value"] in e.text
         if b["kind"] == "burst":   # (not "sender": that name belongs to 5.10's removed name blocks)
-            return e.sender == b["value"] and (not b.get("channel") or e.channel == b["channel"])
+            return e.sender == b["value"]
         if b["kind"] == "imposter":
             return e.sender == b.get("who") and bool(e.path) and self._same_hop(e.path[0], b["value"])
         if b.get("sender") and e.sender == b["sender"]:
@@ -5461,12 +5464,12 @@ class SpamGuard:
                 return "keyboard-symbol junk (in the message or the name) on Public from names SpamGuard doesn't know"
             return "links from names SpamGuard doesn't know"
         if b["kind"] == "burst":
-            return f"everything from {b['value'] or 'senders with no name'} for a while" + (f" on {b['channel']}" if b.get("channel") else "")
+            return f"everything from {b['value'] or 'senders with no name'} for a while" + self._on_where(b)
         if b["kind"] == "imposter":
             sp = b.get("spoof") or {}
             return f"messages under the name {b.get('who')} arriving through repeater {b['value']}" + (
                 f" (spoofed name: usually {sp.get('usual_hops')} hops away" + (f" via {sp['usual_via']}" if sp.get("usual_via") else "")
-                + ")" if sp else "")
+                + ")" if sp else "") + (" on every channel" if b.get("channel") == ALL_CHANNELS else "")
         if b["kind"] == "lockdown":
             return "lockdown: channel messages from names SpamGuard doesn't know"
         if b["kind"] == "suffix":
@@ -5478,9 +5481,192 @@ class SpamGuard:
             return f"more copies of \"{' '.join(str(b['value']).split())}\" from {b.get('who')}" + (
                 f" (carrying on from {', '.join(after)})" if after else "")
         but = f" (except from {b['sender']})" if b.get("sender") else ""
+        but += " on every channel" if b.get("channel") == ALL_CHANNELS else ""
         if b["kind"] == "words":
             return "messages containing all of " + ", ".join(f"\"{w}\"" for w in b["value"]) + but
         return f"text \"{b['value']}\"" + but
+
+    @staticmethod
+    def _on_where(b: dict) -> str:
+        ch = b.get("channel")
+        return " on every channel" if ch == ALL_CHANNELS else (f" on {ch}" if ch else "")
+
+    def _pick_channel(self, body: dict) -> str:
+        """The channel an action from the page is for: one SpamGuard reads, every channel, or Public."""
+        ch = body.get("channel")
+        return ch if ch == ALL_CHANNELS or ch in self.cfg["channels"] else "Public"
+
+    def _drop_narrower(self, key: str) -> int:
+        """When one of your blocks now covers every channel, your copies of it on single channels go."""
+        b = self.blocks.get(key)
+        if not b or b.get("channel") != ALL_CHANNELS:
+            return 0
+        same = [k for k, o in self.blocks.items() if k != key and o.get("source") == "manual" and o["kind"] == b["kind"]
+                and o.get("value") == b.get("value") and o.get("who") == b.get("who") and o.get("channel") != ALL_CHANNELS]
+        for k in same:
+            b["expires"] = max(b["expires"], self.blocks[k]["expires"])
+            self.blocks.pop(k, None)
+        return len(same)
+
+    # ---- your own decisions, carried between two SpamGuards ----
+    DECISION_KINDS = ("text", "burst", "imposter", "hop", "route")
+    DECISIONS_MAX = 2000
+
+    def export_decisions(self) -> dict:
+        """Your own blocks, mutes and exceptions, to load into another SpamGuard. Channels go by name only (never
+        their keys), and nothing SpamGuard learnt by itself is included."""
+        now = time.time()
+        with self.lock:
+            blocks = []
+            for b in self.blocks.values():
+                if b.get("source") != "manual" or b["kind"] not in self.DECISION_KINDS or b["expires"] <= now:
+                    continue
+                d = {"kind": b["kind"], "value": b["value"], "seconds_left": int(b["expires"] - now),
+                     "permanent": b["expires"] - now > PERMANENT_SECONDS / 2}
+                for f in ("who", "sender", "action", "match", "only_channel"):
+                    if b.get(f):
+                        d[f] = b[f]
+                if b["kind"] in self.CHANNEL_KINDS:
+                    d["channel"] = b.get("channel") or "Public"
+                if b["kind"] == "burst" and str(b.get("reason") or "").startswith("Muted"):
+                    d["mute"] = True
+                blocks.append(d)
+            return {"format": "spamguard-decisions", "version": 1, "exported": int(now),
+                    "blocks": blocks, "allow_senders": sorted(self.allow_senders),
+                    "allow_texts": sorted(self.allow_texts), "allow_hops": sorted(self.allow_hops)}
+
+    def import_decisions(self, data) -> dict:
+        """Adds another SpamGuard's exported decisions to this one. Nothing here is removed or shortened: a block
+        you already have keeps whichever end is later, and one for a channel this SpamGuard doesn't read is
+        left out and counted."""
+        if not isinstance(data, dict) or data.get("format") != "spamguard-decisions":
+            raise ValueError("That file isn't a SpamGuard decisions export")
+        if not isinstance(data.get("version"), int) or data["version"] > 1:
+            raise ValueError("That export is from a newer SpamGuard; update this one first")
+        blocks = data.get("blocks") or []
+        lists = {f: data.get(f) or [] for f in ("allow_senders", "allow_texts", "allow_hops")}
+        if not isinstance(blocks, list) or not all(isinstance(v, list) for v in lists.values()):
+            raise ValueError("That export is damaged")
+        if len(blocks) > self.DECISIONS_MAX or any(len(v) > self.ACTION_LIST_MAX for v in lists.values()):
+            raise ValueError("That export is far bigger than SpamGuard makes")
+
+        def text(v, lo=1, hi=200):
+            if not isinstance(v, str) or not lo <= len(v.strip()) <= hi or any(ord(c) < 32 for c in v):
+                raise ValueError
+            return v
+
+        now = time.time()
+        added = kept = skipped = bad = 0
+        no_channel: set[str] = set()
+        with self.lock:
+            for d in blocks:
+                try:
+                    if not isinstance(d, dict) or d.get("kind") not in self.DECISION_KINDS:
+                        raise ValueError
+                    kind = d["kind"]
+                    ch = d.get("channel") or "Public"
+                    if kind in self.CHANNEL_KINDS and ch != ALL_CHANNELS and ch not in self.cfg["channels"]:
+                        no_channel.add(text(ch, 1, 60))
+                        skipped += 1
+                        continue
+                    only = d.get("only_channel")
+                    if only is not None and only not in self.cfg["channels"]:
+                        no_channel.add(text(only, 1, 60))
+                        skipped += 1
+                        continue
+                    left = d.get("seconds_left")
+                    if not isinstance(left, int) or isinstance(left, bool) or left < 60:
+                        raise ValueError
+                    ttl = PERMANENT_SECONDS if d.get("permanent") is True else min(left, PERMANENT_SECONDS)
+                    act = d.get("action")
+                    if act not in (None, "drop", "log_only"):
+                        raise ValueError
+                    extra: dict = {"only_channel": only} if only else {}
+                    match = None
+                    if kind == "text":
+                        value = text(d.get("value"), 5, self.ACTION_TEXT_MAX)
+                        key, reason = text_key(value), "Added by you (imported)"
+                        sender = text(d["sender"], 1, 100) if d.get("sender") else None
+                    elif kind == "burst":
+                        value = text(d.get("value"), 1, 100)
+                        if value in ("?", "Unknown"):
+                            raise ValueError
+                        key = "mute:" + hashlib.sha1(f"{value}|{ch}".encode(), usedforsecurity=False).hexdigest()[:10]
+                        reason, sender = "Muted by you (imported)", None
+                    elif kind == "imposter":
+                        value = text(d.get("value"), 2, 6).upper()
+                        who = text(d.get("who"), 1, 100)
+                        if not HEX_HOP.fullmatch(value) or who in ("?", "Unknown"):
+                            raise ValueError
+                        key = "imposter:" + hashlib.sha1(f"{who}|{value}".encode(), usedforsecurity=False).hexdigest()[:10]
+                        reason, sender = f"Held by you: copies of {who} through repeater {value} (imported)", None
+                        extra["who"] = who
+                    elif kind == "hop":
+                        value = text(d.get("value"), 2, 6).upper()
+                        if not HEX_HOP.fullmatch(value):
+                            raise ValueError
+                        match = d.get("match")
+                        if match not in (None, "exact_paths", "contains", "contains_known"):
+                            raise ValueError
+                        key, reason, sender = f"hop:{value}", "Added by you (imported)", None
+                        if match == "contains":   # also stops known people, so never kept for ever
+                            ttl = min(ttl, TEXT_BLOCK_MAX_SECONDS)
+                    else:
+                        if not isinstance(d.get("value"), list):
+                            raise ValueError
+                        value = parse_route(">".join(text(h, 2, 6) for h in d["value"]))
+                        key, reason, sender = "route:" + ">".join(value), "Added by you (imported)", None
+                except (ValueError, TypeError, KeyError):
+                    bad += 1
+                    continue
+                have = self.blocks.get(key)
+                if have is not None:
+                    have["expires"] = max(have["expires"], min(now + ttl, now + TEXT_BLOCK_MAX_SECONDS)
+                                          if self.covers_everyone(have) else now + ttl)
+                    if have["kind"] in self.CHANNEL_KINDS and ch == ALL_CHANNELS:
+                        have["channel"] = ALL_CHANNELS
+                    have["source"], have["manual"] = "manual", True
+                    kept += 1
+                else:
+                    self.suppressed.pop(key, None)
+                    if not self._add_block(key, kind, value, reason, "manual",
+                                           channel=ch if kind in self.CHANNEL_KINDS else None, ttl=ttl,
+                                           action=act, match=match, sender=sender, extra=extra or None):
+                        bad += 1
+                        continue
+                    if kind == "imposter":
+                        self._forget_way_in(extra["who"], value)
+                    added += 1
+                self._drop_narrower(key)
+            before = (len(self.allow_senders), len(self.allow_texts), len(self.allow_hops))
+            for name in lists["allow_senders"]:
+                if isinstance(name, str) and 0 < len(name) <= 100 and len(self.allow_senders) < self.ACTION_LIST_MAX:
+                    self.allow_senders.add(name)
+            for t in lists["allow_texts"]:
+                if isinstance(t, str) and 3 <= len(t.strip()) <= self.ACTION_TEXT_MAX and len(self.allow_texts) < self.ACTION_LIST_MAX:
+                    self.allow_texts.add(t.strip())
+            for h in lists["allow_hops"]:
+                if isinstance(h, str) and HEX_HOP.fullmatch(h.upper()) and len(self.allow_hops) < self.ACTION_LIST_MAX:
+                    self.allow_hops.add(h.upper())
+            allowed = sum(after - b4 for after, b4 in zip(
+                (len(self.allow_senders), len(self.allow_texts), len(self.allow_hops)), before))
+            self.note(f"Imported decisions from another SpamGuard: {added} new, {kept} already here, {allowed} exceptions")
+            self._important = True
+            self._save_state(force=True)
+            self.sync_policy(force=True)
+        parts = [f"{added} new block{'s' if added != 1 else ''}"]
+        if kept:
+            parts.append(f"{kept} you already had (kept the later end)")
+        if allowed:
+            parts.append(f"{allowed} new exception{'s' if allowed != 1 else ''}")
+        msg = "Imported " + ", ".join(parts) + "."
+        if skipped:
+            msg += (f" Left out {skipped} for channels this SpamGuard doesn't read ({', '.join(sorted(no_channel)[:5])}). "
+                    "Add those channels here and import again to bring them in.")
+        if bad:
+            msg += f" {bad} entr{'ies' if bad != 1 else 'y'} couldn't be read and were skipped."
+        return {"ok": True, "message": msg, "added": added, "kept": kept, "skipped": skipped, "bad": bad,
+                "exceptions": allowed}
 
     def learn_paths(self, events) -> bool:
         added = False
@@ -6813,9 +6999,11 @@ class SpamGuard:
                 conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per])
                          for z in sizes]
             elif b["kind"] in ("text", "words"):
-                secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
+                chc = self._channel_hash_cond(b)
+                if chc is None:
+                    continue
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
-                conds = [("", [{"field": "channel_hash", "op": "equals", "value": secret}]
+                conds = [("", [chc]
                           + [{"field": "channel_message_body", "op": "contains", "value": w} for w in words])]
             else:  # lockdown
                 conds = [("", [])]
@@ -6889,6 +7077,28 @@ class SpamGuard:
         where = f" on {b['only_channel']}" if b.get("only_channel") else ""
         return f" ({origin}) {what}{where}".rstrip()
 
+    CHANNEL_KINDS = ("text", "words", "burst", "imposter", "repeat")
+
+    def _block_channels(self, b: dict) -> list[str]:
+        """The channels a channel-message block covers: its own channel (Public when none was recorded),
+        or every channel SpamGuard reads when you chose all of them."""
+        ch = b.get("channel") or "Public"
+        if ch == ALL_CHANNELS:
+            return sorted(self.cfg["channels"])
+        return [ch] if ch in self.cfg["channels"] or ch == "Public" else []
+
+    def _channel_hash_cond(self, b: dict) -> dict | None:
+        """The openHop condition for a block's channels, or None when none of them is read any more."""
+        secrets = list(dict.fromkeys(self.cfg["channels"].get(c, PUBLIC_CHANNEL_KEY) for c in self._block_channels(b)))
+        if not secrets:
+            return None
+        if len(secrets) == 1:
+            return {"field": "channel_hash", "op": "equals", "value": secrets[0]}
+        return {"field": "channel_hash", "op": "in", "value": secrets}
+
+    def _on_block_channel(self, b: dict, e: "Event") -> bool:
+        return (b.get("channel") or "Public") == ALL_CHANNELS or e.channel in self._block_channels(b)
+
     def _channel_cond(self, b: dict) -> list[dict]:
         """A block you limited to one channel only applies there."""
         ch = b.get("only_channel")
@@ -6949,9 +7159,10 @@ class SpamGuard:
                                   "then": {"action": self.rule_action(b)}})
                 continue
             if b["kind"] in ("burst", "imposter"):
-                secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
-                base = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                        {"field": "channel_hash", "op": "equals", "value": secret}] \
+                chc = self._channel_hash_cond(b)
+                if chc is None:
+                    continue
+                base = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT}, chc] \
                     + sender_conds(b["value"] if b["kind"] == "burst" else b.get("who"))
                 if b["kind"] == "burst":
                     rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
@@ -6967,17 +7178,16 @@ class SpamGuard:
                                   "if": {"all": base + [{"field": "path_hashes", "op": "contains", "value": forms[size]}]},
                                   "then": {"action": self.rule_action(b)}})
                 continue
-            elif b["kind"] == "words":
-                secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
+            chc = self._channel_hash_cond(b) if b["kind"] in ("words", "text", "repeat") else None
+            if b["kind"] in ("words", "text", "repeat") and chc is None:
+                continue
+            if b["kind"] == "words":
                 cond = {"all": [
-                    {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                    {"field": "channel_hash", "op": "equals", "value": secret}]
+                    {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT}, chc]
                     + [{"field": "channel_message_body", "op": "contains", "value": w} for w in b["value"]]}
             else:
-                secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 cond = {"all": [
-                    {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                    {"field": "channel_hash", "op": "equals", "value": secret},
+                    {"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT}, chc,
                     {"field": "channel_message_body", "op": "contains", "value": b["value"]}]}
             if b["kind"] in ("text", "words") and b.get("sender"):
                 cond["all"] += sender_conds(b["sender"], negate=True)
@@ -8590,6 +8800,7 @@ class SpamGuard:
                                "match": b.get("match"), "mode": self.hop_mode(b) if b["kind"] == "hop" else None,
                                "sender": b.get("sender"), "who": b.get("who"), "after": b.get("after"),
                                "only_channel": b.get("only_channel"),
+                               "channel": (b.get("channel") or "Public") if b["kind"] in self.CHANNEL_KINDS else None,
                                "rules": self.rule_numbers(b),
                                "paths": sorted(b.get("paths") or {}) if b["kind"] == "hop" else None,
                                "allowed": sorted(self.allowed_origins(b)) if b["kind"] == "suffix" else None,
@@ -8929,13 +9140,14 @@ class SpamGuard:
                 hop = str(body.get("hop") or "").strip().upper()
                 if not who or who in ("?", "Unknown") or not re.fullmatch(r"[0-9A-F]{2,6}", hop):
                     raise ValueError("Which name and repeater?")
-                ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else "Public"
+                ch = self._pick_channel(body)
                 key = "imposter:" + hashlib.sha1(f"{who}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
                 self.suppressed.pop(key, None)
                 self.blocks.pop(key, None)
                 self._forget_way_in(who, hop)
                 self._add_block(key, "imposter", hop, f"Held by you: copies of {who} through repeater {hop}", "manual",
                                 channel=ch, ttl=7 * 86400, extra={"who": who})
+                self._drop_narrower(key)
                 msg = (f"Holding '{who}' when it arrives through repeater {hop} for 7 days. The real person still gets "
                        "through from anywhere else." + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op == "mute":
@@ -8945,13 +9157,14 @@ class SpamGuard:
                 who = str(body.get("sender") or "").strip()
                 if not who or who in ("?", "Unknown"):
                     raise ValueError("Which name?")
-                ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else "Public"
+                ch = self._pick_channel(body)
                 days = max(1, min(30, int(body.get("days") or 7)))
                 key = "mute:" + hashlib.sha1(f"{who}|{ch}".encode(), usedforsecurity=False).hexdigest()[:10]
                 self.suppressed.pop(key, None)
                 self.blocks.pop(key, None)
                 self._add_block(key, "burst", who, f"Muted by you for {days} days", "manual", channel=ch, ttl=days * 86400)
-                msg = (f"Holding everything from '{who}' on {ch} for {days} days. Remove it under Blocks to stop sooner. "
+                self._drop_narrower(key)
+                msg = (f"Holding everything from '{who}'{self._on_where(self.blocks[key])} for {days} days. Remove it under Blocks to stop sooner. "
                        "Anyone using that name is held, so only do this for a name that keeps sending spam."
                        + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op in ("accept_route", "dismiss_route"):
@@ -9025,11 +9238,11 @@ class SpamGuard:
                 key = text_key(text)
                 self.suppressed.pop(key, None)
                 self.blocks.pop(key, None)
-                channel = body.get("channel") if body.get("channel") in self.cfg["channels"] else "Public"
+                channel = self._pick_channel(body)
                 self._add_block(key, "text", text, "Marked as spam by you" if op == "mark_spam" else "Added by you",
                                 "manual", channel=channel,
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]))
-                msg = f"Blocking messages containing \"{text}\""
+                msg = f"Blocking messages containing \"{text}\"" + self._on_where(self.blocks.get(key) or {})
             elif op == "preview_now":
                 if self.evidence is None:
                     raise ValueError("Turn on the evidence log first: the check replays what it has recorded")
@@ -9094,6 +9307,20 @@ class SpamGuard:
                     msg += (f" It came via blocked repeater {b['value']}; remove that block if this "
                             "repeater's traffic is genuine.")
                 self.note(f"Marked a message from '{sender}' as not spam")
+            elif op == "block_channel":
+                # One of your own blocks on a name or message, moved to another channel or to every channel.
+                key = str(body.get("key") or "")
+                b = self.blocks.get(key)
+                if not b:
+                    raise ValueError("That block no longer exists")
+                if b.get("source") != "manual" or b["kind"] not in self.CHANNEL_KINDS:
+                    raise ValueError("Only your own blocks on a name or a message can be moved between channels")
+                ch = body.get("channel")
+                if ch != ALL_CHANNELS and ch not in self.cfg["channels"]:
+                    raise ValueError("SpamGuard doesn't read that channel")
+                b["channel"] = ch
+                gone = self._drop_narrower(key)
+                msg = f"Now blocking {self.describe(b)}" + (f" (replacing {gone} on single channels)" if gone else "")
             elif op == "extend":
                 b = self.blocks.get(body.get("key", ""))
                 if not b:
@@ -9342,7 +9569,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
@@ -9607,6 +9834,10 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.messages_for(body))
                 if path == "quarantine":
                     return self._send(200, guard.quarantine(body))
+                if path == "decisions_export":
+                    return self._send(200, guard.export_decisions())
+                if path == "decisions_import":
+                    return self._send(200, guard.import_decisions(body.get("decisions")))
                 if path in ACTIONS:
                     return self._send(200, guard.action(path, body))
                 return self._send(404, {"error": "not found"})
