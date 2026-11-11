@@ -772,6 +772,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
   <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
 </section>
+<section id="decSec">
+  <h2>Your own blocks and exceptions</h2>
+  <p class="lead">Keep two SpamGuards in step: export the blocks, mutes and exceptions you added here, then import the file on the other one. Importing only adds. Channel keys and anything SpamGuard learnt itself are left out.</p>
+  <div class="inline-form"><button id="decExport">Export my blocks and exceptions</button><label class="quiet" for="decFile">Import from another SpamGuard</label><input type="file" id="decFile" accept=".json,application/json"></div>
+</section>
 <section id="settingsSec">
   <h2>Detection settings</h2>
   <div class="inline-form"><label for="lvlExact">Protection level, 0 to 100</label><input id="lvlExact" type="number" min="0" max="100" step="1" inputmode="numeric" style="width:6em"><button type="button" id="lvlExactSet">Set</button><span class="explain" id="lvlExactName"></span></div>
@@ -1166,7 +1171,7 @@ function renderBlocks(d){
       :b.kind==="links"&&b.source==="junk"?"Keyboard-symbol junk in the message or the name, on Public, from names SpamGuard doesn't know"
       :b.kind==="links"&&b.source!=="linkhost"?"Links from names SpamGuard doesn't know"
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
-      :b.kind==="text"?`Messages containing “${esc(b.value)}”`
+      :b.kind==="text"?`Messages containing “${esc(b.value)}”`+(b.channel==="*"?" on every channel":"")
       :b.kind==="words"?`Messages containing all of ${b.value.map(w=>"“"+esc(w)+"”").join(", ")}`
       :b.kind==="ptype"?`Flooded ${esc(({0:"requests",6:"group data",7:"anonymous requests"})[b.value.ptype]||"packets")} that came in through repeater <span class="route">${esc(b.value.hop)}</span>`
       :b.kind==="route"?`Messages that started on route <span class="route">${esc(b.value.join(">"))}</span>, except people SpamGuard knows`+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
@@ -1194,9 +1199,11 @@ function renderBlocks(d){
         ${b.kind==="hop"&&b.paths&&b.paths.length?`<details><summary>Show routes</summary>${b.paths.map(p=>`<div><span class="route">${esc(p)}</span> ${btn("Unblock route","/forget_path",{key:b.key,path:p},"quiet")}</div>`).join("")}</details>`:""}</div>`;
     }
     const except=b.sender?` <span class="why">except from ${esc(b.sender)}, who can re-send it</span>`:"";
+    const chSel=b.source==="manual"&&b.channel&&b.kind!=="repeat"&&d.channels.length>1?`<select data-k="${esc(b.key)}" onchange="post('/block_channel',{key:this.dataset.k,channel:this.value})" aria-label="Which channels">${
+      (d.channels.includes(b.channel)||b.channel==="*"?[]:[b.channel]).concat(d.channels).map(c=>`<option value="${esc(c)}" ${c===b.channel?"selected":""}>On ${esc(c)}</option>`).join("")}<option value="*" ${b.channel==="*"?"selected":""}>On every channel</option></select>`:"";
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
       <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.${adv&&b.rules&&b.rules.length?` <span class="rulenum">openHop rule ${b.rules.length>3?b.rules.slice(0,3).join(", ")+"…":b.rules.join(", ")}</span>`:""}</div></div>
-      <div class="acts">${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
+      <div class="acts">${chSel}${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
   };
   const items=list.map(item);
   const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":fg.acting?"<span class='tag stop'>blocking</span>":fg.learning?"<span class='tag would'>counting while learning</span>":"<span class='tag would'>watching only</span>";
@@ -1309,7 +1316,7 @@ function renderAdvanced(d){
   $("#trustHops").innerHTML=chips(d.allow.hops,"/unallow_hop","hop");
   $("#trustTexts").innerHTML=chips(d.allow.texts,"/unallow_text","text");
   for(const [id,first] of [["#hopChan","on every channel"],["#routeChan","on every channel"],["#textChan",null]]){ const sel=$(id), keep=sel.value;
-    const opts=(first?[["",first]]:[]).concat(d.channels.map(c=>[c,"on "+c]));
+    const opts=(first?[["",first]]:[]).concat(d.channels.map(c=>[c,"on "+c])).concat(!first&&d.channels.length>1?[["*","on every channel"]]:[]);
     if(sel.dataset.sig!==JSON.stringify(opts)){ sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.dataset.sig=JSON.stringify(opts); }
     sel.value=opts.some(o=>o[0]===keep)?keep:opts[0][0]; }
   const sup=Object.entries(d.suppressed);
@@ -1361,6 +1368,17 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
+$("#decExport").onclick=async()=>{
+  const r=await fetch("/decisions_export",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:"{}"});
+  if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(k){ store.set("sgkey",k); $("#decExport").click(); } return; }
+  let d={}; try{ d=await r.json(); }catch(e){}
+  if(d.error||d.format!=="spamguard-decisions"){ toast(d.error||"Couldn't export",true); return; }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}));
+  a.download="spamguard-decisions-"+new Date().toISOString().slice(0,10)+".json"; document.body.appendChild(a); a.click(); a.remove();
+  toast(`Exported ${d.blocks.length} block${d.blocks.length===1?"":"s"} and ${d.allow_senders.length+d.allow_texts.length+d.allow_hops.length} exceptions`);
+};
+$("#decFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>900000){ toast("That file is too big for a SpamGuard export",true); e.target.value=""; return; }
+  f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard export",true); return; } post("/decisions_import",{decisions:p}); }).finally(()=>{ e.target.value=""; }); };
 const FG_GROUP="FloodGuard", FG_AUTO=["flood_busy_percent","flood_max_unscoped","flood_max_advert"];
 function settingRow(d,m){
   const v=d.settings[m.key], id="set_"+m.key; let ctl;
@@ -1559,7 +1577,7 @@ function qDetail(){
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
       <dt>Sender</dt><dd>${who}</dd></dl>
-    <p class="q-line" style="gap:8px">${acts}${routeBtn}${lb("spam","Label as spam")}${lb("not_spam","Label as fine")}${r.label==="spam"&&r.sender&&r.sender!=="?"?`<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on ${esc(r.channel||"Public")} for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:r.channel,days:7}))}" onclick="act(this)">Mute this name for 7 days</button>`:""}${r.label==="spam"&&r.sender&&r.sender!=="?"&&r.path&&r.path.length?`<button type="button" class="quiet" data-confirm="Hold ${esc(r.sender)} only when it comes through repeater ${esc(r.path[0])}, for 7 days? The real person still gets through from anywhere else." data-p="/hold_name_hop" data-b="${esc(JSON.stringify({sender:r.sender,channel:r.channel,hop:r.path[0]}))}" onclick="act(this)">Hold this name from ${esc(r.path[0])}</button>`:""}</p>
+    <p class="q-line" style="gap:8px">${acts}${routeBtn}${lb("spam","Label as spam")}${lb("not_spam","Label as fine")}${r.label==="spam"&&r.sender&&r.sender!=="?"?`<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on ${esc(r.channel||"Public")} for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:r.channel,days:7}))}" onclick="act(this)">Mute this name for 7 days</button>${((S||{}).channels||[]).length>1?`<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on every channel for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:"*",days:7}))}" onclick="act(this)">Mute on every channel</button>`:""}`:""}${r.label==="spam"&&r.sender&&r.sender!=="?"&&r.path&&r.path.length?`<button type="button" class="quiet" data-confirm="Hold ${esc(r.sender)} only when it comes through repeater ${esc(r.path[0])}, for 7 days? The real person still gets through from anywhere else." data-p="/hold_name_hop" data-b="${esc(JSON.stringify({sender:r.sender,channel:r.channel,hop:r.path[0]}))}" onclick="act(this)">Hold this name from ${esc(r.path[0])}</button>`:""}</p>
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
     <p class="explain" style="margin:8px 0 0">Labels only record your view, for checking SpamGuard's accuracy.${r.status==="stopped"||r.status==="held"?" Let it through also trusts the sender from now on.":""}</p>`;
 }
