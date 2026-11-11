@@ -32,7 +32,7 @@ for i in range(6): add_at(m,"Ann Hill",f"{words[i]} {words[(i*3)%11]} chat {i}",
 for i in range(6): m.add("Ann Hill",f"copy {words[i]} {i}",["F1","82","A6"],ago=3000-i*100)
 g.apply_settings({"mode":"protect"}); sync(g)
 check("F1" in g.homes.get("Ann Hill",{}),"F1 had been learnt as a way in")
-check(any(abs(o)<600 for _,o in g.clocks.get("annhill",[])),"her own device keeps good time")
+check(any(abs(o)<600 for _,o,*_ in g.clocks.get("annhill",[])),"her own device keeps good time")
 
 add_at(m,"Ann Hill","you lot are idiots",["F1","82","A6","5D"],time.time()-OFF); sync(g)
 b=next((b for b in g.blocks.values() if b.get("source")=="spoof"),None)

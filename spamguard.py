@@ -33,10 +33,12 @@ import shutil
 import signal
 import socket
 import subprocess
+import copy
 import difflib
 import zlib
 import hashlib
 import hmac
+import ipaddress
 import calendar
 import json
 import math
@@ -76,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.32.1"
+VERSION = "6.33.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -615,6 +617,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "listen_host": "0.0.0.0",
     "listen_port": 8091,
     "listen_api_key": "",
+    "allowed_hosts": [],
     "state_file": "/var/lib/openhop_spamguard/state.json",
     **PRESETS["balanced"],
 }
@@ -784,10 +787,30 @@ def plain_rule(rule: dict) -> str:
     return lead + (" a packet that " + ", ".join(conds) if conds else " every packet")
 
 
+def sender_conds(name, negate: bool = False) -> list:
+    """openHop rule conditions for "the sender is (or is not) this name". openHop calls a message with no
+    "Name: " prefix "Unknown" and one with an empty name before ": " "", so a nameless sender needs both."""
+    n = str(name or "")
+    if n in ("", "?") or not n.rstrip():
+        if negate:
+            return [{"field": "channel_sender", "op": "not_equals", "value": v} for v in ("Unknown", "")]
+        return [{"field": "channel_sender", "op": "in", "value": ["Unknown", ""]}]
+    return [{"field": "channel_sender", "op": "not_equals" if negate else "equals", "value": oh_sender(n)}]
+
+
+def _num(v, default: float = 0.0) -> float:
+    """A number from openHop's data, or the default when it isn't one."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def oh_sender(name) -> str:
     """The sender as openHop's rules see it: a message without a "Name: " prefix is from "Unknown" there
-    (SpamGuard keeps such a sender blank), so a rule about it must say "Unknown" to match anything."""
-    return str(name or "").strip() or "Unknown"
+    (SpamGuard keeps such a sender blank, shown as "?"), so a rule about it must say "Unknown" to match anything."""
+    n = str(name or "")
+    return "Unknown" if n == "?" else (n.rstrip() or "Unknown")
 
 
 # The fixed label the signing format puts first in the bytes that are signed (24 bytes), written as hex.
@@ -845,10 +868,15 @@ def decrypt_group_text(payload: bytes, channels: dict[str, str]) -> Optional[dic
             # AES in ECB mode is what MeshCore itself uses for channel messages; SpamGuard only reads them,
             # and never uses it to protect anything of its own.
             pt = AES.new(key[:16], AES.MODE_ECB).decrypt(padded)[: len(ct)]
-            # [timestamp 4][flags 1]["sender: text"][zero padding]
-            msg = pt[5:].split(b"\x00", 1)[0].decode("utf-8", "replace")
-            sender, text = (msg.split(": ", 1) if ": " in msg else ("", msg))
-            out = {"channel": name, "sender": sender.strip(), "text": text, "sent": int.from_bytes(pt[:4], "little")}
+            # [timestamp 4][flags 1]["sender: text"][zero padding]. The sender is read exactly the way openHop's
+            # rules read it (flags, trailing zeros, trailing spaces only), so a rule about a name matches the
+            # same messages SpamGuard counted under that name.
+            start = 7 if pt[4] == 0x02 and len(pt) >= 7 else 5
+            content = pt[start:].decode("utf-8", "replace").rstrip("\x00")
+            sender, text = (content.split(": ", 1) if ": " in content else ("", content))
+            sender = sender.rstrip("\x00").rstrip()
+            text = text.split("\x00", 1)[0]
+            out = {"channel": name, "sender": sender, "text": text, "sent": int.from_bytes(pt[:4], "little")}
             tr = split_signed(pt)
             if tr:
                 out["signed"] = {"kid": tr[1], "sig": tr[2], "cover": signed_cover(secret, pt, tr[0])}
@@ -1142,6 +1170,16 @@ def first_link(text: str) -> Optional[str]:
         return None
     u = re.sub(r"^https?://", "", m.group(0), flags=re.I).rstrip(".,;:!?…")
     return u if len(u) >= 20 else None
+
+
+def link_host(text: str) -> str:
+    """The site of the first web link in a message (however short the link), lower case, or ""."""
+    m = URL.search(text)
+    if not m:
+        return ""
+    u = re.sub(r"^https?://", "", m.group(0), flags=re.I).rstrip(".,;:!?…")
+    host = u.split("/", 1)[0].lower()
+    return host if "." in host else ""
 
 
 def random_tail_template(text: str) -> Optional[tuple]:
@@ -1564,8 +1602,14 @@ class EvidenceLog:
                 day = time.strftime("%Y-%m-%d", time.localtime(json.loads(ln)["ts"]))
                 by_day.setdefault(day, []).append(ln)
             for day, ls in by_day.items():
-                with open(os.path.join(self.folder, f"{day}.jsonl"), "a", encoding="utf-8") as f:
+                fpath = os.path.join(self.folder, f"{day}.jsonl")
+                fd = os.open(fpath, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)   # messages: SpamGuard only
+                with os.fdopen(fd, "a", encoding="utf-8") as f:
                     f.write("\n".join(ls) + "\n")
+                try:
+                    os.chmod(fpath, 0o600)   # files written by older versions too
+                except OSError:
+                    pass
             cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - keep_days * 86400))
             for fpath in self.files():
                 if os.path.basename(fpath)[:10] < cutoff:
@@ -1935,7 +1979,8 @@ class SpamGuard:
         self.allow_hops |= {h.upper() for h in cfg.get("allow_hops") or []}
         self.allow_senders |= set(cfg.get("allow_senders") or [])
         self.allow_texts |= set(cfg.get("allow_texts") or [])
-        self.name_res = [re.compile(p, re.I) for p in cfg.get("random_name_patterns") or []]
+        self.name_res = [re.compile(p, re.I) for p in (cfg.get("random_name_patterns") or [])[:20]
+                         if not name_pattern_problem(p)]
         if cfg.get("evidence_log"):
             if self.evidence is None or self.evidence.folder != cfg["evidence_dir"]:
                 self.evidence = EvidenceLog(cfg["evidence_dir"])
@@ -1999,26 +2044,32 @@ class SpamGuard:
 
     # ---- state ----
     def _load_state(self):
+        """Load the saved state, falling back to the last good copy. A file that can't be applied (wrong shape,
+        a value of the wrong type) is skipped and the next one tried, so SpamGuard never fails to start."""
         path = self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
-        st = None
+        fresh = {k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
+                 for k, v in self.__dict__.items()}
         for i, p in enumerate((path, path + ".bak")):
             try:
                 with open(p) as f:
                     st = json.load(f)
                 if not isinstance(st, dict):
                     raise ValueError("not a state file")
-                if i:
-                    log.warning("The state file was damaged; carried on from the last good copy")
-                    self._restored_from_backup = True
-                break
+                self._apply_state(st)
             except FileNotFoundError:
-                st = None
                 continue
             except Exception as e:
                 log.warning("Could not load %s: %s", p, e)
-                st = None
-        if st is None:
-            return
+                self.__dict__.clear()
+                self.__dict__.update({k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
+                                      for k, v in fresh.items()})
+                continue
+            if i:
+                log.warning("The state file was damaged; carried on from the last good copy")
+                self._restored_from_backup = True
+            break
+
+    def _apply_state(self, st: dict):
         now = time.time()
         self.blocks = {k: v for k, v in st.get("blocks", {}).items() if v.get("expires", 0) > now}
         # 5.10 briefly had blocks on a sender's name; SpamGuard judges behaviour, not people, so they go.
@@ -2122,8 +2173,9 @@ class SpamGuard:
         day8 = now - 8 * 86400
         for k, v in (st.get("clocks") or {}).items():
             if isinstance(v, list):
-                d = [[int(x[0]), int(x[1])] for x in v if isinstance(x, list) and len(x) == 2
-                     and all(isinstance(y, int) and not isinstance(y, bool) for y in x) and 0 < x[0] <= now + 60
+                d = [[int(x[0]), int(x[1])] + ([str(x[2])[:8]] if len(x) == 3 and isinstance(x[2], str) else [])
+                     for x in v if isinstance(x, list) and len(x) in (2, 3)
+                     and all(isinstance(y, int) and not isinstance(y, bool) for y in x[:2]) and 0 < x[0] <= now + 60
                      and abs(x[1]) < 10 ** 10][-20:]
                 if d:
                     self.clocks[str(k)[:40]] = d
@@ -2183,7 +2235,10 @@ class SpamGuard:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
-            with open(tmp, "w") as f:
+            if os.path.lexists(tmp):
+                os.remove(tmp)
+            # readable by SpamGuard only: it holds private channel keys and recent messages
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
                 json.dump(self.state_dict(), f, separators=(",", ":"))   # compact: less to write each time
                 f.flush()
                 os.fsync(f.fileno())   # on the card before it replaces the old copy (at most every few minutes)
@@ -2507,6 +2562,8 @@ class SpamGuard:
                 state = "other"
             keyed, damaged = state != "other", state == "bad"
         self.air.append((ts, on_air, flood, route in (2, 3), damaged))
+        while self.air and (self.air[0][0] < time.time() - 900 or len(self.air) > 20000):
+            self.air.popleft()
         if counted:
             return
         self.fg["mark"] = ts
@@ -4456,6 +4513,27 @@ class SpamGuard:
         """Blocks that also stop people SpamGuard knows: these can't be kept for ever."""
         return b["kind"] in ("text", "words") or (b["kind"] == "hop" and self.hop_mode(b) == "contains")
 
+    def _spam_mark_on_name(self, sender: str, path, channel, now: float) -> str:
+        """Your spam mark on a known name. Through a repeater that name never uses, it is most likely a copy:
+        hold the name from there and leave the real person alone ("copy"). Otherwise the name itself sent it:
+        it stops counting as known, so it no longer passes the checks that let known people through ("known")."""
+        if sender in ("?", "Unknown") or sender in self.allow_senders or not self.is_known(sender):
+            return ""
+        hops = [h for h in (path if isinstance(path, list) else str(path or "").replace(",", ">").split(">")) if h]
+        hop = str(hops[0]).strip().upper() if hops else ""
+        hm = self._family_homes(sender)
+        if re.fullmatch(r"[0-9A-F]{2,6}", hop) and sum(hm.values()) >= 5 \
+                and not any(h == hop or hops_related(hop, h) for h in hm):
+            ch = channel if channel in self.cfg["channels"] else "Public"
+            key = "imposter:" + hashlib.sha1(f"{sender}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+            self.suppressed.pop(key, None)
+            self._add_block(key, "imposter", hop, f"Marked by you: copies of {sender} through repeater {hop}", "manual",
+                            channel=ch, ttl=7 * 86400, extra={"who": sender})
+            return "copy"
+        self.known.pop(sender, None)
+        self.note(f"'{sender}' no longer counts as a known person (marked as spam by you)")
+        return "known"
+
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
         return b["kind"] in ("links", "lockdown", "route", "stem") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
@@ -4556,8 +4634,8 @@ class SpamGuard:
                     b["hits"] = b.get("hits", 0) + 1
                     b["last_hit"] = e.ts
                     if b["kind"] == "imposter" and b.get("source") == "spoof":
-                        # still catching copies: keep holding, but never more than a day from when it started
-                        b["expires"] = max(b["expires"], min(e.ts + self.SPOOF_HOLD_KEEP, b["created"] + 86400))
+                        # still catching copies: keep holding, for a few hours at most
+                        b["expires"] = max(b["expires"], min(e.ts + self.SPOOF_HOLD_KEEP, b["created"] + self.SPOOF_HOLD_MAX))
                     self.stats["caught"] += 1
                     self.catches.append(e.ts)
                 return
@@ -4662,7 +4740,7 @@ class SpamGuard:
                 self._sense_note(e)
             if not again and not e.local and e.sent_ts and e.sender and not e.matched:
                 ck = self.clocks.setdefault(self.name_family(e.sender), [])
-                ck.append([round(e.ts), round(e.ts - e.sent_ts)])
+                ck.append([round(e.ts), round(e.ts - e.sent_ts), e.first_hop or ""])
                 del ck[:-20]
                 while len(self.clocks) > 3000:
                     self.clocks.pop(next(iter(self.clocks)))
@@ -4709,6 +4787,11 @@ class SpamGuard:
         # still chatting must not turn back into a newcomer at the 24-hour mark.
         for s in [s for s, h in self.sender_history.items() if float(h.get("last") or h["first"]) < now - 86400]:
             del self.sender_history[s]
+        if len(self.sender_history) > self.HISTORY_MAX:   # a flood of made-up names: keep the most recently heard
+            drop = sorted(self.sender_history, key=lambda n: float(self.sender_history[n].get("last")
+                                                                  or self.sender_history[n]["first"]))
+            for s in drop[:len(self.sender_history) - int(self.HISTORY_MAX * 0.8)]:
+                del self.sender_history[s]
         keep = max(int(self.cfg.get("slow_repeat_window_seconds", 86400)), 3600) + 3600
         for k in [k for k, v in self.slow_sends.items() if not v["ts"] or v["ts"][-1] < now - keep]:
             del self.slow_sends[k]
@@ -4758,41 +4841,13 @@ class SpamGuard:
     FAR_HOPS = 8      # ...and its name arriving from this far, through a repeater it never uses, looks copied
 
     SPOOF_HOLD_KEEP = 3600   # a copy-hold that keeps catching things lasts this much longer each time
-    LOOKALIKE_RATIO = 0.65   # with the copied-name check on, names this alike, starting the same way, count as one
+    SPOOF_HOLD_MAX = 4 * 3600   # ...but no longer than this from when it started
 
     def name_family(self, who: str) -> str:
         """Names that differ only by spaces, dashes, dots or capitals ("Sam-Lowmesh", "Sam Lowmesh") are one person
-        for the copied-name check. Names with no letters or digits stay as they are. With the copied-name check
-        on, a near-identical spelling that starts the same way joins the same family, so a copy can't dodge the
-        check by changing a letter or two."""
+        for the copied-name check. Names with no letters or digits stay as they are."""
         f = re.sub(r"[^0-9a-z]", "", str(who or "").casefold())
-        f = f if len(f) >= 4 else str(who or "")
-        if not self.cfg.get("spoof_watch") or len(f) < 6:
-            return f
-        canon = self.__dict__.setdefault("_fam_canon", {})
-        buckets = self.__dict__.get("_fam_buckets")
-        if buckets is None:
-            # first use (or after a restart): the families already saved are the ones to join, so a newcomer
-            # that arrives first can't take over the key a person's saved history is kept under
-            buckets = self.__dict__["_fam_buckets"] = {}
-            for table in (self.near, self.fam_names, self.clocks):
-                for k in table:
-                    if len(k) >= 6 and k not in canon:
-                        canon[k] = k
-                        buckets.setdefault(k[:5], []).append(k)
-        hit = canon.get(f)
-        if hit is not None:
-            return hit
-        for k in buckets.get(f[:5], ()):
-            if difflib.SequenceMatcher(None, f, k).ratio() >= self.LOOKALIKE_RATIO:
-                canon[f] = k
-                return k
-        buckets.setdefault(f[:5], []).append(f)
-        canon[f] = f
-        if len(canon) > 6000:   # bounded memory: start again rather than grow without limit
-            canon.clear()
-            buckets.clear()
-        return f
+        return f if len(f) >= 4 else str(who or "")
 
     def _family_homes(self, who: str) -> dict:
         hm: dict = {}
@@ -4836,7 +4891,13 @@ class SpamGuard:
         if not self.cfg.get("spoof_watch") or not e.sent_ts or abs(e.ts - e.sent_ts) < self.CLOCK_OFF:
             return False
         return any(abs(off) < 600 and e.ts - t < 7 * 86400
-                   for t, off in self.clocks.get(self.name_family(e.sender), ()))
+                   for t, off, *_ in self.clocks.get(self.name_family(e.sender), ()))
+
+    def _good_clock_via(self, who: str, hop: str) -> bool:
+        """This person's own device (its clock right) has been heard through this repeater in the last month."""
+        now = time.time()
+        return any(len(x) > 2 and x[2] and (x[2] == hop or hops_related(x[2], hop)) and abs(x[1]) < 600
+                   and now - x[0] < 30 * 86400 for x in self.clocks.get(self.name_family(who), ()))
 
     def _forget_way_in(self, who: str, hop: str) -> None:
         """A repeater a copy of this name came through is not one of the person's usual ways in."""
@@ -5488,6 +5549,9 @@ class SpamGuard:
             keep = ts - self.FORGED_FOR
             self.forged = {k: {n: t for n, t in v.items() if t >= keep} for k, v in self.forged.items()}
             self.forged = {k: v for k, v in self.forged.items() if v}
+            if len(self.forged) > 2000:   # still too many within the window: keep the most recent
+                recent = sorted(self.forged, key=lambda k: max(self.forged[k].values()), reverse=True)[:1500]
+                self.forged = {k: self.forged[k] for k in recent}
 
     def identity_of(self, e: Event) -> str:
         """How far a sender's identity can be trusted: "key" (signed by a key you trust), "copied" (a name
@@ -6281,9 +6345,8 @@ class SpamGuard:
             for e in list(self.events):
                 if e.ts < now - 3600 or e.exempt or e.local or self.is_known(e.sender):
                     continue
-                lk = first_link(e.text)
-                host = lk.split("/", 1)[0].lower() if lk else ""
-                if "." in host:
+                host = link_host(e.text)
+                if host:
                     sites.setdefault((e.channel, host), {})[e.sender] = e.ts
             for (ch, host), who in sites.items():
                 if len(who) >= int(c["link_campaign_names"]):
@@ -6310,7 +6373,10 @@ class SpamGuard:
                 base = self._family_homes(e.sender) if fam_on else (self.homes.get(e.sender) or {})
                 hm = {h: n - (here if h == e.first_hop else 0) for h, n in base.items()}
                 hm = {h: n for h, n in hm.items() if n > 0}
-                if not device and (sum(hm.values()) < 5 or e.first_hop in hm or any(hops_related(e.first_hop, x) for x in hm)):
+                mine = any(h == e.first_hop or hops_related(e.first_hop, h) for h in hm)
+                if mine and (not device or self._good_clock_via(e.sender, e.first_hop)):
+                    continue   # a usual way in, and (for a wrong clock) one their own device is heard through
+                if not device and sum(hm.values()) < 5:
                     continue
                 far = device or self._far_from_home(e) or self._two_places(e, a["window"])
                 if far:
@@ -6405,6 +6471,13 @@ class SpamGuard:
         elif self.blocks.pop("junk:symbols", None):
             changed = True
 
+        changed = self._expire_blocks(now) or changed
+        self._save_state(force=self._important)
+        return changed
+
+    def _expire_blocks(self, now: float) -> bool:
+        """Remove blocks whose time is up (also when detection itself failed this round)."""
+        changed = False
         # Blocks that stop everyone, people SpamGuard knows included, never last more than a week from now
         # (a repeater block on 'anything passing through', or text). Others can be kept until removed.
         for b in self.blocks.values():
@@ -6420,8 +6493,18 @@ class SpamGuard:
             del self.suppressed[k]
         for k in [k for k, v in self.released.items() if v < now - 86400]:
             del self.released[k]
-        self._save_state(force=self._important)
         return changed
+
+    def _stage_failed(self, stage: str, err: Exception) -> None:
+        """One part of the check failed: the rest still runs. Logged in full once every ten minutes per part."""
+        now = time.time()
+        fails = self.__dict__.setdefault("stage_errors", {})
+        last = fails.get(stage)
+        fails[stage] = {"ts": now, "error": f"{type(err).__name__}: {err}"[:200],
+                        "count": (last or {}).get("count", 0) + 1, "logged": (last or {}).get("logged", 0)}
+        if now - fails[stage]["logged"] > 600:
+            fails[stage]["logged"] = now
+            log.exception("%s failed (the other checks still run)", stage)
 
     # ---- policy sync ----
     def rule_action(self, b: dict) -> str:
@@ -6496,18 +6579,26 @@ class SpamGuard:
         keep_ids = {r["id"] for r in flood}
         if flood:
             keep_ids.add(self._rid("known:*"))
+        # Your own blocks and a lockdown are left out only after every automatic one: they are the most deliberate.
+        mine = set()
+        for b in self.blocks.values():
+            if b.get("source") == "manual" or b["kind"] == "lockdown":
+                mine |= set((b.get("ids") or {}).values()) | ({b["id"]} if b.get("id") is not None else set())
         budget = max(0, cap - len(wd))
+        left_out = 0
         if len(tail) > budget:
-            while len(tail) > budget:
-                drop = next((i for i in range(len(tail) - 1, -1, -1) if tail[i]["id"] not in keep_ids), None)
-                if drop is None:
-                    break
-                del tail[drop]
+            for protect in (keep_ids | mine, keep_ids):
+                while len(tail) > budget:
+                    drop = next((i for i in range(len(tail) - 1, -1, -1) if tail[i]["id"] not in protect), None)
+                    if drop is None:
+                        break
+                    del tail[drop]
+                    left_out += 1
             if len(tail) == 1 and "known-people" in str(tail[0].get("name")):
                 tail = []
-            if not self.stats.get("rule_limit_warned"):
-                self.stats["rule_limit_warned"] = 1
-                self.note(f"Rule limit ({cap}) reached - the newest blocks were left out of openHop")
+        if left_out and left_out != self.stats.get("rules_left_out"):
+            self.note(f"Rule limit ({cap}) reached - {left_out} of the newest automatic blocks were left out of openHop")
+        self.stats["rules_left_out"] = left_out
         main = wd + self._not_own(self._build_main(max(0, cap - len(tail) - len(wd))))
         return main, tail
 
@@ -6859,9 +6950,8 @@ class SpamGuard:
             if b["kind"] in ("burst", "imposter"):
                 secret = self.cfg["channels"].get(b.get("channel") or "", PUBLIC_CHANNEL_KEY)
                 base = [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
-                        {"field": "channel_hash", "op": "equals", "value": secret},
-                        {"field": "channel_sender", "op": "equals",
-                         "value": oh_sender(b["value"] if b["kind"] == "burst" else b.get("who"))}]
+                        {"field": "channel_hash", "op": "equals", "value": secret}] \
+                    + sender_conds(b["value"] if b["kind"] == "burst" else b.get("who"))
                 if b["kind"] == "burst":
                     rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
                                   "if": {"all": base}, "then": {"action": self.rule_action(b)}})
@@ -6889,9 +6979,9 @@ class SpamGuard:
                     {"field": "channel_hash", "op": "equals", "value": secret},
                     {"field": "channel_message_body", "op": "contains", "value": b["value"]}]}
             if b["kind"] in ("text", "words") and b.get("sender"):
-                cond["all"].append({"field": "channel_sender", "op": "not_equals", "value": oh_sender(b["sender"])})
+                cond["all"] += sender_conds(b["sender"], negate=True)
             if b["kind"] == "repeat":
-                cond["all"].append({"field": "channel_sender", "op": "equals", "value": oh_sender(b.get("who"))})
+                cond["all"] += sender_conds(b.get("who"))
             rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
                           "if": cond, "then": {"action": self.rule_action(b)}})
         if len(rules) >= limit and not self.stats.get("rule_limit_warned"):
@@ -7035,8 +7125,14 @@ class SpamGuard:
 
     # ---- loop ----
     def _note_newest(self, packets):
-        """Track the newest packet openHop lists (any kind): how late it is, and when it last moved."""
-        newest = max((float(p.get("timestamp") or 0) for p in packets or [] if isinstance(p, dict)), default=0) or None
+        """Track the newest packet openHop lists (any kind): how late it is, and when it last moved. A packet
+        stamped well in the future is ignored for this, and if openHop's clock steps back the reading point
+        follows, so SpamGuard never stops reading new packets because of one odd timestamp."""
+        limit = time.time() + self.CURSOR_AHEAD
+        if self.last_packet_ts is not None and self.last_packet_ts > limit:
+            self.last_packet_ts = time.time() - 30
+        newest = max((ts for p in packets or [] if isinstance(p, dict)
+                      for ts in [_num(p.get("timestamp"))] if ts <= limit), default=0) or None
         if newest and (self.last_packet_ts is None or newest > self.last_packet_ts):
             if self.last_packet_ts is not None:  # a packet we haven't seen before: how old is it already?
                 self.lag_samples.append((time.time(), max(0.0, time.time() - newest)))
@@ -7044,6 +7140,9 @@ class SpamGuard:
             self.heard_at = time.time()
         elif self.heard_at is None:
             self.heard_at = time.time()
+
+    CURSOR_AHEAD = 60
+    HISTORY_MAX = 20000   # names remembered from the last day (a flood of made-up names can't grow it further)
 
     def fetch_packets(self) -> list:
         """Ask openHop only for packets newer than the newest one already seen (usually a handful),
@@ -7053,6 +7152,8 @@ class SpamGuard:
         messages are picked out here. Older openHop versions fall back to the recent packet list."""
         limit = int(self.cfg["fetch_limit"])
         if self.use_filtered is not False:
+            if self.last_packet_ts is not None and self.last_packet_ts > time.time() + self.CURSOR_AHEAD:
+                self.last_packet_ts = time.time() - 30   # openHop's clock stepped back: read from now
             if self.last_packet_ts is None:
                 since = time.time() - self.cfg["long_window_seconds"]
             else:
@@ -7121,15 +7222,12 @@ class SpamGuard:
         threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self):
-        try:
-            self.refresh_openhop_info()
-            self.refresh_own_identities()
-            self.refresh_public_map()
-            self.refresh_level_preview()
-            self.backfill_adverts()
-            self.fetch_noise()
-        except Exception:
-            pass
+        for task in (self.refresh_openhop_info, self.refresh_own_identities, self.refresh_public_map,
+                     self.refresh_level_preview, self.backfill_adverts, self.fetch_noise):
+            try:
+                task()
+            except Exception as e:
+                log.debug("%s failed: %s", task.__name__, e)
         if getattr(self, "retired", False):
             return
         if getattr(self, "standby", None):
@@ -7144,16 +7242,28 @@ class SpamGuard:
         packets = self.fetch_packets()
         with self.lock:
             self.ingest(packets)
-            if self.decide():
-                self.sync_pending = True
-            if self.fg_decide():
-                self.sync_pending = True
+            try:
+                if self.decide():
+                    self.sync_pending = True
+            except Exception as e:
+                self._stage_failed("Spam detection", e)
+                if self._expire_blocks(time.time()):
+                    self.sync_pending = True
+                self._save_state(force=self._important)
+            try:
+                if self.fg_decide():
+                    self.sync_pending = True
+            except Exception as e:
+                self._stage_failed("FloodGuard", e)
             sig = self.route_sig()
             if sig != self._route_sig:
                 # hop sizes in use or shared hop bytes changed: rebuild (only written if the rules differ)
                 self._route_sig = sig
                 self.sync_pending = True
-            self.jam_decide()
+            try:
+                self.jam_decide()
+            except Exception as e:
+                self._stage_failed("Interference watch", e)
         self.last_poll_ok = time.time()
         self.last_error = None
         due = self.last_sync is None or time.time() - self.last_sync >= self.cfg["min_sync_seconds"]
@@ -7431,6 +7541,8 @@ class SpamGuard:
                 f"https://github.com/{self._repo()}/releases/download/v{VERSION}/{name}"
             with urllib.request.urlopen(url, timeout=120) as r:
                 wheel = r.read()
+            if not self.cfg.get("plugin_wheel_url"):
+                self._check_release_file(VERSION, name, wheel)
             self._move_step("Installing the plugin in openHop (it sets up its own copy, which can take a minute)...")
             was_running = self._plugin_state() == "RUNNING"
             started = time.time()
@@ -7577,15 +7689,12 @@ class SpamGuard:
             threading.Thread(target=self.watchdog_loop, args=(stop,), daemon=True, name="watchdog").start()
         while not stop.is_set():
             t0 = time.time()
-            try:
-                self._maybe_check_update()
-                self._maybe_fix_openhop()
-                self._maybe_check_plugins()
-                self._maybe_guard_frontend()
-                self._maybe_auto_protect()
-                self._maybe_auto_level()
-            except Exception:
-                pass
+            for task in (self._maybe_check_update, self._maybe_fix_openhop, self._maybe_check_plugins,
+                         self._maybe_guard_frontend, self._maybe_auto_protect, self._maybe_auto_level):
+                try:
+                    task()
+                except Exception as e:
+                    self._stage_failed(task.__name__.lstrip("_").replace("maybe_", "").replace("_", " ").capitalize(), e)
             try:
                 self.poll_once()
                 self.openhop_down_since = None
@@ -7979,6 +8088,10 @@ class SpamGuard:
             warnings.append(f"Each check is taking {self.poll_ms / 1000:.1f} s, longer than the {c['poll_seconds']} s interval.")
         if errors_hour >= 20:
             warnings.append(f"{errors_hour} errors talking to openHop in the last hour.")
+        for stage, f in sorted((getattr(self, "stage_errors", None) or {}).items()):
+            if now - f["ts"] < 900:
+                (problems if stage == "Spam detection" else warnings).append(
+                    f"{stage} hit an error ({f['error']}); the other checks keep running. Details are in the log.")
         if not watchdog and restarts is not None and install_kind() == "normal":
             warnings.append("Automatic restart-on-hang is not active. Re-run the installer to enable it.")
         state = "bad" if problems else ("warn" if warnings else "ok")
@@ -8201,6 +8314,21 @@ class SpamGuard:
                 "SpamGuard uninstalled. Ready-made builds usually follow within a day, so try again tomorrow, or "
                 "press Update anyway if you'd rather wait for the compile.")
 
+    def _check_release_file(self, version: str, name: str, data: bytes) -> None:
+        """A file downloaded from a GitHub release must match that release's published checksum list, or it
+        isn't installed. (A download from a plugin_wheel_url you set in the config is yours to vouch for.)"""
+        url = f"https://github.com/{self._repo()}/releases/download/v{version.lstrip('v')}/SHA256SUMS"
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                sums = r.read(1_000_000).decode("utf-8", "replace")
+        except Exception as e:
+            raise ValueError(f"Couldn't get the release's checksum list to check the download ({e})") from None
+        want = {ln.split()[-1].lstrip("*"): ln.split()[0].lower() for ln in sums.splitlines() if len(ln.split()) >= 2}
+        if name not in want:
+            raise ValueError(f"The release's checksum list doesn't include {name}, so it wasn't installed")
+        if hashlib.sha256(data).hexdigest() != want[name]:
+            raise ValueError(f"The download of {name} doesn't match the release's checksum, so it wasn't installed")
+
     def start_plugin_update(self, want: str, force: bool = False) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
         restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
@@ -8227,6 +8355,8 @@ class SpamGuard:
                         if total:
                             self._update_step(pct=3 + 30 * len(buf) / total)
                     wheel = bytes(buf)
+                if not self.cfg.get("plugin_wheel_url"):
+                    self._check_release_file(want, name, wheel)
                 if not force and self.cfg.get("plugin_preflight", True):
                     self._update_step("Checking the update can install on this machine...", pct=34)
                     why = self.plugin_preflight(wheel)
@@ -8293,6 +8423,10 @@ class SpamGuard:
         want = str(body.get("version") or self.update_info.get("latest") or "").lstrip("v")
         if not re.fullmatch(r"\d+(\.\d+){1,3}", want):
             raise ValueError("Press Check first, so SpamGuard knows which version to install.")
+        vt = lambda v: tuple(int(x) for x in re.findall(r"\d+", v)[:4])   # noqa: E731
+        if vt(want) < vt(VERSION):
+            raise ValueError(f"The page only installs newer versions than this one ({VERSION}). To go back to an "
+                             "older one, run the updater on the Pi itself.")
         if managed_update():
             raise ValueError(managed_update())
         if IN_PLUGIN:
@@ -8670,11 +8804,12 @@ class SpamGuard:
                         elif m["type"] == "list":
                             if isinstance(v, str):
                                 v = [p.strip() for p in v.splitlines() if p.strip()]
+                            if len(v) > 20:
+                                raise ValueError("At most 20 patterns")
                             for p in v:
-                                try:
-                                    re.compile(p)
-                                except re.error as err:
-                                    raise ValueError(f"pattern '{p}' is not valid: {err}") from None
+                                problem = name_pattern_problem(p)
+                                if problem:
+                                    raise ValueError(f"pattern '{p[:40]}' {problem}")
                     else:
                         raise ValueError(f"unknown setting {k}")
                     new[k] = v
@@ -8701,9 +8836,19 @@ class SpamGuard:
             self.sync_policy(force=True)
         return {"ok": True}
 
+    ACTION_TEXT_MAX = 2000      # no value the page sends is anywhere near this long
+    ACTION_LIST_MAX = 5000      # entries you can add to an allow list or similar by hand
+
     def action(self, op: str, body: dict) -> dict:
         now = time.time()
         msg = "Done"
+        if not isinstance(body, dict):
+            raise ValueError("Expected a JSON object")
+        if any(isinstance(v, str) and len(v) > self.ACTION_TEXT_MAX for v in body.values()):
+            raise ValueError("That value is far longer than anything the page sends")
+        if op in ("allow_sender", "allow_text", "hide_source", "add_channel") and max(
+                len(self.allow_senders), len(self.allow_texts), len(self.hidden_sources)) >= self.ACTION_LIST_MAX:
+            raise ValueError("That list is full; remove some entries first")
         with self.lock:
             if op == "unblock":
                 key = body.get("key", "")
@@ -8716,7 +8861,7 @@ class SpamGuard:
                     self.release_duplicate(b)
                     msg = "Duplicate block removed. The copies so far are forgiven; if the message keeps being copied, the next copy starts a new block."
                 else:
-                    self.suppressed[key] = now + int(body.get("suppress_seconds", 86400))
+                    self.suppressed[key] = now + max(0, min(30 * 86400, int(body.get("suppress_seconds", 86400))))
                     msg = "Block removed. SpamGuard won't re-create it for 24 hours (Exceptions > Not re-blocked > Clear undoes that)."
             elif op == "lockdown":
                 minutes = int(body.get("minutes") or 0)
@@ -8895,9 +9040,12 @@ class SpamGuard:
                          "path": body.get("path"), "packet": body.get("packet"), "by": "label"})
                 self.labels.pop(key, None)
                 self.label_at.pop(key, None)
+                acted = ""
                 if lab == "spam" and sender:
-                    self.spam_marked.setdefault(sender, []).append(now)
-                    self.spam_marked[sender] = self.spam_marked[sender][-20:]
+                    acted = self._spam_mark_on_name(sender, body.get("path"), body.get("channel"), now)
+                    if acted != "copy":
+                        self.spam_marked.setdefault(sender, []).append(now)
+                        self.spam_marked[sender] = self.spam_marked[sender][-20:]
                 if lab != "none":
                     self.labels[key] = lab
                     self.label_at[key] = now
@@ -8906,7 +9054,11 @@ class SpamGuard:
                         self.label_at.pop(old, None)
                 self._sense_label(key, text, lab)
                 self._important = True
-                msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "none": "Label cleared"}[lab] + (
+                msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "none": "Label cleared"}[lab] + {
+                    "copy": f". It came through a repeater '{sender}' doesn't use, so that name is held from there for "
+                            "7 days; the real person still gets through.",
+                    "known": f". '{sender}' no longer counts as a known person, so the usual checks apply to them again.",
+                }.get(acted, "") + (
                     ". Labels are kept in the evidence log, for checking SpamGuard's accuracy later."
                     if self.evidence is not None else ". Turn on the evidence log to keep labels.")
             elif op == "not_spam":
@@ -8937,12 +9089,12 @@ class SpamGuard:
                     if body.get("permanent"):
                         raise ValueError("Blocks that also stop people SpamGuard knows (on message text, or on anything "
                                          "passing through a repeater) can't be kept for ever; they last at most 7 days")
-                    b["expires"] = min(max(b["expires"], now) + int(body.get("seconds", 3600)), now + TEXT_BLOCK_MAX_SECONDS)
+                    b["expires"] = min(max(b["expires"], now) + max(0, min(30 * 86400, int(body.get("seconds", 3600)))), now + TEXT_BLOCK_MAX_SECONDS)
                 elif body.get("permanent"):
                     b["expires"] = now + PERMANENT_SECONDS
                     msg = "Block kept permanently (until you remove it)"
                 else:
-                    b["expires"] = max(b["expires"], now) + int(body.get("seconds", 3600))
+                    b["expires"] = max(b["expires"], now) + max(0, min(30 * 86400, int(body.get("seconds", 3600))))
                 if b.get("source") == "dedupe":
                     b["source"] = "manual"
                 self.note(f"Extended: {self.describe(b)}")
@@ -9186,14 +9338,83 @@ ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block
 
 class QuietServer(ThreadingHTTPServer):
     """Phones often hang up mid-response (screen locked, app switched). That's normal, so don't
-    fill the log with tracebacks for it."""
+    fill the log with tracebacks for it. At most MAX_CLIENTS requests are served at once; more are closed."""
     daemon_threads = True
+    MAX_CLIENTS = 32
+
+    def process_request(self, request, client_address):
+        if not self.__dict__.setdefault("_slots", threading.BoundedSemaphore(self.MAX_CLIENTS)).acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
     def handle_error(self, request, client_address):
         import sys
         if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
             return
         super().handle_error(request, client_address)
+
+
+def name_pattern_problem(p) -> str:
+    """Why a sender-name pattern can't be used ("" when it can). Each pattern runs against every name heard, so
+    one that can take exponential time on a crafted name (nested repeats, back-references) is refused."""
+    p = str(p or "")
+    if not p or len(p) > 120:
+        return "must be 1 to 120 characters"
+    try:
+        rx = re.compile(p, re.I)
+    except re.error as err:
+        return f"is not valid: {err}"
+    if re.search(r"\([^()]*[+*}][^()]*\)\s*[+*{]", p) or re.search(r"\\[1-9]", p):
+        return "has a repeat inside a repeat (or a back-reference), which can make checking a name very slow"
+    t0 = time.perf_counter()
+    for probe in ("a" * 18 + "!", "1a" * 9 + "!", "aA1-" * 5 + "!"):
+        rx.search(probe)
+    if time.perf_counter() - t0 > 0.02:
+        return "is too slow to check against every name"
+    return ""
+
+
+LOCAL_SUFFIXES = (".local", ".lan", ".home", ".home.arpa", ".internal", ".localdomain", ".ts.net")
+
+
+def host_is_local(host, allowed=()) -> bool:
+    """Whether a Host header names this machine the way a home network would: an IP address, localhost, a
+    name with no dots, a local suffix, or a name listed in allowed_hosts."""
+    h = str(host or "").strip().lower()
+    if h.startswith("["):
+        h = h[1:].split("]", 1)[0]
+    elif h.count(":") == 1:
+        h = h.rsplit(":", 1)[0]
+    if not h:
+        return False
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        pass
+    h = h.rstrip(".")
+    return h == "localhost" or "." not in h or h.endswith(LOCAL_SUFFIXES) \
+        or h in {str(a).strip().lower().rstrip(".") for a in allowed}
+
+
+def hide_channel_keys(rules):
+    """The rule list as shown to a reader: each channel's key replaced by a short fingerprint."""
+    def walk(x):
+        if isinstance(x, dict):
+            if x.get("field") == "channel_hash" and isinstance(x.get("value"), str):
+                return {**x, "value": "key#" + hashlib.sha256(x["value"].encode()).hexdigest()[:8]}
+            return {k: walk(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [walk(v) for v in x]
+        return x
+    return walk(rules)
 
 
 MAX_POST_BYTES = 1_000_000   # no change sent to the page is anywhere near this; a bigger one is refused unread
@@ -9210,8 +9431,22 @@ def make_handler(guard: SpamGuard):
     page = load_page()
 
     class H(BaseHTTPRequestHandler):
+        timeout = 30   # a connection that sends nothing for this long is closed
+
         def log_message(self, fmt, *args):
             log.debug("http: " + fmt, *args)
+
+        def _key_ok(self) -> bool:
+            key = guard.cfg.get("listen_api_key")
+            return not key or hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode())
+
+        def _host_ok(self) -> bool:
+            """Without a password, only answer to names a home network uses (an address, localhost, a name
+            with no dots, .local and the like, or allowed_hosts), so a web page elsewhere can't point its own
+            domain at this SpamGuard and use it through someone's browser."""
+            if guard.cfg.get("listen_api_key"):
+                return True
+            return host_is_local(self.headers.get("Host"), guard.cfg.get("allowed_hosts") or ())
 
         def _send(self, code, obj, ctype="application/json"):
             data = obj.encode() if isinstance(obj, str) else json.dumps(obj, default=str).encode()
@@ -9231,13 +9466,28 @@ def make_handler(guard: SpamGuard):
                 self.send_header("X-Frame-Options", "DENY")
 
         def do_GET(self):
+            try:
+                return self._get()
+            except (ConnectionError, TimeoutError):
+                raise
+            except Exception as e:
+                log.warning("Page request %s failed: %s", self.path.split("?")[0], e)
+                return self._send(500, {"error": "Something went wrong reading that"})
+
+        def _get(self):
             path = self.path.split("?")[0]
+            if not self._host_ok():
+                return self._send(403, {"error": "Unknown host name. Add it to allowed_hosts in the config to use it."})
             if path in ("/", "/index.html"):
                 return self._send(200, page, "text/html; charset=utf-8")
+            if path in ("/status", "/rules") and not self._key_ok():
+                return self._send(401, {"error": "This SpamGuard needs its access key"})
             if path == "/status":
                 return self._send(200, guard.status())
             if path == "/rules":
-                return self._send(200, guard.build_rules())
+                with guard.lock:
+                    rules = guard.build_rules()
+                return self._send(200, hide_channel_keys(rules))
             if path == "/handover":
                 from urllib.parse import parse_qs, urlparse
                 st = guard.handover_state((parse_qs(urlparse(self.path).query).get("key") or [""])[0])
@@ -9249,12 +9499,14 @@ def make_handler(guard: SpamGuard):
                                                      "openhop_ok", "rules_expected", "rules_seen", "restarts",
                                                      "watchdog")} | {"version": VERSION})
             if path == "/evidence":
-                key = guard.cfg.get("listen_api_key")
-                if key and not hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode()):
+                if not self._key_ok():
                     return self._send(401, {"error": "This SpamGuard needs its access key"})
                 from urllib.parse import parse_qs, urlparse
                 q = parse_qs(urlparse(self.path).query)
-                days = max(1, min(60, int((q.get("days") or ["7"])[0])))
+                try:
+                    days = max(1, min(60, int((q.get("days") or ["7"])[0])))
+                except ValueError:
+                    return self._send(400, {"error": "days must be a number"})
                 scramble = (q.get("scramble") or ["1"])[0] != "0"
                 folder = guard.cfg["evidence_dir"]
                 body = (guard.evidence or EvidenceLog(folder)).export(days, scramble).encode("utf-8")
@@ -9272,8 +9524,9 @@ def make_handler(guard: SpamGuard):
             return self._send(404, {"error": "not found"})
 
         def do_POST(self):
-            key = guard.cfg.get("listen_api_key")
-            if key and not hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode()):
+            if not self._host_ok():
+                return self._send(403, {"error": "Unknown host name. Add it to allowed_hosts in the config to use it."})
+            if not self._key_ok():
                 return self._send(401, {"error": "This SpamGuard needs its access key"})
             # Changes only come as JSON. A browser won't send JSON to another site without asking first, so a
             # web page elsewhere can't quietly change SpamGuard's settings through someone's browser.
@@ -9348,6 +9601,43 @@ def load_config(path: Optional[str]) -> dict:
     if data:
         cfg.setdefault("state_file", os.path.join(data, "state.json"))
         cfg.setdefault("evidence_dir", os.path.join(data, "evidence"))
+    return coerce_config(cfg)
+
+
+def coerce_config(cfg: dict) -> dict:
+    """Values from the config file or environment take the type of their default ("3" becomes 3, "yes" becomes
+    True). One that can't be read that way is left out (the default is used) and logged, instead of stopping
+    SpamGuard later."""
+    for k in list(cfg):
+        d, v = DEFAULT_CONFIG.get(k), cfg[k]
+        if d is None or v is None or type(v) is type(d):
+            continue
+        try:
+            if isinstance(d, bool):
+                if isinstance(v, str) and v.strip().lower() in ("true", "yes", "on", "1"):
+                    cfg[k] = True
+                elif isinstance(v, str) and v.strip().lower() in ("false", "no", "off", "0"):
+                    cfg[k] = False
+                elif isinstance(v, (int, float)):
+                    cfg[k] = bool(v)
+                else:
+                    raise ValueError(v)
+            elif isinstance(d, int) and not isinstance(v, bool):
+                f = float(v)
+                cfg[k] = int(f) if f == int(f) else f
+            elif isinstance(d, float) and not isinstance(v, bool):
+                cfg[k] = float(v)
+            elif isinstance(d, str):
+                if isinstance(v, (list, dict)):
+                    raise ValueError(v)
+                cfg[k] = str(v)   # YAML reads an all-digit password or key as a number
+            elif isinstance(d, list) and isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                cfg[k] = [str(v)]   # one item written without brackets
+            elif isinstance(d, (list, dict)):
+                raise ValueError(v)
+        except (TypeError, ValueError, OverflowError):
+            log.warning("Ignoring %s: %r in the config (expected something like %r)", k, v, d)
+            cfg.pop(k)
     return cfg
 
 

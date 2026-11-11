@@ -45,6 +45,9 @@ hashtag_channels: []
 openhop_url: "http://127.0.0.1:8000"
 
 # The SpamGuard web page. Anyone on your network can open it. To require a
-# password for making changes, set one here (the page will ask for it once).
+# password for viewing and changes, set one here (the page will ask for it once).
 listen_port: 8091
 listen_api_key: ""
+# Without a password the page answers only to IP addresses and local names (like raspberrypi or pi.local).
+# If you reach it by another name, list it here, e.g. allowed_hosts: [spamguard.example.org]
+# allowed_hosts: []

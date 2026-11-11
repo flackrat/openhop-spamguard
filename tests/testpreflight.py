@@ -2,7 +2,7 @@
 # version's libraries can be installed from ready-made builds. A clear "no build exists" stops the update
 # with nothing changed (and an Update anyway button); no network, no pip or any other doubt lets it go ahead.
 # Nothing here touches the network: pip and the download are replaced. All data is made up.
-import sys, io, zipfile, time, subprocess, urllib.request
+import hashlib, sys, io, zipfile, time, subprocess, urllib.request
 from harness import *
 ok=fail=0
 def check(c,msg):
@@ -87,7 +87,11 @@ try:
         def read(s,n=-1): return s.b.read(n)
         def __enter__(s): return s
         def __exit__(s,*a): pass
-    real_open=urllib.request.urlopen; urllib.request.urlopen=lambda *a,**k: Resp()
+    SUMS=f"{hashlib.sha256(W).hexdigest()}  openhop_spamguard-{sg.plugin_version('9.9.9')}-py3-none-any.whl\n".encode()
+    class Sums(Resp):
+        def __init__(s): s.b=io.BytesIO(SUMS)
+    real_open=urllib.request.urlopen
+    urllib.request.urlopen=lambda url,*a,**k: Sums() if str(getattr(url,"full_url",url)).endswith("SHA256SUMS") else Resp()
     def wait():
         for _ in range(100):
             if g.plugin_update.get("state")!="running": return

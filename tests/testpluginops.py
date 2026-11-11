@@ -41,7 +41,7 @@ check("plugin manager isn't running" in w and "openhop-plugin-manager" in w,"cle
 # ---- one-press update of the plugin through openHop ----
 sys.path.insert(0, os.path.join(REPO, "tools")); import build_plugin
 d=os.path.join(TMP,"dist"); old=build_plugin.build(d)
-os.environ["SPAMGUARD_BUILD_VERSION"]="5.22.1"; new=build_plugin.build(d); del os.environ["SPAMGUARD_BUILD_VERSION"]
+os.environ["SPAMGUARD_BUILD_VERSION"]="99.0.1"; new=build_plugin.build(d); del os.environ["SPAMGUARD_BUILD_VERSION"]
 storage=PluginStorage(os.path.join(TMP,"plugins")); storage.ensure_root(); rt=PluginRuntime(storage)
 PROG={"lines":[],"done":False}
 def plugins(h, method, path, q):
@@ -57,7 +57,7 @@ def plugins(h, method, path, q):
             h.send_response(200); h.send_header("Content-Type","text/event-stream"); h.send_header("Content-Length",str(len(body))); h.end_headers(); h.wfile.write(body); return
         if path=="/api/plugins/install":
             for ln in ["Processing /tmp/up/openhop_spamguard.whl","Collecting pycryptodome>=3.20","  Downloading pycryptodome-3.20.0-cp37-abi3-manylinux.whl (2.1 MB)",
-                       "Installing collected packages: pycryptodome, openhop-spamguard","Successfully installed openhop-spamguard-5.22.1 pycryptodome-3.20.0"]:
+                       "Installing collected packages: pycryptodome, openhop-spamguard","Successfully installed openhop-spamguard-99.0.1 pycryptodome-3.20.0"]:
                 PROG["lines"].append(ln); time.sleep(0.9)
             msg=email.message_from_bytes(b"Content-Type: "+h.headers["Content-Type"].encode()+b"\r\n\r\n"+raw)
             part=[p for p in msg.walk() if p.get_param("name",header="content-disposition")=="wheel"][0]
@@ -94,12 +94,12 @@ try:
     check(False,"a change sent as plain text (as a cross-site form could) is refused")
 except urllib.error.HTTPError as e:
     check(e.code==415,"a change sent as plain text (as a cross-site form could) is refused: "+str(e.code))
-req=urllib.request.Request(f"http://127.0.0.1:{port}/install_update",data=json.dumps({"version":"5.22.1"}).encode(),method="POST",headers={"Content-Type":"application/json"})
+req=urllib.request.Request(f"http://127.0.0.1:{port}/install_update",data=json.dumps({"version":"99.0.1"}).encode(),method="POST",headers={"Content-Type":"application/json"})
 res=json.loads(urllib.request.urlopen(req,timeout=10).read()); check(res.get("ok"),"update accepted: "+str(res)[:80])
 t0=time.time()
-while time.time()-t0<300 and storage.current_version(man.id)!="5.22.1": time.sleep(2)
+while time.time()-t0<300 and storage.current_version(man.id)!="99.0.1": time.sleep(2)
 sampling.set()
-check(storage.current_version(man.id)=="5.22.1","openHop installed the new version")
+check(storage.current_version(man.id)=="99.0.1","openHop installed the new version")
 pcts=[x.get("pct") for x in samples if x.get("pct") is not None]
 seen_lines=[l for x in samples for l in (x.get("lines") or [])]
 check(len(pcts)>=3 and pcts==sorted(pcts),"the percentage only goes up while updating: "+str(pcts[:20]))
