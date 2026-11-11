@@ -1104,7 +1104,7 @@ function renderHealth(d){
   $("#hPill").innerHTML=pill;
   $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
     +(h.watchdog?" If it ever stops responding it restarts itself automatically.":"");
-  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}</li>`).join("")+(h.warnings||[]).map((x,i)=>{const cmd=(h.commands||[])[i];
+  $("#hIssues").innerHTML=(h.problems||[]).map(x=>`<li class="bad">${esc(x)}${h.engine_off&&x.includes("rule engine is switched off")?" "+btn("Switch it on","/engine_on",{},"quiet"):""}</li>`).join("")+(h.warnings||[]).map((x,i)=>{const cmd=(h.commands||[])[i];
       return `<li class="warn">${esc(x)}${cmd?`<div class="cmdbox"><code>${esc(cmd)}</code><button class="quiet" data-cmd="${esc(cmd)}" onclick="copyCmd(this)">Copy command</button></div>`:""}</li>`;}).join("")
     +(h.openhop_rulecheck_fix===false&&h.can_apply_fix?`<li class="warn">${btn("Apply openHop fix","/openhop_fix",{},"go")}</li>`:"");
   const st=(k,v)=>`<div><dt>${k}</dt><dd>${v}</dd></div>`;

@@ -1791,6 +1791,8 @@ class SpamGuard:
         self.allow_hops: set[str] = set()
         self.allow_senders: set[str] = set()
         self.allow_texts: set[str] = set()
+        self.engine_on_seen = False   # openHop's rule engine has been on while SpamGuard had rules in it
+        self.engine_off = False       # ...and is now off: you switched it off
         self.verdict_done: dict[str, dict] = {}   # what your last answers did, so they can be taken back (not saved)
         self.extra_channels: dict[str, str] = {}
         self.openhop_channels: dict[str, str] = {}
@@ -2052,6 +2054,7 @@ class SpamGuard:
         path = self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
         fresh = {k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
                  for k, v in self.__dict__.items()}
+        failed, loaded = [], False
         for i, p in enumerate((path, path + ".bak")):
             try:
                 with open(p) as f:
@@ -2063,6 +2066,7 @@ class SpamGuard:
                 continue
             except Exception as e:
                 log.warning("Could not load %s: %s", p, e)
+                failed.append(p)
                 self.__dict__.clear()
                 self.__dict__.update({k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
                                       for k, v in fresh.items()})
@@ -2070,7 +2074,18 @@ class SpamGuard:
             if i:
                 log.warning("The state file was damaged; carried on from the last good copy")
                 self._restored_from_backup = True
+            loaded = True
             break
+        if failed and not loaded:
+            # Neither copy could be read. They are about to be replaced by a fresh start, so keep them aside
+            # (one set only) for anyone who wants to look at what went wrong.
+            for p in failed:
+                try:
+                    shutil.copyfile(p, p + ".unreadable")
+                    os.chmod(p + ".unreadable", 0o600)
+                except OSError:
+                    pass
+            self._state_unreadable = True
 
     def _apply_state(self, st: dict):
         now = time.time()
@@ -2083,6 +2098,7 @@ class SpamGuard:
         self.allow_hops = set(st.get("allow_hops", []))
         self.allow_senders = set(st.get("allow_senders", []))
         self.allow_texts = set(st.get("allow_texts", []))
+        self.engine_on_seen = bool(st.get("engine_on_seen"))
         self.extra_channels = dict(st.get("extra_channels", {}))
         settings = {}
         for k, v in (st.get("settings") or {}).items():
@@ -2091,9 +2107,17 @@ class SpamGuard:
                 settings["mode"] = "protect" if v == "drop" else "monitor"
             elif k in META_BY_KEY or k in EXTRA_TUNABLES:
                 settings[k] = v
+        # A value you have since changed in the config file wins over one set earlier on the page
+        seen = st.get("file_seen") if isinstance(st.get("file_seen"), dict) else {}
+        self.file_took_over = sorted(k for k in settings if k in seen and k in self.file_cfg and self.file_cfg[k] != seen[k])
+        for k in self.file_took_over:
+            settings.pop(k)
         self.settings = settings
         self.next_rule_id = int(st.get("next_rule_id", RULE_ID_BASE))
         self.activity.extend(st.get("activity", [])[:300])
+        if self.file_took_over:
+            self.note("The config file changed since these were set on the page, so the file's values are used: "
+                      + ", ".join(self.file_took_over))
         self.catches.extend(t for t in st.get("catches", []) if t > now - 86400)
         self.routes = {k: v for k, v in (st.get("routes") or {}).items() if isinstance(v, list) and len(v) == 4}
         self.relays = dict(st.get("relays") or {})
@@ -2262,8 +2286,10 @@ class SpamGuard:
                     "allow_hops": sorted(self.allow_hops),
                     "allow_senders": sorted(self.allow_senders),
                     "allow_texts": sorted(self.allow_texts),
+                    "engine_on_seen": bool(getattr(self, "engine_on_seen", False)),
                     "extra_channels": self.extra_channels,
                     "settings": self.settings,
+                    "file_seen": {k: self.file_cfg.get(k, "(not in the file)") for k in self.settings},
                     "next_rule_id": self.next_rule_id,
                     "activity": list(self.activity)[:300],
                     "catches": [t for t in self.catches if t > now - 86400],
@@ -4636,13 +4662,13 @@ class SpamGuard:
         if b["kind"] == "route":
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
-            v = b["value"]
-            return len(e.path) >= len(v) and all(self._same_hop(e.path[i], h) for i, h in enumerate(v))
+            # The same test as the rule in openHop, which can check that a route passes through these repeaters
+            # but not in which order: SpamGuard's own records must say what the repeater really did.
+            return all(any(self._same_hop(p, h) for p in e.path) for h in b["value"])
         if b["kind"] == "stem":   # the route after the first repeater, whatever the first repeater claims to be
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
-            v = b["value"]
-            return len(e.path) >= len(v) + 1 and all(self._same_hop(e.path[1 + i], h) for i, h in enumerate(v))
+            return len(e.path) >= len(b["value"]) + 1 and all(any(self._same_hop(p, h) for p in e.path) for h in b["value"])
         if b["kind"] in ("repeat", "burst", "imposter", "text", "words") and not self._on_block_channel(b, e):
             return False   # the same channels as the rule written to openHop
         if b["kind"] == "repeat":
@@ -4650,7 +4676,8 @@ class SpamGuard:
         if b["kind"] == "burst":   # (not "sender": that name belongs to 5.10's removed name blocks)
             return e.sender == b["value"]
         if b["kind"] == "imposter":
-            return e.sender == b.get("who") and bool(e.path) and self._same_hop(e.path[0], b["value"])
+            # anywhere on the route, as the rule in openHop reads it (it can't yet ask for the first repeater only)
+            return e.sender == b.get("who") and any(self._same_hop(p, b["value"]) for p in e.path)
         if b.get("sender") and e.sender == b["sender"]:
             return False  # the original sender may re-send their own message
         if b["kind"] == "words":
@@ -7062,7 +7089,7 @@ class SpamGuard:
                          for z in sorted(forms)]
             elif b["kind"] in ("route", "stem"):
                 # openHop can check that a route passes through repeaters but not yet in which order, so the
-                # rule asks for all of them. SpamGuard's own records check the order exactly.
+                # rule asks for all of them. SpamGuard's own records use the same test, so they say what the repeater did.
                 per = [self._hop_forms(h) for h in b["value"]]
                 sizes = [z for z in self._sizes_now if all(z in f for f, _, _ in per)]
                 self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
@@ -7310,11 +7337,26 @@ class SpamGuard:
         host = str(o.get("host") or "")
         return f"{what}{' on ' + host if host else ''}"
 
+    @staticmethod
+    def is_our_rule(r: dict) -> bool:
+        """SpamGuard's own rules: its name prefix and one of its rule numbers. A rule of yours that merely has a
+        similar name is left alone."""
+        rid = r.get("id")
+        return (str(r.get("name", "")).startswith(RULE_PREFIX) and isinstance(rid, int) and not isinstance(rid, bool)
+                and rid >= RULE_ID_BASE)
+
+    @staticmethod
+    def _lease_ts(owner: Optional[dict]) -> float:
+        """When the other SpamGuard last checked in. A time that can't be read, or is in the future, counts as
+        long ago, so a damaged marker can never lock this SpamGuard out."""
+        ts = _num((owner or {}).get("ts"), 0.0)
+        return ts if 0 < ts <= time.time() + 300 else 0.0
+
     def _lease_blocks_me(self, owner: Optional[dict]) -> bool:
         """True while another copy of SpamGuard holds this repeater."""
         if not isinstance(owner, dict) or not owner.get("id") or owner.get("id") == self.instance_id:
             return False
-        if time.time() - float(owner.get("ts") or 0) >= LEASE_SECONDS:
+        if time.time() - self._lease_ts(owner) >= LEASE_SECONDS:
             return False  # it stopped refreshing: it has gone
         if owner.get("state") == "released":
             return bool(owner.get("to")) and owner.get("to") != self.instance_id
@@ -7343,10 +7385,10 @@ class SpamGuard:
         self.standby = None
         now = time.time()
         refresh_owner = (not owner or owner.get("id") != self.instance_id or owner.get("state") != "active"
-                         or now - float(owner.get("ts") or 0) > LEASE_REFRESH)
+                         or now - self._lease_ts(owner) > LEASE_REFRESH)
         existing = [r for r in (pe.get("rules") or []) if isinstance(r, dict)]
-        user_rules = [r for r in existing if not str(r.get("name", "")).startswith(RULE_PREFIX)]
-        ours_now = [r for r in existing if str(r.get("name", "")).startswith(RULE_PREFIX)]
+        user_rules = [r for r in existing if not self.is_our_rule(r)]
+        ours_now = [r for r in existing if self.is_our_rule(r)]
         self.rules_seen = len(ours_now)
         main, tail = self.build_rule_sets()
         ours_new = main + tail
@@ -7355,7 +7397,11 @@ class SpamGuard:
         after = bool(self.cfg.get("rules_after_yours")) or self.cfg["mode"] != "protect" or bool(self.cfg.get("paused"))
         self.rule_summary = {"after_yours": after, "yours": len(user_rules),
                              "rules": [[r.get("id"), r.get("name"), (r.get("then") or {}).get("action"), plain_rule(r)] for r in ours_new]}
-        needs_enable = bool(ours_new) and not pe.get("enabled")
+        # openHop's rule engine: SpamGuard switches it on the first time it needs it. If it is later found off,
+        # you switched it off, so it stays off and Health says so (with a button to switch it back on).
+        engine_off = bool(ours_new) and not pe.get("enabled")
+        self.engine_off = engine_off and self.engine_on_seen
+        needs_enable = engine_off and not self.engine_on_seen
         # The known-people list lives in openHop as an object (@spamguard.known_senders).
         objects = dict(pe.get("objects") or {}) if isinstance(pe.get("objects"), dict) else {}
         obj_now = objects.get("spamguard")
@@ -7395,8 +7441,12 @@ class SpamGuard:
             self.self_heals += 1
             self.note(f"openHop had {len(ours_now)} SpamGuard rules instead of {self.rules_expected} - put them back")
         pe["rules"] = want
-        if ours_new:
+        if needs_enable:
             pe["enabled"] = True
+            self.note("Switched on openHop's rule engine, which SpamGuard's blocks need")
+        if ours_new:
+            if pe.get("enabled"):
+                self.engine_on_seen = True
             pe.setdefault("default_action", "allow")
         self._api("POST", "/api/policy", {"policy_engine": pe})
         self.rules_expected = self.rules_seen = len(ours_new)
@@ -8287,6 +8337,12 @@ class SpamGuard:
                             "Existing blocks stay in place, but nothing new is being checked.")
         elif self.last_error and "API key" in self.last_error:
             problems.append(self.last_error)
+        if getattr(self, "_state_unreadable", False):
+            warnings.append("SpamGuard's saved data could not be read, so it started afresh. The unreadable files "
+                            "were kept next to it, ending in .unreadable.")
+        if getattr(self, "engine_off", False):
+            problems.append("openHop's rule engine is switched off, so SpamGuard is not blocking anything. "
+                            "Switch it on again here or in openHop's policy settings.")
         lag = self.openhop_lag()
         if lag is not None and lag >= c.get("lag_warn_seconds", 30):
             warnings.append(f"openHop's packet list is running about {self.fmt_secs(lag)} behind real time, so SpamGuard "
@@ -8390,7 +8446,7 @@ class SpamGuard:
         if not watchdog and restarts is not None and install_kind() == "normal":
             warnings.append("Automatic restart-on-hang is not active. Re-run the installer to enable it.")
         state = "bad" if problems else ("warn" if warnings else "ok")
-        return {"state": state, "problems": problems, "warnings": warnings,
+        return {"state": state, "problems": problems, "warnings": warnings, "engine_off": bool(getattr(self, "engine_off", False)),
                 "commands": [commands.get(i) for i in range(len(warnings))],
                 "uptime": round(now - self.started), "restarts": int(restarts) if (restarts or "").isdigit() else None,
                 "watchdog": watchdog, "last_check": self.loop_beat, "checks": self.loop_count,
@@ -8827,6 +8883,20 @@ class SpamGuard:
         return f"{round(s)} seconds" if s < 90 else f"{round(s / 60)} minutes"
 
     # ---- status for the web page ----
+    def status_now(self, wait: float = 2.0) -> dict:
+        """What the page shows. If SpamGuard is busy (waiting on openHop, say), the page gets the last picture it
+        had, marked as waiting, instead of hanging until SpamGuard is free."""
+        if not self.lock.acquire(timeout=wait):
+            last = getattr(self, "_last_status", None)
+            if last is not None:
+                return dict(last, busy=True)
+            self.lock.acquire()
+        try:
+            self._last_status = self.status()
+            return self._last_status
+        finally:
+            self.lock.release()
+
     def status(self) -> dict:
         with self.lock:
             now = time.time()
@@ -9563,6 +9633,9 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
                 msg = ("Automatic blocks cleared. SpamGuard won't re-create those for 24 hours "
                        "(Exceptions > Not re-blocked > Clear undoes that). New spam can still make new ones.")
+            elif op == "engine_on":
+                self.engine_on_seen = False   # the next sync switches it on
+                msg = "Switching on openHop's rule engine"
             elif op == "clear_suppressed":
                 self.suppressed.clear()
             elif op == "clear_history":
@@ -9642,7 +9715,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
@@ -9834,7 +9907,7 @@ def make_handler(guard: SpamGuard):
             if path in ("/status", "/rules") and not self._key_ok():
                 return self._send(401, {"error": "This SpamGuard needs its access key"})
             if path == "/status":
-                return self._send(200, guard.status())
+                return self._send(200, guard.status_now())
             if path == "/rules":
                 with guard.lock:
                     rules = guard.build_rules()
@@ -10021,7 +10094,7 @@ def remove_rules(cfg: dict) -> int:
         res = call("GET")
         pe = dict((res.get("data", res) or {}).get("policy_engine") or {})
         rules = [r for r in (pe.get("rules") or []) if isinstance(r, dict)]
-        keep = [r for r in rules if not str(r.get("name", "")).startswith("spamguard:")]
+        keep = [r for r in rules if not SpamGuard.is_our_rule(r)]
         objects = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
         had_list = objects.pop("spamguard", None) is not None
         groups = objects.get("channel_hash_groups")
