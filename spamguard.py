@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.35.0"
+VERSION = "6.35.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -4050,18 +4050,16 @@ class SpamGuard:
                 continue
             if q and q not in (str(m.get("sender")) + " " + str(m.get("text"))).lower():
                 continue
-            counts[st] += 1
+            # Once you have answered a message it is listed under Answered only, so nothing is shown to you twice
             done = same(m) in answered
             todo = not done and st in ("held", "letthrough")
             counts["reviewed"] += done
             counts["review"] += todo
-            if status == "review":
-                if not todo:
-                    continue
-            elif status == "reviewed":
+            counts[st] += not done
+            if status == "reviewed":
                 if not done:
                     continue
-            elif status != "all" and st != status:
+            elif done or (status == "review" and not todo) or (status not in ("all", "review") and st != status):
                 continue
             picked.append((m, st, why))
         picked.sort(key=lambda t: -(t[0].get("ts") or 0))

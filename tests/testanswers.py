@@ -26,6 +26,9 @@ q2=g.quarantine({"status":"review"})
 check(q2["counts"]["review"]==0 and q2["counts"]["reviewed"]>=r["copies"],"the message and its copies leave To review")
 check(any(x["label"]=="spam" for x in g.quarantine({"status":"reviewed"})["rows"]),"and are found under answered")
 check(g.to_review()==0,"the waiting count follows straight away")
+ca=q2["counts"]
+check(sum(ca[k] for k in g.Q_STATUSES)==sum(c[k] for k in g.Q_STATUSES)-ca["reviewed"] and not any(x["label"] for s in ("all",)+g.Q_STATUSES for x in g.quarantine({"status":s})["rows"]),"an answered message is listed under Answered only")
+check(q2["total"]+ca["reviewed"]==q["total"],"and the counts still add up")
 blocks=[k for k,b in g.blocks.items() if b.get("source")=="manual" and b["kind"]=="text"]
 if r["status"]=="letthrough": check(len(blocks)==1,"a missed spam message: copies are stopped from now on")
 out=g.give_verdict(body(r,"none"))

@@ -1465,7 +1465,7 @@ $("#mapBy").addEventListener("click",e=>{ const b=e.target.closest("button"); if
 // "Show these messages" in a map popup or the sources table: the spam behind that point, on the Messages page
 document.addEventListener("click",e=>{ const b=e.target.closest("[data-msgs]"); if(!b) return; e.preventDefault(); showMsgs(JSON.parse(b.dataset.msgs)); });
 /* ---------- the quarantine: one list of every channel message ---------- */
-const QLOOK={stopped:["Stopped","var(--signal)"],held:["Held for review","var(--amber)"],letthrough:["Missed spam","var(--stop)"],genuine:["Delivered","var(--field)"]};
+const QLOOK={stopped:["Stopped","var(--signal)"],held:["Held","var(--amber)"],letthrough:["Missed spam","var(--stop)"],genuine:["Delivered","var(--field)"]};
 let Q={status:"review",auto:true,q:"",group:true,days:1,codes:[],names:[],packets:[],title:"",limit:100,sel:-1,ticks:{},data:null,busy:false,t:0};
 function showMsgs(spec){
   Q.codes=spec.codes||[]; Q.names=spec.names||[]; Q.packets=spec.packets||[]; Q.title=spec.title||""; Q.status="all"; Q.auto=false; Q.days=7; Q.sel=-1; Q.ticks={};
@@ -1494,7 +1494,7 @@ function qRender(){
     .map(([k,l,n,col])=>`<button type="button" class="quiet" data-q="${k}" aria-pressed="${Q.status===k}"><i style="background:${col}" aria-hidden="true"></i>${esc(l)} <b>${fmtN(n)}</b></button>`).join("");
   const fl=Q.codes.length||Q.names.length||Q.packets.length?`<span class="chip">${esc(Q.title||"Filtered")} <button type="button" class="quiet" id="qClear" aria-label="Remove this filter">✕</button></span>`:"";
   $("#qFilters").innerHTML=fl;
-  const what={review:"messages waiting for your answer",reviewed:"messages you have answered",all:"messages",stopped:"messages SpamGuard stopped",held:"messages held for review",letthrough:"spam that got through",genuine:"messages delivered as normal"}[Q.status];
+  const what={review:"messages waiting for your answer",reviewed:"messages you have answered",all:"messages you haven't answered",stopped:"messages SpamGuard stopped",held:"messages held, waiting for your answer",letthrough:"spam that got through",genuine:"messages delivered as normal"}[Q.status];
   $("#qShowing").textContent=`${fmtN(d.shown)} ${what}, last ${d.days===1?"24 hours":"7 days"}${Q.group&&d.rows.length<d.shown?`, ${d.rows.length} after grouping copies`:""}`;
   const rows=d.rows;
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
