@@ -789,12 +789,13 @@ def plain_rule(rule: dict) -> str:
 
 def sender_conds(name, negate: bool = False) -> list:
     """openHop rule conditions for "the sender is (or is not) this name". openHop calls a message with no
-    "Name: " prefix "Unknown" and one with an empty name before ": " "", so a nameless sender needs both."""
+    "Name: " prefix "Unknown" and one with an empty name before ": " "". SpamGuard files all of those, and a
+    sender actually named "?", under "?", so a rule about "?" covers all three."""
     n = str(name or "")
     if n in ("", "?") or not n.rstrip():
         if negate:
-            return [{"field": "channel_sender", "op": "not_equals", "value": v} for v in ("Unknown", "")]
-        return [{"field": "channel_sender", "op": "in", "value": ["Unknown", ""]}]
+            return [{"field": "channel_sender", "op": "not_equals", "value": v} for v in ("Unknown", "", "?")]
+        return [{"field": "channel_sender", "op": "in", "value": ["Unknown", "", "?"]}]
     return [{"field": "channel_sender", "op": "not_equals" if negate else "equals", "value": oh_sender(n)}]
 
 
@@ -7128,11 +7129,14 @@ class SpamGuard:
         """Track the newest packet openHop lists (any kind): how late it is, and when it last moved. A packet
         stamped well in the future is ignored for this, and if openHop's clock steps back the reading point
         follows, so SpamGuard never stops reading new packets because of one odd timestamp."""
-        limit = time.time() + self.CURSOR_AHEAD
+        stamps = [_num(p.get("timestamp")) for p in packets or [] if isinstance(p, dict)]
+        if stamps:   # how far ahead openHop's clock runs (another machine may be a little fast)
+            ahead = self.__dict__.setdefault("_oh_ahead", collections.deque(maxlen=21))
+            ahead.append(max(stamps) - time.time())
+        limit = self._cursor_limit()
         if self.last_packet_ts is not None and self.last_packet_ts > limit:
             self.last_packet_ts = time.time() - 30
-        newest = max((ts for p in packets or [] if isinstance(p, dict)
-                      for ts in [_num(p.get("timestamp"))] if ts <= limit), default=0) or None
+        newest = max((ts for ts in stamps if ts <= limit), default=0) or None
         if newest and (self.last_packet_ts is None or newest > self.last_packet_ts):
             if self.last_packet_ts is not None:  # a packet we haven't seen before: how old is it already?
                 self.lag_samples.append((time.time(), max(0.0, time.time() - newest)))
@@ -7140,6 +7144,13 @@ class SpamGuard:
             self.heard_at = time.time()
         elif self.heard_at is None:
             self.heard_at = time.time()
+
+    def _cursor_limit(self) -> float:
+        """The latest packet time SpamGuard will read from: now, plus how far ahead openHop's clock usually runs
+        (the middle of recent readings, so one odd timestamp can't move it), plus a minute."""
+        a = sorted(self.__dict__.get("_oh_ahead") or ())
+        lead = a[len(a) // 2] if len(a) >= 5 else 0.0   # a few readings first, so one odd one can't decide it
+        return time.time() + max(0.0, lead) + self.CURSOR_AHEAD
 
     CURSOR_AHEAD = 60
     HISTORY_MAX = 20000   # names remembered from the last day (a flood of made-up names can't grow it further)
@@ -7152,7 +7163,7 @@ class SpamGuard:
         messages are picked out here. Older openHop versions fall back to the recent packet list."""
         limit = int(self.cfg["fetch_limit"])
         if self.use_filtered is not False:
-            if self.last_packet_ts is not None and self.last_packet_ts > time.time() + self.CURSOR_AHEAD:
+            if self.last_packet_ts is not None and self.last_packet_ts > self._cursor_limit():
                 self.last_packet_ts = time.time() - 30   # openHop's clock stepped back: read from now
             if self.last_packet_ts is None:
                 since = time.time() - self.cfg["long_window_seconds"]
@@ -7555,6 +7566,8 @@ class SpamGuard:
                       "import_from": f"http://{self._address_seen_by_openhop()}:{port}/handover?key={self._handover_key}"}
             if c.get("listen_api_key"):
                 config["listen_api_key"] = c["listen_api_key"]
+            if c.get("allowed_hosts"):
+                config["allowed_hosts"] = list(c["allowed_hosts"])
             self._move_step("Copying the settings across...")
             self._plugin_api("POST", "/api/plugins/settings", {"id": PLUGIN_ID, "config": config, "restart": False})
             self._move_step("Starting the plugin...")
@@ -8091,7 +8104,7 @@ class SpamGuard:
         for stage, f in sorted((getattr(self, "stage_errors", None) or {}).items()):
             if now - f["ts"] < 900:
                 (problems if stage == "Spam detection" else warnings).append(
-                    f"{stage} hit an error ({f['error']}); the other checks keep running. Details are in the log.")
+                    f"{stage} hit an error; the other checks keep running. Details are in the log.")
         if not watchdog and restarts is not None and install_kind() == "normal":
             warnings.append("Automatic restart-on-hang is not active. Re-run the installer to enable it.")
         state = "bad" if problems else ("warn" if warnings else "ok")
@@ -9361,6 +9374,43 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+def _risky_regex(p: str) -> bool:
+    """A repeat inside another repeat, a choice inside a repeat, or a back-reference: the shapes that can take
+    exponential time on a crafted name. Judged from the parsed pattern, so nesting depth doesn't hide them."""
+    try:
+        import re._parser as rp  # Python 3.11 and later
+    except ImportError:  # pragma: no cover
+        import sre_parse as rp  # type: ignore
+    c = rp.__dict__.get("MAX_REPEAT") and rp or __import__("re._constants", fromlist=["x"])
+    reps = {c.MAX_REPEAT, c.MIN_REPEAT} | ({c.POSSESSIVE_REPEAT} if hasattr(c, "POSSESSIVE_REPEAT") else set())
+
+    def walk(seq, inside):
+        for op, av in seq:
+            if op in reps:
+                lo, hi, item = av
+                many = hi > 1
+                if inside and many and lo != hi:   # a fixed count like {2} can't be split two ways
+                    return True
+                if walk(item, inside or many):
+                    return True
+            elif op == c.SUBPATTERN:
+                if walk(av[-1], inside):
+                    return True
+            elif op == c.BRANCH:
+                if inside or any(walk(b, inside) for b in av[1]):
+                    return True
+            elif op in (c.ASSERT, c.ASSERT_NOT):
+                if walk(av[1], inside):
+                    return True
+            elif op in (c.GROUPREF, getattr(c, "GROUPREF_EXISTS", None)):
+                return True
+        return False
+    try:
+        return walk(rp.parse(p, re.I), False)
+    except Exception:
+        return True
+
+
 def name_pattern_problem(p) -> str:
     """Why a sender-name pattern can't be used ("" when it can). Each pattern runs against every name heard, so
     one that can take exponential time on a crafted name (nested repeats, back-references) is refused."""
@@ -9371,7 +9421,7 @@ def name_pattern_problem(p) -> str:
         rx = re.compile(p, re.I)
     except re.error as err:
         return f"is not valid: {err}"
-    if re.search(r"\([^()]*[+*}][^()]*\)\s*[+*{]", p) or re.search(r"\\[1-9]", p):
+    if _risky_regex(p):
         return "has a repeat inside a repeat (or a back-reference), which can make checking a name very slow"
     t0 = time.perf_counter()
     for probe in ("a" * 18 + "!", "1a" * 9 + "!", "aA1-" * 5 + "!"):
@@ -9471,7 +9521,8 @@ def make_handler(guard: SpamGuard):
             except (ConnectionError, TimeoutError):
                 raise
             except Exception as e:
-                log.warning("Page request %s failed: %s", self.path.split("?")[0], e)
+                log.warning("A page request failed (%s)", type(e).__name__)
+                log.debug("page request failure", exc_info=True)
                 return self._send(500, {"error": "Something went wrong reading that"})
 
         def _get(self):

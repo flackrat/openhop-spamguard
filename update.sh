@@ -185,7 +185,7 @@ fi
 BACKUP=$ROOTSTATE/previous-version
 rm -rf "$BACKUP"; mkdir -p "$BACKUP"
 cp -a "$APP/." "$BACKUP/" 2>/dev/null || true
-cp -a /etc/systemd/system/openhop-spamguard.service "$STATE/previous-version.service" 2>/dev/null || true
+cp -a /etc/systemd/system/openhop-spamguard.service "$ROOTSTATE/previous-version.service" 2>/dev/null || true
 
 status running "Installing $TAG$([ "$CHECKED" -ge 1 ] && echo " (checksum OK$([ "$CHECKED" = 2 ] && echo ', signature OK'))" )..." "$CURRENT" "$NEWVER" 30
 (cd "$WORK/src" && exec bash install.sh </dev/null >"$LOG" 2>&1) &
@@ -197,7 +197,7 @@ while kill -0 "$IPID" 2>/dev/null; do
   sleep 3
 done
 if ! wait "$IPID"; then
-  status failed "The installer for $TAG failed (see $STATE/update-install.log). Putting v$CURRENT back." "$CURRENT" "$NEWVER"
+  status failed "The installer for $TAG failed (see $LOG). Putting v$CURRENT back." "$CURRENT" "$NEWVER"
   cp -a "$BACKUP/." "$APP/"; systemctl restart openhop-spamguard; exit 1
 fi
 
@@ -215,6 +215,6 @@ if systemctl is-active --quiet openhop-spamguard; then
 fi
 status failed "v$NEWVER didn't start, so v$CURRENT was put back." "$CURRENT" "$NEWVER"
 cp -a "$BACKUP/." "$APP/"
-[ -f "$STATE/previous-version.service" ] && cp "$STATE/previous-version.service" /etc/systemd/system/openhop-spamguard.service && systemctl daemon-reload
+[ -f "$ROOTSTATE/previous-version.service" ] && cp "$ROOTSTATE/previous-version.service" /etc/systemd/system/openhop-spamguard.service && systemctl daemon-reload
 systemctl restart openhop-spamguard
 exit 1

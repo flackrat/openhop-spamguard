@@ -23,4 +23,9 @@ check(os.stat(victim).st_uid==0,"the linked file's owner is unchanged")
 check(os.path.isdir(ROOT) and not (os.stat(ROOT).st_mode & (stat.S_IWGRP|stat.S_IWOTH)),"root's working folder is writable by root only")
 check(not os.path.exists(os.path.join(STATE,"update-install.log")) and not os.path.exists(os.path.join(STATE,"previous-version")),
       "no install log or copy of the current version in SpamGuard's own folder")
+# Root touches SpamGuard's own folder only for the status file and the request it reads, never for its own files
+src=open(os.path.join(HERE,"..","update.sh")).read()
+uses=[l.strip() for l in src.splitlines() if "$STATE" in l and not l.strip().startswith("#")]
+allowed=("STATUS=$STATE/","REQUEST=$STATE/","install -d -o repeater -g repeater \"$STATE\"","STATE=${SG_STATE")
+check(all(any(a in l for a in allowed) for l in uses),"root writes nothing else in SpamGuard's own folder: "+"; ".join(l for l in uses if not any(a in l for a in allowed)))
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

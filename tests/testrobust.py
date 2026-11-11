@@ -33,6 +33,15 @@ for i in range(3): m2.add("Lou Park",f"ordinary message {i}",["B2"])
 sync(g2)
 check(sum(1 for e in g2.events if e.sender=="Lou Park")==3,"new messages are still read after a future-stamped one")
 check(g2.last_packet_ts<=time.time()+g2.CURSOR_AHEAD+1,"the reading point stays near now")
+
+# openHop on another machine whose clock runs five minutes fast: still read normally, the reading point follows
+m7=mock(); g7=guard(m7); sync(g7)
+for i in range(8):
+    m7.packets.append({"id":len(m7.packets)+1,"timestamp":time.time()+300+i,"type":5,"payload":enc("Oli West",f"fast clock {i}"),
+                       "packet_hash":f"{i:016x}","original_path":json.dumps(["A1"])})
+    sync(g7)
+check(sum(1 for e in g7.events if e.sender=="Oli West")==8,"a steadily fast openHop clock is fine")
+check(g7.last_packet_ts>=time.time()+250,"and the reading point keeps up with it")
 g2.last_packet_ts=time.time()+3600   # openHop's clock stepped back an hour after SpamGuard had read ahead
 for i in range(2): m2.add("Max Dale",f"after the clock step {i}",["C3"])
 sync(g2)
@@ -75,4 +84,17 @@ g6.action("lockdown",{"minutes":15}); sync(g6)
 names=[r["name"] for r in m6.policy["policy_engine"]["rules"]]
 check(any("lockdown" in n for n in names),"lockdown rule written even with the budget full")
 check(g6.stats.get("rules_left_out",0)>0,"and the blocks left out are counted")
+# Settings and actions from the page are bounded
+check(sg.name_pattern_problem(r"^(([b-z])+\s?)*$")!="" and sg.name_pattern_problem(r"(a+)+$")!="","slow name patterns are refused")
+check(sg.name_pattern_problem(r"^[a-z0-9]{8}$")=="" and sg.name_pattern_problem(r"^(?:[a-z]{2}\d)+$")=="","ordinary ones are accepted")
+for dp in sg.DEFAULT_CONFIG.get("random_name_patterns") or []:
+    check(sg.name_pattern_problem(dp)=="","the built-in pattern is accepted")
+m8=mock(); g8=guard(m8)
+try: g8.action("allow_sender",{"sender":"x"*5000}); long_ok=False
+except ValueError: long_ok=True
+check(long_ok,"an absurdly long value is refused")
+g8.allow_senders=set(f"n{i}" for i in range(g8.ACTION_LIST_MAX))
+try: g8.action("allow_sender",{"sender":"one more"}); full_ok=False
+except ValueError: full_ok=True
+check(full_ok,"a full allow list takes no more")
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

@@ -23,6 +23,7 @@ The detail is below, newest first. In short:
 - **The page password now also protects viewing.** Without a password, the page only answers on your own network's addresses and names (see `allowed_hosts`).
 - **Updates are checked more strictly.** Plugin updates are checked against the release's checksums, and the page only installs newer versions.
 - **More robust.** A damaged state file, an unexpected config value, a clock jump or a failing check no longer stops SpamGuard; the Health panel says what went wrong.
+- **SpamGuard's saved data is now readable by SpamGuard only.** Use the page or the evidence download to see it.
 
 ## v6.32.1
 
