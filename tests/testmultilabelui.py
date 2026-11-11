@@ -1,5 +1,5 @@
 # Several messages can be ticked and labelled together: on the Messages screen (tick all, shift-click a range)
-# and in the Overview's "worth a look" list. All names and messages are made up.
+# and answered in one go. All names and messages are made up.
 import sys, os, time, asyncio, json, tempfile
 exec(open("demo_setup.py").read())
 ok=fail=0
@@ -20,7 +20,7 @@ async def main():
             sent=[]
             async def route(r):
                 sent.append(json.loads(r.request.post_data or "{}")); await r.fulfill(status=200,content_type="application/json",body="{}")
-            await pg.route("**/label",route)
+            await pg.route("**/verdict",route)
             await pg.goto("http://127.0.0.1:18171/#/messages?f=all"); await pg.wait_for_timeout(1800)
             await pg.set_viewport_size({"width":1280,"height":900})
             bar=await pg.text_content("#qBulk")
@@ -37,18 +37,7 @@ async def main():
             check(n==0, f"{scheme}: the select-all box unticks everything when all were ticked (got {n})")
             await pg.click("[data-qall]"); await pg.wait_for_timeout(200)
             await pg.click("[data-qb='spam']"); await pg.wait_for_timeout(600)
-            check(len(sent)==5 and all(s.get("label")=="spam" for s in sent), f"{scheme}: five labels sent together (got {len(sent)})")
-            # the Overview list, built the way the page builds it
-            sent.clear()
-            await pg.goto("http://127.0.0.1:18171/#/"); await pg.wait_for_timeout(1200)
-            await pg.evaluate("""()=>{ const d=document.createElement('div'); d.id='tmp';
-              const items=[1,2,3].map(i=>({packet:'p'+i,sender:'S'+i,text:'t'+i}));
-              d.innerHTML='<div class="q-bulk" id="lkBulk">'+lkBarHtml(0,3)+'</div><ul id="lkList">'+items.map(m=>'<li><input type="checkbox" data-lk="'+lkKey(m)+'"><button data-p="/label" data-b=\\''+JSON.stringify({label:"none",sender:m.sender,text:m.text,packet:m.packet})+'\\'>Spam</button></li>').join('')+'</ul>';
-              document.body.appendChild(d); }""")
-            await pg.click("#lkAll"); await pg.wait_for_timeout(200)
-            check("3 ticked" in await pg.text_content("#lkBulk"), f"{scheme}: tick all ticks the three")
-            await pg.click("[data-lb='not_spam']"); await pg.wait_for_timeout(600)
-            check(len(sent)==3 and all(s.get("label")=="not_spam" for s in sent), f"{scheme}: three fine labels sent (got {len(sent)})")
+            check(len(sent)==5 and all(s.get("verdict")=="spam" for s in sent), f"{scheme}: five answers sent together (got {len(sent)})")
             check(not errs, f"{scheme}: no page errors "+str(errs))
         await b.close()
 asyncio.run(main())

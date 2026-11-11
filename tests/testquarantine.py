@@ -25,7 +25,7 @@ with open(os.path.join(d,time.strftime("%Y-%m-%d",time.localtime(now-3*86400))+"
 m=mock(); g=guard(m, evidence_log=True, evidence_dir=d, listen_api_key="MADEUP-PAGE-KEY-0004")
 r=g.quarantine({})
 c=r["counts"]
-check(c=={"stopped":4+2,"held":1,"letthrough":1+2,"genuine":1}, f"each message gets one status: {c}")
+check({k:c[k] for k in g.Q_STATUSES}=={"stopped":4+2,"held":1,"letthrough":1+2,"genuine":1} and c["review"]==4 and c["reviewed"]==0, f"each message gets one status: {c}")
 check(r["source"]=="evidence" and r["days"]==1, "the last 24 hours, from the evidence log")
 check(not any(x["sender"]=="Repeater Bot" for x in r["rows"]), "this repeater's own messages aren't listed")
 byt={x["text"][:12]:x for x in r["rows"]}

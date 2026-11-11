@@ -74,7 +74,7 @@ check(rows2.get("Altered after signingx")=="copied", f"a message whose text no l
 check(rows2.get("Lock is open")=="name", f"a name you trust but did not key is name only: {rows2}")
 
 ui=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","ui.html")).read()
-check("m.identity===" in ui and "Name copied" in ui and "Name only" in ui, "the Messages list shows the identity tags")
+check("r.identity===" in ui and "Name copied" in ui and "Name only" in ui, "the Messages list shows the identity tags")
 
 print(f"{ok}/{ok+fail} passed")
 sys.exit(1 if fail else 0)
