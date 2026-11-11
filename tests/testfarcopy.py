@@ -46,8 +46,8 @@ check(not any(b["kind"]=="imposter" and b.get("who")=="Bob Far" for b in g.block
 b=next(b for b in g.blocks.values() if b.get("source")=="spoof")
 sp=b["spoof"]
 check(sp["of"]=="Ann Hill" and sp["via"]=="F1" and sp["hops"]==9 and sp["usual_via"]=="07" and sp["why"]=="far","spoof details kept")
-check("Spoofed name: Ann Hill is usually" in b["reason"] and "via F1" in b["reason"],"the reason says so in plain words")
-check("spoofed name" in g.describe(b) and g.Q_REASON["spoof"],"described as a spoofed name")
+check("Copied name: Ann Hill is usually" in b["reason"] and "via F1" in b["reason"],"the reason says so in plain words")
+check("copied name" in g.describe(b) and g.Q_REASON["spoof"],"described as a copied name")
 check(g._q_classify({"caught_by":"x","caught_source":"spoof","caught_kind":"imposter"})[1]==g.Q_REASON["spoof"],"Messages shows why")
 rec=[]; g.evidence=type("E",(),{"add":lambda self,r: rec.append(r),"flush":lambda self,**k: None})()
 m.add("Ann Hill","still me, honest",FAR,ago=0); sync(g)

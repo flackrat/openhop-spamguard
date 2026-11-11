@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.34.0"
+VERSION = "6.35.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1791,6 +1791,7 @@ class SpamGuard:
         self.allow_hops: set[str] = set()
         self.allow_senders: set[str] = set()
         self.allow_texts: set[str] = set()
+        self.verdict_done: dict[str, dict] = {}   # what your last answers did, so they can be taken back (not saved)
         self.extra_channels: dict[str, str] = {}
         self.openhop_channels: dict[str, str] = {}
         self.settings: dict[str, Any] = {}  # changes made on the web page
@@ -3972,6 +3973,7 @@ class SpamGuard:
                     rows.append({"ts": e.ts, "packet": e.packet, "sender": e.sender, "text": e.text, "path": list(e.path),
                                  "channel": e.channel, "random": e.random, "obfuscated": e.obfuscated,
                                  "known": self.is_known(e.sender), "campaign_senders": len(cc["senders"]) if cc else 0,
+                                 "identity": self.identity_of(e),
                                  "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
                                  "caught_source": b.get("source") if b else None, "own": self.is_own(e), "machine": e.machine})
             return rows, "memory"
@@ -3979,7 +3981,7 @@ class SpamGuard:
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -4012,8 +4014,9 @@ class SpamGuard:
         """One list of channel messages, like a mail quarantine. Filters: status, words, route codes (where
         it entered the mesh), names (a repeat spammer), 1 or 7 days, and copies of one message grouped."""
         status = body.get("status") or "all"
-        if status not in ("all",) + self.Q_STATUSES:
+        if status not in ("all", "review", "reviewed") + self.Q_STATUSES:
             raise ValueError("Unknown filter")
+        packets = {str(x) for x in (body.get("packets") or [])[:500] if x}
         days = 7 if int(body.get("days") or 1) >= 7 else 1
         q = str(body.get("q") or "").strip().lower()[:80]
         codes = {str(c).upper() for c in (body.get("codes") or []) if c}
@@ -4022,7 +4025,13 @@ class SpamGuard:
         limit = max(20, min(500, int(body.get("limit") or 100)))
         raw, source = self._q_rows(days)
         counts = {k: 0 for k in self.Q_STATUSES}
+        counts["review"] = counts["reviewed"] = 0
         picked = []
+        # What you have already answered: a message and its copies leave "To review" once any one of them is marked
+        lab_of = lambda m: (self.labels.get(str(m.get("packet") or ""))   # noqa: E731
+                            or self.labels.get(f"{m.get('sender')}|{m.get('text') or ''}"))
+        same = lambda m: (m.get("channel"), normalise(str(m.get("text") or ""))[:120])   # noqa: E731
+        answered = {same(m) for m in raw if m.get("text") and lab_of(m)}
         # copies of a message one name kept repeating that went out before the limit was reached
         repeated = {(m.get("sender"), normalise(str(m.get("text") or ""))) for m in raw
                     if m.get("caught_source") in ("repeat", "slowrepeat", "replay", "sense")}
@@ -4032,6 +4041,8 @@ class SpamGuard:
             path = m.get("path") or []
             if names and m.get("sender") not in names:
                 continue
+            if packets and str(m.get("packet") or "") not in packets:
+                continue
             st, why = self._q_classify(m)
             if st == "genuine" and (m.get("sender"), normalise(str(m.get("text") or ""))) in repeated:
                 st, why = "letthrough", "An earlier copy of a message this name kept repeating"
@@ -4040,7 +4051,17 @@ class SpamGuard:
             if q and q not in (str(m.get("sender")) + " " + str(m.get("text"))).lower():
                 continue
             counts[st] += 1
-            if status != "all" and st != status:
+            done = same(m) in answered
+            todo = not done and st in ("held", "letthrough")
+            counts["reviewed"] += done
+            counts["review"] += todo
+            if status == "review":
+                if not todo:
+                    continue
+            elif status == "reviewed":
+                if not done:
+                    continue
+            elif status != "all" and st != status:
                 continue
             picked.append((m, st, why))
         picked.sort(key=lambda t: -(t[0].get("ts") or 0))
@@ -4062,14 +4083,67 @@ class SpamGuard:
                               "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
                               "copies": 1, "_names": {m.get("sender")},
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
-                              "machine": m.get("machine"),
+                              "machine": m.get("machine"), "identity": m.get("identity"),
                               "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}"),
                               "label_at": self.label_at.get(str(m.get("packet") or "")) or self.label_at.get(f"{m.get('sender')}|{text}")}
             rows.append(r)
         for r in rows:
             r["senders"] = len(r.pop("_names"))
-        return {"source": source, "days": days, "counts": counts, "total": sum(counts.values()),
+        return {"source": source, "days": days, "counts": counts, "total": sum(counts[k] for k in self.Q_STATUSES),
                 "shown": len(picked), "rows": rows, "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]}
+
+    def to_review(self) -> int:
+        """How many messages are waiting for your answer (worked out at most once a minute)."""
+        at, n = getattr(self, "_review_count", (0, 0))
+        if time.time() - at > 60:
+            try:
+                n = self.quarantine({"status": "review", "limit": 20})["counts"]["review"]
+            except Exception:
+                n = 0
+            self._review_count = (time.time(), n)
+        return n
+
+    def give_verdict(self, body: dict) -> dict:
+        """Your answer on one message: spam, not spam, or take the answer back. You give the answer and SpamGuard
+        chooses what to do about it, and says what it did."""
+        if not isinstance(body, dict) or body.get("verdict") not in ("spam", "not_spam", "none"):
+            raise ValueError("Say whether the message is spam or not")
+        v, status = body["verdict"], body.get("status")
+        sender, text = str(body.get("sender") or ""), str(body.get("text") or "")
+        item = {k: body.get(k) for k in ("sender", "text", "path", "packet", "channel")}
+        key = str(body.get("packet") or "") or f"{sender}|{text}"
+        self._review_count = (0, 0)
+        did = self.verdict_done.pop(key, None) or {}
+        if did.get("block") and (self.blocks.get(did["block"]) or {}).get("source") == "manual":
+            self.action("unblock", {"key": did["block"]})
+        if did.get("let_in"):
+            self.action("unallow_sender", {"sender": did["let_in"]})
+        if v == "none":
+            self.action("label", dict(item, label="none"))
+            return {"ok": True, "message": "Answer taken back" + (", and what it did was undone." if did else ".")}
+        msg = self.action("label", dict(item, label=v)).get("message", "").split(". Labels are kept")[0].split(". Turn on the evidence")[0]
+        msg = msg.replace("Labelled as spam", "Marked as spam").replace("Labelled as fine", "Marked as not spam")
+        did = {}
+        if v == "spam" and status in ("letthrough", "genuine") and sender not in self.allow_senders and not self.is_known(sender):
+            had, t0 = set(self.blocks), time.time()
+            try:
+                self.action("mark_spam", dict(item))
+                new = [k for k, b in self.blocks.items() if k not in had or (b.get("source") == "manual" and b["created"] >= t0)]
+                if new:
+                    did["block"] = new[0]
+                    msg += ". Copies of it are now stopped"
+            except ValueError:
+                pass   # too short to block by its words: the answer is still recorded
+        elif v == "not_spam" and status in ("held", "stopped") and sender:
+            fresh = sender not in self.allow_senders
+            msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"))).get("message", "")
+            if fresh:
+                did["let_in"] = sender
+        if did:
+            self.verdict_done[key] = did
+            while len(self.verdict_done) > 200:
+                self.verdict_done.pop(next(iter(self.verdict_done)))
+        return {"ok": True, "message": msg.rstrip(".") + ".", "undo": True}
 
     def messages_for(self, body: dict) -> dict:
         """The spam behind a point on the map (route codes), or everything from a repeat spammer (names)."""
@@ -5468,7 +5542,7 @@ class SpamGuard:
         if b["kind"] == "imposter":
             sp = b.get("spoof") or {}
             return f"messages under the name {b.get('who')} arriving through repeater {b['value']}" + (
-                f" (spoofed name: usually {sp.get('usual_hops')} hops away" + (f" via {sp['usual_via']}" if sp.get("usual_via") else "")
+                f" (copied name: usually {sp.get('usual_hops')} hops away" + (f" via {sp['usual_via']}" if sp.get("usual_via") else "")
                 + ")" if sp else "") + (" on every channel" if b.get("channel") == ALL_CHANNELS else "")
         if b["kind"] == "lockdown":
             return "lockdown: channel messages from names SpamGuard doesn't know"
@@ -6589,10 +6663,10 @@ class SpamGuard:
                                       "usual_via": via, "why": "device" if device else "two places" if two else "far"}
                     if device:
                         self._forget_way_in(e.sender, e.first_hop)
-                        why = (f"Spoofed name: {e.sender} sent from a different device than the one they usually use; "
+                        why = (f"Copied name: {e.sender} sent from a different device than the one they usually use; "
                                f"this came {len(e.path)} hops via {e.first_hop}")
                     else:
-                        why = (f"Spoofed name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
+                        why = (f"Copied name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
                                + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
                                + (", while they were also heard nearby" if two else ""))
                 else:
@@ -7019,7 +7093,7 @@ class SpamGuard:
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
                    "rotation": "changing identity", "hop": "auto", "type-auto": "auto",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
-                   "budget": "too many", "linkhost": "link campaign", "imposter": "borrowed name", "junk": "symbol junk", "spoof": "spoofed name"}
+                   "budget": "too many", "linkhost": "link campaign", "imposter": "copied name?", "junk": "symbol junk", "spoof": "copied name"}
 
     @staticmethod
     def _named_channels(objs: dict) -> dict[str, str]:
@@ -8883,6 +8957,7 @@ class SpamGuard:
                                     + [{"name": n, "msgs": 0, "first": None, "last": None, "known": True, "trusted": True}
                                        for n in sorted(self.allow_senders) if n and n not in self.known]},
                 "metrics": self.metrics(),
+                "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
                          if h["ts"] > max(since, self.view_marks.get("held", 0)) and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
@@ -9834,6 +9909,8 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.messages_for(body))
                 if path == "quarantine":
                     return self._send(200, guard.quarantine(body))
+                if path == "verdict":
+                    return self._send(200, guard.give_verdict(body))
                 if path == "decisions_export":
                     return self._send(200, guard.export_decisions())
                 if path == "decisions_import":

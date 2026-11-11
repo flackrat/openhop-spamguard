@@ -22,7 +22,7 @@ async def main():
         await pg.click("#qList [data-qi='0']"); await pg.wait_for_timeout(400)
         det=await pg.text_content("#qDetail")
         check("Block route 9D>4C" in det, f"a spam message offers to block the route it started on: {det[:300]}")
-        await pg.click("#qDetail [data-p='/block_route']"); await pg.wait_for_timeout(1500)
+        await pg.click("#qDetail .q-more summary"); await pg.click("#qDetail [data-p='/block_route']"); await pg.wait_for_timeout(1500)
         check("route:9D>4C" in g.blocks, "and blocks it, after asking")
         await pg.goto("http://127.0.0.1:18171/#/blocks"); await pg.wait_for_timeout(1500)
         t=await pg.text_content("body")
