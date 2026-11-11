@@ -24,8 +24,10 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    match the kind of packet and the repeaters in its route (for a flood of requests or group data); SpamGuard
    never opens those packets.
 2. **Its web page** (port 8091) shows status to anyone on your network, like openHop's own dashboard. Setting
-   a page password (`listen_api_key`) protects every change, the message list and the evidence download.
-   Changes are only accepted as JSON, so another website can't make them through your browser.
+   a page password (`listen_api_key`) protects every change and everything the page reads, including the
+   message list and the evidence download. Without a password it only answers to addresses and local names
+   (add others to `allowed_hosts`). Changes are only accepted as JSON, so another website can't make them
+   through your browser.
 3. **The openHop rule-check fix** ("Keep openHop's rule-check fix in place", on by default) changes one line
    in openHop's installed files, to stop an openHop bug letting blocked spam through, and puts it back after
    an openHop update. It is applied by `tune-openhop.sh`, which you can read first, and can be turned off in
@@ -36,8 +38,9 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    only from this repository's releases over HTTPS, keeps the previous version, and puts it back if the new
    one doesn't start. From 6.28.0 it checks the download against the SHA-256 checksum published with the release
    and refuses to install if it doesn't match or is missing (and checks the checksum file's Sigstore signature too
-   if `cosign` is installed). Older releases, which have no checksums, can still be installed to go back a
-   version. You can also check releases by hand (below), or use the plugin.
+   if `cosign` is installed). The page only installs newer versions; going back a version is done on the Pi
+   itself. You can also check releases by hand (below), or use the plugin, whose updates are checked against
+   the same checksums.
 5. **Outside contact** is limited to GitHub (only when checking for or installing an update) and, if you turn
    it on, the public MeshCore map. There is no telemetry.
 

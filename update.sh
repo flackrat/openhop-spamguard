@@ -17,6 +17,9 @@ GH_API=${SG_GH_API:-https://api.github.com}
 GH_WEB=${SG_GH_WEB:-https://github.com}
 STATUS=$STATE/update-status.json
 REQUEST=$STATE/update-request
+# Root's own working files (install log, copy of the current version) live in a folder only root can write,
+# never in SpamGuard's state folder, which the service user owns.
+ROOTSTATE=${SG_ROOT_STATE:-/var/lib/openhop_spamguard-update}
 DEFAULT_REPO="flackrat/openhop-spamguard"
 PY=/opt/openhop_repeater/venv/bin/python
 [ -x "$PY" ] || PY=python3
@@ -33,7 +36,8 @@ while [ $# -gt 0 ]; do
 done
 [ "$(id -u)" = 0 ] || { echo "Run with sudo." >&2; exit 1; }
 
-LOG=$STATE/update-install.log
+install -d -m 0755 -o root -g root "$ROOTSTATE" 2>/dev/null || mkdir -p "$ROOTSTATE"
+LOG=$ROOTSTATE/update-install.log
 status() {  # status STATE MESSAGE [FROM] [TO] [PERCENT]
   install -d -o repeater -g repeater "$STATE" 2>/dev/null || true
   "$PY" - "$STATUS" "$1" "$2" "${3:-}" "${4:-}" "${5:-}" "$LOG" <<'PY'
@@ -56,12 +60,18 @@ except OSError:
     pass
 if lines:
     out["lines"] = lines[-2:]
+# Written into a folder the service user owns, so never follow a link planted there: a new file of our own,
+# then an atomic rename over the old one (a rename replaces a link, it doesn't write through it).
 tmp = path + ".tmp"
-with open(tmp, "w") as f:
+try:
+    os.unlink(tmp)
+except FileNotFoundError:
+    pass
+fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o644)
+with os.fdopen(fd, "w") as f:
     json.dump(out, f)
 os.replace(tmp, path)
 PY
-  chown repeater:repeater "$STATUS" 2>/dev/null || true
   echo "$2"
 }
 
@@ -172,10 +182,10 @@ if [ ! -f "$WORK/src/install.sh" ] || [ "$NEWVER" != "${TAG#v}" ]; then
 fi
 
 # Keep the current version so it can be put back.
-BACKUP=$STATE/previous-version
+BACKUP=$ROOTSTATE/previous-version
 rm -rf "$BACKUP"; mkdir -p "$BACKUP"
 cp -a "$APP/." "$BACKUP/" 2>/dev/null || true
-cp -a /etc/systemd/system/openhop-spamguard.service "$STATE/previous-version.service" 2>/dev/null || true
+cp -a /etc/systemd/system/openhop-spamguard.service "$ROOTSTATE/previous-version.service" 2>/dev/null || true
 
 status running "Installing $TAG$([ "$CHECKED" -ge 1 ] && echo " (checksum OK$([ "$CHECKED" = 2 ] && echo ', signature OK'))" )..." "$CURRENT" "$NEWVER" 30
 (cd "$WORK/src" && exec bash install.sh </dev/null >"$LOG" 2>&1) &
@@ -187,7 +197,7 @@ while kill -0 "$IPID" 2>/dev/null; do
   sleep 3
 done
 if ! wait "$IPID"; then
-  status failed "The installer for $TAG failed (see $STATE/update-install.log). Putting v$CURRENT back." "$CURRENT" "$NEWVER"
+  status failed "The installer for $TAG failed (see $LOG). Putting v$CURRENT back." "$CURRENT" "$NEWVER"
   cp -a "$BACKUP/." "$APP/"; systemctl restart openhop-spamguard; exit 1
 fi
 
@@ -205,6 +215,6 @@ if systemctl is-active --quiet openhop-spamguard; then
 fi
 status failed "v$NEWVER didn't start, so v$CURRENT was put back." "$CURRENT" "$NEWVER"
 cp -a "$BACKUP/." "$APP/"
-[ -f "$STATE/previous-version.service" ] && cp "$STATE/previous-version.service" /etc/systemd/system/openhop-spamguard.service && systemctl daemon-reload
+[ -f "$ROOTSTATE/previous-version.service" ] && cp "$ROOTSTATE/previous-version.service" /etc/systemd/system/openhop-spamguard.service && systemctl daemon-reload
 systemctl restart openhop-spamguard
 exit 1

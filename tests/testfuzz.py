@@ -106,7 +106,7 @@ BODY = st.text(alphabet=st.characters(blacklist_categories=("Cs", "Cc")), min_si
 def t_decrypt_round_trip(name, body):
     r = sg.decrypt_group_text(build(name, body), CH)
     assert r is not None, "a genuine message was not read"
-    assert r["text"] == body and r["sender"] == name.strip(), (r, name, body)
+    assert r["text"] == body and r["sender"] == name.rstrip(), (r, name, body)   # read as openHop reads it
 
 
 for name, fn in [("text functions never crash", t_text_functions), ("middle_chunk stays inside the text", t_middle_chunk),

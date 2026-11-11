@@ -104,6 +104,7 @@ if [ "$KEEP_EVIDENCE" = 1 ] && [ -d "$STATE/evidence" ]; then
 else
   rm -rf "$STATE"
 fi
+rm -rf /var/lib/openhop_spamguard-update   # the updater's own working folder
 rm -rf "$APP"   # last, as this script lives here
 
 echo

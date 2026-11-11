@@ -19,7 +19,7 @@ if ! python3 -c "import hypothesis, Crypto, nacl, yaml" 2>/dev/null; then
   # Locked, hash-checked versions (requirements/ci.txt).
   pip install -q --require-hashes -r ../requirements/ci.txt 2>/dev/null || pip install -q --break-system-packages --require-hashes -r ../requirements/ci.txt
 fi
-TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testwardrive testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testslowrepeat testrulesview testreporting testprivacy testsecrets testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testfuzz testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight testlevel testmapsenders testquarantine testroute testroutesurge testtypesurge testsigned testdamaged testaudit testrandomtail testfgbreakdown testknownage testevasion testsettingsaudit testsignedname teststatebak testvarylimits testbrevity testsbom testforgedhop testidentity testcodeconfidence testresilience testrulesflat testtextsense testopenhopfixed testquickresend testpublicbots testexperimentaloff testadvisor testfixes6271 teststem testautolevel testmachine teststemmem testautoadv testupdverify testinstpw testsymboljunk testfixes6291 testbypass630 testbypass631 testfarcopy testspoofdevice testlookalikecopy testmigrated632"
+TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testslowrepeat testrulesview testreporting testprivacy testsecrets testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testfuzz testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight testlevel testmapsenders testquarantine testroute testroutesurge testtypesurge testsigned testdamaged testaudit testrandomtail testfgbreakdown testknownage testevasion testsettingsaudit testsignedname teststatebak testvarylimits testbrevity testsbom testforgedhop testidentity testcodeconfidence testresilience testrulesflat testtextsense testopenhopfixed testquickresend testpublicbots testexperimentaloff testadvisor testfixes6271 teststem testautolevel testmachine teststemmem testautoadv testupdverify testinstpw testsymboljunk testfixes6291 testbypass630 testbypass631 testfarcopy testspoofdevice testlookalikecopy testsenderparse testmarks testrobust testupdsafe testmigrated632"
 [ "${1:-}" = "--slow" ] && TESTS="$TESTS teststress"
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   # Locked, integrity-checked versions (tests/npm/*/package-lock.json), linked to where the browser tests look.
@@ -28,6 +28,8 @@ if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   TESTS="$TESTS testguess testmappins testupdprog testfgcalm testhist testa11y testchpick testlevelui testmapsendersui testquarantineui testrouteui testfgbreakdownui testlabelui testsensehintui testwebsafety testexpui testmultilabelui testmaptiles"
 else
   echo "(skipping the browser test: Playwright or npm not available)"
+  # In CI the browser tests are required: a run without them must not report that everything passed.
+  [ -n "${CI:-}" ] && BROWSER_MISSING=1
 fi
 # SG_TEST_PY runs each test another way, e.g. under coverage: SG_TEST_PY="python3 -m coverage run --parallel-mode"
 PY=${SG_TEST_PY:-python3}
@@ -38,4 +40,5 @@ for t in $TESTS; do
   if [ $rc -ne 0 ] || echo "$out" | grep -qE "^FAIL|Traceback"; then fail=1; echo "FAIL  $t: $last"; echo "$out" | grep -E "^FAIL|Error" | head -5 | sed 's/^/      /'
   else echo "ok    $t: $last"; fi
 done
+if [ -n "${BROWSER_MISSING:-}" ]; then fail=1; echo "FAIL  browser tests: Playwright or npm is missing, so they did not run"; fi
 [ $fail -eq 0 ] && echo "ALL TESTS PASSED" || { echo "SOME TESTS FAILED"; exit 1; }

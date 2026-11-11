@@ -1542,7 +1542,7 @@ function qDetail(){
   if(!r){ box.innerHTML=`<p class="explain" style="margin:0">Choose a message to see why SpamGuard did what it did, and to change it.</p>`; return; }
   const who=r.spammer?"Has repeated messages held this week":r.known?"Someone SpamGuard knows from genuine messages":"A name SpamGuard doesn't know yet";
   const b=(label,path,body,cls)=>`<button type="button" class="${cls||"quiet"}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`;
-  const lb=(v,t)=>`<button type="button" class="quiet" aria-pressed="${r.label===v}" data-p="/label" data-b="${esc(JSON.stringify({label:r.label===v?"none":v,sender:r.sender,text:r.text,path:r.path,packet:r.packet}))}" onclick="act(this)">${r.label===v?"Clear the label":t}</button>`;
+  const lb=(v,t)=>`<button type="button" class="quiet" aria-pressed="${r.label===v}" data-p="/label" data-b="${esc(JSON.stringify({label:r.label===v?"none":v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel}))}" onclick="act(this)">${r.label===v?"Clear the label":t}</button>`;
   const acts={stopped:b("Let it through","/not_spam",{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet},"go"),
     held:b("Let it through","/not_spam",{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet},"go"),
     letthrough:r.known?"":b("Stop copies like this","/mark_spam",{text:r.text,channel:r.channel,sender:r.sender,path:r.path,packet:r.packet},"go"),
@@ -1610,9 +1610,9 @@ $("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) 
 $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-qb]"); if(!b||!Q.data) return; const v=b.dataset.qb;
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
   if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
-  if(v!=="release") sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
+  if(v!=="release") sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet,path:r.path,channel:r.channel}));
   await Promise.all(sel.map(r=>{
-    const body=v==="release"?{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet}:{label:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet};
+    const body=v==="release"?{sender:r.sender,matched:r.matched,text:r.text,path:r.path,packet:r.packet}:{label:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel};
     if(v==="release"&&r.status!=="stopped"&&r.status!=="held") return null;
     return fetch(v==="release"?"/not_spam":"/label",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body)});
   }));
@@ -2183,7 +2183,10 @@ function renderSources(d){
 
 async function load(force){
   const editing=!force && busy();
-  try{ const d=await (await fetch("/status",{cache:"no-store"})).json(); S=d; render(d, editing); }
+  try{ const r=await fetch("/status",{cache:"no-store",headers:{"X-API-Key":store.get("sgkey")||""}});
+    if(r.status===401){ if(!load.asked){ load.asked=true; const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(k){ store.set("sgkey",k); load.asked=false; return load(true); } }
+      $("#hero").innerHTML="<h1>This SpamGuard has a password.</h1><p>Reload the page to enter it.</p>"; return; }
+    const d=await r.json(); S=d; render(d, editing); }
   catch(e){ $("#hero").innerHTML="<h1>Can't reach SpamGuard.</h1><p>The service may be restarting (this page retries every few seconds). If this stays, check it on the Pi with: sudo systemctl status openhop-spamguard</p>";
     $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; }
 }

@@ -27,8 +27,8 @@ detail of how spam is recognised, which is kept out of public documents on purpo
 ```
 
 SpamGuard never sends or forwards radio packets itself. It watches what openHop hears and tells openHop's
-own rule engine what to stop. If SpamGuard stops, openHop carries on with the last rules it was given, and
-those rules expire by themselves.
+own rule engine what to stop. If SpamGuard stops, openHop carries on with the last rules it was given until
+SpamGuard is back or they are removed (`spamguard.py --remove-rules`, or uninstalling).
 
 ## The parts
 

@@ -9,7 +9,7 @@ about keeping SpamGuard, the repeater and the people on the mesh safe.
 1. **The repeater.** SpamGuard holds an openHop API token, so it can change openHop's rules. It must not let
    anyone else use that to disrupt the repeater.
 2. **The mesh.** Its rules must only ever hold back spam and floods, never direct messages,
-   acknowledgements or the repeater's own traffic, and they must expire by themselves.
+   acknowledgements or the repeater's own traffic, and they must be easy to remove.
 3. **People's privacy.** It reads channel messages, so what it stores and shows must stay on the repeater,
    and nothing personal may reach the public repository.
 4. **The software people install.** Releases must be what this repository built, unchanged.
@@ -46,8 +46,9 @@ about keeping SpamGuard, the repeater and the people on the mesh safe.
 1. **Least privilege:** SpamGuard needs no special rights of its own on the repeater. It only needs
    openHop's API token, it only changes rules it owns (named `spamguard:...`), and the few system commands
    it runs use fixed argument lists, never a shell.
-2. **Fail safe:** if SpamGuard stops, its rules expire and the repeater carries on as normal. Monitor mode
-   lets an operator see what it would do before it does anything.
+2. **Fail safe:** if SpamGuard stops, the repeater carries on with SpamGuard's last rules, and one command
+   (`--remove-rules`) or uninstalling takes them all out. Monitor mode lets an operator see what it would do
+   before it does anything.
 3. **Economy of mechanism:** one Python program with two small dependencies, no database and no cloud.
 4. **Complete mediation:** every change goes through one handler that checks the access key and the content
    type before anything else.

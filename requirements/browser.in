@@ -1,0 +1,3 @@
+# The browser tests (page safety, accessibility, the page's views) in .github/workflows/tests.yml. Compile with:
+#   uv pip compile --python-version 3.12 --generate-hashes requirements/browser.in -o requirements/browser.txt
+playwright==1.63.0
