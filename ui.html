@@ -177,6 +177,11 @@ textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;
 
 /* lists of blocks and messages */
 .rows{list-style:none;margin:0;padding:0}
+.ppl details{grid-column:1/-1}.ppl summary{cursor:pointer;display:grid;gap:3px;min-height:44px;align-content:center;list-style-position:outside}
+.ppl summary .what{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ppl-body{padding:8px 0 4px;display:grid;gap:8px}
+.ppl-warn{background:var(--amber-tint);color:var(--amber-text);border-radius:6px;padding:6px 9px;font-size:.8125rem}
+.ppl-bar{display:block;height:8px;border-radius:99px;background:var(--line);overflow:hidden}.ppl-bar i{display:block;height:100%;background:var(--amber)}
+.ppl-index{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px}.ppl-index button{min-width:44px;min-height:44px;flex:none}
 .rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:11px 0;border-top:1px solid var(--line)}
 .rows li:first-child{border-top:0}
 .rows .what{font-weight:600;overflow-wrap:anywhere}
@@ -514,7 +519,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="grp"><button class="grp-h" aria-expanded="true">Monitoring</button><div class="grp-b">
     <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a href="#/campaigns" data-nav="campaigns" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span>Campaigns</span><b class="badge" id="nb-campaigns"></b></a><a href="#/activity" data-nav="activity" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Activity</span><b class="badge" id="nb-activity"></b></a></div></div>
   <div class="grp"><button class="grp-h" aria-expanded="true">System</button><div class="grp-b">
-    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/exceptions" data-nav="exceptions" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg><span>Exceptions</span><b class="badge" id="nb-exceptions"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/display" data-nav="display"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16zM13.5 6.5l4 4M7 3v3M3 7h3M19 14v3M17 16h3"/></svg><span>Display</span><b class="badge" id="nb-display"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
+    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/people" data-nav="people"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5M16 5.2a3 3 0 0 1 0 5.6M18 14.3c1.8.7 3 2.300 3 4.700"/></svg><span>People</span><b class="badge" id="nb-people"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/display" data-nav="display"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16zM13.5 6.5l4 4M7 3v3M3 7h3M19 14v3M17 16h3"/></svg><span>Display</span><b class="badge" id="nb-display"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
   <label class="switch side-adv"><input type="checkbox" id="advToggle"> Advanced</label>
 </nav>
 <main id="main" tabindex="-1">
@@ -656,6 +661,16 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <button class="go" id="textBtn">Block text</button>
   </div>
 
+</section><section class="adv">
+  <details id="neverBox"><summary><b>Never blocked</b> <span class="explain" id="neverCount"></span></summary>
+  <h3 style="font-size:0.90625rem;margin:10px 0 0">Text never blocked</h3>
+  <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
+  <div class="chips" id="trustTexts"></div>
+  <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:10px 0 0">Not re-blocked</h3>
+  <p class="explain">Blocks you removed by hand. SpamGuard won't put these back for 24 hours.</p>
+  <div class="chips" id="suppressed"></div>
+  </details>
 </section></div>
 
 <div class="page" data-page="messages"><section id="qSec">
@@ -696,6 +711,12 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">By first repeater, last few minutes. “Never block” stops automatic blocks on that repeater, for example your neighbours.</p>
   <div class="scroll"><table id="hops"></table></div>
   <p class="more" id="learnt"></p>
+</section>
+<section class="adv">
+  <h2>Repeaters never blocked automatically</h2>
+  <p class="lead">For example your own repeater or a neighbour's. Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
+  <div class="chips" id="trustHops"></div>
+  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
 </section>
 </div>
 <div class="page" data-page="campaigns"><section>
@@ -804,28 +825,19 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   </div>
   <div class="inline-form"><input id="chName" aria-label="Channel name" size="14" placeholder="#chat"><input id="chKey" aria-label="Channel key" size="34" placeholder="key (only for private channels)"><button id="chBtn">Add channel</button></div>
 </section><section id="wdSec"></section></div>
-<div class="page" data-page="exceptions"><section>
-  <h2>Exceptions</h2>
-  <p class="lead">Things SpamGuard should leave alone.</p>
-  <h3 style="font-size:0.90625rem;margin:6px 0 0">Trusted senders</h3>
-  <p class="explain">Never treated as spam names or copies. Names can be copied, so campaigns are still blocked, and a trusted name turning up somewhere new is logged.</p>
-  <div class="chips" id="trustSenders"></div>
-  <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Add</button></div>
-  <h3 style="font-size:0.90625rem;margin:6px 0 0">Known people</h3>
-  <p class="explain">Names learnt from genuine messages. They get through repeater, link and lockdown blocks. <b>Trust</b> keeps a name for good; <b>Forget</b> makes it new again.</p>
-  <div class="inline-form"><input id="knownFind" type="search" aria-label="Search known people" placeholder="Search known people" autocomplete="off"><span class="explain" id="knownCount"></span></div>
-  <ul class="rows" id="knownList"></ul>
-  <h3 style="font-size:0.90625rem;margin:6px 0 0">Repeaters never blocked automatically</h3>
-  <p class="explain">Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
-  <div class="chips" id="trustHops"></div>
-  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
-  <h3 style="font-size:0.90625rem;margin:6px 0 0">Text never blocked</h3>
-  <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
-  <div class="chips" id="trustTexts"></div>
-  <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
-  <h3 style="font-size:0.90625rem;margin:6px 0 0">Not re-blocked</h3>
-  <p class="explain">Blocks you removed by hand. SpamGuard won't re-create these for 24 hours.</p>
-  <div class="chips" id="suppressed"></div>
+<div class="page" data-page="people"><section id="pplSec">
+  <div class="health-head"><h2>People</h2><span class="explain" id="pplShowing" aria-live="polite"></span></div>
+  <p class="lead">Everyone SpamGuard has heard, how far it trusts each name and why. Trust builds from a person's own ordinary messages. Choose a name for where they are usually heard from and what you can do.</p>
+  <div class="q-chips" id="pplChips" role="group" aria-label="Show"></div>
+  <div class="blk-ctl"><input id="pplFind" type="search" aria-label="Search names" placeholder="Search names" autocomplete="off">
+    <label class="explain" for="pplSort">Order</label><select id="pplSort"><option value="recent">Recently heard</option><option value="name">A to Z</option><option value="msgs">Most messages</option></select></div>
+  <div class="ppl-index" id="pplIndex" role="group" aria-label="Jump to a letter" hidden></div>
+  <ul class="rows ppl" id="pplList"><li><p class="empty">Loading…</p></li></ul>
+  <p class="more" id="pplMore"></p>
+  <p class="explain" id="pplAge"></p>
+  <h3 style="font-size:0.90625rem;margin:14px 0 0">Trust a name yourself</h3>
+  <p class="explain">A trusted name is always let through. Names can be copied, so campaigns are still blocked, and a trusted name turning up somewhere new is logged.</p>
+  <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Trust</button></div>
 </section></div>
 <div class="page" data-page="evidence"><section id="evSec">
   <h2>Evidence log</h2>
@@ -1256,17 +1268,47 @@ function renderChannels(d){
   const only=d.channels.length===1;
   $("#chHint").hidden=!only;
 }
-function renderKnown(d){
-  const P=(d.known&&d.known.people)||[], q=($("#knownFind").value||"").trim().toLowerCase();
-  const hit=P.filter(p=>!q||p.name.toLowerCase().includes(q)), shown=hit.slice(0,q?200:25);
-  $("#knownCount").textContent=`${d.known.count} known, ${d.known.learning} still being learnt`+(q?`; ${hit.length} match`:(hit.length>shown.length?`; showing the ${shown.length} heard most recently`:""));
-  $("#knownList").innerHTML=shown.map(p=>`<li><div><div class="what">${esc(p.name)}${p.trusted?"<span class='tag ok'>trusted</span>":p.known?"<span class='tag plain'>known</span>":"<span class='tag would'>learning</span>"}</div>
-    <div class="why">${p.msgs?`${p.msgs} genuine message${p.msgs===1?"":"s"}`:"added by you"}${p.last?", last heard "+ago(p.last):""}</div></div>
-    <div class="acts">${p.trusted?"":btn("Trust","/allow_sender",{sender:p.name},"quiet")}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></li>`).join("")
-    ||`<li><p class="empty">${q?"No known name matches.":"SpamGuard doesn't know anyone yet."}</p></li>`;
+// People: searched, filtered and paged by SpamGuard, so the page never loads everyone
+let PPL={show:"active",sort:"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
+const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"]};
+async function pplLoad(more,keep){
+  if(PPL.busy) return; PPL.busy=true;
+  const n=keep?Math.min(100,Math.max(20,PPL.rows.length)):20;
+  if(!more&&!keep){ PPL.offset=PPL.jump||0; PPL.jump=0; }
+  try{
+    const r=await fetch("/people",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
+      body:JSON.stringify({show:PPL.show,sort:PPL.sort,q:PPL.q,offset:more?PPL.offset+PPL.rows.length:PPL.offset,limit:n})});
+    const d=await r.json();
+    if(!d.error){ PPL.rows=more?PPL.rows.concat(d.rows):d.rows; PPL.data=d; pplRender(); }
+  }catch(e){} finally{ PPL.busy=false; }
 }
+function pplRender(){
+  const d=PPL.data; if(!d) return; const c=d.counts||{};
+  $("#pplChips").innerHTML=[["active","Active"],["watch","On watch"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
+    .map(([k,t])=>`<button type="button" class="q-chip" data-ps="${k}" aria-pressed="${PPL.show===k}">${t} <b>${fmtN(c[k]||0)}</b></button>`).join("");
+  $("#pplShowing").textContent=`${fmtN(d.total)} ${d.total===1?"name":"names"}`+(PPL.q?" matching":"");
+  const ix=$("#pplIndex"); ix.hidden=!(d.letters&&d.letters.length>1);
+  if(!ix.hidden) ix.innerHTML=d.letters.map(([l,o])=>`<button type="button" class="quiet" data-pj="${o}" aria-label="Names starting ${esc(l)}">${esc(l)}</button>`).join("");
+  const code=h=>`<code>${esc(h)}</code>`;
+  $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=PPL_TAG[p.standing]||PPL_TAG.learning, w=p.watch;
+    const line=[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
+    return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.quiet?"<span class='tag plain'>not heard lately</span>":""}</span>
+      <span class="why">${line}</span>
+      ${p.unusual?`<span class="ppl-warn">Last heard via ${code(p.last_route)}, not a way in they normally use. It may be someone copying the name.</span>`:""}
+      ${w?`<span class="ppl-bar" role="img" aria-label="${w.days} of ${w.need} normal days"><i style="width:${Math.round(100*w.days/w.need)}%"></i></span><span class="why">${w.days} of ${w.need} normal days${w.ok<w.min_msgs?`, ${w.ok} of ${w.min_msgs} ordinary messages`:""}</span>`:""}</summary>
+      <div class="ppl-body"><p class="why">${esc(p.why)}.</p>
+      <dl class="q-dl">${p.ways.length?`<dt>Heard via</dt><dd>${p.ways.map(([h,n])=>`${code(h)} <span class="explain">${fmtN(n)}</span>`).join(" &nbsp; ")}</dd>`:""}
+        ${p.last_route?`<dt>Last route</dt><dd>${code(p.last_route)} <span class="explain">${ago(p.last_route_at)}</span></dd>`:""}
+        ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
+        ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
+      <div class="acts" style="justify-content:flex-start">${p.trusted?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):btn("Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
+    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":"Nobody here."}</p></li>`;
+  const leftN=d.total-d.offset-PPL.rows.length;
+  $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
+  $("#pplAge").textContent=`A name that never becomes known is dropped ${d.keep_learning_days} days after it was last heard, and a known person after ${d.keep_known_days} days, so throwaway names don't pile up. Trusted names are kept until you remove them.`;
+}
+function renderKnown(d){ badge("people",(d.known||{}).watching||"","warn"); if(PAGE==="people"&&Date.now()-PPL.t>2500&&document.activeElement!==$("#pplFind")){ PPL.t=Date.now(); pplLoad(false,true); } }
 function renderAdvanced(d){
-  renderKnown(d);
   $("#hops").innerHTML=`<tr><th>Repeater</th><th class="num">Messages</th><th class="num">Names</th><th class="num">Made-up names</th><th class="num">New names</th><th class="num">Campaign names</th><th class="num">Caught</th><th></th></tr>`+
     (d.hops.map(h=>`<tr><td class="lead-cell"><span class="route">${esc(h.hop==="DIRECT"?"direct (no repeater)":h.hop)}</span>${h.blocked?"<span class='tag stop'>blocked</span>":""}${h.allowed?"<span class='tag ok'>never block</span>":""}${h.confidence==="ambiguous"?"<span class='tag plain' title='Several repeaters heard here share this code, so it needs more evidence before it is blocked'>shared code</span>":""}${h.signals.length&&!h.blocked&&!h.allowed&&h.hop!=="DIRECT"?"<span class='tag sus'>suspicious</span>":""}</td>
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
@@ -1277,9 +1319,9 @@ function renderAdvanced(d){
       <td class="route" data-label="Entered via">${esc(Object.entries(c.hops).map(([k,v])=>k+" ("+v+")").join(", "))}</td><td class="act-cell">${btn("Block text","/mark_spam",{text:c.example},"quiet")}</td></tr>`).join("")
      || `<tr><td colspan="6" class="empty">No groups of repeated messages right now.</td></tr>`);
   const chips=(arr,path,field)=>arr.map(x=>`<span class="chip">${esc(x)}${btn("✕",path,{[field]:x})}</span>`).join("")||`<span class="explain">None</span>`;
-  $("#trustSenders").innerHTML=chips(d.allow.senders,"/unallow_sender","sender");
   $("#trustHops").innerHTML=chips(d.allow.hops,"/unallow_hop","hop");
   $("#trustTexts").innerHTML=chips(d.allow.texts,"/unallow_text","text");
+  { const nt=(d.allow.texts||[]).length, ns=Object.keys(d.suppressed||{}).length; $("#neverCount").textContent=nt||ns?`${nt} text${nt===1?"":"s"}, ${ns} not re-blocked`:"nothing yet"; }
   for(const [id,first] of [["#hopChan","on every channel"],["#routeChan","on every channel"],["#textChan",null]]){ const sel=$(id), keep=sel.value;
     const opts=(first?[["",first]]:[]).concat(!first&&d.channels.length>1?[["*","on every channel"]]:[]).concat(d.channels.map(c=>[c,"on "+c]));
     if(sel.dataset.sig!==JSON.stringify(opts)){ sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.dataset.sig=JSON.stringify(opts); }
@@ -1416,7 +1458,13 @@ $("#trustBtn").onclick=()=>post("/allow_sender",{sender:$("#trustIn").value.trim
 $("#trustHopBtn").onclick=()=>post("/allow_hop",{hop:$("#trustHopIn").value.trim()}).then(()=>$("#trustHopIn").value="");
 $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.trim()}).then(()=>$("#trustTextIn").value="");
 $("#chFind").addEventListener("input",()=>{ if(S) renderChannels(S); });
-$("#knownFind").addEventListener("input",()=>{ if(S) renderKnown(S); });
+let pplT=0;
+$("#pplFind").addEventListener("input",e=>{ clearTimeout(pplT); pplT=setTimeout(()=>{ PPL.q=e.target.value.trim(); pplLoad(); },250); });
+$("#pplSort").onchange=e=>{ PPL.sort=e.target.value; pplLoad(); };
+$("#pplChips").addEventListener("click",e=>{ const b=e.target.closest("[data-ps]"); if(b){ PPL.show=b.dataset.ps; pplLoad(); } });
+$("#pplIndex").addEventListener("click",e=>{ const b=e.target.closest("[data-pj]"); if(b){ PPL.jump=+b.dataset.pj; pplLoad(); } });
+$("#pplMore").addEventListener("click",e=>{ if(e.target.id==="pplMoreBtn") pplLoad(true); else if(e.target.id==="pplTop") pplLoad(); });
+$("#pplList").addEventListener("toggle",e=>{ const dt=e.target.closest("details[data-pn]"); if(dt) PPL.open=dt.open?dt.dataset.pn:(PPL.open===dt.dataset.pn?"":PPL.open); },true);
 $("#ruleCopy").addEventListener("click",()=>{
   const r=S&&S.rule_summary; if(!r||!r.rules.length){ toast("SpamGuard has no rules in openHop right now"); return; }
   const act={drop:"block",log_only:"watch only",allow:"let through"};
@@ -1649,6 +1697,7 @@ function render(d, editing){
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
+  renderKnown(d);
   if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
@@ -1660,12 +1709,13 @@ function render(d, editing){
 const isDark=()=>{ const t=document.documentElement.dataset.theme; return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches); };
 const reduceMotion=()=>document.documentElement.dataset.motion==="reduce"||matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",channels:"Channels",floodguard:"FloodGuard",messages:"Messages",sources:"Spam sources",
-  campaigns:"Campaigns",activity:"Activity",settings:"Settings",exceptions:"Exceptions",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help",display:"Display and accessibility"};
-const ADV_PAGES=["campaigns","activity","settings","exceptions","evidence"];
+  campaigns:"Campaigns",activity:"Activity",settings:"Settings",people:"People",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help",display:"Display and accessibility"};
+const ADV_PAGES=["campaigns","activity","settings","evidence"];
 let PAGE="overview";
 function route(keepMenu){
   let p=(location.hash.match(/^#\/([a-z]+)/)||[])[1]||"overview";
   if(p==="lockdown") p="blocks";   // lockdown now lives on the Blocks page
+  if(p==="exceptions"){ location.replace("#/people"); return; }   // trusted and known names now live on People
   if(p==="held"){ location.replace("#/messages?f=review"); return; }   // held messages are now a filter in Messages
   if(!TITLES[p]||(ADV_PAGES.includes(p)&&!document.body.classList.contains("advanced"))) p="overview";
   const changed=p!==PAGE; PAGE=p;
@@ -1676,6 +1726,7 @@ function route(keepMenu){
   if(changed) window.scrollTo(0,0);
   if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
   route.ready=true;
+  if(p==="people"){ PPL.t=Date.now(); pplLoad(); }
   if(p==="messages"){
     const f=(location.hash.match(/[?&]f=([a-z]+)/)||[])[1];
     if(f&&(f==="all"||f==="review"||f==="reviewed"||QLOOK[f])){ Q.status=f; Q.auto=false; Q.packets=[]; Q.codes=[]; Q.names=[]; Q.title=""; Q.sel=-1; Q.ticks={}; }
@@ -1898,7 +1949,7 @@ function renderOverview(d){
     tile("Spam share of channel traffic",a.spam_share==null?"–":a.spam_share+"%",`${fmtN(a.spam)} of ${fmtN(a.m)} messages, 24 h`,"","all")+
     tile("Airtime saved, 24 h",m.radio_known?fmtAir(a.a):"–",m.radio_known?`${fmtAir(w.a)} in 7 days`:"needs openHop's radio settings")+
     tile("To review",fmtN(d.to_review||0),d.to_review?"spam or not?":"nothing waiting","","review")+
-    tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks","adv-tile","","#/exceptions")+
+    tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks","adv-tile","","#/people")+
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`,"","","#/blocks")+
     ((m.floodguard||{}).enabled?tile("Flood packets stopped, 24 h",fmtN(a.fc||0),m.radio_known&&a.fs?`${fmtAir(a.fs)} of airtime saved`:`${fmtN(w.fc||0)} in 7 days`,"adv-tile","","#/floodguard"):"");
   // all tiles in one row on wide screens, however many there are

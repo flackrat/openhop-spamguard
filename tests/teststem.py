@@ -27,6 +27,12 @@ check("04>F0" in g.describe(g.blocks["stem:04>F0"]) and "except people" in g.des
 check(m.decide("Z9QQ<K/A","Lovely views today, anyone out?",["DD","04","F0","91"])=="drop","a new name behind another first repeater is dropped")
 check(m.decide("Andy Example","Anyone on the hill this morning?",["07","04","F0","91"])!="drop","a known person on the same route passes")
 check(m.decide("Plain Person","Anyone about on the hill?",["DD","93","7E"])!="drop","other routes are untouched")
+# 2b. Only routes about as long as the spam's: a stranger's message on a much longer journey through the same
+# repeaters is left alone, in openHop and in SpamGuard's own count
+long=["2A","31","5C","77","04","9E","F0","B3","C8","D1","E2","4F"]
+check(g.blocks["stem:04>F0"].get("max_hops")==6+g.STEM_EXTRA_HOPS,"the block remembers how long the spam's routes were")
+check(m.decide("Plain Person","Greetings from a long way off",long)!="drop","a long journey through the same repeaters is not held")
+check(not g.block_matches(g.blocks["stem:04>F0"],sg.Event(ts=0,sender="Plain Person",text="x",path=long,channel="Public")),"and SpamGuard's own count agrees")
 
 # 3. Four names are not enough; ordinary-looking names never count
 m=mock(); g=guard(m, floodguard=False); g.apply_settings({"mode":"protect"})
