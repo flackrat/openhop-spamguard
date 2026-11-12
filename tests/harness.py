@@ -23,7 +23,7 @@ class Mock:
     def __init__(self, port):
         self.packets=[]; self.policy={"policy_engine":{"enabled":True,"default_action":"allow","rules":[
             {"id":1,"name":"my own rule","enabled":True,"if":{"field":"hop_count","op":"equals","value":99},"then":{"action":"drop"}}],"objects":{}},"groups":{}}
-        self.posts=0; m=self; self.filtered=True; self.filtered_calls=0; self.recent_calls=0; self.plugins=None  # optional handler for openHop's /api/plugins endpoints
+        self.posts=0; self.links=None; m=self; self.filtered=True; self.filtered_calls=0; self.recent_calls=0; self.plugins=None  # optional handler for openHop's /api/plugins endpoints
         class H(BaseHTTPRequestHandler):
             def log_message(self,*a): pass
             def do_GET(self):
@@ -40,6 +40,8 @@ class Mock:
                           and ("start_timestamp" not in q or p["timestamp"]>=float(q["start_timestamp"]))]
                     rows=sorted(rows,key=lambda p:-p["timestamp"])[:int(q.get("limit",1000))]
                     d={"success":True,"data":rows}
+                elif "neighbor_links" in u.path:
+                    d={"success":True,"data":{"links":m.links,"count":len(m.links)}} if m.links is not None else {"success":False}
                 elif "recent_packets" in u.path:
                     m.recent_calls+=1
                     d={"success":True,"data":sorted(m.packets,key=lambda p:-p["timestamp"])[:int(q.get("limit",100))]}
@@ -54,9 +56,9 @@ class Mock:
                 m.policy["policy_engine"]=body["policy_engine"]; m.posts+=1
                 self.send_response(200); self.end_headers(); self.wfile.write(b'{"success":true}')
         self.srv=ThreadingHTTPServer(("127.0.0.1",port),H); threading.Thread(target=self.srv.serve_forever,daemon=True).start()
-    def add(self, sender, text, path, ago=0, key=sg.PUBLIC_CHANNEL_KEY):
+    def add(self, sender, text, path, ago=0, key=sg.PUBLIC_CHANNEL_KEY, rssi=None):
         self.packets.append({"id":len(self.packets)+1,"timestamp":time.time()-ago,"type":5,"payload":enc(sender,text,key),
-            "packet_hash":os.urandom(8).hex(),"original_path":json.dumps(path)})
+            "packet_hash":os.urandom(8).hex(),"original_path":json.dumps(path),**({"rssi":rssi,"snr":6.0} if rssi is not None else {})})
     def decide(self, sender, text, path, key=sg.PUBLIC_CHANNEL_KEY):
         class P:
             def __init__(s): s.payload=bytearray(bytes.fromhex(enc(sender,text,key))); s.transport_codes=[0,0]
