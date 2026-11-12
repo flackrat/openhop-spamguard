@@ -14,12 +14,12 @@ for i,t in enumerate(["Morning all from the hill","Nice and clear today"]):
     m.add("Quarry Pete",t,["4C","2F"],ago=600-i*60)
 m.add("Canal Boat Ted","Anyone hearing me from the lock?",["B1","2F"],ago=300)
 g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
-ppl={p["name"]:p for p in g.status()["known"]["people"]}
+ppl={p["name"]:p for p in g.people({"show":"all","limit":100})["rows"]}
 check(ppl.get("Quarry Pete",{}).get("known") and ppl["Quarry Pete"]["msgs"]==2,"known person listed with message count: "+str(ppl.get("Quarry Pete")))
 check(ppl.get("Canal Boat Ted",{}).get("known") is False,"one message: still being learnt")
-check("text" not in json.dumps(g.status()["known"]),"no message text in the list")
+check("text" not in json.dumps(g.people({"show":"all"})),"no message text in the list")
 g.action("allow_sender",{"sender":"Canal Boat Ted"})
-ppl={p["name"]:p for p in g.status()["known"]["people"]}
+ppl={p["name"]:p for p in g.people({"show":"all","limit":100})["rows"]}
 check(ppl["Canal Boat Ted"]["trusted"],"Trust marks a name trusted")
 g.action("block_hop",{"hop":"4C"}); g.last_sync=0; g.sync_pending=True; g.poll_once()
 check(m.decide("Quarry Pete","Back again",["4C","2F"])=="allow","known person gets through a repeater block")
