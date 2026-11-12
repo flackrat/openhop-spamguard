@@ -15,6 +15,12 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.38.0
+
+- **Spoofed answer.** Next to Spam and Not spam, for a message that uses a real person's name. It deals with the copy and leaves the real person alone.
+- **Route notes (experimental, off by default).** An optional note on a message and on the People page about whether the route looks genuine, with the reasons in words. It is a guide for you and holds nothing.
+- **The evidence log** records a little more about how each message arrived.
+
 ## v6.37.0
 
 - **People page.** Everyone SpamGuard has heard, with how far it trusts each name and why, where they are usually heard from and the last route heard, flagged when it isn't one they normally use. Search, filters, A to Z with a letter index, and one screenful at a time. It replaces Exceptions; the other lists moved to Blocks and Spam sources.
