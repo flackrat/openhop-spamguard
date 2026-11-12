@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.36.0"
+VERSION = "6.37.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -773,6 +773,8 @@ def plain_rule(rule: dict) -> str:
             return "was sent as a flood" if set(v or []) <= {0, 1} else "has one of several route types"
         if f == "hop_count" and op in ("gte", "greater_than", "gt"):
             return f"has come {v} or more hops" if op == "gte" else f"has come more than {v} hops"
+        if f == "hop_count" and op == "lte":
+            return f"has come {v} hops or fewer"
         if f == "hop_count" and op == "equals":
             return f"has come exactly {v} hops"
         if f == "local_transmission" and op == "not_equals":
@@ -1763,6 +1765,8 @@ class SpamGuard:
         self.sense_logged: dict[str, float] = {}
         self.offences: dict[str, list] = {}   # name -> when a repeat hold was started against them
         self.homes: dict[str, dict] = {}      # name -> first repeater -> messages heard that way (kept for weeks)
+        self.on_watch: dict[str, dict] = {}   # names treated as strangers until their messages look normal again
+        self.last_way: dict[str, list] = {}   # name -> [when, the start of the route it last came in by]
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
@@ -2185,6 +2189,10 @@ class SpamGuard:
                     self.sender_history[name] = {"first": v[0], "count": int(v[1]), "last": last, "hops": set()}
         self.homes = {str(k): {str(h): int(n) for h, n in v.items()} for k, v in (st.get("homes") or {}).items()
                       if isinstance(v, dict)}
+        self.on_watch = {str(k): dict(v) for k, v in (st.get("on_watch") or {}).items()
+                         if isinstance(v, dict) and isinstance(v.get("since"), (int, float)) and isinstance(v.get("clean_from"), (int, float))}
+        self.last_way = {str(k): [float(v[0]), str(v[1])] for k, v in (st.get("last_way") or {}).items()
+                         if isinstance(v, list) and len(v) == 2 and isinstance(v[0], (int, float))}
         self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
                          if isinstance(v, list)}
         for k, v in (st.get("slow_sends") or {}).items():
@@ -2339,6 +2347,8 @@ class SpamGuard:
                     "level_preview": self.level_preview,
                     "offences": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.offences.items())[-500:]},
                     "homes": dict(list(self.homes.items())[-3000:]),
+                    "on_watch": dict(list(self.on_watch.items())[-500:]),
+                    "last_way": dict(list(self.last_way.items())[-3000:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                     **({"text_sense": dict(self.sense.to_dict(), learned=dict(list(self.sense_learned.items())[-1000:]))}
@@ -2361,6 +2371,7 @@ class SpamGuard:
         self.allow_hops.clear()
         self.allow_senders.clear()
         self.allow_texts.clear()
+        self.on_watch.clear()
         kept = {k: v for k, v in self.settings.items() if k in KEEP_ON_RESET}
         self.settings = dict(kept, **({"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}))
         self.routes.clear()
@@ -2446,6 +2457,8 @@ class SpamGuard:
     def is_known(self, name: str) -> bool:
         if name in self.allow_senders:
             return True
+        if name in self.on_watch:
+            return False   # on watch: treated as a stranger until their messages look normal again
         if getattr(self, "offences", None) and name in self.offences and self.repeat_offender(name):
             return False   # held for repeating twice today: not let through blocks as a known person for now
         v = self.known.get(name)
@@ -4605,10 +4618,22 @@ class SpamGuard:
         matched = bool(e.matched) and not self._held_in_passing(e)
         return e.random or e.obfuscated or matched or bool(cc and cc.get("suspect"))
 
+    STEM_EXTRA_HOPS = 2      # how much longer than the spam's own route a changing-identity block still covers
+    LEARNING_KEEP_DAYS = 7   # a name that never became known is dropped this long after it was last heard
+    QUIET_DAYS = 14          # a known name not heard for this long is listed under "Not heard lately"
+
     def forget_old_names(self):
-        horizon = time.time() - int(self.cfg.get("known_days", 30)) * 86400
+        now = time.time()
+        horizon = now - int(self.cfg.get("known_days", 30)) * 86400
         for k in [k for k, v in self.known.items() if v[1] < horizon]:
             del self.known[k]
+        # Names that turned up once or twice and never came back (most throwaway names) don't linger
+        young = now - self.LEARNING_KEEP_DAYS * 86400
+        for k in [k for k, v in self.known.items() if v[1] < young and k not in self.allow_senders
+                  and k not in self.on_watch and not self.is_known(k)]:
+            del self.known[k]
+        for k in [k for k, v in self.last_way.items() if v[0] < horizon]:
+            del self.last_way[k]
         if len(self.known) > 5000:  # keep the 5,000 most recently heard
             self.known = dict(sorted(self.known.items(), key=lambda kv: -kv[1][1])[:5000])
 
@@ -4651,9 +4676,175 @@ class SpamGuard:
             self._add_block(key, "imposter", hop, f"Marked by you: copies of {sender} through repeater {hop}", "manual",
                             channel=ch, ttl=7 * 86400, extra={"who": sender})
             return "copy"
-        self.known.pop(sender, None)
-        self.note(f"'{sender}' no longer counts as a known person (marked as spam by you)")
+        self.put_on_watch(sender, "You said one of their messages was spam", now)
         return "known"
+
+    # ---- on watch: a name that sent spam is treated as a stranger, and comes off by itself ----
+    WATCH_DAYS = 7           # normal days needed the first time
+    WATCH_DAYS_MAX = 28      # ...and at most, after repeated holds
+    WATCH_MIN_MSGS = 3       # ordinary messages needed in that time (silence alone proves nothing)
+    WATCH_FORGET_DAYS = 45   # a name not heard for this long is taken off the list
+    WATCH_SOURCES = ("repeat", "slowrepeat", "replay", "sense", "budget", "campaign", "junk", "manual")
+
+    def usual_ways(self, name: str) -> list[str]:
+        """The repeaters a name is normally first heard through, most used first: those it has used more than a
+        handful of times. Empty until enough has been heard to say."""
+        hm = self.homes.get(name) or {}
+        total = sum(hm.values())
+        if total < 5:
+            return []
+        return [h for h, n in sorted(hm.items(), key=lambda kv: -kv[1]) if n >= max(2, total // 10)]
+
+    def put_on_watch(self, name: str, why: str, now: Optional[float] = None) -> bool:
+        """Treat a name as a stranger (no known pass) until its messages have looked normal for a while.
+        What it has built up is kept, so it is known again as soon as it comes off."""
+        now = now or time.time()
+        if not name or name in ("?", "Unknown"):
+            return False
+        w = self.on_watch.get(name)
+        if w:
+            w.update(clean_from=now, need=min(self.WATCH_DAYS_MAX, int(w.get("need", self.WATCH_DAYS)) * 2),
+                     times=int(w.get("times", 1)) + 1, why=why, last_hold=now, ok=0)
+            return False
+        self.on_watch[name] = {"since": now, "clean_from": now, "need": self.WATCH_DAYS, "times": 1, "why": why,
+                               "last_hold": now, "ok": 0}
+        while len(self.on_watch) > 500:
+            self.on_watch.pop(next(iter(self.on_watch)))
+        self.note(f"'{name}' is on watch: {why[0].lower() + why[1:]}. Treated as a stranger until their messages look normal again")
+        self._important = True
+        return True
+
+    def review_watch(self, events, now: float) -> bool:
+        """Look at what on-watch names have sent since last time. A message of theirs held for what it did
+        (repeating, flooding, spam text) starts the wait again and makes it longer; enough ordinary days and
+        messages take them off watch. Holds through a repeater they never use don't count: that is more likely
+        someone copying the name."""
+        changed = False
+        if not self.on_watch:
+            return False
+        for e in events:
+            w = self.on_watch.get(e.sender)
+            if not w or e.ts <= max(w.get("seen", 0), w["since"]):
+                continue
+            w["seen"] = e.ts
+            b = self.blocks.get(e.matched) if e.matched else None
+            ways = self.usual_ways(e.sender)
+            usual = not ways or not e.path or any(e.first_hop == h or hops_related(e.first_hop, h) for h in ways)
+            if b is not None and b.get("source") in self.WATCH_SOURCES and usual:
+                if e.ts - w.get("last_hold", 0) > 3600:   # one burst of holds counts once
+                    w["need"] = min(self.WATCH_DAYS_MAX, int(w.get("need", self.WATCH_DAYS)) * 2)
+                    w["times"] = int(w.get("times", 1)) + 1
+                w.update(clean_from=e.ts, last_hold=e.ts, ok=0)
+                changed = True
+            elif b is None and usual:
+                w["ok"] = int(w.get("ok", 0)) + 1
+        for name, w in list(self.on_watch.items()):
+            last = max(w.get("seen", 0), w["since"])
+            if now - w["clean_from"] >= int(w.get("need", self.WATCH_DAYS)) * 86400 and int(w.get("ok", 0)) >= self.WATCH_MIN_MSGS:
+                self.on_watch.pop(name)
+                self.note(f"'{name}' is off watch: {int(w.get('need', self.WATCH_DAYS))} days of ordinary messages")
+                self._important = changed = True
+            elif now - last > self.WATCH_FORGET_DAYS * 86400:
+                self.on_watch.pop(name)
+                changed = True
+        return changed
+
+    def standing(self, name: str) -> tuple:
+        """(standing, the reason in plain words) for the People page."""
+        v = self.known.get(name) or [None, None, 0]
+        days = int((time.time() - v[0]) // 86400) if v[0] else 0
+        heard = (f"Heard for {days} day{'s' if days != 1 else ''}" if days else "First heard today") + \
+            f", {v[2]} ordinary message{'s' if v[2] != 1 else ''}"
+        if name in self.allow_senders:
+            return "trusted", "You trust this name. Always let through"
+        w = self.on_watch.get(name)
+        if w:
+            return "watch", f"{w.get('why', 'On watch')}. Treated as a stranger until their messages look normal again"
+        if self.repeat_offender(name):
+            return "learning", heard + ". Held twice today for repeating, so not let through blocks for now"
+        if self.settled(name):
+            return "settled", heard + ". Long-standing"
+        if self.is_known(name):
+            return "known", heard + ". Let through blocks meant for strangers"
+        return "learning", heard + ". Not yet let through blocks"
+
+    PEOPLE_SHOW = ("active", "watch", "trusted", "known", "learning", "quiet", "all")
+
+    def people(self, body: Optional[dict] = None) -> dict:
+        """The People page: everyone SpamGuard has heard, with standing and why, the usual ways in and the last
+        route heard. Searched, filtered, sorted and cut to one screenful here, so the page never has to load
+        everyone. Names and repeater codes only, never messages."""
+        body = body if isinstance(body, dict) else {}
+        show = body.get("show") if body.get("show") in self.PEOPLE_SHOW else "active"
+        sort = body.get("sort") if body.get("sort") in ("recent", "name", "msgs") else "recent"
+        q = str(body.get("q") or "").strip().lower()[:80]
+        limit = max(1, min(100, int(_num(body.get("limit"), 20))))
+        offset = max(0, int(_num(body.get("offset"), 0)))
+        now = time.time()
+        quiet_before = now - self.QUIET_DAYS * 86400
+        names = dict.fromkeys(self.known)
+        names.update(dict.fromkeys(n for n in self.allow_senders if n))
+        names.update(dict.fromkeys(self.on_watch))
+        counts = dict.fromkeys(self.PEOPLE_SHOW, 0)
+        rows = []
+        for n in names:
+            v = self.known.get(n) or [None, None, 0]
+            st = ("trusted" if n in self.allow_senders else "watch" if n in self.on_watch
+                  else "learning" if not self.is_known(n) else "known")
+            quiet = st == "known" and (v[1] or 0) < quiet_before
+            groups = ["all", "quiet" if quiet else st]
+            if st != "learning" and not quiet:
+                groups.append("active")
+            if q and q not in n.lower():
+                continue
+            for grp in groups:
+                counts[grp] += 1
+            if show in groups:
+                rows.append((n, v, st, quiet))
+        if sort == "name":
+            rows.sort(key=lambda r: (not r[0][:1].isalnum(), r[0].lower()))   # names starting with a symbol go last
+        elif sort == "msgs":
+            rows.sort(key=lambda r: -r[1][2])
+        else:
+            rows.sort(key=lambda r: (r[2] != "watch", -(r[1][1] or 0)))   # on watch first, then most recently heard
+        total = len(rows)
+        letters: list = []
+        if sort == "name" and total > limit:   # where each first letter starts, so the page can jump to it
+            for i, r in enumerate(rows):
+                ch = r[0][:1].upper()
+                ch = ch if ch.isalnum() else "#"
+                if not letters or letters[-1][0] != ch:
+                    if ch == "#" and any(x[0] == "#" for x in letters):
+                        continue
+                    letters.append([ch, i])
+        out = []
+        for n, v, st, quiet in rows[offset:offset + limit]:
+            st2, why = self.standing(n)
+            hm = self.homes.get(n) or {}
+            ways = self.usual_ways(n)
+            usual = ways[:3]
+            lw = self.last_way.get(n)
+            first = lw[1].split(">")[0] if lw and lw[1] else ""
+            w = self.on_watch.get(n)
+            forget_at = None
+            if st == "learning":
+                forget_at = (v[1] or now) + self.LEARNING_KEEP_DAYS * 86400
+            elif st == "known":
+                forget_at = (v[1] or now) + int(self.cfg.get("known_days", 30)) * 86400
+            out.append({"name": n, "standing": st2, "quiet": quiet, "why": why, "msgs": v[2], "first": v[0], "last": v[1],
+                        "known": self.is_known(n), "trusted": n in self.allow_senders,
+                        "usual": usual, "ways": sorted(hm.items(), key=lambda kv: -kv[1])[:5],
+                        "last_route": lw[1] if lw else None, "last_route_at": lw[0] if lw else None,
+                        # heard by a way in they have hardly ever used: possibly someone copying the name
+                        "unusual": bool(ways and first and not any(first == h or hops_related(first, h) for h in ways)),
+                        "forget_at": forget_at,
+                        "watch": ({"since": w["since"], "need": int(w.get("need", self.WATCH_DAYS)),
+                                   "days": max(0, min(int(w.get("need", self.WATCH_DAYS)), int((now - w["clean_from"]) // 86400))),
+                                   "ok": int(w.get("ok", 0)), "min_msgs": self.WATCH_MIN_MSGS, "times": int(w.get("times", 1)),
+                                   "due": w["clean_from"] + int(w.get("need", self.WATCH_DAYS)) * 86400} if w else None)})
+        return {"rows": out, "total": total, "counts": counts, "show": show, "sort": sort, "offset": offset, "letters": letters[:40],
+                "limit": limit, "keep_learning_days": self.LEARNING_KEEP_DAYS, "keep_known_days": int(self.cfg.get("known_days", 30)),
+                "quiet_days": self.QUIET_DAYS}
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
@@ -4691,7 +4882,8 @@ class SpamGuard:
         if b["kind"] == "stem":   # the route after the first repeater, whatever the first repeater claims to be
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
-            return len(e.path) >= len(b["value"]) + 1 and all(any(self._same_hop(p, h) for p in e.path) for h in b["value"])
+            return len(b["value"]) + 1 <= len(e.path) <= b.get("max_hops", 10 ** 6) \
+                and all(any(self._same_hop(p, h) for p in e.path) for h in b["value"])
         if b["kind"] in ("repeat", "burst", "imposter", "text", "words") and not self._on_block_channel(b, e):
             return False   # the same channels as the rule written to openHop
         if b["kind"] == "repeat":
@@ -4870,6 +5062,11 @@ class SpamGuard:
                 del ck[:-20]
                 while len(self.clocks) > 3000:
                     self.clocks.pop(next(iter(self.clocks)))
+            if e.sender and e.sender not in ("?", "Unknown") and e.path and not e.local:
+                self.last_way.pop(e.sender, None)
+                self.last_way[e.sender] = [e.ts, ">".join(e.path[:4])]   # most recently heard last
+                while len(self.last_way) > 3000:
+                    self.last_way.pop(next(iter(self.last_way)))
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
@@ -6592,6 +6789,7 @@ class SpamGuard:
             # and a route that regular chatters depend on is never blocked.
             names_needed = int(c.get("rotate_first_hops", 3)) + 2
             stems: dict[tuple, set] = {}
+            stem_len: dict[tuple, int] = {}   # the longest route the made-up names used
             regs: dict[tuple, set] = {}
             for e in a["window"]:
                 if len(e.path) < 3 or e.sender in self.allow_senders:
@@ -6601,6 +6799,7 @@ class SpamGuard:
                     regs.setdefault(st, set()).add(e.sender)
                 elif not self.is_known(e.sender) and (e.random or e.obfuscated or noise_name(e.sender)):
                     stems.setdefault(st, set()).add(e.sender)
+                    stem_len[st] = max(stem_len.get(st, 0), len(e.path))
             mem = self.stem_memory
             for st, names in stems.items():
                 key = "stem:" + ">".join(st)
@@ -6611,6 +6810,9 @@ class SpamGuard:
                     if want(key, "stem", list(st),
                             f"{len(names)} made-up names came in on route {'>'.join(st)} behind a first repeater that keeps changing",
                             "rotation", ttl=int(c.get("hop_block_ttl_seconds", 7200))):
+                        # Held only on routes about as long as the spam's: a genuine message that merely passes
+                        # through the same repeaters on a much longer journey is left alone.
+                        self.blocks[key]["max_hops"] = stem_len[st] + self.STEM_EXTRA_HOPS
                         mem[">".join(st)] = now      # only a block that was really made is remembered
                 if len(mem) > 400:
                     self.stem_memory = mem = dict(sorted(mem.items(), key=lambda kv: -kv[1])[:200])
@@ -6810,6 +7012,7 @@ class SpamGuard:
             changed = True
 
         changed = self._expire_blocks(now) or changed
+        changed = self.review_watch(a["long"], now) or changed
         self._save_state(force=self._important)
         return changed
 
@@ -7171,7 +7374,8 @@ class SpamGuard:
                 self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
                 if not sizes:
                     continue
-                conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per])
+                bound = [{"field": "hop_count", "op": "lte", "value": int(b["max_hops"])}] if b["kind"] == "stem" and b.get("max_hops") else []
+                conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per] + bound)
                          for z in sizes]
             elif b["kind"] in ("text", "words"):
                 chc = self._channel_hash_cond(b)
@@ -9098,11 +9302,8 @@ class SpamGuard:
                           "min_minutes": int(c.get("known_min_minutes", 0)),
                           "learning": sum(1 for k in self.known if not self.is_known(k)),
                           # who gets let through blocks, most recently heard first (names only, no messages)
-                          "people": [{"name": k, "msgs": v[2], "first": v[0], "last": v[1],
-                                      "known": self.is_known(k), "trusted": k in self.allow_senders}
-                                     for k, v in sorted(self.known.items(), key=lambda kv: -kv[1][1])[:1000]]
-                                    + [{"name": n, "msgs": 0, "first": None, "last": None, "known": True, "trusted": True}
-                                       for n in sorted(self.allow_senders) if n and n not in self.known]},
+                          "watching": len(self.on_watch),
+                          },
                 "metrics": self.metrics(),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
@@ -9604,9 +9805,24 @@ class SpamGuard:
                 self.note(f"Repeater {hop} will never be blocked automatically")
             elif op == "unallow_hop":
                 self.allow_hops.discard(str(body.get("hop", "")).upper())
+            elif op == "watch":
+                name = str(body.get("name") or "").strip()
+                if not name or name in ("?", "Unknown"):
+                    raise ValueError("Which name?")
+                if body.get("on"):
+                    self.allow_senders.discard(name)
+                    self.put_on_watch(name, "Put on watch by you", now)
+                    msg = (f"'{name}' is on watch. They are treated as a stranger, so the ordinary checks apply to them, "
+                           "and they come off watch by themselves once their messages have looked normal for a while.")
+                else:
+                    if self.on_watch.pop(name, None) is None:
+                        raise ValueError("That name isn't on watch")
+                    self.note(f"'{name}' taken off watch by you")
+                    msg = f"'{name}' is off watch and counts as before."
             elif op == "forget_known":
                 name = str(body.get("name", ""))
-                was = self.known.pop(name, None) is not None
+                was = self.known.pop(name, None) is not None or self.on_watch.pop(name, None) is not None
+                self.on_watch.pop(name, None)
                 trusted = name in self.allow_senders
                 self.allow_senders.discard(name)
                 if not was and not trusted:
@@ -9807,7 +10023,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
@@ -10074,6 +10290,8 @@ def make_handler(guard: SpamGuard):
                     return self._send(200, guard.quarantine(body))
                 if path == "verdict":
                     return self._send(200, guard.give_verdict(body))
+                if path == "people":
+                    return self._send(200, guard.people(body))
                 if path == "decisions_export":
                     return self._send(200, guard.export_decisions())
                 if path == "decisions_import":
