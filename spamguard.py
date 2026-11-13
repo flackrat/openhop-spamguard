@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.39.0"
+VERSION = "6.40.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -9496,6 +9496,7 @@ class SpamGuard:
                 "settings": settings, "meta": [m for m in SETTINGS_META if m["key"] not in hidden_settings()],
                 "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
+                "site": str((self.me or {}).get("name") or "")[:40],
                 "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),

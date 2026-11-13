@@ -1696,7 +1696,10 @@ function renderAdvisor(d){
       ${f.suggestion?`<div class="banner"><b>${esc(f.suggestion.text)}</b> ${esc(f.suggestion.why)}${f.suggestion.set?`<div>${btn("Use this",'/settings',f.suggestion.set,"go")}</div>`:""}</div>`:""}</li>`).join("")}</ul>`;
   $("#advBox").open=open;
 }
+let SITE="";
+function setTitle(){ const t=TITLES[PAGE]||"Overview"; document.title=(SITE?SITE+" · ":"")+"SpamGuard · "+t; }
 function render(d, editing){
+  if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
@@ -1727,7 +1730,7 @@ function route(keepMenu){
   const changed=p!==PAGE; PAGE=p;
   document.querySelectorAll(".page").forEach(el=>el.classList.toggle("on",el.dataset.page===p));
   document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===p));
-  $("#topTitle").textContent=TITLES[p]; document.title="SpamGuard · "+TITLES[p];
+  $("#topTitle").textContent=TITLES[p]; setTitle();
   if(keepMenu!==true) document.body.classList.remove("menu-open");
   if(changed) window.scrollTo(0,0);
   if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }
