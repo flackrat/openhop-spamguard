@@ -23,7 +23,7 @@ users report, so this is a direction rather than a promise. Suggestions are welc
 ## Later
 
 1. **More languages** for the web page.
-2. **Simpler sharing of settings** between repeater operators in the same area.
+2. **Simpler sharing of settings** between repeater operators in the same area. Export and import of your own decisions exists; live sync between repeaters may follow if operators want it.
 3. **Better flood reports** that help operators talk to the owner of the repeater a flood comes in through.
 
 ## What SpamGuard won't do
