@@ -42,6 +42,12 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Copies and repeats:** copy-paste floods, one name repeating itself (quickly or all day), replays of old messages, and accidental double sends counted with the airtime they use.
 - **Ways round a filter:** made-up codes on the end, rotating mentions, the same link reworded, bursts, link campaigns across names, and copied names.
 - **Lockdown:** in a heavy attack, only known people get through for a while.
+- **Copied names:** answer **Spoofed** on a message that uses a real person's name; the copy is dealt with and the real person is left alone.
+
+**People and channels**
+- **People page:** who SpamGuard knows, how each name usually reaches you, and a plain-words standing for each. Throwaway names drop off by themselves, and a name you doubt can be put **on watch** and comes off again on its own.
+- **Every channel or one:** your own blocks and mutes can cover every channel, and each channel has its own **Block spam here** switch.
+- **Two repeaters, one set of decisions:** export your blocks and exceptions from one SpamGuard and import them into another.
 
 **FloodGuard: airtime**
 - **Floods of any packet type**, judged by how busy the radio is, not who sent them. Direct messages and known people always get through.
@@ -53,7 +59,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 **Help with settings**
 - **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps (tightening quickly, loosening slowly, never above a ceiling you can set, and stopping the moment you drag the slider yourself). Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
 - **Bots kept off Public and repeat sends stopped**, on by default, both with a switch in Settings.
-- **Experimental features**, hidden until you ask for them. Each is off by default. Today: spot copied names, and spot reworded spam from your own marks.
+- **Experimental features**, hidden until you ask for them. Each is off by default. Today they include spotting copied names, spotting reworded spam from your own marks, and a note on whether a route looks genuine.
 
 **Principles**
 - **Spam, not opinions:** it stops how spam is sent, never what people say.
@@ -62,6 +68,8 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 ![SpamGuard's Overview: mode, protection level and the spam numbers, each of which opens the matching messages (example data)](docs/screenshot-overview.png)
 
 ![Messages: every channel message in one quarantine list, with what SpamGuard did and why (example data)](docs/screenshot-messages.png)
+
+![People: everyone SpamGuard has heard, with a plain-words standing for each (example data)](docs/screenshot-people.png)
 
 ![The protection level slider, with what each level would have held on this repeater's own traffic (example data)](docs/screenshot-level.png)
 
@@ -125,6 +133,10 @@ How well does it work, and what does it get wrong? See the [test results](docs/p
 | Get a suggestion for your settings | Open **Settings advisor** on the Overview |
 | Make it gentler or tougher | Slide the **Protection level** on the Overview; open "What this level would have done" to see the effect on your own traffic |
 | Stop something it missed | In **Messages**, open it and press **Spam** |
+| Someone is using a real person's name | In **Messages**, open the message and press **Spoofed** |
+| See who SpamGuard knows, trust or doubt someone | Open **People**: search, filter, then **Trust**, **Put on watch** or **Forget** |
+| Read a channel without blocking on it | **Channels**: switch off **Block spam here** for that channel |
+| Copy your decisions to another SpamGuard | Advanced > Settings: **Export** on one, **Import** on the other |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
