@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.38.0"
+VERSION = "6.39.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -450,6 +450,10 @@ SETTINGS_META: list[dict] = [
      "risk": "A name or message held on one channel is held on all of them, so a different person using the same name on another channel is held too.",
      "label": "Spam blocked on one channel is blocked on all of them (experimental)",
      "help": "SpamGuard's own holds on a repeating message, a flooding name or a copied name normally apply on the channel where the spam was seen. With this on they apply on every channel SpamGuard blocks spam on. Blocks you add yourself already do. Also on the Channels page."},
+    {"key": "remember_sentences", "group": "Experimental", "type": "bool",
+     "risk": "Someone new who repeats a sentence spam names have already sent would be held too. Short sentences and known people are never affected.",
+     "label": "Remember spam sentences (experimental)",
+     "help": "Spammers change their name for every message but reuse the same sentences, sometimes days apart. With this on, a longer sentence that several unknown names have sent is held for a fortnight when another unknown name sends it. Greetings and short messages never count, and people SpamGuard knows always get through."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -583,6 +587,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "cross_channel_blocks": False,
     "show_experimental": False,
     "spoof_check": False,
+    "remember_sentences": False,
     "quick_resend_seconds": 45,
     "name_budget": True,
     "name_budget_max": 14,
@@ -1783,6 +1788,7 @@ class SpamGuard:
         self.route_log: dict[str, dict] = {}  # the stretch after the first repeater -> who was held, spoofed or known there
         self.neighbours: dict[str, dict] = {}  # repeaters this node hears directly (from openHop), with their usual signal
         self.neighbours_ts = 0.0
+        self.sentences: dict[str, dict] = {}  # a normalised longer sentence -> unknown names that sent it, and when
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
@@ -2218,6 +2224,9 @@ class SpamGuard:
                                    **{w: {str(n): float(t) for n, t in (v.get(w) or {}).items() if isinstance(t, (int, float))}
                                       for w in ("spam", "spoof", "known")}}
                           for k, v in (st.get("route_log") or {}).items() if isinstance(v, dict)}
+        self.sentences = {str(k): {"text": str(v.get("text") or "")[:300], "ch": str(v.get("ch") or "Public"),
+                                   "names": {str(n): float(t) for n, t in (v.get("names") or {}).items() if isinstance(t, (int, float))}}
+                          for k, v in (st.get("sentences") or {}).items() if isinstance(v, dict)}
         self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
                          if isinstance(v, list)}
         for k, v in (st.get("slow_sends") or {}).items():
@@ -2375,6 +2384,7 @@ class SpamGuard:
                     "on_watch": dict(list(self.on_watch.items())[-500:]),
                     "last_way": dict(list(self.last_way.items())[-3000:]),
                     "last_full": dict(list(self.last_full.items())[-1500:]),
+                    "sentences": dict(list(self.sentences.items())[-self.SENTENCES_MAX:]),
                     "route_log": dict(list(self.route_log.items())[-self.ROUTES_MAX:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
@@ -2399,6 +2409,7 @@ class SpamGuard:
         self.allow_senders.clear()
         self.allow_texts.clear()
         self.on_watch.clear()
+        self.sentences.clear()
         kept = {k: v for k, v in self.settings.items() if k in KEEP_ON_RESET}
         self.settings = dict(kept, **({"mode": mode} if mode != DEFAULT_CONFIG["mode"] else {}))
         self.routes.clear()
@@ -4671,6 +4682,9 @@ class SpamGuard:
             del self.last_way[k]
         for k in [k for k, v in self.last_full.items() if v[0] < horizon]:
             del self.last_full[k]
+        scut = now - self.SENTENCE_DAYS * 86400
+        for k in [k for k, v in self.sentences.items() if max(v["names"].values(), default=0) < scut]:
+            del self.sentences[k]
         cut = now - self.ROUTE_KEEP_DAYS * 86400
         for k in list(self.route_log):
             r = self.route_log[k]
@@ -4788,6 +4802,37 @@ class SpamGuard:
                 self.on_watch.pop(name)
                 changed = True
         return changed
+
+    # ---- sentences reused by throwaway names (experimental) ----
+    SENTENCE_WORDS = 5
+    SENTENCE_NAMES = 2
+    SENTENCE_DAYS = 14
+    SENTENCES_MAX = 3000
+
+    @staticmethod
+    def sentence_key(text: str) -> Optional[str]:
+        """A sentence compared without case, punctuation, mentions or the exact link, or None when it is too
+        short to judge: greetings and short replies never count."""
+        t = re.sub(r"https?://\S+", " link ", strip_mentions(text or "").lower())
+        t = " ".join(re.sub(r"[^\w\s]", " ", t).split())
+        return t if len(t.split()) >= SpamGuard.SENTENCE_WORDS else None
+
+    def _note_sentence(self, e) -> None:
+        """Remember which unknown names sent a longer sentence. Known and trusted names are never counted."""
+        if not e.sender or e.sender in ("?", "Unknown") or e.exempt or e.sender in self.allow_senders \
+                or self.is_known(e.sender) or e.text in self.allow_texts:
+            return
+        k = self.sentence_key(e.text)
+        if not k:
+            return
+        v = self.sentences.pop(k, None) or {"text": strip_mentions(e.text).strip()[:300], "ch": e.channel or "Public", "names": {}}
+        v["names"].pop(e.sender, None)
+        v["names"][e.sender] = e.ts
+        while len(v["names"]) > 20:
+            v["names"].pop(next(iter(v["names"])))
+        self.sentences[k] = v   # most recent last
+        while len(self.sentences) > self.SENTENCES_MAX:
+            self.sentences.pop(next(iter(self.sentences)))
 
     # ---- does a route look real? (experimental, display only) ----
     ROUTE_KEEP_DAYS = 7
@@ -5005,7 +5050,7 @@ class SpamGuard:
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
         return b["kind"] in ("links", "lockdown", "route", "stem") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
-            or (b["kind"] in ("text", "words") and b.get("source") == "manual")
+            or (b["kind"] in ("text", "words") and (b.get("source") == "manual" or b.get("gate")))
 
     def block_matches(self, b: dict, e: Event) -> bool:
         if b["kind"] == "ptype":
@@ -5230,6 +5275,8 @@ class SpamGuard:
                 while len(self.last_full) > 1500:
                     self.last_full.pop(next(iter(self.last_full)))
                 self._note_route_stretch(e)
+            if not again and not e.replay and not e.local:
+                self._note_sentence(e)
             if not e.matched and not again and not e.replay:
                 home = h.setdefault("home", {})
                 home[e.first_hop] = home.get(e.first_hop, 0) + 1   # where this person is usually heard from
@@ -6496,6 +6543,16 @@ class SpamGuard:
             self.signer_suggestions(now)
         elif self.signer_suggest:
             self.signer_suggest = {}
+
+        # 0. Sentences several unknown names have sent, remembered for a fortnight (experimental).
+        if c.get("remember_sentences"):
+            cut = now - self.SENTENCE_DAYS * 86400
+            for k, v in list(self.sentences.items()):
+                if sum(1 for t in v["names"].values() if t >= cut) >= self.SENTENCE_NAMES and len(v["text"]) >= c["min_rule_chars"]:
+                    key = "sentence:" + hashlib.sha1(k.encode(), usedforsecurity=False).hexdigest()[:10]
+                    if want(key, "text", v["text"], f"Sent by {len(v['names'])} different unknown names in the last fortnight",
+                         "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400):
+                        self.blocks[key]["gate"] = True   # written after the known-people rule: people it knows get through
 
         # 1. Spam campaigns: same/similar text from several names -> block the shared text.
         if c.get("enable_text_rules", True):
