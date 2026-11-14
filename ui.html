@@ -642,7 +642,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <p class="lead">A repeater's code is its 2, 4 or 6 characters in routes (27 in 27&gt;B1&gt;7E). Text blocks match exactly, need at least 12 characters, last up to a week and never stop people SpamGuard knows.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
-    <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">routes starting there</option><option value="contains">anything passing through it</option></select>
+    <select id="hopMatch" aria-label="How to match the repeater"><option value="">default matching</option><option value="starts_known">messages that start there, except people it knows</option><option value="contains_known">anything passing through, except people it knows</option><option value="exact_paths">only routes already seen starting there</option><option value="contains">anything passing through it</option></select>
     <select id="hopChan" aria-label="Which channel"><option value="">on every channel</option></select>
     <select id="hopTtl" aria-label="How long to block it"></select>
     <button class="go" id="hopBtn">Block repeater</button>
@@ -1161,7 +1161,7 @@ function renderBlocks(d){
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
-    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
+    const title=b.kind==="hop"?(b.mode==="contains"?`Anything passing through repeater ${esc(b.value)}`:b.mode==="contains_known"?`Anything passing through repeater ${esc(b.value)}, except people SpamGuard knows`:b.mode==="starts_known"?`Messages starting at repeater ${esc(b.value)}, except people SpamGuard knows`:`Messages starting at repeater ${esc(b.value)}`)+(b.only_channel?` (only on ${esc(b.only_channel)})`:"")
       :b.kind==="links"&&b.source==="junk"?"Keyboard-symbol junk in the message or the name, on Public, from names SpamGuard doesn't know"
       :b.kind==="links"&&b.source!=="linkhost"?"Links from names SpamGuard doesn't know"
       :b.kind==="lockdown"?"Lockdown: only names SpamGuard knows get through"
@@ -1183,6 +1183,7 @@ function renderBlocks(d){
           <option value="log_only" ${b.action==="log_only"?"selected":""}>Watch only</option></select>
         ${b.kind==="hop"?`<select data-k="${esc(b.key)}" onchange="post('/hop_mode',{key:this.dataset.k,match:this.value})" aria-label="Matching">
           <option value="" ${!b.match?"selected":""}>Default matching</option>
+          <option value="starts_known" ${b.match==="starts_known"?"selected":""}>Starting there, except known people</option>
           <option value="contains_known" ${b.match==="contains_known"?"selected":""}>Passing through, except known people</option>
           <option value="exact_paths" ${b.match==="exact_paths"?"selected":""}>Routes starting there</option>
           <option value="contains" ${b.match==="contains"?"selected":""}>Anything passing through</option></select>`:""}
@@ -1696,7 +1697,10 @@ function renderAdvisor(d){
       ${f.suggestion?`<div class="banner"><b>${esc(f.suggestion.text)}</b> ${esc(f.suggestion.why)}${f.suggestion.set?`<div>${btn("Use this",'/settings',f.suggestion.set,"go")}</div>`:""}</div>`:""}</li>`).join("")}</ul>`;
   $("#advBox").open=open;
 }
+let SITE="";
+function setTitle(){ const t=TITLES[PAGE]||"Overview"; document.title=(SITE?SITE+" · ":"")+"SpamGuard · "+t; }
 function render(d, editing){
+  if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
   renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
@@ -1727,7 +1731,7 @@ function route(keepMenu){
   const changed=p!==PAGE; PAGE=p;
   document.querySelectorAll(".page").forEach(el=>el.classList.toggle("on",el.dataset.page===p));
   document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===p));
-  $("#topTitle").textContent=TITLES[p]; document.title="SpamGuard · "+TITLES[p];
+  $("#topTitle").textContent=TITLES[p]; setTitle();
   if(keepMenu!==true) document.body.classList.remove("menu-open");
   if(changed) window.scrollTo(0,0);
   if(changed&&route.ready){ const h=document.querySelector(`.page[data-page="${p}"] h1, .page[data-page="${p}"] h2`); if(h){ h.setAttribute("tabindex","-1"); h.focus({preventScroll:true}); } }

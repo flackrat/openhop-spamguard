@@ -72,9 +72,9 @@ sync(g2)
 b2=next((b for b in g2.blocks.values() if b.get("source")=="spoof"),None)
 check(b2 and b2["spoof"]["why"]=="two places" and "also heard nearby" in b2["reason"],"two places at once")
 
-# off (the default): none of this happens
-m3=mock(); g3=guard(m3,floodguard=False,known_min_msgs=3,known_min_minutes=60)
-check(sg.DEFAULT_CONFIG["spoof_watch"] is False,"off by default")
+# switched off: none of this happens
+m3=mock(); g3=guard(m3,floodguard=False,known_min_msgs=3,known_min_minutes=60,spoof_watch=False)
+check(sg.DEFAULT_CONFIG["spoof_watch"] is True,"on by default")
 for i in range(8): m3.add("Ann Hill",f"{words[i]} {words[(i*3)%11]} chat {i}",["07"],ago=6600-i*700)
 g3.apply_settings({"mode":"protect"}); sync(g3)
 m3.add("Ann Hill","hello",FAR,ago=0); sync(g3)
