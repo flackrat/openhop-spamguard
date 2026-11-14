@@ -32,8 +32,8 @@ def route_values(g):
     out = set()
     def walk(c):
         if isinstance(c, dict):
-            if c.get("field") == "path_hashes" and c.get("op", "contains") == "contains":
-                out.add(c.get("value"))
+            if c.get("field") == "path_hashes" and c.get("op", "contains") in ("contains", "gte"):
+                v = c.get("value"); out.update(v if isinstance(v, list) else [v])
             for v in c.values(): walk(v)
         elif isinstance(c, list):
             for v in c: walk(v)

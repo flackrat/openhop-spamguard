@@ -15,6 +15,13 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.40.0
+
+- **Fewer genuine messages held.** A block on a repeater or a route now holds messages that start there. Messages that only pass through on a longer route get through.
+- **Spot copied names is now on by default.** A known person's name arriving from somewhere they never are is held from there, and the real person is left alone.
+- **Remember spam sentences is now on by default**, with a fix so it no longer makes links from new names more likely to be held.
+- **The browser tab shows your repeater's name**, so several SpamGuards open at once are easy to tell apart. Thanks to AW for the suggestion.
+
 ## v6.39.0
 
 - **Remember spam sentences (experimental, off by default).** Spammers who change their name for every message often reuse the same sentences. With this on, those sentences are held for longer. Greetings and short messages never count, and people SpamGuard knows get through.

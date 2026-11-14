@@ -32,12 +32,13 @@ check(m.decide("Canal Boat Ted","Anyone out on the lock?",["9D","B1","2F"])=="al
 check(m.decide("Canal Boat Ted","Morning",["B1","2F"])=="allow", "and other routes are untouched")
 check(m.decide("Quarry Pete","Back again",["9D","4C","2F"])=="allow", "a known person on the blocked route still gets through")
 
-# SpamGuard's own records say what the repeater really did: openHop can't check the order, so neither do they
+# SpamGuard's own records say what the repeater really did: the route has to start that way, in that order
 E=sg.Event
 e1=E(ts=0,sender="X",text="t",path=["9D","4C","2F"],channel="Public")
 e2=E(ts=0,sender="X",text="t",path=["2F","4C","9D"],channel="Public")
 e3=E(ts=0,sender="X",text="t",path=["9D"],channel="Public")
-check(g.block_matches(b,e1) and g.block_matches(b,e2) and not g.block_matches(b,e3), "SpamGuard's own records match what openHop holds, whatever the order")
+check(g.block_matches(b,e1) and not g.block_matches(b,e2) and not g.block_matches(b,e3), "SpamGuard's own records match what openHop holds: in order, from the start")
+check(m.decide("UD6DWREK","FREE PRIZE claim now",["2F","4C","9D"])=="allow" and m.decide("UD6DWREK","FREE PRIZE claim now",["A1","9D","4C"])=="allow", "the same repeaters in another order or further along are not held")
 check("route 9D>4C" in g.describe(b) and "except people it knows" in g.describe(b), f"described in plain words: {g.describe(b)}")
 st=g.status()
 check(any(x["kind"]=="route" and x["key"]=="route:9D>4C" for x in st["blocks"]), "listed with the other blocks")

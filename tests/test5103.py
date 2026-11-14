@@ -6,7 +6,7 @@ for i in range(5): m.add(rname(),f"spam {i} "+rname(10),["82","04","3B"],ago=50-
 g=guard(m); run(m,g)
 b=g.blocks.get("hop:82")
 check("repeater block lasts 2 h by default", b and 7000 < b["expires"]-time.time() <= 7200)
-m.add("Over The Hill","Test",["44","82","3B"]); m.add(rname(),"more spam "+rname(9),["82","04","3B"]); run(m,g)
+m.add("Over The Hill","Test",["82","44","3B"]); m.add(rname(),"more spam "+rname(9),["82","04","3B"]); run(m,g)
 st=g.status()
 check("genuine-looking held message listed", [h["sender"] for h in st["held"]]==["Over The Hill"])
 check("random-name spam not listed", all(not sg.name_score(h["sender"],g.name_res)>=3 for h in st["held"]))

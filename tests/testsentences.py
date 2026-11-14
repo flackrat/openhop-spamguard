@@ -1,4 +1,4 @@
-# Remembering spam sentences reused by throwaway names (experimental). Checked against openHop's own rule
+# Remembering spam sentences reused by throwaway names. Checked against openHop's own rule
 # engine. All names and messages are made up.
 import sys, logging, time
 from harness import *
@@ -44,13 +44,18 @@ ki=next(i for i,n in enumerate(names) if n.endswith("known-people")); si=next(i 
 check(si>ki,"the sentence rule sits after the known-people rule, so people SpamGuard knows get through it")
 check(g.gated(b[0]) and g.block_matches(b[0],sg.Event(ts=time.time(),sender="New One",text=RANT,path=["A1"],channel="Public")),"and SpamGuard's own count agrees")
 check(act(m,"Good morning everyone","ZZ9 NEW")=="allow","ordinary greetings from new names are untouched")
+m5=mock(); g5=guard(m5,floodguard=False,vary_limits=False); g5.apply_settings({"mode":"protect"}); sync(g5)
+g5._add_block("sentence:t","text",RANT,"Sent by 2 different unknown names in the last fortnight","campaign",channel="Public",ttl=86400); g5.blocks["sentence:t"]["gate"]=True
+sync(g5); check("links:new" not in g5.blocks,"a remembered sentence alone doesn't start holding links from new names")
+g5._add_block("text:t2","text","buy cheap widgets today friends","test","campaign",channel="Public",ttl=3600); sync(g5)
+check("links:new" in g5.blocks,"an ordinary campaign still does")
 # Greetings from many new names never build up
 m2=mock(); g2=guard(m2,floodguard=False,remember_sentences=True,vary_limits=False); g2.apply_settings({"mode":"protect"}); sync(g2)
 for i in range(6): m2.add(f"New Person {i}","Good morning all",[f"{i:02X}"],ago=500-i)
 sync(g2); check(not any("fortnight" in x["reason"] for x in g2.blocks.values()),"six people saying good morning: nothing held")
-# Off by default
-m3=mock(); g3=guard(m3,floodguard=False,vary_limits=False); g3.apply_settings({"mode":"protect"})
-check(g3.cfg["remember_sentences"] is False,"off by default")
+# Switched off
+check(sg.DEFAULT_CONFIG["remember_sentences"] is True,"on by default")
+m3=mock(); g3=guard(m3,floodguard=False,vary_limits=False,remember_sentences=False); g3.apply_settings({"mode":"protect"})
 m3.add("QX7%ZZ1A",RANT,["F1"],ago=1800); m3.add("K2#LL0PQ",RANT,["F2"],ago=60); sync(g3)
 check(not any("fortnight" in x["reason"] for x in g3.blocks.values()),"off: no fortnight block")
 # Memory is bounded, forgotten after a fortnight, survives a restart
