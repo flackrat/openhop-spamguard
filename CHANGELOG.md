@@ -17,6 +17,8 @@ The detail is below, newest first. In short:
 
 ## v6.40.0
 
+- **Fewer genuine messages held.** A block on a repeater or a route now holds messages that start there. Messages that only pass through on a longer route get through.
+- **Remember spam sentences is now on by default**, with a fix so it no longer makes links from new names more likely to be held.
 - **The browser tab shows your repeater's name**, so several SpamGuards open at once are easy to tell apart. Thanks to AW for the suggestion.
 
 ## v6.39.0

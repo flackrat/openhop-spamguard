@@ -120,12 +120,13 @@ SETTINGS_META: list[dict] = [
     {"key": "enable_hop_rules", "risk": "Turning this off means a spammer who keeps changing names and wording can only be caught by text rules, so more spam gets through. While on, everyone whose channel messages start at a blocked repeater is blocked too, including genuine users who rely on that repeater.", "group": "Blocking by source repeater", "type": "bool",
      "label": "Block spam at its source repeater",
      "help": "When a lot of spam enters the mesh through one repeater, block channel messages that start at that repeater."},
-    {"key": "hop_match_mode", "risk": "The first still holds newcomers on that route. The last also blocks known people and other repeaters sharing the code. 'Routes starting there' misses a lot of spam.", "group": "Blocking by source repeater", "type": "choice",
-     "choices": [["contains_known", "Anything passing through, except people it knows (recommended)"],
-                 ["exact_paths", "Routes starting there"],
+    {"key": "hop_match_mode", "risk": "'Passing through' choices also hold newcomers whose long route merely crosses that repeater. 'Anything passing through' blocks known people too. 'Only routes already seen' misses a lot of spam.", "group": "Blocking by source repeater", "type": "choice",
+     "choices": [["starts_known", "Messages that start there, except people it knows (recommended)"],
+                 ["contains_known", "Anything passing through, except people it knows"],
+                 ["exact_paths", "Only routes already seen starting there"],
                  ["contains", "Anything passing through"]],
      "label": "How to block a repeater",
-     "help": "'Except people it knows' blocks everything through the repeater except known names. 'Routes starting there' blocks only routes that start there. 'Anything passing through' blocks everything, known people included."},
+     "help": "'Messages that start there' holds only messages whose route begins at the repeater, which is where the spam comes in, and lets known names through. 'Passing through' also holds messages that merely cross it on a longer route."},
     {"key": "hop_random_senders", "risk": "Lower = blocks a spam repeater sooner, but a repeater used by a couple of people with code-like names (e.g. M0ABC123) could get blocked. Higher = more spam gets out before the block starts.", "group": "Blocking by source repeater", "type": "int", "min": 1, "max": 100,
      "preset": True, "label": "Random-looking names before blocking",
      "help": "Block a repeater after this many different made-up looking names (like UD6DWREK) arrive through it within the time set under How far back to count."},
@@ -450,9 +451,9 @@ SETTINGS_META: list[dict] = [
      "risk": "A name or message held on one channel is held on all of them, so a different person using the same name on another channel is held too.",
      "label": "Spam blocked on one channel is blocked on all of them (experimental)",
      "help": "SpamGuard's own holds on a repeating message, a flooding name or a copied name normally apply on the channel where the spam was seen. With this on they apply on every channel SpamGuard blocks spam on. Blocks you add yourself already do. Also on the Channels page."},
-    {"key": "remember_sentences", "group": "Experimental", "type": "bool",
+    {"key": "remember_sentences", "group": "Blocking by message text", "type": "bool",
      "risk": "Someone new who repeats a sentence spam names have already sent would be held too. Short sentences and known people are never affected.",
-     "label": "Remember spam sentences (experimental)",
+     "label": "Remember spam sentences",
      "help": "Spammers change their name for every message but reuse the same sentences, sometimes days apart. With this on, a longer sentence that several unknown names have sent is held for a fortnight when another unknown name sends it. Greetings and short messages never count, and people SpamGuard knows always get through."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
@@ -544,7 +545,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "channels": {"Public": PUBLIC_CHANNEL_KEY},
     "hashtag_channels": [],               # e.g. ["#test", "#chat"] - keys are worked out from the name
     "enable_hop_rules": True,
-    "hop_match_mode": "contains_known",
+    "hop_match_mode": "starts_known",
     "known_min_msgs": 3,
     "known_min_minutes": 60,
     "known_days": 30,
@@ -587,7 +588,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "cross_channel_blocks": False,
     "show_experimental": False,
     "spoof_check": False,
-    "remember_sentences": False,
+    "remember_sentences": True,
     "quick_resend_seconds": 45,
     "name_budget": True,
     "name_budget_max": 14,
@@ -777,6 +778,10 @@ def plain_rule(rule: dict) -> str:
             return "is from someone SpamGuard knows"
         if f == "path_hashes" and op in ("contains", "intersects"):
             return f"came through repeater {v if not isinstance(v, list) else ' or '.join(map(str, v))}"
+        if f == "path_hashes" and op == "gte" and isinstance(v, list):
+            return "started at repeater " + ">".join(map(str, v)) if len(v) == 1 else "started on route " + ">".join(map(str, v))
+        if f == "path_hashes" and op == "lt" and isinstance(v, list):
+            return "and nowhere after that in the list of repeater codes"
         if f == "route_type" and op == "equals":
             return "was sent as a flood" if v in (0, 1) else "was sent along a direct route"
         if f == "route_type" and op == "in":
@@ -2488,8 +2493,33 @@ class SpamGuard:
         return any(a.casefold() in low and size <= 2 * len(a.strip()) + 20 for a in self.allow_texts if a)
 
     # ---- matching (mirrors the openHop rules SpamGuard writes) ----
+    @staticmethod
+    def _starts_cond(hops: list) -> list:
+        """Rule conditions that are true only when a route STARTS with these repeaters, in this order. openHop
+        compares a route with a list in order, first repeater first, so "not before these, and before the next
+        code up" pins the start of the route down."""
+        hops = [str(h).upper() for h in hops]
+        if len(hops) == 1 and len(hops[0]) < 6:
+            upper = [hops[0] + "00"]     # just above this code and below any longer code that starts the same
+        else:                            # the next code up, carrying when a code is already the highest
+            upper = list(hops)
+            while upper and upper[-1] == "F" * len(upper[-1]):
+                upper.pop()
+            if upper:
+                upper[-1] = f"{int(upper[-1], 16) + 1:0{len(upper[-1])}X}"
+            else:
+                upper = None
+        return [{"field": "path_hashes", "op": "gte", "value": hops}] + \
+            ([{"field": "path_hashes", "op": "lt", "value": upper}] if upper else [])
+
+    @staticmethod
+    def _starts_at(path, value: str) -> bool:
+        """SpamGuard's own version of the same test: is this repeater the first on the route?"""
+        p0, v = str(path[0]).upper(), str(value).upper()
+        return len(p0) <= len(v) and p0 == v[:len(p0)]
+
     def hop_mode(self, b: dict) -> str:
-        return b.get("match") or self.cfg.get("hop_match_mode", "contains_known")
+        return b.get("match") or self.cfg.get("hop_match_mode", "starts_known")
 
     # ---- known people ----
     def is_known(self, name: str) -> bool:
@@ -4813,9 +4843,20 @@ class SpamGuard:
     def sentence_key(text: str) -> Optional[str]:
         """A sentence compared without case, punctuation, mentions or the exact link, or None when it is too
         short to judge: greetings and short replies never count."""
-        t = re.sub(r"https?://\S+", " link ", strip_mentions(text or "").lower())
-        t = " ".join(re.sub(r"[^\w\s]", " ", t).split())
+        t = SpamGuard._sentence_norm(text)
         return t if len(t.split()) >= SpamGuard.SENTENCE_WORDS else None
+
+    @staticmethod
+    def _sentence_norm(text: str) -> str:
+        t = re.sub(r"https?://\S+", " link ", strip_mentions(text or "").lower())
+        return " ".join(re.sub(r"[^\w\s]", " ", t).split())
+
+    def forget_sentence(self, text: str) -> None:
+        """You took a text block off: stop remembering that wording, so it isn't held again straight away."""
+        frag = self._sentence_norm(text)
+        if len(frag) >= 8:
+            for k in [k for k in self.sentences if frag in k]:
+                del self.sentences[k]
 
     def _note_sentence(self, e) -> None:
         """Remember which unknown names sent a longer sentence. Known and trusted names are never counted."""
@@ -5049,7 +5090,7 @@ class SpamGuard:
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
-        return b["kind"] in ("links", "lockdown", "route", "stem") or (b["kind"] == "hop" and self.hop_mode(b) == "contains_known") \
+        return b["kind"] in ("links", "lockdown", "route", "stem") or (b["kind"] == "hop" and self.hop_mode(b) in ("contains_known", "starts_known")) \
             or (b["kind"] in ("text", "words") and (b.get("source") == "manual" or b.get("gate")))
 
     def block_matches(self, b: dict, e: Event) -> bool:
@@ -5071,15 +5112,16 @@ class SpamGuard:
         if b["kind"] == "hop":
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
+            if self.hop_mode(b) == "starts_known":
+                return bool(e.path) and self._starts_at(e.path, b["value"])
             if self.hop_mode(b) in ("contains", "contains_known"):
                 return b["value"] in e.path
             return ">".join(e.path) in (b.get("paths") or {})
         if b["kind"] == "route":
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
-            # The same test as the rule in openHop, which can check that a route passes through these repeaters
-            # but not in which order: SpamGuard's own records must say what the repeater really did.
-            return all(any(self._same_hop(p, h) for p in e.path) for h in b["value"])
+            # The same test as the rule in openHop: the route starts with these repeaters, in this order.
+            return len(e.path) >= len(b["value"]) and all(self._same_hop(p, h) for p, h in zip(e.path, b["value"]))
         if b["kind"] == "stem":   # the route after the first repeater, whatever the first repeater claims to be
             if b.get("only_channel") and e.channel != b["only_channel"]:
                 return False
@@ -5977,6 +6019,9 @@ class SpamGuard:
             if m == "contains_known":
                 return f"anything via repeater {b['value']}, except people it knows" + (
                     f" (only on {b['only_channel']})" if b.get("only_channel") else "")
+            if m == "starts_known":
+                return f"messages starting at repeater {b['value']}, except people it knows" + (
+                    f" (only on {b['only_channel']})" if b.get("only_channel") else "")
             how = "messages starting at" if m == "exact_paths" else "anything via"
             return f"{how} repeater {b['value']}" + (f" (only on {b['only_channel']})" if b.get("only_channel") else "")
         if b["kind"] == "route":
@@ -6135,7 +6180,7 @@ class SpamGuard:
                         if not HEX_HOP.fullmatch(value):
                             raise ValueError
                         match = d.get("match")
-                        if match not in (None, "exact_paths", "contains", "contains_known"):
+                        if match not in (None, "exact_paths", "contains", "contains_known", "starts_known"):
                             raise ValueError
                         key, reason, sender = f"hop:{value}", "Added by you (imported)", None
                         if match == "contains":   # also stops known people, so never kept for ever
@@ -7205,7 +7250,7 @@ class SpamGuard:
                  ttl=PERMANENT_SECONDS)
         elif hl == "campaign":
             busy = [max(b["created"], b.get("last_hit") or 0) for b in self.blocks.values()
-                    if b.get("source") == "campaign" and b["kind"] in ("text", "words")]
+                    if b.get("source") == "campaign" and b["kind"] in ("text", "words") and not b.get("gate")]
             latest = max(busy, default=0)
             if latest > now - 3600:
                 want("links:new", "links", list(LINK_MARKS),
@@ -7584,19 +7629,26 @@ class SpamGuard:
                 if not forms:
                     continue
                 first = min(forms)
-                conds = [("" if z == first else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": forms[z]}])
-                         for z in sorted(forms)]
+                if self.hop_mode(b) == "starts_known":
+                    conds = [("" if z == first else f"{z}b", self._starts_cond([forms[z]])) for z in sorted(forms)]
+                else:
+                    conds = [("" if z == first else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": forms[z]}])
+                             for z in sorted(forms)]
             elif b["kind"] in ("route", "stem"):
-                # openHop can check that a route passes through repeaters but not yet in which order, so the
-                # rule asks for all of them. SpamGuard's own records use the same test, so they say what the repeater did.
+                # A route block is the start of a route, in order. A stem is a stretch after any first repeater:
+                # openHop can check that a route passes through those repeaters but not where, so the rule asks
+                # for all of them. SpamGuard's own records use the same tests, so they say what the repeater did.
                 per = [self._hop_forms(h) for h in b["value"]]
                 sizes = [z for z in self._sizes_now if all(z in f for f, _, _ in per)]
                 self._route_count(any(nw for _, nw, _ in per), any(sh for _, _, sh in per), bool(sizes))
                 if not sizes:
                     continue
                 bound = [{"field": "hop_count", "op": "lte", "value": int(b["max_hops"])}] if b["kind"] == "stem" and b.get("max_hops") else []
-                conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per] + bound)
-                         for z in sizes]
+                if b["kind"] == "route":   # the start of the route, in order
+                    conds = [("" if z == sizes[0] else f"{z}b", self._starts_cond([f[z] for f, _, _ in per])) for z in sizes]
+                else:
+                    conds = [("" if z == sizes[0] else f"{z}b", [{"field": "path_hashes", "op": "contains", "value": f[z]} for f, _, _ in per] + bound)
+                             for z in sizes]
             elif b["kind"] in ("text", "words"):
                 chc = self._channel_hash_cond(b)
                 if chc is None:
@@ -9725,6 +9777,8 @@ class SpamGuard:
                     self.note(f"Removed by hand: {self.describe(b)}")
                 if key.startswith("stem:"):
                     self.stem_memory.pop(key[5:], None)   # taken off by hand: the count starts again from scratch
+                if b and b["kind"] == "text":
+                    self.forget_sentence(str(b["value"]))
                 if b and b.get("source") == "dedupe":
                     self.release_duplicate(b)
                     msg = "Duplicate block removed. The copies so far are forgiven; if the message keeps being copied, the next copy starts a new block."
@@ -9761,7 +9815,7 @@ class SpamGuard:
                 only = body.get("channel") if body.get("channel") in self.cfg["channels"] else None
                 self._add_block(key, "hop", hop, "Added by you", "manual",
                                 ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]),
-                                match=(body.get("match") if body.get("match") in ("exact_paths", "contains", "contains_known") else None),
+                                match=(body.get("match") if body.get("match") in ("exact_paths", "contains", "contains_known", "starts_known") else None),
                                 extra={"only_channel": only} if only else None)
                 self.learn_paths(list(self.events))
                 if self.hop_mode(self.blocks[key]) == "exact_paths" and not self.blocks[key]["paths"]:
@@ -10028,7 +10082,7 @@ class SpamGuard:
                 if not b or b["kind"] != "hop":
                     raise ValueError("That block no longer exists")
                 m = body.get("match") or None
-                if m not in (None, "exact_paths", "contains", "contains_known"):
+                if m not in (None, "exact_paths", "contains", "contains_known", "starts_known"):
                     raise ValueError("Unknown matching mode")
                 b["match"] = m
                 self.learn_paths(list(self.events))
