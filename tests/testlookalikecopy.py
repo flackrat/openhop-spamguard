@@ -74,8 +74,8 @@ check(not held(g3,"Ann Hill"),"own clock reset at home: not held")
 check("4C" in g3.homes.get("Ann Hill",{}),"and her way in is kept")
 check(act(m3,"still me","Ann Hill",["4C"])=="allow","she still gets through")
 
-# Off (the default): nothing is held as spoofed
-m4=mock(); g4=guard(m4,floodguard=False,known_min_msgs=3,known_min_minutes=60)
+# Switched off: nothing is held as spoofed
+m4=mock(); g4=guard(m4,floodguard=False,known_min_msgs=3,known_min_minutes=60,spoof_watch=False)
 regular(m4,"Sam Lowmesh"); g4.apply_settings({"mode":"protect"}); sync(g4)
 m4.add("Sam-Lowmesh","hello",FAR,ago=0); sync(g4)
 check(not any(b.get("source")=="spoof" for b in g4.blocks.values()),"off: nothing held as spoofed")
