@@ -1,6 +1,6 @@
-# The experimental text learner: off unless switched on, learns only from your own marks and ordinary chat,
-# never acts on one message, holds only the shared part of several spam-like messages from one name, and
-# only in the "record only" mode by default. All names and messages are made up.
+# The text learner: learns only from your own marks and ordinary chat, never acts on one message, never on
+# people it knows, and holds only the shared part of several spam-like messages from one name. On and holding
+# by default from 6.41.0 (the test harness keeps the older default). All names and messages are made up.
 import sys, logging, os, time, random, json
 from harness import *
 logging.disable(logging.WARNING)
@@ -21,7 +21,7 @@ SPAM2="bargainmesh.example is a fake shop, please do not use it, go to shopmesh.
 REPLY="I think that is right, that bargainmesh.example place looked odd to me too when I read about it earlier"
 
 def fresh(**cfg):
-    m=mock(); g=guard(m, known_min_msgs=1, long_window_seconds=86400, **cfg)
+    m=mock(); g=guard(m, known_min_msgs=3, long_window_seconds=86400, **cfg)
     g.apply_settings({"mode":"protect"})
     for i in range(420):
         m.add(f"Regular {i%9}",chat(),["4C","2F"],ago=80000-i*150)
@@ -34,7 +34,7 @@ m.add("Pedlar Sam",SPAM1,["4C","2F"],ago=600); m.add("Pedlar Sam",SPAM2,["4C","2
 cycle(g)
 check(g.sense.n[0]==0,"switched off: ordinary chat is not learned")
 check(not any(b.get("source")=="sense" for b in g.blocks.values()),"switched off: nothing held")
-check(g.cfg["text_sense"] is False and g.cfg["text_sense_log_only"] is True,"off, and record-only, by default")
+check(sg.DEFAULT_CONFIG["text_sense"] is True and sg.DEFAULT_CONFIG["text_sense_log_only"] is False,"on and holding by default")
 
 # 2. Switched on, record only: learns, notices, records, holds nothing
 m,g=fresh(text_sense=True)

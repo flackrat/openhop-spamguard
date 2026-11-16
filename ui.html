@@ -556,8 +556,9 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   </section>
   <section id="autoUpdSec">
     <h2>Automatic updates</h2>
-    <label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
     <p class="explain" id="autoUpdNote"></p>
+    <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
+      <button type="button" class="quiet" id="autoUpdNo">Not now</button></p>
   </section>
   <section id="advSec" hidden>
     <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
@@ -865,6 +866,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
   <p class="explain" id="uLine"></p>
+  <p class="explain" id="uGithub"></p>
   <div id="uProg"></div>
   <ul class="hlist" id="uIssues"></ul>
   <div class="inline-form" id="uBtns"></div>
@@ -980,9 +982,9 @@ function renderTop(d){
   const hid=Number(store.get("sgDismissUnread")||0);
   if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
     b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
-  // A new, optional feature: said once, on this browser, and gone for good when dismissed or opened.
+  // Said once, on this browser, if it has been turned off, and gone for good when dismissed or opened.
   if(d.settings&&d.settings.text_sense===false&&!store.get("sgDismissSense"))
-    b+=`<div class="banner info dismissable" id="senseHint"><div><b>New and experimental: learn from your spam marks.</b>It notices a name sending reworded versions of spam you marked. It starts in record-only mode and nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('experimental')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
+    b+=`<div class="banner info dismissable" id="senseHint"><div><b>Learning from your spam marks is off.</b>It notices a name sending reworded versions of spam you marked, and can be set to record-only. Nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('reworded')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
   const m=d.paused?"pause":d.mode;
@@ -1103,6 +1105,7 @@ $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLev
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
 $("#autoUpd").addEventListener("change",e=>{ post("/settings",{auto_update:e.target.checked}); });
+$("#autoUpdNo").addEventListener("click",()=>{ $("#autoUpdSec").hidden=true; post("/settings",{auto_update_prompt:false}); });
 $("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
 $("#lvlCancel").addEventListener("click",()=>{ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } });
 window.addEventListener("hashchange",()=>{ if(lvlDrag!=null){ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } } });
@@ -1656,7 +1659,7 @@ function renderUpdate(d){
   } else {
     pill=u.latest?"<span class='tag ok'>Up to date</span>":"";
     line=`You have version ${esc(u.current)}. `+(u.checked?`Last checked ${ago(u.checked)}.`:"Not checked yet.")
-      +(u.auto_update?" Automatic updates are on: a new version installs by itself.":u.auto_check?" SpamGuard looks once a day and tells you here; it only installs when you press Update, unless you turn on automatic updates on the Overview.":"");
+      +(u.auto_update?" Automatic updates are on: a new version installs by itself.":u.auto_check?" SpamGuard looks once a day and tells you here; it only installs when you press Update, unless you turn on automatic updates.":"");
     btns=btn("Check now","/check_update",{},"quiet");
   }
   if(u.error && !running) issues+=`<li class="warn">${esc(u.error)}</li>`;
@@ -1671,11 +1674,17 @@ function renderUpdate(d){
   if(st.state==="failed" && st.can_force && !running && u.available && !u.managed_update)
     btns+=`<button class="quiet" data-confirm="Install SpamGuard ${esc(u.latest)} anyway? openHop may have to compile a library, which can take a long time on a small Pi, and if it is cut short SpamGuard is left uninstalled until you add it again from the Plugins page." onclick="post('/install_update',{version:'${esc(u.latest)}',force:true})">Update anyway</button>`;
   $("#updCallout").innerHTML=uc;
+  // The offer sits on the Overview only until it is answered: turned on (then it lives under Settings > Updates),
+  // or Not now. Nothing is offered where SpamGuard can't update itself or isn't allowed to look for versions.
   const au=$("#autoUpd"); if(document.activeElement!==au) au.checked=!!u.auto_update;
-  au.disabled=!!u.managed_update;
-  $("#autoUpdNote").textContent=u.managed_update?"Not available here: "+u.managed_update
-    :u.auto_update?"On. A new version installs by itself a couple of hours after it comes out, so a faulty one can be withdrawn first. SpamGuard restarts for a minute while it does, and keeps your settings and blocks."
-    :"Recommended. Spammers change their tricks within days, and each new version answers the latest ones. With this on, your repeater gets each fix within hours, without you having to check.";
+  $("#autoUpdSec").hidden=!!(u.auto_update||u.auto_update_prompt===false||u.managed_update||!u.installer_ready||!u.auto_check);
+  $("#autoUpdNote").textContent="Recommended. Spammers change their tricks within days, and each new version answers the latest ones. "
+    +"With this on, your repeater gets each fix a couple of hours after it comes out, without you having to check. "
+    +"SpamGuard restarts for a minute while it updates and keeps your settings and blocks. You can change this later under Settings, Updates.";
+  const gh=u.github||{}, ghl=$("#uGithub");
+  if(ghl) ghl.textContent=`In the last 30 days SpamGuard contacted GitHub ${(gh.checks||0)+(gh.downloads||0)} time${(gh.checks||0)+(gh.downloads||0)===1?"":"s"}: `
+    +`${gh.checks||0} version check${gh.checks===1?"":"s"} and ${gh.downloads||0} download${gh.downloads===1?"":"s"}${gh.last?", last "+ago(gh.last):""}. `
+    +"Nothing about your repeater is sent. To stop it looking by itself, set Look for new versions to Only when I press Check under Settings, Updates.";
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uProg").innerHTML=running?upProg(st):""; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }

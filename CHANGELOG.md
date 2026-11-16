@@ -17,9 +17,12 @@ The detail is below, newest first. In short:
 
 ## v6.41.0
 
-- **Automatic updates.** A new switch on the Overview installs new versions by itself, a couple of hours after they come out, so your repeater keeps up with the spammers without you checking. It is off until you turn it on.
+- **Automatic updates.** Offered once on the Overview, with a Not now button, and kept under Settings > Updates. New versions install by themselves a couple of hours after they come out, so your repeater keeps up with the spammers without you checking. Off until you turn it on.
 - **Steadier protection against persistent spam.** Spam that keeps coming back in slightly different forms stays held more reliably.
 - **Your Spam answer lasts.** Saying Spam about a message that is already held now keeps holding copies of it after the block that caught it has ended.
+- **Quicker on small Pis.** Labels, settings and the level slider answer straight away; saving and updating openHop's rules happen in the background. Using the suggested level no longer switches Auto off.
+- **Spot reworded spam from your marks is on by default** and out of Experimental, after weeks of live use without a genuine message held. People SpamGuard knows are never held by it.
+- **You can see how often SpamGuard contacts GitHub.** The Updates page counts version checks and downloads, and checking can be set to only when you press Check.
 
 ## v6.40.0
 

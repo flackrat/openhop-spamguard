@@ -155,4 +155,53 @@ g9._maybe_auto_update(); check(len(called)==1,"not twice")
 sg.IN_PLUGIN=sg.IN_PLUGIN_SAVE
 check(g9.update_summary()["auto_update"] is True,"the page is told it's on")
 
+g9.cfg["update_check"]="off"; g9.auto_update_tried={}; g9.update_info={"latest":newer,"published":now-3*3600}
+sg.IN_PLUGIN=True; check(g9.auto_update_due(now) is None,"not looking for versions: automatic updates wait too"); sg.IN_PLUGIN=sg.IN_PLUGIN_SAVE
+g9.cfg["update_check"]="daily"
+
+# --- GitHub contacts are counted
+g9.github_log=[]
+g9._gh("check"); g9._gh("download"); g9._gh("check")
+gs=g9.github_summary(); check(gs["checks"]==2 and gs["downloads"]==1 and gs["last"],"GitHub contacts counted by kind")
+g9.github_log.insert(0,[time.time()-40*86400,"check"]); check(g9.github_summary()["checks"]==2,"only the last 30 days")
+
+# --- A change on the page answers straight away; the rules are written by the loop, never while the lock is held
+import threading
+m10=mock(); g10=guard(m10,floodguard=False); g10.apply_settings({"mode":"protect"}); sync(g10)
+calls=[]
+real=g10.sync_policy
+g10.sync_policy=lambda force=False: calls.append(force) or True
+g10._loop_alive=True
+t0=time.time(); g10.action("block_text",{"text":"a long enough spam message to block here","channel":"Public"})
+check(not calls and time.time()-t0<1,"with the loop running, a page change doesn't wait for openHop")
+check(g10.sync_pending and g10._force_sync and g10.wake.is_set(),"it asks the loop to write the rules straight away")
+g10.sync_policy=real; g10._loop_alive=False
+free=[]
+real_api=g10._api
+def spy(method,path,body=None,**k):
+    if method=="POST" and path=="/api/policy":
+        got=[]; th=threading.Thread(target=lambda: got.append(g10.lock.acquire(timeout=1)) or (got[0] and g10.lock.release())); th.start(); th.join()
+        free.append(bool(got and got[0]))
+    return real_api(method,path,body,**k) if body is not None else real_api(method,path,**k)
+g10._api=spy; g10.sync_policy(force=True); g10._api=real_api
+check(free==[True],"the lock is free while openHop takes the rules")
+check(any("block" in str(r.get("name","")) or "text" in str(r.get("name","")) for r in m10.policy["policy_engine"]["rules"]),"and the rules arrive")
+g10.sync_pending=True; seq=g10.__dict__["_sync_seq"]; g10.sync_pending=True
+check(g10.__dict__["_sync_seq"]==seq+1,"each request for new rules is counted")
+
+# --- Using the suggested level keeps Auto on; any other level turns it off
+m11=mock(); g11=guard(m11,floodguard=False); g11.apply_settings({"level_auto":True}); g11.level_preview={"suggested":70}
+g11.apply_settings({"level":70}); check(g11.cfg["level_auto"] is True,"the suggested level: Auto stays on")
+g11.apply_settings({"level":40}); check(g11.cfg["level_auto"] is False,"a level of your own: Auto goes off, as before")
+
+# --- Reworded spam from your marks: on by default, never for people SpamGuard knows
+check(sg.DEFAULT_CONFIG["text_sense"] is True and sg.DEFAULT_CONFIG["text_sense_log_only"] is False,"on and holding by default")
+m12=mock(); g12=guard(m12,floodguard=False,text_sense=True,text_sense_log_only=False)
+g12.known["Ann Hill"]=[time.time()-90000,time.time(),50]
+g12.sense.ready=lambda: True; g12.sense.score=lambda t: 99; g12.sense.line=lambda: 1
+e1=ev("Ann Hill","this reads exactly like the spam you marked before"); e1.packet="k1"; g12._sense_note(e1)
+e2=ev("STRANGR9","this reads exactly like the spam you marked before"); e2.packet="k2"; g12._sense_note(e2)
+check(not any(k.startswith("Ann Hill|") for k in g12.sense_sends),"someone it knows is never counted")
+check(any(k.startswith("STRANGR9|") for k in g12.sense_sends),"a stranger is")
+
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
