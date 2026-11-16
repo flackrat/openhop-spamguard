@@ -554,6 +554,11 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
   </section>
+  <section id="autoUpdSec">
+    <h2>Automatic updates</h2>
+    <label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
+    <p class="explain" id="autoUpdNote"></p>
+  </section>
   <section id="advSec" hidden>
     <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
   </section>
@@ -1097,6 +1102,7 @@ $("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactS
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
+$("#autoUpd").addEventListener("change",e=>{ post("/settings",{auto_update:e.target.checked}); });
 $("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
 $("#lvlCancel").addEventListener("click",()=>{ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } });
 window.addEventListener("hashchange",()=>{ if(lvlDrag!=null){ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } } });
@@ -1644,13 +1650,13 @@ function renderUpdate(d){
     line=`${esc(st.message||"Update requested...")} SpamGuard restarts during the update; this page reconnects by itself.`;
   } else if(u.available){
     pill="<span class='tag would'>Update available</span>";
-    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.managed_update?"":" Nothing changes until you press Update.");
+    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.managed_update?"":u.auto_update?" It installs by itself soon, or press Update now.":" Nothing changes until you press Update.");
     btns=(u.managed_update?`<p class="explain">${esc(u.managed_update)}</p>`:`<button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update to ${esc(u.latest)}</button>`)
         +btn("Check again","/check_update",{},"quiet");
   } else {
     pill=u.latest?"<span class='tag ok'>Up to date</span>":"";
     line=`You have version ${esc(u.current)}. `+(u.checked?`Last checked ${ago(u.checked)}.`:"Not checked yet.")
-      +(u.auto_check?" SpamGuard looks once a day and tells you here; it never installs by itself.":"");
+      +(u.auto_update?" Automatic updates are on: a new version installs by itself.":u.auto_check?" SpamGuard looks once a day and tells you here; it only installs when you press Update, unless you turn on automatic updates on the Overview.":"");
     btns=btn("Check now","/check_update",{},"quiet");
   }
   if(u.error && !running) issues+=`<li class="warn">${esc(u.error)}</li>`;
@@ -1660,11 +1666,16 @@ function renderUpdate(d){
   let uc="";
   if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> ${esc(st.message||"It restarts for a minute; this page reconnects by itself.")}</span>${upProg(st)}</div>`;
   else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
-  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. Nothing changes until you press Update.</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
+  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. ${u.auto_update?"It installs by itself soon, or press Update now.":"Nothing changes until you press Update."}</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
   if(st.state==="failed" && st.can_force && !running && u.available && !u.managed_update)
     btns+=`<button class="quiet" data-confirm="Install SpamGuard ${esc(u.latest)} anyway? openHop may have to compile a library, which can take a long time on a small Pi, and if it is cut short SpamGuard is left uninstalled until you add it again from the Plugins page." onclick="post('/install_update',{version:'${esc(u.latest)}',force:true})">Update anyway</button>`;
   $("#updCallout").innerHTML=uc;
+  const au=$("#autoUpd"); if(document.activeElement!==au) au.checked=!!u.auto_update;
+  au.disabled=!!u.managed_update;
+  $("#autoUpdNote").textContent=u.managed_update?"Not available here: "+u.managed_update
+    :u.auto_update?"On. A new version installs by itself a couple of hours after it comes out, so a faulty one can be withdrawn first. SpamGuard restarts for a minute while it does, and keeps your settings and blocks."
+    :"Recommended. Spammers change their tricks within days, and each new version answers the latest ones. With this on, your repeater gets each fix within hours, without you having to check.";
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uProg").innerHTML=running?upProg(st):""; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }

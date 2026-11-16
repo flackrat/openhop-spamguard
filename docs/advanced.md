@@ -89,7 +89,7 @@ SpamGuard also reads openHop's own record of what happened to each message, so a
 <details>
 <summary><b>Updating</b></summary>
 
-SpamGuard looks for a new release once a day (you can turn that off in Advanced > Updates) and shows it in the **Updates** section of its page, with what's new. Nothing is installed until you press **Update**, and your settings, blocks and learnt routes are kept.
+SpamGuard looks for a new release once a day (you can turn that off in Advanced > Updates) and shows it in the **Updates** section of its page, with what's new. Nothing is installed until you press **Update**, unless you turn on **Automatic updates** on the Overview: then a new version installs by itself a couple of hours after it comes out, so a faulty one can be withdrawn first. Either way your settings, blocks and learnt routes are kept. Automatic updates aren't available in Docker, where updating is up to you.
 
 As a plugin, **Update** fetches the new plugin file, hands it to openHop and openHop restarts SpamGuard on it. In Docker, run `docker compose pull && docker compose up -d`. On the older install, if the new version doesn't start, the previous one is put back automatically; from the command line:
 
