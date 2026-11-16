@@ -22,7 +22,9 @@ The detail is below, newest first. In short:
 - **Your Spam answer lasts.** Saying Spam about a message that is already held now keeps holding copies of it after the block that caught it has ended.
 - **Quicker on small Pis.** Labels, settings and the level slider answer straight away; saving and updating openHop's rules happen in the background. Using the suggested level no longer switches Auto off.
 - **Spot reworded spam from your marks is on by default** and out of Experimental, after weeks of live use without a genuine message held. People SpamGuard knows are never held by it.
-- **You can see how often SpamGuard contacts GitHub.** The Updates page counts version checks and downloads, and checking can be set to only when you press Check.
+- **People: a Held standing.** A name SpamGuard keeps having to hold for spam is now shown as Held, not Learning, with what it did and what is holding it. Trusting a name ends SpamGuard's own holds on it.
+- **The browser tab now shows your repeater's name.** 6.40.0 looked for it in the wrong place, so it never appeared. You can also type a name of your own under Settings (search "browser tab").
+- **An anonymous count of installs.** Once a day SpamGuard downloads a small file from its GitHub releases, so the developer can see roughly how many repeaters run it. Nothing about your repeater is sent, the Updates page says so, and Settings > Updates has a switch to turn it off.
 
 ## v6.40.0
 

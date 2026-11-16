@@ -67,6 +67,16 @@ for i in range(10):
 check(any(k.startswith("persist:") for k in gc.blocks),"changing every copy: held by name in the end")
 check(mc.decide("CAPS CHANGER","WiDgEtCo DoT eXaMpLe Is A fAkE sHoP",["C1","D2"])=="drop","whatever it sends")
 
+# A new name whose every copy is broken up so that no plain piece survives is held by name straight away
+mp=mock(); gp=guard(mp,floodguard=False,**STRANGER); gp.apply_settings({"mode":"protect"}); sync(gp)
+marks=",.;:!?"
+for i in range(7):
+    t=" ".join(w+marks[(i+j)%6] for j,w in enumerate(SLOGAN[0].replace(",","").split()))
+    send(mp,"DOT DASHER",t,["C1","D2"],ago=6800-i*600); sync(gp)
+check(any(k.startswith("persist:") for k in gp.blocks),"no piece of the hold can follow it: held by name")
+check(mp.decide("DOT DASHER","anything at all",["C1","D2"])=="drop","whatever it sends next")
+check(mp.decide("Passer By","widgetco dot example is a fake shop",["C1","D2"])=="allow","nobody else is affected")
+
 # --- A quick repeat that changes
 m4=mock(); g4=guard(m4,floodguard=False,**STRANGER); g4.apply_settings({"mode":"protect"}); sync(g4)
 Q=["buy the shiny gadget today at gadget corner, best prices in town","buy the shiny gadget today at gadget corner. best prices in town!",
@@ -85,6 +95,13 @@ send(m5,"K2#LL0PQ",R1,["F1","04"],ago=3000); sync(g5)
 check(m5.decide("NEWNAME9",R1,["F1","72"])=="drop","the sentence is held")
 send(m5,"P0P0P0P9",R2,["F1","04"],ago=60); sync(g5)
 check(m5.decide("OTHERNM8",R2,["F1","72"])=="drop","a changed copy of the sentence is held too")
+
+R3="Nobody, here. asked; for: your! widget? company, to. own; the: whole! hobby"
+send(m5,"Z9Z9Z9Z8",R3,["F1","04"],ago=30); sync(g5)
+check(m5.decide("LASTNAM7","Nobody; here: asked! for? your, widget. company; to: own! the? whole, hobby",["A7","B8"])=="drop","broken up between every word: its longer words together are held")
+wb=next(b for k,b in g5.blocks.items() if k.startswith("sentencew:"))
+check(not g5.block_matches(wb,ev("LASTNAM7","Nobody asked about the whole company outing")),"sharing a few of the words is not enough")
+check(g5.gated(wb),"and it sits after the known-people rule, so people SpamGuard knows get through it")
 
 # --- A block still catching spam isn't dropped the moment its time is up
 m6=mock(); g6=guard(m6,floodguard=False,**STRANGER); g6.apply_settings({"mode":"protect"}); sync(g6)
@@ -159,11 +176,32 @@ g9.cfg["update_check"]="off"; g9.auto_update_tried={}; g9.update_info={"latest":
 sg.IN_PLUGIN=True; check(g9.auto_update_due(now) is None,"not looking for versions: automatic updates wait too"); sg.IN_PLUGIN=sg.IN_PLUGIN_SAVE
 g9.cfg["update_check"]="daily"
 
-# --- GitHub contacts are counted
-g9.github_log=[]
-g9._gh("check"); g9._gh("download"); g9._gh("check")
-gs=g9.github_summary(); check(gs["checks"]==2 and gs["downloads"]==1 and gs["last"],"GitHub contacts counted by kind")
-g9.github_log.insert(0,[time.time()-40*86400,"check"]); check(g9.github_summary()["checks"]==2,"only the last 30 days")
+# --- Being counted: once a day, nothing sent, and two ways to stop it
+import urllib.request as _ur
+asked=[]
+class _R:
+    def __enter__(s): return s
+    def __exit__(s,*a): return False
+    def read(s,n=-1): return b""
+real_open=_ur.urlopen
+def fake_open(req,timeout=None):
+    u=req.full_url if hasattr(req,"full_url") else str(req)
+    if "github.com" not in u: return real_open(req,timeout=timeout)   # the test's own mock repeaters
+    asked.append((u, dict(getattr(req,"headers",{})), getattr(req,"data",None))); return _R()
+sg.urllib.request.urlopen=fake_open
+g9.started=time.time()-1000; g9.count_ping=0; g9.cfg["count_install"]=True; g9.cfg["update_check"]="daily"
+g9._maybe_count(); time.sleep(0.3)
+check(len(asked)==1 and asked[0][0].endswith("/releases/latest/download/SHA256SUMS"),"counted by one download of a release file")
+check(asked[0][2] is None and set(k.lower() for k in asked[0][1])=={"user-agent"} and sg.VERSION not in str(asked[0][1]),"nothing is sent with it, not even the version")
+g9._maybe_count(); time.sleep(0.2); check(len(asked)==1,"once a day at most")
+g9.count_ping=time.time()-90000; g9.cfg["count_install"]=False; g9._maybe_count(); time.sleep(0.2)
+check(len(asked)==1,"switched off: not counted")
+g9.cfg["count_install"]=True; g9.cfg["update_check"]="off"; g9._maybe_count(); time.sleep(0.2)
+check(len(asked)==1,"not looking for versions: not counted either "+str([a[0] for a in asked]))
+g9.cfg["update_check"]="daily"
+sg.urllib.request.urlopen=real_open
+check(sg.DEFAULT_CONFIG["count_install"] is True and "count_install" in sg.KEEP_ON_RESET,"on unless you turn it off, and a reset leaves your choice")
+check("identifier" in sg.META_BY_KEY["count_install"]["help"],"and the setting says plainly what it is for")
 
 # --- A change on the page answers straight away; the rules are written by the loop, never while the lock is held
 import threading
@@ -203,5 +241,26 @@ e1=ev("Ann Hill","this reads exactly like the spam you marked before"); e1.packe
 e2=ev("STRANGR9","this reads exactly like the spam you marked before"); e2.packet="k2"; g12._sense_note(e2)
 check(not any(k.startswith("Ann Hill|") for k in g12.sense_sends),"someone it knows is never counted")
 check(any(k.startswith("STRANGR9|") for k in g12.sense_sends),"a stranger is")
+
+# --- People: a name held for spam says so, with the evidence, instead of "Learning"
+row=lambda gg,n: next(r for r in gg.people({"show":"all","q":n})["rows"] if r["name"]==n)
+r2=row(g2,"LOUD SHOUTER")
+check(r2["standing"]=="held" and r2["why"].startswith("Held for sending spam"),"a name held for spam is shown as Held: "+r2["why"])
+check(r2["spam"] and r2["spam"]["holds"] and r2["spam"]["until"],"with what is holding it now and until when")
+check(g2.people({"show":"held"})["counts"]["held"]==1 and g2.people({"show":"learning"})["counts"]["learning"]==0,"it has its own list, and isn't under Learning")
+check("LOUD SHOUTER" in [r["name"] for r in g2.people({"show":"active"})["rows"]],"and is on the first list you see")
+rc=row(gc,"CAPS CHANGER")
+check(rc["spam"]["dodges"]>=1 and "changed how it is written" in rc["why"],"getting round a hold is counted and said: "+rc["why"])
+ra=row(g3,"Ann Hill"); check(ra["standing"]!="held" and ra["spam"] is None,"someone who earned the known pass is never shown as Held")
+q=mock(); gq=guard(q,floodguard=False,**STRANGER); gq.apply_settings({"mode":"protect"}); sync(gq)
+send(q,"New Walker","anyone about on the ridge this morning",["C4"],ago=300); sync(gq)
+check(row(gq,"New Walker")["standing"]=="learning","an ordinary newcomer is still Learning")
+gq.name_links["Second Name"]={"after":["First Name"],"ts":time.time()}
+check(gq.spam_record("Second Name")["linked"]==["First Name"] and gq.spam_record("First Name")["linked"]==["Second Name"],"names that carried on one message are linked both ways")
+# Trusting a name ends SpamGuard's own holds on it
+check(any(k.startswith("persist:") for k in g2.blocks),"(held by name)")
+g2.action("allow_sender",{"sender":"LOUD SHOUTER"})
+check(not any(k.startswith("persist:") or k.startswith("slowrepeat:") for k in g2.blocks),"Trust ends SpamGuard's own holds on that name")
+check(row(g2,"LOUD SHOUTER")["standing"]=="trusted","and it is shown as trusted")
 
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

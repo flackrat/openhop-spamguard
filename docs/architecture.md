@@ -57,8 +57,8 @@ SpamGuard is back or they are removed (`spamguard.py --remove-rules`, or uninsta
    Once a day SpamGuard runs the replay itself, at the lowest priority, to show what each protection level
    would have held.
 7. **Updates.** An optional check against this repository's releases. An update, pressed or automatic (off
-   unless turned on), downloads the release file over HTTPS from this repository only, and every request to
-   GitHub is counted on the Updates page. The files are also signed, so anyone can check them by hand (see
+   unless turned on), downloads the release file over HTTPS from this repository only. An optional once-a-day download of a
+   small release file lets the developer count installs; it sends nothing. The files are also signed, so anyone can check them by hand (see
    [SECURITY.md](../SECURITY.md)).
 
 ## How it's packaged
