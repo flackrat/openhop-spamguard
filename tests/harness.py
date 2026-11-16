@@ -79,7 +79,9 @@ def guard(m, **over):
          "symbol_junk":False,
          # On by default from 6.32.0; older tests describe them switched on one at a time (testmigrated632.py
          # checks the new defaults), so the harness starts with them as they were.
-         "public_bots":False, "public_bots_log_only":True, "quick_resend_hold":False}
+         "public_bots":False, "public_bots_log_only":True, "quick_resend_hold":False,
+         # On (and holding) by default from 6.41.0; testtextsense.py checks the new default.
+         "text_sense":False, "text_sense_log_only":True}
     cfg.update(over); return sg.SpamGuard(cfg)
 def mock():
     PORT[0]+=1; return Mock(0)

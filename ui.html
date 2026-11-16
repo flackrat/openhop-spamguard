@@ -554,6 +554,12 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
   </section>
+  <section id="autoUpdSec">
+    <h2>Automatic updates</h2>
+    <p class="explain" id="autoUpdNote"></p>
+    <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
+      <button type="button" class="quiet" id="autoUpdNo">Not now</button></p>
+  </section>
   <section id="advSec" hidden>
     <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
   </section>
@@ -860,6 +866,7 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
   <p class="explain" id="uLine"></p>
+  <p class="explain" id="uGithub"></p>
   <div id="uProg"></div>
   <ul class="hlist" id="uIssues"></ul>
   <div class="inline-form" id="uBtns"></div>
@@ -975,9 +982,9 @@ function renderTop(d){
   const hid=Number(store.get("sgDismissUnread")||0);
   if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
     b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
-  // A new, optional feature: said once, on this browser, and gone for good when dismissed or opened.
+  // Said once, on this browser, if it has been turned off, and gone for good when dismissed or opened.
   if(d.settings&&d.settings.text_sense===false&&!store.get("sgDismissSense"))
-    b+=`<div class="banner info dismissable" id="senseHint"><div><b>New and experimental: learn from your spam marks.</b>It notices a name sending reworded versions of spam you marked. It starts in record-only mode and nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('experimental')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
+    b+=`<div class="banner info dismissable" id="senseHint"><div><b>Learning from your spam marks is off.</b>It notices a name sending reworded versions of spam you marked, and can be set to record-only. Nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('reworded')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
   const m=d.paused?"pause":d.mode;
@@ -1097,6 +1104,8 @@ $("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactS
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
+$("#autoUpd").addEventListener("change",e=>{ post("/settings",{auto_update:e.target.checked}); });
+$("#autoUpdNo").addEventListener("click",()=>{ $("#autoUpdSec").hidden=true; post("/settings",{auto_update_prompt:false}); });
 $("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
 $("#lvlCancel").addEventListener("click",()=>{ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } });
 window.addEventListener("hashchange",()=>{ if(lvlDrag!=null){ lvlDrag=null; if(S){ $("#lvl").value=S.level.value; renderLevel(S); } } });
@@ -1271,7 +1280,7 @@ function renderChannels(d){
 }
 // People: searched, filtered and paged by SpamGuard, so the page never loads everyone
 let PPL={show:"active",sort:"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
-const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"]};
+const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"],held:["Held","stop"]};
 async function pplLoad(more,keep){
   if(PPL.busy) return; PPL.busy=true;
   const n=keep?Math.min(100,Math.max(20,PPL.rows.length)):20;
@@ -1285,7 +1294,7 @@ async function pplLoad(more,keep){
 }
 function pplRender(){
   const d=PPL.data; if(!d) return; const c=d.counts||{};
-  $("#pplChips").innerHTML=[["active","Active"],["watch","On watch"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
+  $("#pplChips").innerHTML=[["active","Active"],["watch","On watch"],["held","Held"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
     .map(([k,t])=>`<button type="button" class="q-chip" data-ps="${k}" aria-pressed="${PPL.show===k}">${t} <b>${fmtN(c[k]||0)}</b></button>`).join("");
   $("#pplShowing").textContent=`${fmtN(d.total)} ${d.total===1?"name":"names"}`+(PPL.q?" matching":"");
   const ix=$("#pplIndex"); ix.hidden=!(d.letters&&d.letters.length>1);
@@ -1301,11 +1310,15 @@ function pplRender(){
       <div class="ppl-body"><p class="why">${esc(p.why)}.</p>
       <dl class="q-dl">${p.ways.length?`<dt>Heard via</dt><dd>${p.ways.map(([h,n])=>`${code(h)} <span class="explain">${fmtN(n)}</span>`).join(" &nbsp; ")}</dd>`:""}
         ${p.last_route?`<dt>Last route</dt><dd>${code(p.last_route)} <span class="explain">${ago(p.last_route_at)}</span></dd>`:""}
+        ${p.spam?`<dt>Held</dt><dd>${fmtN(p.spam.copies)} of ${fmtN(p.spam.msgs)} messages in the last 7 days</dd>
+          ${p.spam.holds.length?`<dt>Holding now</dt><dd>${p.spam.holds.map(esc).join("<br>")}${p.spam.until?` <span class="explain">${left(Math.max(0,p.spam.until-Date.now()/1000))}</span>`:""}</dd>`:""}
+          ${p.spam.dodges?`<dt>Got round a hold</dt><dd>${p.spam.dodges} time${p.spam.dodges===1?"":"s"}, by changing how the message is written. The hold followed.</dd>`:""}
+          ${p.spam.linked.length?`<dt>Same message as</dt><dd>${p.spam.linked.map(n=>`<button type="button" class="quietlink" data-pf="${esc(n)}">${esc(n)}</button>`).join(", ")} <span class="explain">probably one sender changing name</span></dd>`:""}`:""}
         ${p.route?`<dt>Route check</dt><dd><span class="tag ${({green:"ok",amber:"sus",red:"stop",grey:"plain"})[p.route.level]}">${({green:"Looks real",amber:"Worth a look",red:"Probably a copy",grey:"Can't tell yet"})[p.route.level]}</span> <span class="explain">${esc(p.route.why)}</span></dd>`:""}
         ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
         ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
-      <div class="acts" style="justify-content:flex-start">${p.trusted?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):btn("Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
-    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":"Nobody here."}</p></li>`;
+      <div class="acts" style="justify-content:flex-start">${p.trusted?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):btn("Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
+    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":"Nobody here."}</p></li>`;
   const leftN=d.total-d.offset-PPL.rows.length;
   $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
   $("#pplAge").textContent=`A name that never becomes known is dropped ${d.keep_learning_days} days after it was last heard, and a known person after ${d.keep_known_days} days, so throwaway names don't pile up. Trusted names are kept until you remove them.`;
@@ -1341,7 +1354,7 @@ function renderAdvanced(d){
   if(!Object.keys(dirty).length) renderSettings(d);
 }
 
-function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit?(/^[a-z]{2,}/.test(m.unit)?" "+m.unit:m.unit):""); }
+function fmtDefault(m,v){ if(m.type==="bool") return v?"on":"off"; if(m.type==="text") return v||"none"; if(m.type==="choice") return (m.choices.find(c=>c[0]===v)||[,v])[1]; if(m.unit==="s"){ if(v>=315360000/2) return "forever"; if(v>=86400) return (v/86400)+" days"; if(v>=3600) return (v/3600)+" h"; if(v>=60) return (v/60)+" min"; return v+" s"; } return v+(m.unit?(/^[a-z]{2,}/.test(m.unit)?" "+m.unit:m.unit):""); }
 function profDiff(d,p){
   const cur=d.profiles.current, meta=Object.fromEntries(d.meta.map(m=>[m.key,m])), out=[];
   const pl=x=>x.level!=null?x.level:({relaxed:0,balanced:50,strict:100}[x.sensitivity]??50);
@@ -1397,6 +1410,7 @@ function settingRow(d,m){
   if(m.type==="bool") ctl=`<label class="switch"><input type="checkbox" id="${id}" data-k="${m.key}" ${v?"checked":""}> ${v?"On":"Off"}</label>`;
   else if(m.type==="choice") ctl=`<select id="${id}" data-k="${m.key}">${m.choices.map(c=>`<option value="${c[0]}" ${c[0]===v?"selected":""}>${esc(c[1])}</option>`).join("")}</select>`;
   else if(m.type==="list") ctl=`<textarea id="${id}" data-k="${m.key}" rows="2">${esc((v||[]).join("\n"))}</textarea>`;
+  else if(m.type==="text") ctl=`<input type="text" id="${id}" data-k="${m.key}" value="${esc(v||"")}" maxlength="${m.max||40}" autocomplete="off">`;
   else ctl=`<input type="number" id="${id}" data-k="${m.key}" value="${v}" min="${m.min}" max="${m.max}"> <span class="def">${m.unit==="s"?"seconds":(m.unit||"")}</span>`;
   const changed=d.overridden.includes(m.key);
   const fga=FG_AUTO.includes(m.key)?(changed?` <span class="tag plain">yours</span> ${btn("Back to automatic","/fg_auto",{key:m.key},"quiet")}`:` <span class="tag ok">automatic</span>`):"";
@@ -1465,6 +1479,7 @@ let pplT=0;
 $("#pplFind").addEventListener("input",e=>{ clearTimeout(pplT); pplT=setTimeout(()=>{ PPL.q=e.target.value.trim(); pplLoad(); },250); });
 $("#pplSort").onchange=e=>{ PPL.sort=e.target.value; pplLoad(); };
 $("#pplChips").addEventListener("click",e=>{ const b=e.target.closest("[data-ps]"); if(b){ PPL.show=b.dataset.ps; pplLoad(); } });
+$("#pplList").addEventListener("click",e=>{ const b=e.target.closest("[data-pf]"); if(b){ PPL.q=b.dataset.pf; PPL.show="all"; PPL.open=b.dataset.pf; $("#pplFind").value=PPL.q; pplLoad(); } });
 $("#pplIndex").addEventListener("click",e=>{ const b=e.target.closest("[data-pj]"); if(b){ PPL.jump=+b.dataset.pj; pplLoad(); } });
 $("#pplMore").addEventListener("click",e=>{ if(e.target.id==="pplMoreBtn") pplLoad(true); else if(e.target.id==="pplTop") pplLoad(); });
 $("#pplList").addEventListener("toggle",e=>{ const dt=e.target.closest("details[data-pn]"); if(dt) PPL.open=dt.open?dt.dataset.pn:(PPL.open===dt.dataset.pn?"":PPL.open); },true);
@@ -1644,13 +1659,13 @@ function renderUpdate(d){
     line=`${esc(st.message||"Update requested...")} SpamGuard restarts during the update; this page reconnects by itself.`;
   } else if(u.available){
     pill="<span class='tag would'>Update available</span>";
-    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.managed_update?"":" Nothing changes until you press Update.");
+    line=`Version ${esc(u.latest)} is available. You have ${esc(u.current)}.`+(u.managed_update?"":u.auto_update?" It installs by itself soon, or press Update now.":" Nothing changes until you press Update.");
     btns=(u.managed_update?`<p class="explain">${esc(u.managed_update)}</p>`:`<button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update to ${esc(u.latest)}</button>`)
         +btn("Check again","/check_update",{},"quiet");
   } else {
     pill=u.latest?"<span class='tag ok'>Up to date</span>":"";
     line=`You have version ${esc(u.current)}. `+(u.checked?`Last checked ${ago(u.checked)}.`:"Not checked yet.")
-      +(u.auto_check?" SpamGuard looks once a day and tells you here; it never installs by itself.":"");
+      +(u.auto_update?" Automatic updates are on: a new version installs by itself.":u.auto_check?" SpamGuard looks once a day and tells you here; it only installs when you press Update, unless you turn on automatic updates.":"");
     btns=btn("Check now","/check_update",{},"quiet");
   }
   if(u.error && !running) issues+=`<li class="warn">${esc(u.error)}</li>`;
@@ -1660,11 +1675,20 @@ function renderUpdate(d){
   let uc="";
   if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> ${esc(st.message||"It restarts for a minute; this page reconnects by itself.")}</span>${upProg(st)}</div>`;
   else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
-  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. Nothing changes until you press Update.</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
+  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. ${u.auto_update?"It installs by itself soon, or press Update now.":"Nothing changes until you press Update."}</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
   if(st.state==="failed" && st.can_force && !running && u.available && !u.managed_update)
     btns+=`<button class="quiet" data-confirm="Install SpamGuard ${esc(u.latest)} anyway? openHop may have to compile a library, which can take a long time on a small Pi, and if it is cut short SpamGuard is left uninstalled until you add it again from the Plugins page." onclick="post('/install_update',{version:'${esc(u.latest)}',force:true})">Update anyway</button>`;
   $("#updCallout").innerHTML=uc;
+  // The offer sits on the Overview only until it is answered: turned on (then it lives under Settings > Updates),
+  // or Not now. Nothing is offered where SpamGuard can't update itself or isn't allowed to look for versions.
+  const au=$("#autoUpd"); if(document.activeElement!==au) au.checked=!!u.auto_update;
+  $("#autoUpdSec").hidden=!!(u.auto_update||u.auto_update_prompt===false||u.managed_update||!u.installer_ready||!u.auto_check);
+  $("#autoUpdNote").textContent="Recommended. Spammers change their tricks within days, and each new version answers the latest ones. "
+    +"With this on, your repeater gets each fix a couple of hours after it comes out, without you having to check. "
+    +"SpamGuard restarts for a minute while it updates and keeps your settings and blocks. You can change this later under Settings, Updates.";
+  const ghl=$("#uGithub");
+  if(ghl) ghl.textContent=u.count_install?"Once a day SpamGuard downloads a small file from GitHub so its developer can see roughly how many repeaters run it. Nothing about your repeater is sent. You can turn this off under Settings, Updates.":"";
   $("#uPill").innerHTML=pill; $("#uLine").textContent=line; $("#uProg").innerHTML=running?upProg(st):""; $("#uIssues").innerHTML=issues; $("#uBtns").innerHTML=btns;
   const box=$("#uNotesBox"); box.hidden=!(u.available && u.notes); if(u.available) $("#uNotes").textContent=u.notes||"";
 }

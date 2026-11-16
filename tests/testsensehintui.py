@@ -1,5 +1,5 @@
-# The hint about the experimental learning setting: shown once on the Overview, gone for good when dismissed
-# or opened, and not shown at all when the setting is already on. All names and messages are made up.
+# The hint about the learning setting when it has been turned off: shown once on the Overview, gone for good
+# when dismissed or opened, and not shown at all when the setting is on. All names and messages are made up.
 import sys, os, time, asyncio, json
 exec(open("demo_setup.py").read())
 ok=fail=0
@@ -16,7 +16,7 @@ async def main():
             errs=[]; pg.on("pageerror",lambda e: errs.append(str(e)))
             await pg.goto(URL); await pg.wait_for_timeout(2000)
             txt=await pg.inner_text("#banners")
-            check("learn from your spam marks" in txt and "xperimental" in txt, f"{scheme}: hint shown while the setting is off")
+            check("Learning from your spam marks is off" in txt, f"{scheme}: hint shown while the setting is off")
             check("record-only" in txt and "leaves this device" in txt, f"{scheme}: says briefly what it does")
             check(len(txt)<260, f"{scheme}: short ({len(txt)} characters)")
             await pg.screenshot(path=os.path.join(".out_sense_hint_%s.png"%scheme))
@@ -28,7 +28,7 @@ async def main():
             check(await pg.locator("#senseHint").count()==1, f"{scheme}: back after clearing browser data")
             await pg.click("#senseHint a"); await pg.wait_for_timeout(600)
             check(await pg.evaluate("localStorage.getItem('sgDismissSense')")=="1", f"{scheme}: Take a look counts as seen")
-            check("xperimental" in await pg.inner_text("#settings"), f"{scheme}: Take a look lands on the setting")
+            check("Spot reworded spam" in await pg.inner_text("#settings"), f"{scheme}: Take a look lands on the setting")
             check(not errs, f"{scheme}: no page errors "+str(errs[:1]))
         # already switched on: never shown
         g.apply_settings({"text_sense": True})

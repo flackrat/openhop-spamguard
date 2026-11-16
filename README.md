@@ -45,7 +45,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Copied names:** answer **Spoofed** on a message that uses a real person's name; the copy is dealt with and the real person is left alone.
 
 **People and channels**
-- **People page:** who SpamGuard knows, how each name usually reaches you, and a plain-words standing for each. Throwaway names drop off by themselves, and a name you doubt can be put **on watch** and comes off again on its own.
+- **People page:** who SpamGuard knows, how each name usually reaches you, and a plain-words standing for each, including **Held**. Throwaway names drop off by themselves, and a name you doubt can be put **on watch** and comes off again on its own.
 - **Every channel or one:** your own blocks and mutes can cover every channel, and each channel has its own **Block spam here** switch.
 - **Two repeaters, one set of decisions:** export your blocks and exceptions from one SpamGuard and import them into another.
 
@@ -59,11 +59,14 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 **Help with settings**
 - **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps (tightening quickly, loosening slowly, never above a ceiling you can set, and stopping the moment you drag the slider yourself). Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
 - **Bots kept off Public and repeat sends stopped**, on by default, both with a switch in Settings.
-- **Experimental features**, hidden until you ask for them. Each is off by default. Today they include spotting reworded spam from your own marks, and a note on whether a route looks genuine.
+- **Learns from your spam marks:** reworded copies from one name are held.
+- **Experimental features**, hidden until you ask for them, each off by default.
+- **Automatic updates** (optional).
 
 **Principles**
 - **Spam, not opinions:** it stops how spam is sent, never what people say.
 - **Wardriving privacy** (optional), **settings profiles**, self-repair and one-press updates.
+- **Light on small Pis:** the page answers at once and saves in the background.
 
 ![SpamGuard's Overview: mode, protection level and the spam numbers, each of which opens the matching messages (example data)](docs/screenshot-overview.png)
 
@@ -194,7 +197,7 @@ You're free to use, study, change and share SpamGuard. If you share a copy or a 
 - **No warranty.** SpamGuard is provided "as is", without warranty of any kind, express or implied. To the extent permitted by law, the author and contributors accept no liability for any loss or damage arising from its use, including missed spam, genuine messages being blocked, repeater downtime or data loss. See the licence (AGPL-3.0, sections 15 and 16) for the full terms. Nothing in this disclaimer limits any liability that cannot be limited by law.
 - **You run it, you decide.** SpamGuard changes what your own repeater forwards. You choose its mode and settings and you are responsible for how you operate your repeater. Start in Monitor mode and check what it would block.
 - **Radio rules.** SpamGuard doesn't transmit or change radio settings, but the repeater it runs alongside must be operated within the rules for your country and band (in the UK, Ofcom's licence-exempt short-range device rules). Compliance is the operator's responsibility.
-- **Personal data.** SpamGuard reads Public and hashtag channel messages your repeater receives, which anyone with a MeshCore device can read. Recent messages, sender names and routes are kept in memory and, only if you switch the evidence log on, in files on your own Pi (7 days by default). Nothing is sent anywhere except the optional once-a-day version check to GitHub, the download from GitHub when you press Update, and, only if you turn it on, a once-a-day download of the public MeshCore map's repeater list. If you keep or share logs, you are responsible for complying with data-protection law where you are (for example the UK GDPR); use the "names scrambled" export when sharing.
+- **Personal data.** SpamGuard reads Public and hashtag channel messages your repeater receives, which anyone with a MeshCore device can read. Recent messages, sender names and routes are kept in memory and, only if you switch the evidence log on, in files on your own Pi (7 days by default). Nothing is sent anywhere except the optional once-a-day version check to GitHub, an optional once-a-day download that only counts installs (no identifier; switch in Settings), the download from GitHub when you press Update (or automatic updates, if on), and, only if you turn it on, a once-a-day download of the public MeshCore map's repeater list. If you keep or share logs, you are responsible for complying with data-protection law where you are (for example the UK GDPR); use the "names scrambled" export when sharing.
 - **Changes to openHop.** The optional `tune-openhop.sh` edits one setting inside your openHop installation, with your consent and a backup. Use it at your own risk; it can be undone with `--undo`.
 - **Independent project.** SpamGuard is not affiliated with, endorsed by or supported by openHop, MeshCore or their developers. Product names are used only to describe compatibility and belong to their respective owners.
 - **Not professional advice.** The documentation describes how the author set things up; it isn't legal, regulatory or professional advice.
