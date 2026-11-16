@@ -42,7 +42,12 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    itself. You can also check releases by hand (below), or use the plugin, whose updates are checked against
    the same checksums.
 5. **Outside contact** is limited to GitHub (only when checking for or installing an update) and, if you turn
-   it on, the public MeshCore map. There is no telemetry.
+   it on, the public MeshCore map. Nothing about your repeater is ever sent. The one usage figure is a count:
+   once a day SpamGuard downloads a small release file, which GitHub counts, so the developer can see roughly
+   how many repeaters run it. The request carries no identifier, the Updates page says it happens, and it has
+   its own off switch. Automatic updates are off unless
+   you turn them on, and install only a release that has been out for a couple of hours, checked against its
+   published checksums like any other update.
 
 Reports about any of these are very welcome, including ones that only affect the older install.
 

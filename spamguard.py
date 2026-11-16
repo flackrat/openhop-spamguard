@@ -40,6 +40,7 @@ import hashlib
 import hmac
 import ipaddress
 import calendar
+import datetime
 import json
 import math
 import random
@@ -78,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.40.0"
+VERSION = "6.41.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -101,6 +102,14 @@ PERMANENT_SECONDS = 10 * 365 * 86400
 # they make every copy different to a text rule, and no one in the logs used them (the word joiner U+2060 and
 # the emoji joiner U+200D are left out: kaomoji and emoji use them).
 JUNK_CHARS = ("{", "}", "`", "\\", "\u200b", "\u200c", "\ufeff", "\u180e")
+# More invisible characters (soft hyphen, combining grapheme joiner, invisible maths operators, Hangul fillers),
+# added 16 Nov 2026: none in any evidence log (5,623 distinct messages to that date).
+JUNK_CHARS = JUNK_CHARS + ("\u00ad", "\u034f", "\u2061", "\u2062", "\u2063", "\u2064", "\u3164", "\uffa0")
+# Cyrillic and Greek letters that look like Latin ones. None in any evidence log to 16 Nov 2026. Held on Public from
+# names SpamGuard doesn't know, with their own setting (someone writing in those alphabets is held too).
+LOOKALIKE_CHARS = ("\u0430", "\u0435", "\u043e", "\u0440", "\u0441", "\u0443", "\u0445", "\u0456",
+                   "\u0410", "\u0412", "\u0415", "\u041a", "\u041c", "\u041d", "\u041e", "\u0420", "\u0421",
+                   "\u0422", "\u0425", "\u03bf", "\u03b1", "\u03b5", "\u03c1")
 # Symbols found in hundreds of keyboard-mashed throwaway names and in no known person's name in those logs.
 # > = and £ added on 10 Nov 2026 (in 391 of 502 mashed names with the first five; the only other names using
 # them were the spammers' own and one ordinary name, and known people pass first anyway).
@@ -371,6 +380,10 @@ SETTINGS_META: list[dict] = [
      "risk": "A newcomer who types an unusual symbol (say, in code) or has one in their name can be held too, as can a recently known person. Other channels are untouched.",
      "label": "Hold keyboard-symbol junk on Public from names it doesn't know",
      "help": "Keyboard-mashed spam comes from a new name each time, so there is no second message to learn from. Messages or names with symbols people rarely use in chat are held on Public unless the sender is known. Works from the first message."},
+    {"key": "lookalike_junk", "group": "Known people", "type": "bool",
+     "risk": "A newcomer writing in Greek or Cyrillic, or replying to someone whose name uses those letters, is held on Public until SpamGuard knows them.",
+     "label": "Hold disguised letters on Public from names it doesn't know",
+     "help": "Copies of spam are sometimes disguised with letters from other alphabets that look like ordinary ones. Messages using them are held on Public unless the sender is known."},
     # -- Names
     {"key": "name_score_threshold", "risk": "Lower (1-2) = catches more made-up names, but more genuine names, such as callsigns with numbers or node names, may count as random and push their repeater towards a block. Higher = fewer false alarms, more spam names missed.", "group": "Sender names", "type": "int", "min": 1, "max": 6,
      "preset": True, "label": "How random a name must look",
@@ -399,10 +412,26 @@ SETTINGS_META: list[dict] = [
     {"key": "spam_text_days", "risk": "Longer = a spam text the spammer brings back days later is stopped from its very first copy, even when openHop is running behind. Anyone quoting that exact text is also blocked until it ends (you can remove it on the page).", "group": "Timing", "type": "int", "min": 0, "max": 60, "unit": "days",
      "label": "Remember spam texts for",
      "help": "Text blocks for campaigns sent under made-up or disguised names stay in place this many days (0 = use the normal block time)."},
-    {"key": "update_check", "risk": "Checking needs the Pi to reach github.com once a day; nothing else is sent. Updates are never installed until you press Update.", "group": "Updates", "type": "choice",
-     "choices": [["daily", "Once a day"], ["off", "Only when I press Check"]],
-     "label": "Look for new versions",
-     "help": "SpamGuard can tell you when a new version is out. It only installs one when you press Update."},
+    {"key": "update_check", "risk": "Checking means the Pi asks github.com for the newest version number, once a day (every 6 hours with automatic updates on). Nothing about your repeater is sent. Off = SpamGuard only contacts GitHub when you press Check or Update; automatic updates and the daily count wait.", "group": "Updates", "type": "choice",
+     "choices": [["daily", "By itself"], ["off", "Only when I press Check"]],
+     "label": "Look for new versions on GitHub",
+     "help": "SpamGuard can tell you when a new version is out. It installs one when you press Update, or by itself if automatic updates are on."},
+    {"key": "site_label", "group": "Privacy", "type": "text", "max": 40,
+     "risk": "Shown only in your own browser's tab and nowhere else. Empty = the repeater's name from openHop.",
+     "label": "Name shown in the browser tab",
+     "help": "The tab normally shows this repeater's name from openHop, so several SpamGuards open at once can be told apart. Type a name of your own here if it doesn't show one, or you'd like a different one."},
+    {"key": "count_install", "group": "Updates", "type": "bool",
+     "risk": "GitHub sees this Pi's internet address, as it does for any update check. Off = this repeater isn't counted.",
+     "label": "Count this repeater in SpamGuard's user numbers",
+     "help": "Once a day SpamGuard downloads a small file from its GitHub releases. GitHub counts downloads, which is how the developer sees roughly how many repeaters run SpamGuard. No name, key, location or identifier is sent."},
+    {"key": "auto_update_prompt", "group": "Updates", "type": "bool",
+     "risk": "Off = the Overview no longer suggests automatic updates. You can still turn them on here.",
+     "label": "Suggest automatic updates on the Overview",
+     "help": "While automatic updates are off, the Overview offers to turn them on, with a Not now button that hides the offer."},
+    {"key": "auto_update", "group": "Updates", "type": "bool",
+     "risk": "A new version installs without you pressing anything, and SpamGuard restarts for a minute while it does. It waits a couple of hours after a version comes out, so a faulty one can be withdrawn first.",
+     "label": "Install new versions automatically",
+     "help": "Spammers change their tricks within days, and each new version answers the latest ones. With this on, your repeater is protected as soon as a fix is out, without you having to check."},
     {"key": "map_directory", "group": "Spam sources map", "type": "bool",
      "risk": "Once a day the Pi downloads the public MeshCore map's repeater list from map.meshcore.dev (a few MB, nothing is sent). Turned off, the map only knows repeaters whose adverts your openHop has heard, so spam entering far away is placed less precisely.",
      "label": "Use the public MeshCore map for repeater locations",
@@ -459,17 +488,17 @@ SETTINGS_META: list[dict] = [
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
      "help": "Adds a note on the People page and on a message about whether the route looks genuine: is the last repeater one your node hears directly, is it a way that name normally comes in, and have other unknown names sent spam the same way. Green, amber or red, with the reasons in words. A guide for you to judge. Nothing is held because of it."},
-    {"key": "text_sense", "group": "Experimental", "type": "bool",
-     "risk": "It can be wrong, for example when a person repeats or quotes spam while warning others. Start with the setting below on.",
-     "label": "Spot reworded spam from my spam marks (experimental)",
+    {"key": "text_sense", "group": "Blocking by message text", "type": "bool",
+     "risk": "It can be wrong, for example when someone quotes spam while warning others. People SpamGuard knows are never held by it.",
+     "label": "Spot reworded spam from my spam marks",
      "help": "Some spammers change the wording each time. This compares new messages with messages you have marked as spam. If one name sends several that look similar, the part they share is held for that name only. A single message is never held. It keeps letter counts, not the messages, and sends nothing anywhere. It needs you to have marked some spam first."},
-    {"key": "text_sense_log_only", "group": "Experimental", "type": "bool",
+    {"key": "text_sense_log_only", "group": "Blocking by message text", "type": "bool",
      "risk": "On: nothing is held. Off: matching messages from that name are held.",
-     "label": "Reworded spam: record only, don't hold (experimental)",
-     "help": "While this is on, it only notes what it would have held, so you can check it first. Turn it off to hold those messages for real."},
-    {"key": "text_sense_count", "group": "Experimental", "type": "int", "min": 2, "max": 10,
+     "label": "Reworded spam: record only, don't hold",
+     "help": "Turn this on to only note what it would have held, so you can check it first."},
+    {"key": "text_sense_count", "group": "Blocking by message text", "type": "int", "min": 2, "max": 10,
      "risk": "Lower: held sooner, but a person who talks about spam twice may be held. Higher: more gets through first.",
-     "label": "How many look-alike messages before holding (experimental)",
+     "label": "How many look-alike messages before holding",
      "help": "How many different messages from one name that look like spam you marked, inside the repeat window, before the shared part is held. A lower number holds sooner."},
 ]
 META_BY_KEY = {m["key"]: m for m in SETTINGS_META}
@@ -551,6 +580,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "known_days": 30,
     "hold_links": "campaign",
     "symbol_junk": True,
+    "lookalike_junk": True,
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
     "auto_lockdown": True,
@@ -601,8 +631,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "repeat_window_seconds": 600,
     "repeat_block_seconds": 3600,
     "slow_repeat": True,
-    "text_sense": False,
-    "text_sense_log_only": True,
+    "text_sense": True,
+    "text_sense_log_only": False,
     "text_sense_count": 2,
     "slow_repeat_max": 3,
     "slow_repeat_window_seconds": 86400,
@@ -616,6 +646,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "spam_text_days": 7,
     "hop_block_ttl_seconds": 2 * 3600,
     "update_check": "daily",
+    "auto_update": False,
+    "auto_update_prompt": True,
+    "count_install": True,
+    "site_label": "",
     "map_directory": False,
     "openhop_autofix": True,
     "update_repo": UPDATE_REPO,
@@ -644,7 +678,7 @@ FG_LEARN_DAYS = 3
 # Settings the page may change, besides those in SETTINGS_META.
 EXTRA_TUNABLES = {"mode", "paused", "sensitivity", "level"}
 # Housekeeping choices, not detection: both resets leave these as you set them.
-KEEP_ON_RESET = {"show_experimental", "evidence_log", "evidence_days", "level_preview", "update_check", "map_directory", "openhop_autofix",
+KEEP_ON_RESET = {"show_experimental", "evidence_log", "evidence_days", "level_preview", "update_check", "auto_update", "auto_update_prompt", "count_install", "site_label", "map_directory", "openhop_autofix",
                  "wardrive_block"}
 # A settings profile holds detection settings only: never channels, keys, exceptions, the mode, the evidence
 # log, updates or how SpamGuard runs on this machine.
@@ -1256,6 +1290,8 @@ def normalise(text: str) -> str:
     text = re.sub(r"@\[|\]", " ", text) if smuggled(text) else MENTION.sub(" ", text)
     t = unicodedata.normalize("NFKC", TAG_CHARS.sub("", text)).translate(ZERO_WIDTH).casefold()
     t = "".join(ch for ch in unicodedata.normalize("NFKD", t) if not unicodedata.combining(ch))
+    # "!" and "|" stand in for a letter only inside a word; at the end of one they are punctuation
+    t = re.sub(r"(?<![^\W_])[!|]|[!|](?![^\W_])", " ", t)
     t = t.translate(CONFUSABLES)
     words = re.sub(r"[^a-z0-9]+", " ", t).strip()
     if len(words.replace(" ", "")) < 8:
@@ -1386,6 +1422,23 @@ def middle_chunk(text: str, length: int) -> str:
         if sp != -1:
             end = sp
     return t[start:end].strip()
+
+
+WORD_RUN = re.compile(r"[^\W_]+(?: [^\W_]+)*")
+
+
+def text_pieces(text: str, length: int, min_chars: int, min_words: int, n: int = 3) -> list[str]:
+    """Several plain-word pieces of a message, from different parts of it, longest first: runs of letters and
+    digits joined by single spaces, cut to a rule's length."""
+    out: list[str] = []
+    for run in sorted(WORD_RUN.findall(text or ""), key=len, reverse=True):
+        p = middle_chunk(run, length)
+        if len(p) < min_chars or len(p.split()) < min_words or any(p in q or q in p for q in out):
+            continue
+        out.append(p)
+        if len(out) >= n:
+            break
+    return out
 
 
 def weighted_len(t: str) -> int:
@@ -1776,11 +1829,13 @@ class SpamGuard:
         self.lag_samples: collections.deque[tuple] = collections.deque(maxlen=200)
         self.use_filtered: Optional[bool] = None   # openHop's /api/filtered_packets available?
         self.update_info: dict = {"latest": None, "notes": "", "url": "", "checked": None, "error": None}
+        self.auto_update_tried: dict = {}   # the last version installed automatically, and when
+        self.count_ping: float = 0   # when this install last let itself be counted (see _maybe_count)
         self._update_checking = False
         self.sender_history: dict[str, dict] = {}  # name -> {first, count, hops:set}
         # Slow repeating: "name|channel|hash of the message" -> {"who", "ch", "snip", "ts": [times of each separate send]}
         self.slow_sends: dict[str, dict] = {}
-        self.sense = TextSense()                 # experimental text learner (see TextSense)
+        self.sense = TextSense()                 # text learner (see TextSense)
         self.sense_sends: dict[str, list] = {}   # name|channel -> recent spam-like sends [{ts, text}]
         self.sense_learned: dict[str, str] = {}  # label key -> label already learned from
         self.sense_seen: collections.OrderedDict = collections.OrderedDict()
@@ -2230,6 +2285,7 @@ class SpamGuard:
                                       for w in ("spam", "spoof", "known")}}
                           for k, v in (st.get("route_log") or {}).items() if isinstance(v, dict)}
         self.sentences = {str(k): {"text": str(v.get("text") or "")[:300], "ch": str(v.get("ch") or "Public"),
+                                   "last": str(v.get("last") or "")[:300],
                                    "names": {str(n): float(t) for n, t in (v.get("names") or {}).items() if isinstance(t, (int, float))}}
                           for k, v in (st.get("sentences") or {}).items() if isinstance(v, dict)}
         self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
@@ -2238,7 +2294,8 @@ class SpamGuard:
             if isinstance(v, dict) and v.get("who") and isinstance(v.get("ts"), list):
                 ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
                 if ts:
-                    self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:]}
+                    self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:],
+                                          "last": str(v.get("last") or "")[:300]}
         if isinstance(st.get("text_sense"), dict):
             self.sense.load(st["text_sense"])
             self.sense_learned = {str(k): str(v) for k, v in (st["text_sense"].get("learned") or {}).items()}
@@ -2260,6 +2317,10 @@ class SpamGuard:
                      and abs(x[1]) < 10 ** 10][-20:]
                 if d:
                     self.clocks[str(k)[:40]] = d
+        self.count_ping = float(st.get("count_ping") or 0) if isinstance(st.get("count_ping"), (int, float)) else 0
+        aut = st.get("auto_update_tried")
+        if isinstance(aut, dict) and isinstance(aut.get("version"), str) and isinstance(aut.get("ts"), (int, float)):
+            self.auto_update_tried = {"version": aut["version"][:20], "ts": float(aut["ts"])}
         for k, v in (st.get("fam_names") or {}).items():
             if isinstance(v, list):
                 names = {str(x)[:40] for x in v if isinstance(x, str) and x}
@@ -2384,6 +2445,8 @@ class SpamGuard:
                                     if v and v[-1] > time.time() - 30 * 86400},
                     "label_at": {k: round(self.label_at[k], 1) for k in list(self.labels)[-1000:] if k in self.label_at},
                     "level_preview": self.level_preview,
+                    "auto_update_tried": self.auto_update_tried,
+                    "count_ping": round(float(self.count_ping or 0), 1),
                     "offences": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.offences.items())[-500:]},
                     "homes": dict(list(self.homes.items())[-3000:]),
                     "on_watch": dict(list(self.on_watch.items())[-500:]),
@@ -2391,7 +2454,8 @@ class SpamGuard:
                     "last_full": dict(list(self.last_full.items())[-1500:]),
                     "sentences": dict(list(self.sentences.items())[-self.SENTENCES_MAX:]),
                     "route_log": dict(list(self.route_log.items())[-self.ROUTES_MAX:]),
-                    "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "ts": [round(t, 1) for t in v["ts"][-40:]]}
+                    "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "last": v.get("last") or "",
+                                       "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                     **({"text_sense": dict(self.sense.to_dict(), learned=dict(list(self.sense_learned.items())[-1000:]))}
                        if (self.cfg.get("text_sense") or self.sense.n[1] > 0) else {}),
@@ -2532,6 +2596,13 @@ class SpamGuard:
         v = self.known.get(name)
         return bool(v) and v[2] >= int(self.cfg.get("known_min_msgs", 1)) \
             and time.time() - v[0] >= 60 * int(self.cfg.get("known_min_minutes", 0))
+
+    def earned_known(self, name: str) -> bool:
+        """Has this name earned the known pass, whatever has happened since (being held for repeating, or put on
+        watch, takes the pass away for a while but doesn't make them a stranger)."""
+        v = self.known.get(name)
+        return name in self.allow_senders or (bool(v) and v[2] >= int(self.cfg.get("known_min_msgs", 1))
+                                              and time.time() - v[0] >= 60 * int(self.cfg.get("known_min_minutes", 0)))
 
     SETTLED_DAYS = 7      # known this long, with this many messages, before keyboard junk from the name is let through
     SETTLED_MSGS = 10
@@ -4268,6 +4339,19 @@ class SpamGuard:
                     msg += ". Copies of it are now stopped"
             except ValueError:
                 pass   # too short to block by its words: the answer is still recorded
+        elif v == "spam" and status in ("held", "stopped") and sender not in self.allow_senders and not self.is_known(sender) \
+                and (self.blocks.get(str(body.get("matched") or "")) or {}).get("kind") not in ("text", "words", "repeat", "burst"):
+            # Held, but by something that only lasts a while (a repeater or route block): its words are held as well,
+            # so the answer still counts once that block has gone.
+            had, t0 = set(self.blocks), time.time()
+            try:
+                self.action("mark_spam", dict(item, _quiet_label=True))
+                new = [k for k, b in self.blocks.items() if k not in had or (b.get("source") == "manual" and b["created"] >= t0)]
+                if new:
+                    did["block"] = new[0]
+                    msg += ". Copies of it will be stopped after the block holding it now has gone"
+            except ValueError:
+                pass
         elif v == "not_spam" and status in ("held", "stopped") and sender:
             fresh = sender not in self.allow_senders
             msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"))).get("message", "")
@@ -4664,7 +4748,7 @@ class SpamGuard:
             conf = st.get("config") or {}
             self.radio = dict(conf.get("radio") or {})
             rp = conf.get("repeater") or {}
-            self.me = {"name": rp.get("node_name") or st.get("site_name") or "", "hash": str(st.get("local_hash") or "").upper(),
+            self.me = {"name": conf.get("node_name") or rp.get("node_name") or st.get("site_name") or "", "hash": str(st.get("local_hash") or "").upper(),
                        "lat": rp.get("latitude"), "lon": rp.get("longitude")}
         except Exception as e:
             log.debug("openHop stats not available: %s", e)
@@ -4869,6 +4953,7 @@ class SpamGuard:
         v = self.sentences.pop(k, None) or {"text": strip_mentions(e.text).strip()[:300], "ch": e.channel or "Public", "names": {}}
         v["names"].pop(e.sender, None)
         v["names"][e.sender] = e.ts
+        v["last"] = strip_mentions(e.text).strip()[:300]   # the newest wording, which the hold must still match
         while len(v["names"]) > 20:
             v["names"].pop(next(iter(v["names"])))
         self.sentences[k] = v   # most recent last
@@ -4990,9 +5075,45 @@ class SpamGuard:
         self._add_block(key, "imposter", hop, reason, "manual", channel=ch, ttl=7 * 86400, extra={"who": sender})
         return key
 
+    HELD_MIN = 3   # copies held in a week before a name that hasn't earned the known pass is shown as Held
+
+    def spam_record(self, name: str, now: Optional[float] = None) -> dict:
+        """What SpamGuard has had to do about a name in the last week, for the People page: copies held out of
+        messages heard, holds in place now, how often a hold had to follow a change in how the message was
+        written, and names that carried on the same message. Counts and names only."""
+        now = now or time.time()
+        d = self.held_names.get(name) or {}
+        week = [v for k, v in d.items() if float(k) >= now - 7 * 86400]
+        msgs, held = sum(v[0] for v in week), sum(v[1] for v in week)
+        holds = [b for b in self.blocks.values() if (b["kind"] in ("repeat", "imposter") and b.get("who") == name)
+                 or (b["kind"] == "burst" and b.get("value") == name)]
+        linked = list(self.name_links.get(name, {}).get("after", [])) + \
+            [n for n, v in self.name_links.items() if name in v.get("after", [])]
+        offender = self.repeat_offender(name, now)
+        is_held = not self.earned_known(name) and name not in self.allow_senders and (
+            offender or any(b.get("source") != "manual" for b in holds) or (held >= self.HELD_MIN and held * 2 >= msgs))
+        return {"held": is_held, "msgs": msgs, "copies": held, "offender": offender,
+                "holds": [self.describe(b) for b in holds][:5],
+                "until": max((b["expires"] for b in holds), default=None),
+                "dodges": sum(int(b.get("dodges") or 0) for b in holds),
+                "linked": list(dict.fromkeys(n for n in linked if n != name))[:5],
+                "marked": sum(1 for t in self.spam_marked.get(name, ()) if t > now - 30 * 86400)}
+
     def standing(self, name: str) -> tuple:
         """(standing, the reason in plain words) for the People page."""
         v = self.known.get(name) or [None, None, 0]
+        rec = self.spam_record(name)
+        if rec["held"] and name not in self.on_watch:
+            bits = [f"{rec['copies']} of {rec['msgs']} messages held in the last 7 days"] if rec["msgs"] else []
+            if rec["offender"]:
+                bits.append("keeps sending the same message")
+            if rec["dodges"]:
+                bits.append(f"changed how it is written {rec['dodges']} time{'s' if rec['dodges'] != 1 else ''} after being held")
+            if rec["linked"]:
+                bits.append("carried on from another name")
+            if rec["marked"]:
+                bits.append(f"you marked {rec['marked']} as spam")
+            return "held", "Held for sending spam: " + ", ".join(bits or ["a hold is in place"]) + ". Never let through blocks"
         days = int((time.time() - v[0]) // 86400) if v[0] else 0
         heard = (f"Heard for {days} day{'s' if days != 1 else ''}" if days else "First heard today") + \
             f", {v[2]} ordinary message{'s' if v[2] != 1 else ''}"
@@ -5009,7 +5130,7 @@ class SpamGuard:
             return "known", heard + ". Let through blocks meant for strangers"
         return "learning", heard + ". Not yet let through blocks"
 
-    PEOPLE_SHOW = ("active", "watch", "trusted", "known", "learning", "quiet", "all")
+    PEOPLE_SHOW = ("active", "watch", "held", "trusted", "known", "learning", "quiet", "all")
 
     def people(self, body: Optional[dict] = None) -> dict:
         """The People page: everyone SpamGuard has heard, with standing and why, the usual ways in and the last
@@ -5031,6 +5152,7 @@ class SpamGuard:
         for n in names:
             v = self.known.get(n) or [None, None, 0]
             st = ("trusted" if n in self.allow_senders else "watch" if n in self.on_watch
+                  else "held" if self.spam_record(n, now)["held"]
                   else "learning" if not self.is_known(n) else "known")
             quiet = st == "known" and (v[1] or 0) < quiet_before
             groups = ["all", "quiet" if quiet else st]
@@ -5047,7 +5169,7 @@ class SpamGuard:
         elif sort == "msgs":
             rows.sort(key=lambda r: -r[1][2])
         else:
-            rows.sort(key=lambda r: (r[2] != "watch", -(r[1][1] or 0)))   # on watch first, then most recently heard
+            rows.sort(key=lambda r: ({"watch": 0, "held": 1}.get(r[2], 2), -(r[1][1] or 0)))   # on watch, then held, then most recently heard
         total = len(rows)
         letters: list = []
         if sort == "name" and total > limit:   # where each first letter starts, so the page can jump to it
@@ -5080,6 +5202,7 @@ class SpamGuard:
                         "unusual": bool(ways and first and not any(first == h or hops_related(first, h) for h in ways)),
                         "forget_at": forget_at,
                         "route": self.route_status(n) if self.cfg.get("spoof_check") else None,
+                        "spam": self.spam_record(n, now) if st == "held" else None,
                         "watch": ({"since": w["since"], "need": int(w.get("need", self.WATCH_DAYS)),
                                    "days": max(0, min(int(w.get("need", self.WATCH_DAYS)), int((now - w["clean_from"]) // 86400))),
                                    "ok": int(w.get("ok", 0)), "min_msgs": self.WATCH_MIN_MSGS, "times": int(w.get("times", 1)),
@@ -5130,7 +5253,7 @@ class SpamGuard:
         if b["kind"] in ("repeat", "burst", "imposter", "text", "words") and not self._on_block_channel(b, e):
             return False   # the same channels as the rule written to openHop
         if b["kind"] == "repeat":
-            return e.sender == b.get("who") and b["value"] in e.text
+            return e.sender == b.get("who") and any(t in e.text for t in self.block_texts(b))
         if b["kind"] == "burst":   # (not "sender": that name belongs to 5.10's removed name blocks)
             return e.sender == b["value"]
         if b["kind"] == "imposter":
@@ -5144,7 +5267,7 @@ class SpamGuard:
             suf = b["value"]
             return (len(e.path) == len(suf) + 1 and all(h in e.path for h in suf)
                     and e.first_hop not in self.allowed_origins(b))
-        return b["value"] in e.text
+        return any(t in e.text for t in self.block_texts(b))
 
     REPLAY_MIN_GAP = 30          # a copy within seconds is the mesh's own echo, not a replay
     REPLAY_MEMORY = 86400        # how long messages are remembered
@@ -5194,6 +5317,9 @@ class SpamGuard:
                                  "source": "dedupe", "reason": b.get("reason"), "exempt_sender": b.get("sender")})
                     b["hits"] = b.get("hits", 0) + 1
                     b["last_hit"] = e.ts
+                    if e.random or e.garbage or noise_name(e.sender) or self.repeat_offender(e.sender, e.ts) \
+                            or any(t > e.ts - 30 * 86400 for t in self.spam_marked.get(e.sender, ())):
+                        b["last_spam"] = e.ts   # caught something that looks like spam, not just anyone
                     if b["kind"] == "imposter" and b.get("source") == "spoof":
                         # still catching copies: keep holding, for a few hours at most
                         b["expires"] = max(b["expires"], min(e.ts + self.SPOOF_HOLD_KEEP, b["created"] + self.SPOOF_HOLD_MAX))
@@ -5538,11 +5664,12 @@ class SpamGuard:
                 self.sense_learned.pop(next(iter(self.sense_learned)))
 
     def _sense_note(self, e) -> None:
-        """Experimental: score one message. A spam-like one is remembered against its name (a hold needs several,
+        """Score one message. A spam-like one is remembered against its name (a hold needs several,
         see the check in decide); anything else teaches the model what ordinary chat here looks like."""
         c = self.cfg
-        if not c.get("text_sense") or e.exempt or e.sender in self.allow_senders or len(e.text.strip()) < 14:
-            return
+        if not c.get("text_sense") or e.exempt or e.sender in self.allow_senders or len(e.text.strip()) < 14 \
+                or self.earned_known(e.sender):
+            return   # people SpamGuard knows are never held by it
         if e.packet in self.sense_seen:
             return
         self.sense_seen[e.packet] = None
@@ -5831,6 +5958,7 @@ class SpamGuard:
         elif not rec["ts"] or e.ts > rec["ts"][-1]:
             rec["ts"].append(e.ts)
             del rec["ts"][:-40]
+            rec["last"] = content[:300]   # the newest wording, which a hold must still match
 
     # ---- detection ----
     def _similar(self, a: frozenset, b: frozenset, th: float) -> bool:
@@ -5975,7 +6103,7 @@ class SpamGuard:
         return why
 
     def _add_block(self, key, kind, value, reason, source, channel=None, ttl=None, from_ts=None,
-                   action=None, match=None, sender=None, extra=None) -> bool:
+                   action=None, match=None, sender=None, extra=None, full=None) -> bool:
         now = time.time()
         expires = (from_ts or now) + (ttl or self.cfg["block_ttl_seconds"])
         if kind in ("text", "words"):
@@ -5983,6 +6111,12 @@ class SpamGuard:
         if expires <= now:
             return False
         b = self.blocks.get(key)
+        if b is not None and full and self._cover_text(b, full):
+            if expires >= b["expires"]:
+                b["expires"] = expires
+            return True
+        if b is None and full and kind in ("text", "repeat"):
+            extra = dict(extra or {}, alts=self._pieces_for(kind, full, exclude=value))
         if b is None:
             self.blocks[key] = {"id": self._new_id(), "kind": kind, "value": value, "channel": channel,
                                 "reason": reason, "source": source, "created": now, "expires": expires,
@@ -6012,6 +6146,39 @@ class SpamGuard:
                 b["source"] = "campaign"
                 b["sender"] = None  # a campaign has no "original sender" to let through
         return False
+
+    ALTS_MAX = 4
+
+    def _pieces_for(self, kind: str, full: str, exclude=None) -> list[str]:
+        """Extra pieces a text or repeat hold also matches. A repeat hold only ever stops one name, so its pieces
+        can be shorter than a text hold's, which stops anyone SpamGuard doesn't know."""
+        c = self.cfg
+        n = int(c["text_rule_chars"])
+        if kind == "repeat":
+            ps = text_pieces(full, n, 12, 2)
+        else:
+            ps = text_pieces(full, n, max(int(c["min_rule_chars"]), 20), 3)
+        ex = str(exclude or "")
+        return [p for p in ps if not ex or (p not in ex and ex not in p)][:2]
+
+    @staticmethod
+    def block_texts(b: dict) -> list[str]:
+        return [b["value"]] + [a for a in (b.get("alts") or []) if a]
+
+    def _cover_text(self, b: dict, full: str) -> bool:
+        """A text or repeat hold that no longer matches the newest copy of its message takes pieces of that copy as
+        well. True when it changed."""
+        if b.get("kind") not in ("text", "repeat") or not isinstance(b.get("value"), str):
+            return False
+        if any(t in full for t in self.block_texts(b)):
+            return False
+        new = self._pieces_for(b["kind"], full)
+        if not new:
+            return False
+        alts = [a for a in (b.get("alts") or []) if a not in new] + new
+        b["alts"] = alts[-self.ALTS_MAX:]
+        b["dodges"] = int(b.get("dodges") or 0) + 1   # shown on the People page as evidence
+        return True
 
     def describe(self, b: dict) -> str:
         if b["kind"] == "hop":
@@ -6575,11 +6742,11 @@ class SpamGuard:
         self.clusters = a["campaigns"]
         changed = False
 
-        def want(key, kind, value, reason, source, channel=None, ttl=None, from_ts=None, sender=None):
+        def want(key, kind, value, reason, source, channel=None, ttl=None, from_ts=None, sender=None, full=None):
             nonlocal changed
             if self.suppressed.get(key, 0) > now:
                 return False
-            if self._add_block(key, kind, value, reason, source, channel, ttl, from_ts, sender=sender):
+            if self._add_block(key, kind, value, reason, source, channel, ttl, from_ts, sender=sender, full=full):
                 changed = True
                 return True
             return False
@@ -6596,8 +6763,20 @@ class SpamGuard:
                 if sum(1 for t in v["names"].values() if t >= cut) >= self.SENTENCE_NAMES and len(v["text"]) >= c["min_rule_chars"]:
                     key = "sentence:" + hashlib.sha1(k.encode(), usedforsecurity=False).hexdigest()[:10]
                     if want(key, "text", v["text"], f"Sent by {len(v['names'])} different unknown names in the last fortnight",
-                         "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400):
+                         "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400,
+                         full=v.get("last") or None):
                         self.blocks[key]["gate"] = True   # written after the known-people rule: people it knows get through
+                    sb, newest = self.blocks.get(key), v.get("last") or ""
+                    if sb and newest and not any(t in newest for t in self.block_texts(sb)):
+                        # The newest copy is written so that no piece of the hold fits it: hold its longer words
+                        # together instead, wherever they fall in the message.
+                        ws = list(dict.fromkeys(w for w in re.findall(r"[^\W\d_]{5,}", newest)))
+                        ws = [w for w in ws if w in sorted(ws, key=len, reverse=True)[:5]]
+                        if len(ws) >= 4:
+                            wkey = "sentencew:" + hashlib.sha1("|".join(ws).encode(), usedforsecurity=False).hexdigest()[:10]
+                            if want(wkey, "words", ws, f"Sent by {len(v['names'])} different unknown names in the last fortnight",
+                                    "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400):
+                                self.blocks[wkey]["gate"] = True
 
         # 1. Spam campaigns: same/similar text from several names -> block the shared text.
         if c.get("enable_text_rules", True):
@@ -6720,7 +6899,7 @@ class SpamGuard:
                 fresh = key not in self.blocks
                 if self._add_block(key, "repeat", snip, f"Sent {len(evs)} times in a few minutes", "repeat",
                                    channel=ch, ttl=int(c["repeat_block_seconds"]), from_ts=evs[-1][0].ts,
-                                   extra={"who": who}):
+                                   extra={"who": who}, full=evs[-1][1]):
                     changed = True
                     ways_in = collections.Counter(x[0].first_hop for x in evs)
                     if self._copied_from_elsewhere(who, ways_in):
@@ -6791,9 +6970,14 @@ class SpamGuard:
                     hold = max(hold, min(win_s, 2 * 86400))
                 if self._add_block(key, "repeat", rec["snip"], reason, "slowrepeat",
                                    channel=rec["ch"], ttl=hold, from_ts=max(recent),
-                                   extra={"who": rec["who"], "after": after[:5]} if after else {"who": rec["who"]}):
+                                   extra={"who": rec["who"], "after": after[:5]} if after else {"who": rec["who"]},
+                                   full=rec.get("last") or None):
                     changed = True
                     if fresh:
+                        self._offence(rec["who"], now)
+                    elif not self.earned_known(rec["who"]) and not any(t > now - 3600 for t in self.offences.get(rec["who"], ())):
+                        # Already held, and the hold had to take in a new copy: counts as being held again (once an
+                        # hour at most).
                         self._offence(rec["who"], now)
                 # A name that keeps being held for sending a link has the whole site held too: its next
                 # picture is a new address, so counting copies of one link could never catch the first.
@@ -6805,11 +6989,23 @@ class SpamGuard:
                             "slowrepeat", channel=rec["ch"], ttl=hold, from_ts=max(recent),
                             extra={"who": rec["who"]}):
                         changed = True
+                # A name held for repeating before that is still sending the same message far past the limit is held
+                # by name on that channel for the same time. Never a name that has earned the known pass, so copying
+                # a real person's name can't get them held this way.
+                hb, newest = self.blocks.get(key), rec.get("last") or ""
+                adrift = bool(hb and newest and not any(t in newest for t in self.block_texts(hb)))   # the hold can't follow it
+                if ((self.repeat_offender(rec["who"], now) and own > 2 * int(c["slow_repeat_max"])) or adrift) \
+                        and not self.earned_known(rec["who"]) and rec["who"] not in self.allow_senders:
+                    pkey = "persist:" + hashlib.sha1(f"{rec['who']}|{rec['ch']}".encode(), usedforsecurity=False).hexdigest()[:10]
+                    if self.suppressed.get(pkey, 0) <= now and self._add_block(
+                            pkey, "burst", rec["who"], f"Sent the same message {own} times today and was held for it before",
+                            "slowrepeat", channel=rec["ch"], ttl=hold, from_ts=max(recent)):
+                        changed = True
                 if after and len(recent) > int(c["slow_repeat_max"]):
                     old = self.name_links.get(rec["who"], {}).get("after", [])
                     self.name_links[rec["who"]] = {"after": (old + [a for a in after if a not in old])[:10], "ts": now}
 
-        # 2b'-x. EXPERIMENTAL: one name sending several different messages that each read like spam you marked.
+        # 2b'-x. One name sending several different messages that each read like spam you marked.
         # The messages are all different, so the repeat counts above never see them together. What they share
         # is held for that name only (or just recorded, in the record-only mode).
         if c.get("text_sense"):
@@ -6839,7 +7035,7 @@ class SpamGuard:
                         self.stats["sense_would_hold"] = self.stats.get("sense_would_hold", 0) + 1
                         self._hist_bump(now, "sw")
                         self.ev({"type": "sense", "who": who, "value": snip, "count": len(distinct), "held": False})
-                        self.note(f"Experimental: would have held a shared piece of {len(distinct)} spam-like messages from one name (record-only)")
+                        self.note(f"Would have held a shared piece of {len(distinct)} spam-like messages from one name (record-only)")
                     continue
                 fresh = key not in self.blocks
                 if self._add_block(key, "repeat", snip, reason, "sense", channel=ch,
@@ -7265,8 +7461,13 @@ class SpamGuard:
         # 5b. Keyboard-symbol junk on Public: a standing block, so it works on the first message from a new
         # name (one-off junk never gives a second message to learn from). Known people pass first.
         if c.get("symbol_junk", True):
+            jv = list(JUNK_CHARS) + (list(LOOKALIKE_CHARS) if c.get("lookalike_junk", True) else [])
+            if "junk:symbols" in self.blocks and self.blocks["junk:symbols"].get("source") == "junk" \
+                    and self.blocks["junk:symbols"]["value"] != jv:
+                self.blocks["junk:symbols"]["value"] = jv   # made by an older version, or the setting changed
+                changed = True
             if "junk:symbols" not in self.blocks and self.suppressed.get("junk:symbols", 0) <= now \
-                    and self._add_block("junk:symbols", "links", list(JUNK_CHARS),
+                    and self._add_block("junk:symbols", "links", jv,
                                         "Keyboard-symbol junk on Public is held unless the sender is known", "junk",
                                         ttl=PERMANENT_SECONDS,
                                         extra={"only_channel": "Public", "names": list(JUNK_NAME_CHARS)}):
@@ -7281,6 +7482,12 @@ class SpamGuard:
         self._save_state(force=self._important)
         return changed
 
+    KEEP_SOURCES = ("hop", "rotation", "slowrepeat", "repeat", "campaign", "links", "linkhost", "budget")
+    KEEP_KINDS = ("hop", "stem", "route", "links", "text", "words", "repeat", "burst")
+    KEEP_RECENT = 1800   # caught spam in the last half hour
+    KEEP_STEP = 3600     # kept another hour each time
+    KEEP_MAX = 86400     # a day from when it was made, at most
+
     def _expire_blocks(self, now: float) -> bool:
         """Remove blocks whose time is up (also when detection itself failed this round)."""
         changed = False
@@ -7289,6 +7496,12 @@ class SpamGuard:
         for b in self.blocks.values():
             if self.covers_everyone(b) and b["expires"] - now > TEXT_BLOCK_MAX_SECONDS + 60:
                 b["expires"] = now + TEXT_BLOCK_MAX_SECONDS
+        for b in self.blocks.values():
+            # A block still catching spam when its time is up is kept a little longer, so a campaign that is still
+            # running doesn't get through the gap until the block is made again. Never longer than a day in all.
+            if b["expires"] <= now and b.get("source") in self.KEEP_SOURCES and b["kind"] in self.KEEP_KINDS \
+                    and float(b.get("last_spam") or 0) >= now - self.KEEP_RECENT and now < float(b.get("created") or now) + self.KEEP_MAX:
+                b["expires"] = min(now + self.KEEP_STEP, float(b.get("created") or now) + self.KEEP_MAX)
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
@@ -7656,6 +7869,9 @@ class SpamGuard:
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
                 conds = [("", [chc]
                           + [{"field": "channel_message_body", "op": "contains", "value": w} for w in words])]
+                if b["kind"] == "text":
+                    conds += [(f"alt{i}", [chc, {"field": "channel_message_body", "op": "contains", "value": a}])
+                              for i, a in enumerate(self.block_texts(b)[1:])]
             else:  # lockdown
                 conds = [("", [])]
             for sub, extra in conds:
@@ -7846,6 +8062,13 @@ class SpamGuard:
                 cond["all"] += sender_conds(b.get("who"))
             rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
                           "if": cond, "then": {"action": self.rule_action(b)}})
+            if b["kind"] in ("text", "repeat"):
+                # The other pieces of the same message: any one of them holds it.
+                for i, a in enumerate(self.block_texts(b)[1:]):
+                    alt = {"all": [x if x.get("field") != "channel_message_body" else
+                                   {"field": "channel_message_body", "op": "contains", "value": a} for x in cond["all"]]}
+                    rules.append({"id": self._size_id(b, f"alt{i}"), "name": f"{RULE_PREFIX}{key}:alt{i}" + self._rule_label(b),
+                                  "enabled": True, "if": alt, "then": {"action": self.rule_action(b)}})
         if len(rules) >= limit and not self.stats.get("rule_limit_warned"):
             self.stats["rule_limit_warned"] = 1
             self.note(f"Rule limit ({limit}) reached - oldest duplicate rules were left out")
@@ -7916,10 +8139,54 @@ class SpamGuard:
             return bool(owner.get("to")) and owner.get("to") != self.instance_id
         return True
 
+    @property
+    def sync_pending(self) -> bool:
+        return self.__dict__.get("_sync_pending", False)
+
+    @sync_pending.setter
+    def sync_pending(self, v) -> None:
+        # Every request for new rules is counted, so one made while the rules are being written isn't lost.
+        if v:
+            self.__dict__["_sync_seq"] = self.__dict__.get("_sync_seq", 0) + 1
+        self.__dict__["_sync_pending"] = bool(v)
+
+    def request_sync(self) -> None:
+        """After a change on the page: save and write the rules as soon as possible. With the main loop running
+        that is done there, a moment later, so the page answers straight away instead of waiting for the state
+        file to be written and openHop to take the new rules (several seconds on a small Pi)."""
+        self._important = True
+        self.sync_pending = True
+        self._force_sync = True
+        if getattr(self, "_loop_alive", False):
+            self.wake.set()
+        else:
+            self._save_state(force=True)
+            self.sync_policy(force=True)
+
     def sync_policy(self, force: bool = False) -> bool:
+        """Read openHop's rules, work out SpamGuard's, write them if they differ. The lock is held only while
+        working them out, never while waiting for openHop, so the page and the detection don't queue behind it."""
         if getattr(self, "retired", False):
             return False
         res = self._api("GET", "/api/policy")
+        with self.lock:
+            seq = self.__dict__.get("_sync_seq", 0)
+            plan = self._sync_plan(res, force)
+        if not plan:
+            return False
+        pe, n_ours, n_user = plan
+        self._api("POST", "/api/policy", {"policy_engine": pe})
+        with self.lock:
+            self.rules_expected = self.rules_seen = n_ours
+            self.last_sync = time.time()
+            if self.__dict__.get("_sync_seq", 0) == seq:
+                self.sync_pending = False
+        log.info("Policy synced: %d SpamGuard rule(s), %d of your own rule(s), mode=%s%s",
+                 n_ours, n_user, self.cfg["mode"], " (PAUSED)" if self.cfg.get("paused") else "")
+        return True
+
+    def _sync_plan(self, res, force: bool):
+        """The policy to write, with how many of the rules are SpamGuard's and yours, or None if nothing to write."""
         data = res.get("data", res)
         pe = dict(data.get("policy_engine") or {})
         objs0 = pe.get("objects") if isinstance(pe.get("objects"), dict) else {}
@@ -8002,13 +8269,7 @@ class SpamGuard:
             if pe.get("enabled"):
                 self.engine_on_seen = True
             pe.setdefault("default_action", "allow")
-        self._api("POST", "/api/policy", {"policy_engine": pe})
-        self.rules_expected = self.rules_seen = len(ours_new)
-        self.last_sync = time.time()
-        self.sync_pending = False
-        log.info("Policy synced: %d SpamGuard rule(s), %d of your own rule(s), mode=%s%s",
-                 len(ours_new), len(user_rules), self.cfg["mode"], " (PAUSED)" if self.cfg.get("paused") else "")
-        return True
+        return pe, len(ours_new), len(user_rules)
 
     # ---- loop ----
     def _note_newest(self, packets):
@@ -8132,8 +8393,7 @@ class SpamGuard:
             # it has handed over or stopped.
             if time.time() - self.last_verify > 15:
                 self.last_verify = time.time()
-                with self.lock:
-                    self.sync_policy()
+                self.sync_policy()
             self.write_runtime()
             return
         packets = self.fetch_packets()
@@ -8164,14 +8424,17 @@ class SpamGuard:
         self.last_poll_ok = time.time()
         self.last_error = None
         due = self.last_sync is None or time.time() - self.last_sync >= self.cfg["min_sync_seconds"]
-        if (self.sync_pending and due) or self.last_sync is None:
-            with self.lock:
-                self.sync_policy(force=self.last_sync is None)
+        forced = bool(self.__dict__.get("_force_sync"))
+        if (self.sync_pending and (due or forced)) or self.last_sync is None:
+            self._force_sync = False
+            self.sync_policy(force=forced or self.last_sync is None)
         elif time.time() - self.last_verify > 60:
             # Once a minute make sure openHop still has exactly our rules (e.g. after an openHop
             # restart, a restore, or someone editing policies) and put them back if not.
+            self.sync_policy()
+        if self._important:
             with self.lock:
-                self.sync_policy()
+                self._save_state(force=True)   # a change made on the page, saved here rather than while the page waits
         if time.time() - self.last_verify > 60:
             self.last_verify = time.time()
         self.write_runtime()
@@ -8586,9 +8849,10 @@ class SpamGuard:
         threading.Thread(target=self.live_feed_loop, args=(stop,), daemon=True, name="live").start()
         if install_kind() != "normal":
             threading.Thread(target=self.watchdog_loop, args=(stop,), daemon=True, name="watchdog").start()
+        self._loop_alive = True   # changes made on the page are saved and written by this loop from now on
         while not stop.is_set():
             t0 = time.time()
-            for task in (self._maybe_check_update, self._maybe_fix_openhop, self._maybe_check_plugins,
+            for task in (self._maybe_check_update, self._maybe_count, self._maybe_fix_openhop, self._maybe_check_plugins,
                          self._maybe_guard_frontend, self._maybe_auto_protect, self._maybe_auto_level):
                 try:
                     task()
@@ -8627,6 +8891,7 @@ class SpamGuard:
             if woke and not stop.is_set():
                 # let the other copies of a burst arrive, and never check more than about once a second
                 stop.wait(max(0.4, 1.0 - (time.time() - t0)))
+        self._loop_alive = False   # stopping: a change from now on is saved and written straight away
 
     # ---- openHop's live packet feed (a nudge to check now; the timed check stays the source of truth) ----
     def _ws_open(self):
@@ -9041,7 +9306,7 @@ class SpamGuard:
                 rel = json.loads(r.read().decode("utf-8", "replace"))
             info.update({"latest": str(rel.get("tag_name") or "").lstrip("v") or None,
                          "notes": str(rel.get("body") or "")[:4000], "url": str(rel.get("html_url") or ""),
-                         "error": None})
+                         "error": None, "published": self._release_ts(rel.get("published_at"))})
         except urllib.error.HTTPError as e:
             if e.code == 404:  # no GitHub "release" made yet: fall back to the newest version tag
                 try:
@@ -9065,8 +9330,17 @@ class SpamGuard:
                 info.update(self._latest_from_web(repo, f"GitHub answered HTTP {e.code}."))
         except Exception:
             info.update(self._latest_from_web(repo, "Couldn't reach GitHub (is the Pi online?)."))
+        if info.get("latest") and info.get("latest") != (self.update_info.get("seen") or {}).get("version"):
+            info["seen"] = {"version": info["latest"], "ts": time.time()}   # when this version was first noticed
         self.update_info = info
         return info
+
+    @staticmethod
+    def _release_ts(v) -> Optional[float]:
+        try:
+            return datetime.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _latest_from_web(repo: str, error: str) -> dict:
@@ -9083,11 +9357,45 @@ class SpamGuard:
             pass
         return {"error": error}
 
+    COUNT_EVERY = 86400
+
+    def _maybe_count(self):
+        """Once a day, fetch the newest release's checksum list and throw it away. GitHub counts downloads of a
+        release file, which is the only way the developer can see roughly how many repeaters run SpamGuard.
+        Nothing is sent: no name, key, location or identifier. Off with its own setting, and off whenever
+        looking for new versions is set to only when you press Check."""
+        c = self.cfg
+        now = time.time()
+        if not c.get("count_install", True) or c.get("update_check", "daily") != "daily" or not self._repo() \
+                or now - self.started < 300 or now - float(self.count_ping or 0) < self.COUNT_EVERY:
+            return
+        self.count_ping = now
+        self._important = True
+        url = f"https://github.com/{self._repo()}/releases/latest/download/SHA256SUMS"
+
+        def go():
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "openhop-spamguard"})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    r.read(65536)
+            except Exception as e:   # being counted never matters to how SpamGuard works
+                log.debug("count ping failed: %s", e)
+        threading.Thread(target=go, daemon=True, name="count").start()
+
+    AUTO_UPDATE_WAIT = 2 * 3600    # a new version must have been out this long before it installs by itself
+    AUTO_UPDATE_EVERY = 6 * 3600   # how often to look while automatic updates are on
+    AUTO_UPDATE_RETRY = 86400      # a version that failed to install by itself is tried again after a day
+
     def _maybe_check_update(self):
+        # Turning off "Look for new versions" stops all contact with GitHub except when you press a button,
+        # so automatic updates wait while it is off.
+        auto = bool(self.cfg.get("auto_update")) and self.cfg.get("update_check", "daily") == "daily"
+        if auto:
+            self._maybe_auto_update()
         if self.cfg.get("update_check", "daily") != "daily" or self._update_checking:
             return
         last = self.update_info.get("checked")
-        if (last and time.time() - last < 86400) or time.time() - self.started < 120:
+        if (last and time.time() - last < (self.AUTO_UPDATE_EVERY if auto else 86400)) or time.time() - self.started < 120:
             return
         self._update_checking = True
 
@@ -9097,6 +9405,40 @@ class SpamGuard:
             finally:
                 self._update_checking = False
         threading.Thread(target=go, daemon=True).start()
+
+    def auto_update_due(self, now: Optional[float] = None) -> Optional[str]:
+        """The version to install by itself now, if any: automatic updates on, a newer version that has been out a
+        while (so a faulty release can be withdrawn first), this install able to update itself, and that version
+        not already tried in the last day."""
+        now = now or time.time()
+        i = self.update_info
+        latest = i.get("latest")
+        if not self.cfg.get("auto_update") or self.cfg.get("update_check", "daily") != "daily" \
+                or not latest or self._vtuple(latest) <= self._vtuple(VERSION):
+            return None
+        if managed_update() or not (IN_PLUGIN or os.path.exists("/etc/systemd/system/openhop-spamguard-update.path")):
+            return None
+        out_since = i.get("published") or (i.get("seen") or {}).get("ts")
+        if not out_since or now - float(out_since) < self.AUTO_UPDATE_WAIT:
+            return None
+        t = self.auto_update_tried
+        if t.get("version") == latest and now - float(t.get("ts") or 0) < self.AUTO_UPDATE_RETRY:
+            return None
+        if (getattr(self, "plugin_update", None) or {}).get("state") == "running":
+            return None
+        return latest
+
+    def _maybe_auto_update(self):
+        want = self.auto_update_due()
+        if not want:
+            return
+        self.auto_update_tried = {"version": want, "ts": time.time()}
+        self._save_state(force=True)
+        self.note(f"Installing version {want} automatically (automatic updates are on)")
+        try:
+            self.update_action("install_update", {"version": want})
+        except Exception as e:
+            self.note(f"Automatic update to {want} didn't start: {e}")
 
     # ---- progress shown while an update installs ----
     # Stage words in the installer's output, and how far through the update each one means (a guide, not
@@ -9311,6 +9653,9 @@ class SpamGuard:
                 "checked": i.get("checked"), "error": i.get("error"), "repo": self._repo(),
                 "available": bool(latest) and self._vtuple(latest) > self._vtuple(VERSION),
                 "auto_check": self.cfg.get("update_check", "daily") == "daily",
+                "auto_update": bool(self.cfg.get("auto_update")),
+                "auto_update_prompt": bool(self.cfg.get("auto_update_prompt", True)),
+                "count_install": bool(self.cfg.get("count_install", True)) and self.cfg.get("update_check", "daily") == "daily",
                 "installer_ready": IN_PLUGIN or os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
                 "docker": IN_DOCKER, "docker_update": DOCKER_UPDATE, "plugin": IN_PLUGIN,
                 "managed_update": managed_update(),
@@ -9548,7 +9893,7 @@ class SpamGuard:
                 "settings": settings, "meta": [m for m in SETTINGS_META if m["key"] not in hidden_settings()],
                 "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
-                "site": str((self.me or {}).get("name") or "")[:40],
+                "site": str(self.cfg.get("site_label") or (self.me or {}).get("name") or "")[:40],
                 "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),
@@ -9721,6 +10066,9 @@ class SpamGuard:
                         elif m["type"] == "choice":
                             if v not in [x[0] for x in m["choices"]]:
                                 raise ValueError(f"invalid choice for {m['label']}")
+                        elif m["type"] == "text":
+                            # a short label: one line, no control characters
+                            v = re.sub(r"[\x00-\x1f\x7f]+", " ", str(v or "")).strip()[:int(m.get("max", 40))]
                         elif m["type"] == "list":
                             if isinstance(v, str):
                                 v = [p.strip() for p in v.splitlines() if p.strip()]
@@ -9733,7 +10081,8 @@ class SpamGuard:
                     else:
                         raise ValueError(f"unknown setting {k}")
                     new[k] = v
-                if "level" in new and self.cfg.get("level_auto") and "level_auto" not in new:
+                if "level" in new and self.cfg.get("level_auto") and "level_auto" not in new \
+                        and new["level"] != (self.level_preview or {}).get("suggested"):
                     new["level_auto"] = False   # you took over: stop moving it
                     self.note("Auto level switched off because you set the level yourself")
                 if new.get("mode") == "monitor" and self.cfg.get("mode") == "protect":
@@ -9752,8 +10101,7 @@ class SpamGuard:
                         for k, v in new.items()))
             self.rebuild_cfg()
             self.snapshot_settings("changed on the page")
-            self._save_state(force=True)
-            self.sync_policy(force=True)
+            self.request_sync()
         return {"ok": True}
 
     ACTION_TEXT_MAX = 2000      # no value the page sends is anywhere near this long
@@ -9918,10 +10266,10 @@ class SpamGuard:
                     msg = (f"Holding flooded {TYPE_SURGE[ptype]} that come in through repeater {hop} for {self.fmt_secs(ttl)}. Channel and direct messages are not affected."
                            + (" Monitor mode: nothing is actually blocked." if self.cfg["mode"] != "protect" else ""))
             elif op in ("block_text", "mark_spam"):
-                if op == "mark_spam":
+                if op == "mark_spam" and not body.get("_quiet_label"):
                     self.ev({"type": "label", "label": "spam", "sender": body.get("sender"), "text": body.get("text"),
                              "path": body.get("path"), "packet": body.get("packet")})
-                text = str(body.get("text", "")).strip()
+                text = whole = str(body.get("text", "")).strip()
                 if op == "mark_spam":
                     text = middle_chunk(text, self.cfg["text_rule_chars"])
                 if len(text) < 5:
@@ -9939,7 +10287,8 @@ class SpamGuard:
                 channel = self._pick_channel(body)
                 self._add_block(key, "text", text, "Marked as spam by you" if op == "mark_spam" else "Added by you",
                                 "manual", channel=channel,
-                                ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]))
+                                ttl=int(body.get("ttl_seconds") or self.cfg["block_ttl_seconds"]),
+                                full=strip_mentions(whole) if op == "mark_spam" else None)
                 msg = f"Blocking messages containing \"{text}\"" + self._on_where(self.blocks.get(key) or {})
             elif op == "preview_now":
                 if self.evidence is None:
@@ -10140,7 +10489,14 @@ class SpamGuard:
                        f"{int(self.cfg.get('known_min_msgs', 1))} genuine messages over at least "
                        f"{int(self.cfg.get('known_min_minutes', 0))} minutes.")
             elif op == "allow_sender":
-                self.allow_senders.add(str(body.get("sender", "")))
+                who = str(body.get("sender", ""))
+                self.allow_senders.add(who)
+                # Trusting a name also ends SpamGuard's own holds on that name (never ones you made yourself).
+                for k in [k for k, b in self.blocks.items() if b.get("source") != "manual" and who
+                          and ((b["kind"] in ("repeat", "imposter") and b.get("who") == who)
+                               or (b["kind"] == "burst" and b.get("value") == who))]:
+                    self.blocks.pop(k)
+                self.offences.pop(who, None)
             elif op == "unallow_sender":
                 self.allow_senders.discard(str(body.get("sender", "")))
             elif op == "allow_text":
@@ -10317,8 +10673,7 @@ class SpamGuard:
                        "the evidence log keeps everything.")
             else:
                 raise ValueError("Unknown action")
-            self._save_state(force=True)
-            self.sync_policy(force=True)
+            self.request_sync()
         return {"ok": True, "message": msg}
 
 
