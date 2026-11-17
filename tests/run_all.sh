@@ -19,7 +19,7 @@ if ! python3 -c "import hypothesis, Crypto, nacl, yaml" 2>/dev/null; then
   # Locked, hash-checked versions (requirements/ci.txt).
   pip install -q --require-hashes -r ../requirements/ci.txt 2>/dev/null || pip install -q --break-system-packages --require-hashes -r ../requirements/ci.txt
 fi
-TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testslowrepeat testrulesview testreporting testprivacy testsecrets testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testfuzz testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight testlevel testmapsenders testquarantine testroute testroutesurge testtypesurge testsigned testdamaged testaudit testrandomtail testfgbreakdown testknownage testevasion testsettingsaudit testsignedname teststatebak testvarylimits testbrevity testsbom testforgedhop testidentity testcodeconfidence testresilience testrulesflat testtextsense testopenhopfixed testquickresend testpublicbots testexperimentaloff testadvisor testfixes6271 teststem testautolevel testmachine teststemmem testautoadv testupdverify testinstpw testsymboljunk testfixes6291 testbypass630 testbypass631 testfarcopy testspoofdevice testlookalikecopy testsenderparse testmarks testrobust testupdsafe testmigrated632 testchannelsync testanswers testownership testmatchsame testaudit636 testpeople testspoof testsentences teststarts testpersist"
+TESTS="scenarios redteam testrulecap testradio testhashsize testsharedid testmesh testfloodguard soakfloodguard testwardrive testreplay testinterference testnamedflood testfreespeech testforgive testprofiles testknownlist testclearauto testohchannels testlive testfrontend testrepeat testslowrepeat testrulesview testreporting testprivacy testsecrets testown testautoprotect test59 test5103 test511m testmb testverdict testpub testreset testlearn testknownthen testchannels testgarbage testfuzz testnames testdocker testplugin testmigrate testpluginops testupdsh testpreflight testlevel testmapsenders testquarantine testroute testroutesurge testtypesurge testsigned testdamaged testaudit testrandomtail testfgbreakdown testknownage testevasion testsettingsaudit testsignedname teststatebak testvarylimits testbrevity testsbom testforgedhop testidentity testcodeconfidence testresilience testrulesflat testtextsense testopenhopfixed testquickresend testpublicbots testexperimentaloff testadvisor testfixes6271 teststem testautolevel testmachine teststemmem testautoadv testupdverify testinstpw testsymboljunk testfixes6291 testbypass630 testbypass631 testfarcopy testspoofdevice testlookalikecopy testsenderparse testmarks testrobust testupdsafe testmigrated632 testchannelsync testanswers testownership testmatchsame testaudit636 testpeople testspoof testsentences teststarts testpersist testscramble"
 [ "${1:-}" = "--slow" ] && TESTS="$TESTS teststress"
 if python3 -c "import playwright" 2>/dev/null && command -v npm >/dev/null; then
   # Locked, integrity-checked versions (tests/npm/*/package-lock.json), linked to where the browser tests look.
@@ -34,10 +34,15 @@ fi
 # SG_TEST_PY runs each test another way, e.g. under coverage: SG_TEST_PY="python3 -m coverage run --parallel-mode"
 PY=${SG_TEST_PY:-python3}
 fail=0
+# The three-hour attack simulation runs as plain Python even when the others run under coverage: line tracing
+# on Python 3.12 slows it past the time limit while measuring nothing the other tests don't already reach.
+NO_TRACE=" redteam "
 for t in $TESTS; do
-  out=$(timeout 900 $PY "$t.py" 2>&1); rc=$?
+  run="$PY"; case "$NO_TRACE" in *" $t "*) run=python3;; esac
+  out=$(timeout 900 $run "$t.py" 2>&1); rc=$?
   last=$(echo "$out" | grep -E "passed|^ok$|errors \[|FAIL|Traceback|Error" | tail -3 | tr '\n' ' ')
   if [ $rc -ne 0 ] || echo "$out" | grep -qE "^FAIL|Traceback"; then fail=1; echo "FAIL  $t: $last"; echo "$out" | grep -E "^FAIL|Error" | head -5 | sed 's/^/      /'
+    [ $rc -eq 124 ] && { echo "      timed out after 15 minutes; its last lines:"; echo "$out" | tail -4 | sed 's/^/      /'; }
   else echo "ok    $t: $last"; fi
 done
 if [ -n "${BROWSER_MISSING:-}" ]; then fail=1; echo "FAIL  browser tests: Playwright or npm is missing, so they did not run"; fi
