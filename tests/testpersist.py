@@ -51,6 +51,7 @@ check(pk and pk[0]["expires"]<time.time()+2*86400+60,"for a limited time")
 # never for a name SpamGuard knows
 m3=mock(); g3=guard(m3,floodguard=False); g3.apply_settings({"mode":"protect"}); sync(g3)
 send(m3,"Ann Hill","hello all",["4C"],ago=7000); sync(g3)
+g3.known["Ann Hill"][2]=50   # a regular with plenty of ordinary messages behind her
 check(g3.is_known("Ann Hill"),"Ann Hill is known")
 g3.offences["Ann Hill"]=[time.time()-3000,time.time()-2000]
 for i in range(9): send(m3,"Ann Hill",SLOGAN[0],["4C"],ago=6800-i*600)
@@ -262,5 +263,82 @@ check(any(k.startswith("persist:") for k in g2.blocks),"(held by name)")
 g2.action("allow_sender",{"sender":"LOUD SHOUTER"})
 check(not any(k.startswith("persist:") or k.startswith("slowrepeat:") for k in g2.blocks),"Trust ends SpamGuard's own holds on that name")
 check(row(g2,"LOUD SHOUTER")["standing"]=="trusted","and it is shown as trusted")
+
+# --- 6.42.0: near-copies, short repeats, the known pass, packed text, rule allowance
+import random
+random.seed(11)
+FILL="lol hey ok so right well yes btw fyi hmm listen folks today again still really".split()
+def series(gg,mm,who,gen,n=12,gap=560,path=("C1","D2")):
+    out=[]
+    for i in range(n):
+        t=gen(i); out.append(mm.decide(who,t,list(path))=="drop"); send(mm,who,t,list(path),ago=6900-i*gap); sync(gg)
+    return out
+def new(**kw):
+    mm=mock(); gg=guard(mm,floodguard=False,**dict(STRANGER,**kw)); gg.apply_settings({"mode":"protect"}); sync(gg); return mm,gg
+PLAIN=SLOGAN[0].replace(",","")
+ma,ga=new(); oa=series(ga,ma,"Filler Adder",lambda i:(lambda ws,k:" ".join(ws[:k]+[random.choice(FILL)]+ws[k:]))(PLAIN.split(),random.randrange(18)))
+check(sum(oa)>=5 and len([k for k in ga.slow_sends if k.startswith("Filler Adder|") and "|S" not in k])==1,f"a word added somewhere each time is still the same message ({sum(oa)} of 12 stopped)")
+mb,gb=new(); ob=series(gb,mb,"Word Swapper",lambda i:(lambda ws,a,b:" ".join(ws[b] if j==a else ws[a] if j==b else w for j,w in enumerate(ws)))(PLAIN.split(),random.randrange(18),random.randrange(18)))
+check(sum(ob)>=5,f"so is one with words moved about ({sum(ob)} of 12)")
+check(any(k.startswith("persist:") for k in gb.blocks),"and a hold that has had to follow the wording twice becomes a hold on the name")
+mk,gk=new(); okk=series(gk,mk,"Number Adder",lambda i:PLAIN+" "+str(random.randrange(10,99)))
+check(sum(okk)>=6,f"a different number on the end each time ({sum(okk)} of 12)")
+# different messages from one name are not lumped together
+md,gd=new()
+for i,t in enumerate(["the repeater on the hill is back up after the storm last night","anyone know a good antenna for a narrowboat please asking for a friend",
+                      "thanks to everyone who helped with the range test on saturday it went well","we are meeting at the village hall on thursday if anyone wants to come"]*2):
+    send(md,"Chatty Newcomer",t+(" again" if i>3 else ""),["C4"],ago=6900-i*600); sync(gd)
+check(not any(k.startswith(("slowrepeat:","persist:")) for k in gd.blocks),"four different messages, each said twice, are not one repeated message")
+# range-test replies and readings, where the numbers are the message, are left alone on test and other channels
+mw,gw=new()
+def evc(ch,who,text):
+    x=ev(who,text); x.channel=ch; return x
+first=evc("#test","Hill Bot","I hear you loud and clear from the station on the hill tonight. 6 hops away at 06:42"); gw._note_slow_send(first)
+again=evc("#test","Hill Bot","I hear you loud and clear from the station on the hill tonight. 9 hops away at 07:15"); again.ts=first.ts+900
+check(gw._slow_near(again,sorted(set(sg.normalise(again.text).split()))) is None,"on a test channel, replies that differ in their numbers are separate messages")
+p1=evc("Public","Hill Bot","I hear you loud and clear from the station on the hill tonight. 6 hops away at 06:42"); gw._note_slow_send(p1)
+p2=evc("Public","Hill Bot","I hear you loud and clear from the station on the hill tonight. 9 hops away at 07:15"); p2.ts=p1.ts+900
+check(gw._slow_near(p2,sorted(set(sg.normalise(p2.text).split()))) is not None,"on Public they count as the same message")
+# short messages
+ms,gs=new(); osh=series(gs,ms,"Short Shouter",lambda i:"WIDGETCO IS A FRAUD",n=30,gap=230)
+check(sum(osh)>=18 and not any(osh[:8]),f"a short message repeated all day is held, after more copies than a long one ({sum(osh)} of 30)")
+mg,gg2=new()
+for i in range(6): send(mg,"Polite Newcomer","good morning all",["C4"],ago=6900-i*1100); sync(gg2)
+check(not any(k.startswith(("slowrepeat:","persist:")) for k in gg2.blocks),"a greeting said six times in a day is fine")
+for i in range(12): send(mg,"One Worder","test",["C4"],ago=6000-i*300); sync(gg2)
+check(not any(b.get("who")=="One Worder" or b.get("value")=="One Worder" for b in gg2.blocks.values()),"a single word is never counted this way")
+# repeating a message can't earn the known pass
+mr,gr=new(known_min_msgs=3,known_min_minutes=60)
+orr=series(gr,mr,"Pass Farmer",lambda i:" ".join(w+",.;:"[(i+j)%4] for j,w in enumerate(PLAIN.split())))
+check(not gr.earned_known("Pass Farmer"),"copies of a repeated message don't count towards the known pass")
+check(any(k.startswith("persist:") for k in gr.blocks) and sum(orr)>=6,f"so the name is held ({sum(orr)} of 12)")
+# someone SpamGuard knows well is never held by name for it, only the repeated text is
+mz,gz=new(known_min_msgs=3,known_min_minutes=60)
+gz.known["Old Regular"]=[time.time()-30*86400,time.time()-8000,400]
+oz=series(gz,mz,"Old Regular",lambda i:" ".join(w+",.;:"[(i+j)%4] for j,w in enumerate(PLAIN.split())))
+check(not any(b["kind"] in ("burst","imposter") for b in gz.blocks.values()),"a well-known name is never held by name for repeating")
+check(mz.decide("Old Regular","evening all, back from the hill",["C1","D2"])=="allow","anything else they say gets through")
+# a name with only a few ordinary messages behind it hasn't earned that yet
+my,gy=new(known_min_msgs=3,known_min_minutes=60)
+gy.known["Quick Sleeper"]=[time.time()-2*86400,time.time()-8000,4]
+oy=series(gy,my,"Quick Sleeper",lambda i:" ".join(w+",.;:"[(i+j)%4] for j,w in enumerate(PLAIN.split())))
+check(any(b["kind"]=="imposter" and b.get("who")=="Quick Sleeper" for b in gy.blocks.values()) and sum(oy)>=6,f"a name only just known, then the same thing all day, is held through the way those copies came ({sum(oy)} of 12)")
+check(my.decide("Quick Sleeper","evening all",["4C","D2"])=="allow","and still gets through any other way")
+# packed text: experimental, off by default
+check(sg.DEFAULT_CONFIG["packed_text_junk"] is False and sg.META_BY_KEY["packed_text_junk"]["group"]=="Experimental","packed-text hold is experimental and off")
+mp2,gp2=new(symbol_junk=True)
+check(mp2.decide("NEWNAME1","mct:Ab3xYz9+/qqqqqqqqqqqqqqqqq",["F1"])=="allow","off: nothing held")
+gp2.apply_settings({"packed_text_junk":True}); sync(gp2)
+check(mp2.decide("NEWNAME1","mct:Ab3xYz9+/qqqqqqqqqqqqqqqqq",["F1"])=="drop","on: held from a name it doesn't know")
+gp2.allow_senders.add("Ann Hill"); sync(gp2)
+check(mp2.decide("Ann Hill","mcmp3:Ab3xYz9+/qqqqqqqqqqqqqq",["4C"])=="allow","someone it knows gets through")
+# when rules are short, each hold keeps one extra piece
+mt,gt=new()
+for j in range(70):
+    gt._add_block(f"slowrepeat:t{j}","repeat",f"first piece of message number {j} here","test","slowrepeat",extra={"who":f"Name {j}","alts":[f"second piece number {j} goes here",f"third piece number {j} goes here",f"fourth piece number {j} goes here"]})
+sync(gt); nr=len(mt.policy["policy_engine"]["rules"])
+check(gt._rules_tight and nr<=70*2+60,f"many holds at once: each keeps its newest extra piece only ({nr} rules)")
+b0=gt.blocks["slowrepeat:t0"]
+check(gt.block_texts(b0)==[b0["value"],b0["alts"][-1]] and mt.decide("Name 0","the fourth piece number 0 goes here ok",["C1"])=="drop" and mt.decide("Name 0","second piece number 0 goes here",["C1"])=="allow","and SpamGuard's own count agrees with openHop")
 
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
