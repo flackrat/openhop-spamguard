@@ -186,6 +186,7 @@ def a14(): send("14 genuine phrases wrapped round spam", rnd(), random.choice(CH
 
 # ---------- run ----------
 TICK = 10
+TICKS, WALL0 = [0], _time.perf_counter()
 poll_times, rule_peak = [], 0
 def tick(step_s=TICK, attacks_on=True, t_min=0.0):
     global rule_peak
@@ -200,6 +201,9 @@ def tick(step_s=TICK, attacks_on=True, t_min=0.0):
     t0 = _time.perf_counter(); g.poll_once(); poll_times.append(_time.perf_counter() - t0)
     rule_peak = max(rule_peak, len([r for r in m.policy["policy_engine"]["rules"] if str(r.get("name", "")).startswith("spamguard:")]))
     CLOCK[0] += step_s
+    TICKS[0] += 1
+    if TICKS[0] % 360 == 0:   # an hour of simulated time: how long it took for real (shows where a slow run stalls)
+        print(f"progress: hour {TICKS[0] // 360}, {_time.perf_counter() - WALL0:.0f}s, {len(g.blocks)} holds, rules {rule_peak}", flush=True)
 
 # six hours of ordinary chat in Monitor first, then Protect (as the automatic switch would)
 for _ in range(2160): tick(attacks_on=False)

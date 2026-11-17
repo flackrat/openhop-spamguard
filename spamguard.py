@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.41.0"
+VERSION = "6.42.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -107,6 +107,9 @@ JUNK_CHARS = ("{", "}", "`", "\\", "\u200b", "\u200c", "\ufeff", "\u180e")
 JUNK_CHARS = JUNK_CHARS + ("\u00ad", "\u034f", "\u2061", "\u2062", "\u2063", "\u2064", "\u3164", "\uffa0")
 # Cyrillic and Greek letters that look like Latin ones. None in any evidence log to 16 Nov 2026. Held on Public from
 # names SpamGuard doesn't know, with their own setting (someone writing in those alphabets is held too).
+# How some companion apps mark a message they have packed into letters and symbols that only the same app can
+# read. Every copy looks different, so it can't be counted or matched like ordinary text.
+PACKED_MARKS = ("mct:", "mcmp2:", "mcmp3:")
 LOOKALIKE_CHARS = ("\u0430", "\u0435", "\u043e", "\u0440", "\u0441", "\u0443", "\u0445", "\u0456",
                    "\u0410", "\u0412", "\u0415", "\u041a", "\u041c", "\u041d", "\u041e", "\u0420", "\u0421",
                    "\u0422", "\u0425", "\u03bf", "\u03b1", "\u03b5", "\u03c1")
@@ -484,6 +487,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Someone new who repeats a sentence spam names have already sent would be held too. Short sentences and known people are never affected.",
      "label": "Remember spam sentences",
      "help": "Spammers change their name for every message but reuse the same sentences, sometimes days apart. With this on, a longer sentence that several unknown names have sent is held for a fortnight when another unknown name sends it. Greetings and short messages never count, and people SpamGuard knows always get through."},
+    {"key": "packed_text_junk", "group": "Experimental", "type": "bool",
+     "risk": "A newcomer who uses such an app with its text packing switched on is held on Public until SpamGuard knows them.",
+     "label": "Hold app-packed text on Public from names it doesn't know (experimental)",
+     "help": "Some companion apps can pack a message into symbols only the same app can read. SpamGuard can't read or count those, so spam can hide in them. None has been seen on the mesh so far."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -581,6 +588,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hold_links": "campaign",
     "symbol_junk": True,
     "lookalike_junk": True,
+    "packed_text_junk": False,
     "max_paths_per_hop": 50,
     "enable_rotation_guard": True,
     "auto_lockdown": True,
@@ -1727,17 +1735,28 @@ class EvidenceLog:
                 recs.append(json.loads(ln))
             except ValueError:
                 continue
+        def keycode(k):   # a node's public key: same key gives the same code, but it can't be looked up
+            return "K-" + hashlib.sha256((salt + str(k)).encode()).hexdigest()[:8]
+
+        name_fields = ("sender", "exempt_sender", "who")
         for r in recs:  # learn every name first so mentions of people can be replaced too
-            for k in ("sender", "exempt_sender"):
-                if r.get(k):
+            for k in name_fields:
+                if isinstance(r.get(k), str) and r[k]:
                     code(r[k])
+            if r.get("type") == "advert" and isinstance(r.get("name"), str) and r["name"]:
+                code(r["name"])
         known = sorted(names, key=len, reverse=True)
         out = []
         for r in recs:
-            for k in ("sender", "exempt_sender"):
-                if r.get(k):
+            for k in name_fields:
+                if isinstance(r.get(k), str) and r[k]:
                     r[k] = code(r[k])
-            for k in ("text", "msg", "value"):
+            if r.get("type") == "advert":
+                if isinstance(r.get("name"), str) and r["name"]:
+                    r["name"] = code(r["name"])
+                if r.get("key"):
+                    r["key"] = keycode(r["key"])
+            for k in ("text", "msg", "value", "key", "reason"):
                 if isinstance(r.get(k), str):
                     t = re.sub(r"@\[([^\]]+)\]", lambda m: "@[" + code(m.group(1)) + "]", r[k])
                     for n in known:
@@ -2295,7 +2314,9 @@ class SpamGuard:
                 ts = [float(t) for t in v["ts"] if float(t) > now - 172800]
                 if ts:
                     self.slow_sends[k] = {"who": str(v["who"]), "ch": v.get("ch"), "snip": str(v.get("snip") or ""), "ts": ts[-40:],
-                                          "last": str(v.get("last") or "")[:300]}
+                                          "last": str(v.get("last") or "")[:300],
+                                          "words": [str(w)[:40] for w in (v.get("words") or [])][:60],
+                                          "hops": [str(h)[:8] for h in (v.get("hops") or [])][:5]}
         if isinstance(st.get("text_sense"), dict):
             self.sense.load(st["text_sense"])
             self.sense_learned = {str(k): str(v) for k, v in (st["text_sense"].get("learned") or {}).items()}
@@ -2455,6 +2476,7 @@ class SpamGuard:
                     "sentences": dict(list(self.sentences.items())[-self.SENTENCES_MAX:]),
                     "route_log": dict(list(self.route_log.items())[-self.ROUTES_MAX:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "last": v.get("last") or "",
+                                       "words": v.get("words") or [], "hops": v.get("hops") or [],
                                        "ts": [round(t, 1) for t in v["ts"][-40:]]}
                                    for k, v in list(self.slow_sends.items())[-1500:]},
                     **({"text_sense": dict(self.sense.to_dict(), learned=dict(list(self.sense_learned.items())[-1000:]))}
@@ -2650,6 +2672,8 @@ class SpamGuard:
             return   # keyboard-mashed throwaway names never earn the known-people pass by sending a few quiet messages
         if e.matched and not self._held_in_passing(e) and not self._wrongly_caught_regular(e):
             return
+        if e.sender not in self.allow_senders and self._said_before(e):
+            return   # the same message again, or nearly: saying one thing over and over doesn't earn the known pass
         for b in self.blocks.values():  # never learn from messages that START at a blocked repeater
             if b["kind"] == "hop" and e.path and self._same_hop(e.path[0], b["value"]):
                 return
@@ -5941,24 +5965,105 @@ class SpamGuard:
                 del lrec["ts"][:-40]
         content = longest_piece(strip_mentions(e.text)).strip()
         if len(content) < int(c.get("dedupe_min_chars", 30)):
+            # A short message: counted over the day as well, with a higher limit, only if it is more than a single
+            # word, and only for a name that hasn't earned the known pass (people say "radio check" a lot).
+            short = normalise(content)
+            if len(short) < 8 or len(short.split()) < 2 or self.earned_known(e.sender):
+                return
+            plain = max(WORD_RUN.findall(content) or [content], key=len)   # the words, without the marks round them
+            self._slow_count(f"{e.sender}|{e.channel}|S" + hashlib.sha1(short.encode(), usedforsecurity=False).hexdigest()[:11],
+                             e, content, plain[:int(c["text_rule_chars"])], 8)
             return
         # "www" adds nothing to what a message says, and adding or dropping it shouldn't make a new message
         norm = " ".join(w for w in normalise(content).split() if w != "www")
         if len(norm) < 12:
             return
         key = f"{e.sender}|{e.channel}|" + hashlib.sha1(norm.encode(), usedforsecurity=False).hexdigest()[:12]
+        words = sorted(set(norm.split()))
+        if key not in self.slow_sends and not link:   # a message with a link is already counted by its link
+            key = self._slow_near(e, words) or key
+        part = max(re.split(r"(?i)\bwww\b\.?", content), key=len)  # so the held text matches with or without "www."
+        rec = self._slow_count(key, e, content, middle_chunk(part, c["text_rule_chars"]), 120)
+        if "words" not in rec:
+            rec["words"] = words[:60]
+            keys = self._near_keys(f"{e.sender}|{e.channel}|")
+            if key not in keys:
+                keys.append(key)
+
+    def _said_before(self, e) -> bool:
+        """Has this name already sent this message, or nearly this message, earlier today?"""
+        c = self.cfg
+        content = longest_piece(strip_mentions(e.text)).strip()
+        pre = f"{e.sender}|{e.channel}|"
+        if len(content) < int(c.get("dedupe_min_chars", 30)):
+            short = normalise(content)
+            if len(short) < 8 or len(short.split()) < 2:
+                return False
+            key = pre + "S" + hashlib.sha1(short.encode(), usedforsecurity=False).hexdigest()[:11]
+        else:
+            norm = " ".join(w for w in normalise(content).split() if w != "www")
+            key = pre + hashlib.sha1(norm.encode(), usedforsecurity=False).hexdigest()[:12]
+            if key not in self.slow_sends:
+                key = self._slow_near(e, sorted(set(norm.split()))) or key
+        rec = self.slow_sends.get(key)
+        return bool(rec) and any(t < e.ts - 120 for t in rec["ts"])
+
+    PASS_MIN_MSGS = 10  # ordinary messages before a name is safe from being held by name for repeating
+    BIG_FLOOD_NAMES = 30   # made-up names in two minutes that start a lockdown even while they are paused
+    NEAR_SHARE = 0.75   # of the longer message's words
+    NEAR_WORDS = 8   # only longer messages: short ones differ in few words anyway
+
+    def _slow_near(self, e, words: list) -> Optional[str]:
+        """The key of a long message this name already sent that this one is nearly a copy of, if any: most of
+        the words the same, whatever was added, dropped or moved. On test and other channels, messages that
+        carry several numbers (range-test replies, readings) are left alone."""
+        mine = set(words)
+        if len(mine) < self.NEAR_WORDS or ((e.channel or "Public") != "Public"
+                                           and len(re.findall(r"\d+", strip_mentions(e.text))) >= 3):
+            return None   # off Public, several numbers: a reading or an automatic reply, where the numbers are the message
+        pre = f"{e.sender}|{e.channel}|"
+        best, best_share = None, self.NEAR_SHARE
+        keys = self._near_keys(pre)
+        for k in list(keys):
+            rec = self.slow_sends.get(k)
+            if rec is None:
+                keys.remove(k)   # dropped from the day's count since
+                continue
+            theirs = rec.get("words")
+            if not theirs or rec["who"] != e.sender:
+                continue
+            theirs = set(theirs)
+            share = len(mine & theirs) / max(len(mine), len(theirs))
+            if share >= best_share:
+                best, best_share = k, share
+        return best
+
+    def _near_keys(self, pre: str) -> list:
+        """The long messages one name has sent on one channel today, looked up directly so a check costs the
+        same on a busy day as a quiet one (built from the saved count the first time it is needed)."""
+        idx = getattr(self, "_near_idx", None)
+        if idx is None:
+            idx = self._near_idx = {}
+            for k, rec in self.slow_sends.items():
+                if rec.get("words"):
+                    idx.setdefault(k.rsplit("|", 1)[0] + "|", []).append(k)
+        return idx.setdefault(pre, [])
+
+    def _slow_count(self, key: str, e, content: str, snip: str, same_send: int) -> dict:
         rec = self.slow_sends.get(key)
         if rec is None:
-            part = max(re.split(r"(?i)\bwww\b\.?", content), key=len)  # so the held text matches with or without "www."
-            rec = self.slow_sends[key] = {"who": e.sender, "ch": e.channel, "snip": middle_chunk(part, c["text_rule_chars"]), "ts": []}
+            rec = self.slow_sends[key] = {"who": e.sender, "ch": e.channel, "snip": snip, "ts": []}
             while len(self.slow_sends) > 1500:
                 self.slow_sends.pop(next(iter(self.slow_sends)))
-        if rec["ts"] and abs(e.ts - rec["ts"][-1]) < 120:
+        if rec["ts"] and abs(e.ts - rec["ts"][-1]) < same_send:
             rec["ts"][-1] = max(rec["ts"][-1], e.ts)
         elif not rec["ts"] or e.ts > rec["ts"][-1]:
             rec["ts"].append(e.ts)
             del rec["ts"][:-40]
             rec["last"] = content[:300]   # the newest wording, which a hold must still match
+            if e.first_hop and e.first_hop not in rec.setdefault("hops", []):
+                rec["hops"] = (rec["hops"] + [e.first_hop])[-5:]   # the ways in these copies used
+        return rec
 
     # ---- detection ----
     def _similar(self, a: frozenset, b: frozenset, th: float) -> bool:
@@ -6161,9 +6266,11 @@ class SpamGuard:
         ex = str(exclude or "")
         return [p for p in ps if not ex or (p not in ex and ex not in p)][:2]
 
-    @staticmethod
-    def block_texts(b: dict) -> list[str]:
-        return [b["value"]] + [a for a in (b.get("alts") or []) if a]
+    def block_texts(self, b: dict) -> list[str]:
+        """The texts a hold matches: its own, and its extra pieces. When openHop's rule allowance is nearly used
+        up, only the newest extra piece is kept, so many holds at once can't crowd other rules out."""
+        alts = [a for a in (b.get("alts") or []) if a]
+        return [b["value"]] + (alts[-1:] if getattr(self, "_rules_tight", False) else alts)
 
     def _cover_text(self, b: dict, full: str) -> bool:
         """A text or repeat hold that no longer matches the newest copy of its message takes pieces of that copy as
@@ -6950,6 +7057,9 @@ class SpamGuard:
                         if other["who"] not in after:
                             after.append(other["who"])
                 limit = int(c["slow_repeat_max"])
+                is_short = skey.rsplit("|", 2)[-1].startswith("S")
+                if is_short:
+                    limit = 2 * limit + 2   # short messages: people do say the same few words more than once a day
                 if self.repeat_offender(rec["who"], now):
                     limit = max(1, limit - 1)   # held for repeating before: one fewer copy before holding
                 if len(recent) <= limit:
@@ -6975,7 +7085,7 @@ class SpamGuard:
                     changed = True
                     if fresh:
                         self._offence(rec["who"], now)
-                    elif not self.earned_known(rec["who"]) and not any(t > now - 3600 for t in self.offences.get(rec["who"], ())):
+                    if not fresh and not self.earned_known(rec["who"]) and not any(t > now - 3600 for t in self.offences.get(rec["who"], ())):
                         # Already held, and the hold had to take in a new copy: counts as being held again (once an
                         # hour at most).
                         self._offence(rec["who"], now)
@@ -6994,8 +7104,30 @@ class SpamGuard:
                 # a real person's name can't get them held this way.
                 hb, newest = self.blocks.get(key), rec.get("last") or ""
                 adrift = bool(hb and newest and not any(t in newest for t in self.block_texts(hb)))   # the hold can't follow it
-                if ((self.repeat_offender(rec["who"], now) and own > 2 * int(c["slow_repeat_max"])) or adrift) \
-                        and not self.earned_known(rec["who"]) and rec["who"] not in self.allow_senders:
+                # ... or the hold has already had to follow a change in the wording twice
+                # Someone SpamGuard knows well is never held by name for repeating themselves, only the repeated text
+                # is. A name with only a handful of ordinary messages behind it hasn't earned that yet.
+                kv = self.known.get(rec["who"]) or [now, now, 0]
+                earned = self.earned_known(rec["who"]) and int(kv[2]) >= self.PASS_MIN_MSGS
+                persist = (self.repeat_offender(rec["who"], now) and own > 2 * int(c["slow_repeat_max"])) or adrift \
+                    or int((hb or {}).get("dodges") or 0) >= 2
+                newly = self.earned_known(rec["who"]) and not earned   # has the pass, but only just
+                home = (self.sender_history.get(rec["who"]) or {}).get("home") or {}
+                scattered = len([h for h in rec.get("hops") or () if home.get(h, 0) < 3]) >= 3
+                if newly and scattered:
+                    newly = False   # the copies came in by three or more ways the name never uses: not them, hold the name
+                # for them, only when the copies were changed to get round the hold, not for plain repetition
+                if newly and (adrift or int((hb or {}).get("dodges") or 0) >= 2) and rec["who"] not in self.allow_senders:
+                    # It may be them, or someone using the name: hold the name only through the repeaters these
+                    # copies came in by, so the person still gets through any other way.
+                    for hop in rec.get("hops") or ():
+                        ikey = "imposter:" + hashlib.sha1(f"{rec['who']}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                        if self.suppressed.get(ikey, 0) <= now and self._add_block(
+                                ikey, "imposter", hop, f"Their name sent the same message {own} times today through this repeater",
+                                "slowrepeat", channel=rec["ch"], ttl=hold, from_ts=max(recent), extra={"who": rec["who"]}):
+                            changed = True
+                if persist and (not self.earned_known(rec["who"]) or (not earned and scattered)) \
+                        and rec["who"] not in self.allow_senders:
                     pkey = "persist:" + hashlib.sha1(f"{rec['who']}|{rec['ch']}".encode(), usedforsecurity=False).hexdigest()[:10]
                     if self.suppressed.get(pkey, 0) <= now and self._add_block(
                             pkey, "burst", rec["who"], f"Sent the same message {own} times today and was held for it before",
@@ -7082,7 +7214,20 @@ class SpamGuard:
             # Automatic lockdowns are paused: a flood now gets narrower holds on the repeaters it comes in by,
             # so pausing them can't be used to buy two free hours.
             recent = [e for e in a["window"] if e.ts >= now - 120 and e.random and not self.is_known(e.sender)]
-            if len({e.sender for e in recent}) >= 12 and len({e.first_hop for e in recent}) >= 6:
+            big_names, big_entries = len({e.sender for e in recent}), len({e.first_hop for e in recent})
+            self.big_lockdowns = [t for t in getattr(self, "big_lockdowns", []) if t > now - 3600]
+            if big_names >= self.BIG_FLOOD_NAMES and big_entries >= 10 and not self.big_lockdowns:
+                # A flood far bigger than the pause was meant for (many more made-up names, each by a different
+                # way in, so no repeater can be held): a short lockdown anyway, at most once an hour.
+                self.big_lockdowns.append(now)
+                self._add_block("lockdown", "lockdown", None,
+                                f"Automatic 15-minute lockdown: {big_names} made-up names through {big_entries} repeaters in two minutes",
+                                "auto-lockdown", ttl=900)
+                self._important = True
+                self.note(f"Very large flood ({big_names} made-up names) while automatic lockdowns were paused: "
+                          "only people SpamGuard knows get through for 15 minutes")
+                changed = True
+            elif big_names >= 12 and big_entries >= 6:
                 per = collections.Counter(e.first_hop for e in recent)
                 for hop, n in per.items():
                     if n >= 2 and hop and hop != "DIRECT" and not self.hop_allowed(hop) and not self._busy_home(hop):
@@ -7461,7 +7606,8 @@ class SpamGuard:
         # 5b. Keyboard-symbol junk on Public: a standing block, so it works on the first message from a new
         # name (one-off junk never gives a second message to learn from). Known people pass first.
         if c.get("symbol_junk", True):
-            jv = list(JUNK_CHARS) + (list(LOOKALIKE_CHARS) if c.get("lookalike_junk", True) else [])
+            jv = list(JUNK_CHARS) + (list(LOOKALIKE_CHARS) if c.get("lookalike_junk", True) else []) \
+                + (list(PACKED_MARKS) if c.get("packed_text_junk") else [])
             if "junk:symbols" in self.blocks and self.blocks["junk:symbols"].get("source") == "junk" \
                     and self.blocks["junk:symbols"]["value"] != jv:
                 self.blocks["junk:symbols"]["value"] = jv   # made by an older version, or the setting changed
@@ -7540,6 +7686,11 @@ class SpamGuard:
         override anything you have set up yourself."""
         self.hops_stale = 0
         self._route_prep()
+        # Rules the holds would need with every extra piece: past 70% of the allowance, each keeps only its newest.
+        need = sum(1 + len(b.get("alts") or []) if b["kind"] in ("text", "repeat") else
+                   len(b["value"]) if isinstance(b.get("value"), list) and b["kind"] == "links" else 1
+                   for b in self.blocks.values())
+        self._rules_tight = need > 0.7 * self.rule_ceiling()
         if self.cfg.get("paused"):
             return [], []
         tail: list[dict] = []
