@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.42.0"
+VERSION = "6.42.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -3520,7 +3520,7 @@ class SpamGuard:
                            "fcl": v.get("fcl", 0), "fcu": v.get("fcu", 0), "fca": v.get("fca", 0),
                            "ds": v.get("ds", 0), "ws": v.get("ws", 0),
                            "nf": v.get("nf"), "nfx": v.get("nfx"), "ie": bool(v.get("ie")),
-                           "af": round(100 * v["af"] / v["ar"]) if v.get("ar") else None})
+                           "af": round(100 * v.get("af", 0) / v["ar"]) if v.get("ar") else None})
         daily = []
         for i in range(6, -1, -1):
             day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - i * 86400
@@ -9947,6 +9947,24 @@ class SpamGuard:
         finally:
             self.lock.release()
 
+    def _section(self, name: str, fn, default=None):
+        """One part of the page data failing must not blank every page: that part comes back empty, the rest is
+        shown, and the log says which part and where (at most once every five minutes)."""
+        try:
+            return fn()
+        except Exception as e:
+            now = time.time()
+            warned = self.__dict__.setdefault("_section_warned", {})
+            if now - warned.get(name, 0) > 300:
+                warned[name] = now
+                tb = e.__traceback__
+                while tb is not None and tb.tb_next is not None:
+                    tb = tb.tb_next
+                log.warning("Part of the page data (%s) could not be built (%s%s)", name, type(e).__name__,
+                            f" in {tb.tb_frame.f_code.co_name}, line {tb.tb_lineno}" if tb is not None else "")
+            log.debug("page data part failure: %s", name, exc_info=True)
+            return default
+
     def status(self) -> dict:
         with self.lock:
             now = time.time()
@@ -10073,7 +10091,7 @@ class SpamGuard:
                           # who gets let through blocks, most recently heard first (names only, no messages)
                           "watching": len(self.on_watch),
                           },
-                "metrics": self.metrics(),
+                "metrics": self._section("metrics", self.metrics),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
@@ -11016,7 +11034,11 @@ def make_handler(guard: SpamGuard):
             except (ConnectionError, TimeoutError):
                 raise
             except Exception as e:
-                log.warning("A page request failed (%s)", type(e).__name__)
+                tb = e.__traceback__
+                while tb is not None and tb.tb_next is not None:
+                    tb = tb.tb_next
+                log.warning("A page request failed (%s%s)", type(e).__name__,
+                            f" in {tb.tb_frame.f_code.co_name}, line {tb.tb_lineno}" if tb is not None else "")
                 log.debug("page request failure", exc_info=True)
                 return self._send(500, {"error": "Something went wrong reading that"})
 
