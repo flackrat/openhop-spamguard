@@ -68,7 +68,7 @@ async def main():
         await pg.reload(); await pg.wait_for_timeout(1200)
         check(await pg.evaluate("document.documentElement.dataset.palette")=="yellow", "kept after a reload, before the page draws")
         await pg.click("[data-opt=theme] button[data-v=light]"); await pg.wait_for_timeout(300)
-        check(await pg.evaluate("document.documentElement.dataset.palette")==None and await pg.evaluate("document.documentElement.dataset.theme")=="light", "choosing Light puts the standard colours back")
+        check(await pg.evaluate("document.documentElement.dataset.palette") is None and await pg.evaluate("document.documentElement.dataset.theme")=="light", "choosing Light puts the standard colours back")
         check(not errs, f"no page errors: {errs}")
         await b.close()
 asyncio.run(main())
