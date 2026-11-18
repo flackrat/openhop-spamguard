@@ -15,7 +15,7 @@ async def main():
             pg=await (await b.new_context(viewport={"width":1000,"height":900},color_scheme=scheme)).new_page()
             errs=[]; pg.on("pageerror",lambda e: errs.append(str(e)))
             await pg.goto(URL); await pg.wait_for_timeout(2000)
-            txt=await pg.inner_text("#banners")
+            txt=await pg.inner_text("#senseHint")
             check("Learning from your spam marks is off" in txt, f"{scheme}: hint shown while the setting is off")
             check("record-only" in txt and "leaves this device" in txt, f"{scheme}: says briefly what it does")
             check(len(txt)<260, f"{scheme}: short ({len(txt)} characters)")

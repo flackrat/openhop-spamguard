@@ -67,6 +67,16 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .banner a{color:inherit;text-decoration:underline;font-weight:600}
 .banner.dismissable{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .banner.dismissable button{flex:none}
+#heldSumSec .hs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
+#heldSumSec .hs-grid>div{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#heldSumSec .hs-grid b{display:block;font-size:1.35rem}#heldSumSec .hs-grid span{color:var(--soft);font-size:.8125rem}
+#heldSumSec .hs-rows{list-style:none;margin:0;padding:0}#heldSumSec .hs-rows li{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:.875rem}
+#heldSumSec .hs-rows .l{width:8.5em;color:var(--soft)}#heldSumSec .hs-rows .bar{flex:1;height:10px;background:var(--paper);border-radius:5px;overflow:hidden}
+#heldSumSec .hs-rows .bar i{display:block;height:100%;background:var(--bar)}#heldSumSec .hs-rows .v{min-width:3em;text-align:right}
+.banner.act{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.banner.act button{flex:none}
+#autoBox>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:6px;font-weight:600}
+#modeConfirm{margin-top:8px}#modeConfirm .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
 section > h2{font-size:1rem;font-weight:650;margin:0 0 4px}
@@ -502,10 +512,25 @@ html[data-contrast=high][data-theme=dark]{--ink:#fff;--panel:#121b23;--paper:#0b
 html[data-contrast=high] main a{text-decoration:underline}
 html[data-contrast=high] :focus-visible{outline-width:3px}
 html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px solid var(--line)}
+/* ---------- colour schemes: complete palettes, each checked by tests/testthemes.py ---------- */
+html[data-palette=cb][data-palette]{--paper:#f3f4f6;--panel:#ffffff;--ink:#14202b;--soft:#4a5560;--line:#c9d0d8;--signal:#00588f;--signal-ink:#ffffff;--signal-tint:#e1edf7;--amber:#8f4a00;--amber-tint:#fdecd9;--stop:#8a1f5b;--stop-tint:#f6e3ee;--bar:#00588f;--focus:#7a3e00;--amber-text:#7a3e00;--signal-text:#00497a;--field:#6b7580;--nav:#e4e8ee;--nav-ink:#14202b;--nav-active:#d0e1f0;--c-stop:#0072B2;--c-let:#B35900;--c-flood:#7E3F8F;--c-fu:#2288C8;--c-fa:#B0568A;--c-fd:#8F3A00;--c-fw:#5E6B00;--c-used:#7b8794}
+html[data-palette=cb] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
+html[data-palette=cb] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
+html[data-palette=aaa][data-palette]{--paper:#ffffff;--panel:#ffffff;--ink:#000000;--soft:#2b2b2b;--line:#595959;--signal:#00484b;--signal-ink:#ffffff;--signal-tint:#e3f0f0;--amber:#5c3300;--amber-tint:#fbeedb;--stop:#7a0000;--stop-tint:#fbe4e4;--bar:#00484b;--focus:#0000b3;--amber-text:#5c3300;--signal-text:#00484b;--field:#595959;--nav:#f0f0f0;--nav-ink:#000000;--nav-active:#d9e8e8;--c-stop:#00484b;--c-let:#7a3d00;--c-flood:#4b2e99;--c-fu:#0b4f99;--c-fa:#8a1f66;--c-fd:#7a0000;--c-fw:#1f5c1f;--c-used:#595959}
+html[data-palette=aaa] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#00484b,#4b5a00 50%,#7a3d00 75%,#7a0000)}
+html[data-palette=aaa] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#00484b,#4b5a00 50%,#7a3d00 75%,#7a0000)}
+html[data-palette=glare][data-palette]{--paper:#1e1a16;--panel:#28231e;--ink:#ebe2d3;--soft:#bdb19f;--line:#4c443a;--signal:#86cdbd;--signal-ink:#14211d;--signal-tint:#22332e;--amber:#e8b768;--amber-tint:#38291a;--stop:#ee9484;--stop-tint:#3b2622;--bar:#86cdbd;--focus:#a9c8f5;--amber-text:#e8b768;--signal-text:#86cdbd;--field:#8a7f70;--nav:#171410;--nav-ink:#d9cfbf;--nav-active:#2a3a35;--c-stop:#86cdbd;--c-let:#e8b768;--c-flood:#b7a1ee;--c-fu:#8dbbea;--c-fa:#e29bc6;--c-fd:#ee9484;--c-fw:#a9d58f;--c-used:#8a7f70}
+html[data-palette=glare] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#86cdbd,#d6c27a 55%,#ee9484)}
+html[data-palette=glare] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#86cdbd,#d6c27a 55%,#ee9484)}
+html[data-palette=yellow][data-palette]{--paper:#000000;--panel:#000000;--ink:#ffff00;--soft:#e6dc4a;--line:#b3a800;--signal:#00e5ff;--signal-ink:#000000;--signal-tint:#00262b;--amber:#ffb000;--amber-tint:#2b1d00;--stop:#ff7a7a;--stop-tint:#300a0a;--bar:#00e5ff;--focus:#ffffff;--amber-text:#ffb000;--signal-text:#00e5ff;--field:#b3a800;--nav:#000000;--nav-ink:#ffff00;--nav-active:#2b2b00;--c-stop:#00e5ff;--c-let:#ffb000;--c-flood:#c9a6ff;--c-fu:#6fb7ff;--c-fa:#ff8fd0;--c-fd:#ff7a7a;--c-fw:#7dff7d;--c-used:#b3a800}
+html[data-palette=yellow] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#00e5ff,#ffff00 55%,#ff7a7a)}
+html[data-palette=yellow] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#00e5ff,#ffff00 55%,#ff7a7a)}
+html[data-palette=aaa] main a,html[data-palette=yellow] main a{text-decoration:underline}
+html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{outline-width:3px}
 .cmdbox{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 .25rem}
 .cmdbox code{flex:1 1 18rem;min-width:0;overflow-wrap:anywhere;padding:.4rem .55rem;border:1px solid var(--line);border-radius:6px;font-size:.85em}
 </style>
-<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme");if(t==="light"||t==="dark")d.dataset.theme=t;if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
+<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme"),PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};if(t==="light"||t==="dark")d.dataset.theme=t;else if(PAL[t]){d.dataset.theme=PAL[t];d.dataset.palette=t;}if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
 </head>
 <body>
 <a class="skip" href="#main" id="skipLink">Skip to content</a>
@@ -541,18 +566,20 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
       <button data-v="monitor">Monitor</button><button data-v="protect">Protect</button><button data-v="pause">Pause</button>
     </div>
     <p class="explain" id="modeExplain"></p>
+    <div class="callout" id="modeConfirm" role="group" aria-labelledby="modeConfirmTxt" hidden><span id="modeConfirmTxt"></span>
+      <div class="acts"><button type="button" class="go" id="modeConfirmStay">Stay in Protect</button><button type="button" class="quiet" id="modeConfirmGo"></button></div></div>
   </section>
   <section id="lvlSec">
     <div class="lvl-head"><h2><label for="lvl">Protection level</label></h2>
       <span class="lvl-now"><span class="lvl-dot" id="lvlDot" aria-hidden="true"></span><b id="lvlName">Balanced</b> <span class="explain" id="lvlNum">50 of 100</span></span></div>
     <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
     <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
-    <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
-    <p class="explain" id="lvlAutoNote"></p>
+    <details id="autoBox" open><summary id="autoSum">Auto</summary>
+      <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
+      <p class="explain" id="lvlAutoNote"></p></details>
     <div class="lvl-pending" id="lvlPending" hidden><span id="lvlPendTxt"></span><button class="go" id="lvlApply" type="button">Apply</button><button class="quiet" id="lvlCancel" type="button">Cancel</button></div>
-    <p class="explain" id="sensExplain"></p>
     <div id="lvlOwn"></div>
-    <details id="lvlMore"><summary>What this level would have done</summary><div id="lvlDetail"></div></details>
+    <details id="lvlMore"><summary>What this level means and would have done</summary><p class="explain" id="sensExplain"></p><div id="lvlDetail"></div></details>
   </section>
   <section id="autoUpdSec">
     <h2>Automatic updates</h2>
@@ -612,6 +639,14 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div id="signedBody"></div>
   <ul class="rows" id="signedSug"></ul>
   <ul class="rows" id="signedTrusted"></ul>
+</section>
+<section id="heldSumSec" hidden>
+  <h2>Held messages summary</h2>
+  <p class="explain" id="heldSumSub">Stays on this repeater. Counts only: no names, no message text.</p>
+  <div class="seg" role="group" aria-label="Period" id="heldSumTabs"><button data-v="week">Last 7 days</button><button data-v="month" id="heldTabMonth">This month</button><button data-v="prev" id="heldTabPrev">Last month</button></div>
+  <div class="hs-grid" id="heldSumGrid"></div>
+  <ul class="hs-rows" id="heldSumRows"></ul>
+  <p class="explain" id="heldSumNote"></p>
 </section>
 <section>
   <div class="health-head"><h2>Where the spam enters the mesh</h2><a href="#/sources" class="quietlink">Map and details</a></div>
@@ -878,7 +913,8 @@ html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px s
   <div class="opt"><h3 id="optTextH">Text size</h3>
     <div class="seg" role="group" aria-labelledby="optTextH" data-opt="text"><button data-v="normal">Normal</button><button data-v="large">Large</button><button data-v="larger">Larger</button></div></div>
   <div class="opt"><h3 id="optThemeH">Colours</h3>
-    <div class="seg" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+    <div class="seg" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button></div>
+    <p class="explain">The last four are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black. Colour is never the only signal.</p></div>
   <div class="opt"><h3 id="optContrastH">Contrast</h3>
     <p class="explain">High contrast darkens grey text and borders, outlines each panel, underlines every link and thickens the keyboard focus outline.</p>
     <div class="seg" role="group" aria-labelledby="optContrastH" data-opt="contrast"><button data-v="standard">Standard</button><button data-v="high">High</button></div></div>
@@ -957,6 +993,23 @@ function btn(label, path, body, cls){ return `<button class="${cls||""}" data-p=
 document.addEventListener("click", e => { const b=e.target.closest("[data-confirm]"); if(b && !confirm(b.dataset.confirm)) e.stopImmediatePropagation(); }, true);
 
 /* ---------- top: hero, banners, mode, protection level ---------- */
+let HSP=store.get("sgSumPeriod")||"week";
+function renderHeldSummary(d){
+  const hs=d.held_summary, sec=$("#heldSumSec"); if(!hs){ sec.hidden=true; return; }
+  sec.hidden=false;
+  if(!hs[HSP]) HSP="week";
+  $("#heldTabMonth").textContent="This month"; $("#heldTabPrev").textContent="Last month";
+  document.querySelectorAll("#heldSumTabs button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===HSP)));
+  const t=hs[HSP], n=x=>(x||0).toLocaleString(), top=Math.max(1,t.campaigns,t.flood,t.routes,t.other);
+  $("#heldSumGrid").innerHTML=`<div><b>${n(t.held)}</b><span>Messages held</span></div><div><b>${n(t.released)}</b><span>Released by you</span></div>`
+    +`<div><b>${t.share_released==null?"none held":t.share_released+"%"}</b><span>Share released</span></div><div><b>${n(t.expired)}</b><span>Blocks ran out</span></div>`;
+  $("#heldSumRows").innerHTML=[["Spam campaigns",t.campaigns],["Flood control",t.flood],["Route blocks",t.routes],["Other",t.other]]
+    .map(([l,v])=>`<li><span class="l">${l}</span><span class="bar" aria-hidden="true"><i style="width:${Math.round(100*v/top)}%"></i></span><span class="v">${n(v)}</span></li>`).join("");
+  $("#heldSumNote").textContent="A low share released means few mistakes you noticed. Messages you never looked at are not counted as right or wrong."
+    +(t.seeded_days?" Days before this update have totals only, so the split may add up to less.":"")
+    +(HSP!=="week"?` Covers ${t.days} day${t.days===1?"":"s"} of ${hs.labels[HSP]}.`:"");
+}
+$("#heldSumTabs").addEventListener("click",e=>{ const v=e.target.dataset.v; if(!v) return; HSP=v; store.set("sgSumPeriod",v); if(typeof S!=="undefined"&&S) renderHeldSummary(S); });
 function renderTop(d){
   const sm=d.summary, n=(d.metrics&&d.metrics.d1)?d.metrics.d1.c:Math.max(0,sm.caught_24h), plural=n===1?"":"s";
   let h1, sub;
@@ -979,6 +1032,11 @@ function renderTop(d){
   if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix===false) b+=`<div class="banner warn"><b>openHop needs a one-line fix before blocks are fully reliable.</b> Its rule checker has a known bug that can occasionally let blocked spam through. <a href="#/health">See Health</a> to apply it.</div>`;
   if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
   if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
+  // Nothing is held outside Protect. Said on every page until it is switched back (not something to dismiss for good).
+  if(d.paused||d.mode!=="protect") b+=`<div class="banner warn act" id="modeWarn" role="status"><div><b>${d.paused?"SpamGuard is paused":"Monitor mode"}: nothing is being held.</b> ${d.paused?"All blocks are lifted.":"Spam is spotted and shown, but still passed on."}</div>${btn("Switch to Protect","/settings",{paused:false,mode:"protect"},"go")}</div>`;
+  // No page password: anyone on the network can change settings. Said once a month, until it is set.
+  if(d.password_set===false && Date.now()-Number(store.get("sgDismissPw")||0)>30*86400000)
+    b+=`<div class="banner info dismissable" id="pwHint"><div><b>Anyone on your network can change SpamGuard's settings.</b> A page password stops that. <a href="https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md" target="_blank" rel="noopener">How to set one</a></div><button type="button" class="quiet" onclick="store.set('sgDismissPw',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
   const hid=Number(store.get("sgDismissUnread")||0);
   if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
     b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
@@ -999,8 +1057,18 @@ function renderTop(d){
         ${btn("Stay in Monitor","/settings",{auto_protect:false},"quiet")}</span>`:"");
   renderLevel(d);
 }
+function setMode(v){ $("#modeConfirm").hidden=true; if(v==="pause") post("/settings",{paused:true}); else post("/settings",{paused:false,mode:v}); }
+let modeAsk=null;
 $("#modeSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
-  if(v==="pause") post("/settings",{paused:true}); else post("/settings",{paused:false,mode:v}); });
+  const cur=document.querySelector("#modeSeg button[aria-pressed=true]");
+  if(cur&&cur.dataset.v==="protect"&&v!=="protect"){   // leaving Protect: ask first, in the page
+    modeAsk=v; $("#modeConfirmTxt").textContent=v==="pause"?"Pausing lifts every SpamGuard block, so spam will pass on to the mesh. Pause anyway?":"Monitor spots spam but blocks nothing, so spam will pass on to the mesh. Switch to Monitor anyway?";
+    $("#modeConfirmGo").textContent=v==="pause"?"Pause":"Switch to Monitor"; $("#modeConfirm").hidden=false; $("#modeConfirmStay").focus(); return; }
+  setMode(v); });
+$("#modeConfirmStay").addEventListener("click",()=>{ $("#modeConfirm").hidden=true; modeAsk=null; });
+$("#modeConfirmGo").addEventListener("click",()=>{ if(modeAsk) setMode(modeAsk); modeAsk=null; });
+$("#modeConfirm").addEventListener("keydown",e=>{ if(e.key==="Escape"){ $("#modeConfirm").hidden=true; modeAsk=null; $("#modeSeg button[aria-pressed=true]").focus(); } });
+$("#autoBox").addEventListener("toggle",e=>{ const b=e.target; if(b.dataset.prog){ delete b.dataset.prog; return; } if($("#lvlAuto").checked) store.set("sgAutoOpen",b.open?"1":"0"); });
 /* ---------- protection level ---------- */
 const LVL_NAMES=[[20,"Gentle"],[40,"Easy-going"],[60,"Balanced"],[80,"Firm"],[101,"Tough"]];
 const LVL_SAYS=["Only the most obvious repeating and floods of made-up names are held. More spam reaches the channel, and ordinary chat is never touched.",
@@ -1046,6 +1114,11 @@ function renderLevel(d){
   const pend=$("#lvlPending"); pend.hidden=lvlDrag==null;
   const A=L.auto||{}, ab=$("#lvlAuto"); if(document.activeElement!==ab) ab.checked=!!A.on;
   $("#lvlAutoNote").textContent=A.on?`Auto is on. It tightens quickly, loosens slowly and never goes above ${A.max}.`+(A.waiting?` Right now: ${A.waiting}.`:"")+(A.last?` Last moved ${ago(A.last)}.`:""):"Off. The Suggested marker shows where SpamGuard would put it.";
+  const box=$("#autoBox"), sumTxt=A.on?`Auto is on${A.last?`, last moved ${ago(A.last)}`:""}. Change`:"Auto is off. Turn it on";
+  $("#autoSum").textContent=sumTxt;
+  { // Chosen once, it tucks away; while it is off it stays open, as a choice not yet made. The state is kept in this browser.
+    const wantOpen=!A.on||store.get("sgAutoOpen")==="1";
+    if(box.open!==wantOpen){ const had=box.contains(document.activeElement); box.dataset.prog="1"; box.open=wantOpen; if(had&&!wantOpen) $("#autoSum").focus(); } }
   if(lvlDrag!=null) $("#lvlPendTxt").textContent=`Change to ${lvlName(lvlDrag)} (${lvlDrag})?`+(A.on?" This switches Auto off.":"");
   const heat=lvlHeat(p); $("#lvlSec").style.setProperty("--lvl",heat);
   $("#lvlName").textContent=lvlName(p); $("#lvlNum").textContent=p+" of 100";
@@ -1727,7 +1800,7 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderHeldSummary(d); renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
@@ -2233,7 +2306,8 @@ function optGet(k){ return store.get(OPT_KEYS[k])||OPT_DEF[k]; }
 function optApply(){
   const d=document.documentElement;
   d.dataset.text=optGet("text"); d.dataset.contrast=optGet("contrast");
-  const t=optGet("theme"); if(t==="device") delete d.dataset.theme; else d.dataset.theme=t;
+  const t=optGet("theme"), PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};
+  if(PAL[t]){ d.dataset.theme=PAL[t]; d.dataset.palette=t; } else { delete d.dataset.palette; if(t==="device") delete d.dataset.theme; else d.dataset.theme=t; }
   if(optGet("motion")==="reduce") d.dataset.motion="reduce"; else delete d.dataset.motion;
   document.querySelectorAll("[data-opt]").forEach(g=>g.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===optGet(g.dataset.opt)))));
 }

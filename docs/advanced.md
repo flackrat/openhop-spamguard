@@ -140,7 +140,9 @@ git clone https://github.com/flackrat/openhop-spamguard.git /tmp/sg && sudo bash
 
 Switch on **Keep an evidence log** in Advanced > Detection settings. SpamGuard then writes one line per channel message to `/var/lib/openhop_spamguard/evidence/` (one file per day, kept 7 days by default). Each line records the route, sender, text, every spam signal, which rule caught it, and your **This is spam** / **Not spam** answers. Block changes and settings are recorded too. A restart never writes the same message into the log twice.
 
-Download it from Advanced > Evidence log. **Names scrambled** replaces every name and @mention with a code (keeping its spam score and shape), so it can be shared safely.
+Download it from Advanced > Evidence log. **Names scrambled** replaces every name and @mention with a code (keeping its spam score and shape), so it can be shared safely. Delete or replace any scrambled log shared before 6.42.0.
+
+Genuine repeated safety or event messages are what the release button and the known people list are for. If you like, put a contact line in your repeater description so a person can ask you about a hold. A human decides; nothing is released automatically on appeal.
 
 Replay a log with different settings to see what would have been caught, missed or wrongly blocked. On the older install it's already on the Pi; otherwise use a copy of this repository (`python3 replay.py ...`, with `pycryptodome` and `pyyaml` installed):
 ```
