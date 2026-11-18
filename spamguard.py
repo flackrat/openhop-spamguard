@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.42.0"
+VERSION = "6.42.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -3520,7 +3520,7 @@ class SpamGuard:
                            "fcl": v.get("fcl", 0), "fcu": v.get("fcu", 0), "fca": v.get("fca", 0),
                            "ds": v.get("ds", 0), "ws": v.get("ws", 0),
                            "nf": v.get("nf"), "nfx": v.get("nfx"), "ie": bool(v.get("ie")),
-                           "af": round(100 * v["af"] / v["ar"]) if v.get("ar") else None})
+                           "af": round(100 * v.get("af", 0) / v["ar"]) if v.get("ar") else None})
         daily = []
         for i in range(6, -1, -1):
             day0 = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1)) - i * 86400
@@ -11016,7 +11016,11 @@ def make_handler(guard: SpamGuard):
             except (ConnectionError, TimeoutError):
                 raise
             except Exception as e:
-                log.warning("A page request failed (%s)", type(e).__name__)
+                tb = e.__traceback__
+                while tb is not None and tb.tb_next is not None:
+                    tb = tb.tb_next
+                log.warning("A page request failed (%s%s)", type(e).__name__,
+                            f" in {tb.tb_frame.f_code.co_name}, line {tb.tb_lineno}" if tb is not None else "")
                 log.debug("page request failure", exc_info=True)
                 return self._send(500, {"error": "Something went wrong reading that"})
 
