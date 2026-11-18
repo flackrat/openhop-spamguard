@@ -57,5 +57,37 @@ except urllib.error.HTTPError as e:
 g.status_now=real
 check(code==500, "a failing request answers 500")
 check(any("KeyError in boom, line" in x for x in grab.msgs), "and the log names where it failed")
+
+# one failing part of the page data leaves the rest of the page working
+real_metrics=g.metrics
+g.metrics=lambda: {}["x"]
+try:
+    st2=g.status(); built2=True
+except Exception:
+    built2=False
+check(built2 and st2.get("metrics") is None and st2.get("version")==sg.VERSION and "blocks" in st2,
+      "a failing history part comes back empty and the rest is still built")
+check(sum("could not be built (KeyError" in x for x in grab.msgs)==1, "and is logged once, with where")
+g.status(); check(sum("could not be built (KeyError" in x for x in grab.msgs)==1, "not again for five minutes")
+r=urllib.request.urlopen(f"http://127.0.0.1:{port}/status",timeout=10)
+check(r.status==200, "the web request is still answered")
+g.metrics=real_metrics
+
+# saved hour records from older versions lack newer keys: the history part is built whatever is missing
+FULL={"m":9,"c":3,"x":2,"g":1,"a":1.5,"h":{"4C":2},"ar":4000,"af":1200,"pk":9,"gp":4,"dp":1,"dr":300,"ds":1,"fc":1,
+      "fx":1,"fs":2.0,"bz":12.0,"nf":-110.0,"nfx":-95.0,"ie":1,"wh":1,"ws":1,"fcl":1,"fcu":1,"fca":1,"fh":{"4C":3},
+      "ch":{"Public":{"c":1,"x":1,"m":4}}}
+hr=int(time.time()//3600*3600)
+def shape_ok(rec):
+    g.hist.clear()
+    for i in range(30): g.hist[str(hr-i*3600)]=json.loads(json.dumps(rec))
+    try: g.metrics(); return True
+    except Exception: return False
+fails=[k for k in FULL if not shape_ok({a:b for a,b in FULL.items() if a!=k})]
+check(not fails, f"history is built with any one key missing {fails}")
+random.seed(5)
+bad=[n for n in range(60) if not shape_ok({k:FULL[k] for k in random.sample(list(FULL), random.randint(0,len(FULL)))})]
+check(not bad, "and with random sets of keys missing")
+check(shape_ok({**FULL,"h":None,"fh":None,"ch":None}), "and with empty nested values")
 srv.shutdown()
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

@@ -17,7 +17,8 @@ The detail is below, newest first. In short:
 
 ## v6.42.1
 
-- **Pages no longer go blank on a quiet repeater.** After an hour when the radio heard only packets sent straight to it, the Overview and most other pages could show no content for up to a day.
+- **Pages no longer go blank on a quiet repeater.** After an hour when the radio heard only packets sent straight to it, the Overview and most other pages could show no content for up to a day. Thanks to jaxxks on the MeshCore Discord server for reporting it.
+- **A problem in the Overview history no longer blanks the other pages.** That part shows empty and the log says what failed.
 - **Clearer log line** when a page request fails: it now says where.
 
 ## v6.42.0

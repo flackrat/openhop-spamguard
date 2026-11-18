@@ -9947,6 +9947,24 @@ class SpamGuard:
         finally:
             self.lock.release()
 
+    def _section(self, name: str, fn, default=None):
+        """One part of the page data failing must not blank every page: that part comes back empty, the rest is
+        shown, and the log says which part and where (at most once every five minutes)."""
+        try:
+            return fn()
+        except Exception as e:
+            now = time.time()
+            warned = self.__dict__.setdefault("_section_warned", {})
+            if now - warned.get(name, 0) > 300:
+                warned[name] = now
+                tb = e.__traceback__
+                while tb is not None and tb.tb_next is not None:
+                    tb = tb.tb_next
+                log.warning("Part of the page data (%s) could not be built (%s%s)", name, type(e).__name__,
+                            f" in {tb.tb_frame.f_code.co_name}, line {tb.tb_lineno}" if tb is not None else "")
+            log.debug("page data part failure: %s", name, exc_info=True)
+            return default
+
     def status(self) -> dict:
         with self.lock:
             now = time.time()
@@ -10073,7 +10091,7 @@ class SpamGuard:
                           # who gets let through blocks, most recently heard first (names only, no messages)
                           "watching": len(self.on_watch),
                           },
-                "metrics": self.metrics(),
+                "metrics": self._section("metrics", self.metrics),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
