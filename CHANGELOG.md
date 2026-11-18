@@ -15,6 +15,16 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.43.0
+
+- **Fewer rules for the same protection.** Rules that another rule already covers are skipped, and idle repeated-sentence holds end sooner.
+- **Safer mode changes.** Leaving Protect asks first, and a banner says while protection is reduced. A hint appears when no page password is set.
+- **A summary of what was held** by day, week or month, on the Overview.
+- **Accessible colour schemes** in Display.
+- **The Auto level box folds away** once reviewed.
+- **Plainer help** for app-packed text, and a short note on repeated messages that are genuine.
+- **Tougher testing** against fast, rotating floods.
+
 ## v6.42.1
 
 - **Pages no longer go blank on a quiet repeater.** After an hour when the radio heard only packets sent straight to it, the Overview and most other pages could show no content for up to a day. Thanks to jaxxks on the MeshCore Discord server for reporting it.

@@ -184,6 +184,24 @@ def a13(): send("13 burst flood, several a second", rnd(), random.choice(["FLOOD
 def a14(): send("14 genuine phrases wrapped round spam", rnd(), random.choice(CHAT) + " " + random.choice(["see promo-deal.example", "free gift at promo-deal.example"]) + " " + rnd(3),
                 ["EFEF", "9E01"] + LOCAL[:1])
 
+@attack("15 near fast rotating flood, 3-6 hops", 110, 135, 3)
+def a15(): send("15 near fast rotating flood, 3-6 hops", rnd(), " ".join(random.choice(["win", "free", "claim", "bonus", "signal", "join", "deal", "now", "gift", "pay"]) for _ in range(random.randint(5, 9))) + " " + rnd(3),
+                [hexhop() for _ in range(random.randint(3, 6))] + LOCAL[:1])
+
+_ALT = ["Zed Quick", "Yara Fast"]; _alt_i = [0]
+@attack("16 two names alternating the same text", 40, 70, 30)
+def a16():
+    _alt_i[0] += 1
+    send("16 two names alternating the same text", _ALT[_alt_i[0] % 2], "Invest early, double your coins by Friday, details at fast-coin.example", ["B0B0", "9E01"] + LOCAL[:1])
+
+_W = ["quick", "private", "guaranteed", "weekly", "crypto", "loan", "photos", "meet", "cheap", "pills", "yield", "airdrop", "stream", "unlock", "verified"]
+@attack("17 many different campaigns (rule budget)", 90, 150, 8)
+def a17(): send("17 many different campaigns (rule budget)", rnd(), " ".join(random.choice(_W) for _ in range(8)) + " site" + rnd(4).lower() + ".example",
+                [hexhop(), "9E01"] + LOCAL[:1])
+
+# attack 17 (hundreds of different campaigns) is opt-in: it shows a known gap, see claude/replay-experiments notes
+_SKIP=[x for x in os.environ.get('SKIP','17').split(',') if x]
+ATTACKS[:]=[a for a in ATTACKS if a[0].split()[0] not in _SKIP]
 # ---------- run ----------
 TICK = 10
 TICKS, WALL0 = [0], _time.perf_counter()

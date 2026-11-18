@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.42.1"
+VERSION = "6.43.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -490,7 +490,7 @@ SETTINGS_META: list[dict] = [
     {"key": "packed_text_junk", "group": "Experimental", "type": "bool",
      "risk": "A newcomer who uses such an app with its text packing switched on is held on Public until SpamGuard knows them.",
      "label": "Hold app-packed text on Public from names it doesn't know (experimental)",
-     "help": "Some companion apps can pack a message into symbols only the same app can read. SpamGuard can't read or count those, so spam can hide in them. None has been seen on the mesh so far."},
+     "help": "Some companion apps can pack a message into symbols only the same app can read. SpamGuard can't read or count those, so spam can hide in them. High level only: it is off by default, it only looks at Public and at names SpamGuard doesn't know (known names always pass), and every hold shows its reason."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -1868,6 +1868,7 @@ class SpamGuard:
         self.neighbours: dict[str, dict] = {}  # repeaters this node hears directly (from openHop), with their usual signal
         self.neighbours_ts = 0.0
         self.sentences: dict[str, dict] = {}  # a normalised longer sentence -> unknown names that sent it, and when
+        self.sentence_quiet: dict[str, float] = {}  # a sentence hold let go early for catching nothing -> when
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
@@ -1953,6 +1954,7 @@ class SpamGuard:
         # Hourly history for the overview: hour -> {m: messages, c: spam stopped, x: spam let through,
         # g: genuine-looking held, a: airtime saved (ms), h: {first repeater: spam}}
         self.hist: dict[str, dict] = {}
+        self.daily: dict[str, dict] = {}   # local date -> counts for the held messages summary (kept about ten weeks)
         self.hist_mark = 0.0          # newest message already counted (so restarts don't count twice)
         # FloodGuard: every packet heard or sent in the last 15 minutes as (time, airtime ms, flood?, hops,
         # sent by us?, stopped by FloodGuard?), the current limit, and the hops flood packets normally take.
@@ -2240,6 +2242,9 @@ class SpamGuard:
         self.known = {k: v for k, v in (st.get("known_senders") or {}).items() if isinstance(v, list) and len(v) == 3}
         self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
         self.hist = {k: v for k, v in (st.get("hist") or {}).items() if isinstance(v, dict) and int(k) > now - 8 * 86400}
+        self.daily = {str(k): {str(a): int(b) for a, b in v.items() if isinstance(b, (int, float))}
+                      for k, v in (st.get("daily") or {}).items() if isinstance(v, dict)}
+        self._day_seed()
         self.hist_mark = float(st.get("hist_mark") or 0)
         fg = st.get("floodguard") or {}
         if isinstance(fg, dict):
@@ -2307,6 +2312,8 @@ class SpamGuard:
                                    "last": str(v.get("last") or "")[:300],
                                    "names": {str(n): float(t) for n, t in (v.get("names") or {}).items() if isinstance(t, (int, float))}}
                           for k, v in (st.get("sentences") or {}).items() if isinstance(v, dict)}
+        self.sentence_quiet = {str(k): float(t) for k, t in (st.get("sentence_quiet") or {}).items()
+                               if isinstance(t, (int, float)) and t > now - self.SENTENCE_DAYS * 86400}
         self.offences = {str(k): [float(t) for t in v if t > now - 2 * 86400][-20:] for k, v in (st.get("offences") or {}).items()
                          if isinstance(v, list)}
         for k, v in (st.get("slow_sends") or {}).items():
@@ -2437,6 +2444,7 @@ class SpamGuard:
                     "known_senders": self.known,
                     "held": list(self.held),
                     "hist": self.hist,
+                    "daily": self.daily,
                     "hist_mark": self.hist_mark,
                     "interference": {k: self.jam.get(k) for k in ("mark", "since", "peak", "episodes", "backfilled")},
                     "floodguard": {**{k: self.fg.get(k) for k in ("limit", "since", "last_step", "mark", "peak", "episodes", "learn_start", "ready", "learnt", "learnt_at", "welcomed", "relearn", "v61", "busy_site")},
@@ -2474,6 +2482,7 @@ class SpamGuard:
                     "last_way": dict(list(self.last_way.items())[-3000:]),
                     "last_full": dict(list(self.last_full.items())[-1500:]),
                     "sentences": dict(list(self.sentences.items())[-self.SENTENCES_MAX:]),
+                    "sentence_quiet": {k: round(t, 1) for k, t in list(self.sentence_quiet.items())[-500:]},
                     "route_log": dict(list(self.route_log.items())[-self.ROUTES_MAX:]),
                     "slow_sends": {k: {"who": v["who"], "ch": v["ch"], "snip": v["snip"], "last": v.get("last") or "",
                                        "words": v.get("words") or [], "hops": v.get("hops") or [],
@@ -2800,6 +2809,7 @@ class SpamGuard:
             h["ws"] = h.get("ws", 0) + 1
         if stopped:
             h["fc"] = h.get("fc", 0) + 1
+            self._day_bump(ts, "fc")
             h["fs"] = round(h.get("fs", 0) + ms)
             why = {self.rule_ids.get(f"flood:{k}"): n for k, n in (("limit", "fcl"), ("unscoped", "fcu"), ("advert", "fca"))}.get(int(m.group(1)))
             if why:   # hours counted before 6.19 only have the total
@@ -3456,6 +3466,8 @@ class SpamGuard:
                 h["g"] += 1
                 return
             h["c"] += 1
+            self._day_bump(e.ts, "c")
+            self._day_bump(e.ts, self._day_kind(b))
             if hn is not None:
                 hn[1] += 1
             if self.cfg["mode"] == "protect" and not self.cfg.get("paused"):
@@ -3492,6 +3504,79 @@ class SpamGuard:
             ss = h.setdefault("s", {}).setdefault(k, [])
             if who not in ss and len(ss) < 20:
                 ss.append(who)
+
+    DAILY_KEEP = 75
+
+    @staticmethod
+    def _day_key(ts: float) -> str:
+        return time.strftime("%Y-%m-%d", time.localtime(ts))
+
+    def _day_bump(self, ts: float, key: str, n: int = 1) -> None:
+        d = self.daily.setdefault(self._day_key(ts), {})
+        d[key] = d.get(key, 0) + n
+        if len(self.daily) > self.DAILY_KEEP + 10:
+            for k in sorted(self.daily)[:-self.DAILY_KEEP]:
+                del self.daily[k]
+
+    def _day_kind(self, b: Optional[dict]) -> str:
+        """Broad kind of a block for the summary: kc = text, name and link campaigns, kr = routes and repeaters,
+        anything else is counted in the total only."""
+        if not b:
+            return "ko"
+        if b.get("kind") in ("hop", "route", "stem", "suffix", "ptype") or b.get("source") in ("hop", "rotation", "type-auto"):
+            return "kr"
+        if b.get("kind") in ("text", "words", "repeat", "burst", "imposter", "links"):
+            return "kc"
+        return "ko"
+
+    def _day_seed(self) -> None:
+        """Days that the hourly history still holds but the daily counts don't (the first run after an update): totals only."""
+        have = set(self.daily)
+        add: dict[str, dict] = {}
+        for k, v in self.hist.items():
+            try:
+                day = self._day_key(int(k))
+            except (ValueError, OverflowError, OSError):
+                continue
+            if day in have:
+                continue
+            d = add.setdefault(day, {"seeded": 1})
+            d["c"] = d.get("c", 0) + int(v.get("c") or 0)
+            d["fc"] = d.get("fc", 0) + int(v.get("fc") or 0)
+        self.daily.update(add)
+
+    def held_summary(self, now: Optional[float] = None) -> dict:
+        """Counts for the last 7 days, this calendar month and the one before: held, released by you, share released,
+        blocks that ran out, and a broad split. Counts only, never a name or a message. Held by a block or a
+        FloodGuard rule; 'released' is a held message whose sender you let in."""
+        now = time.time() if now is None else now
+        lt = time.localtime(now)
+        this_m = time.strftime("%Y-%m", lt)
+        py, pm = (lt.tm_year, lt.tm_mon - 1) if lt.tm_mon > 1 else (lt.tm_year - 1, 12)
+        prev_m = f"{py:04d}-{pm:02d}"
+        week = {self._day_key(now - i * 86400) for i in range(7)}
+
+        def total(days):
+            t = {"held": 0, "released": 0, "expired": 0, "campaigns": 0, "flood": 0, "routes": 0, "days": 0, "seeded_days": 0}
+            for k, d in self.daily.items():
+                if k not in days:
+                    continue
+                t["days"] += 1
+                t["seeded_days"] += 1 if d.get("seeded") else 0
+                t["held"] += d.get("c", 0) + d.get("fc", 0)
+                t["flood"] += d.get("fc", 0)
+                t["campaigns"] += d.get("kc", 0)
+                t["routes"] += d.get("kr", 0)
+                t["released"] += d.get("rl", 0)
+                t["expired"] += d.get("bx", 0)
+            t["other"] = max(0, t["held"] - t["flood"] - t["campaigns"] - t["routes"])
+            t["share_released"] = round(100 * t["released"] / t["held"], 1) if t["held"] else None
+            return t
+        keys = list(self.daily)
+        return {"week": total(week), "month": total({k for k in keys if k.startswith(this_m)}),
+                "prev": total({k for k in keys if k.startswith(prev_m)}),
+                "labels": {"month": time.strftime("%B %Y", lt), "prev": time.strftime("%B %Y", time.struct_time((py, pm, 1, 0, 0, 0, 0, 1, -1)))},
+                "since": min(keys) if keys else None}
 
     def metrics(self) -> dict:
         now = time.time()
@@ -4377,6 +4462,7 @@ class SpamGuard:
             except ValueError:
                 pass
         elif v == "not_spam" and status in ("held", "stopped") and sender:
+            self._day_bump(time.time(), "rl")   # you let a held message's sender in
             fresh = sender not in self.allow_senders
             msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"))).get("message", "")
             if fresh:
@@ -4945,6 +5031,7 @@ class SpamGuard:
     SENTENCE_WORDS = 5
     SENTENCE_NAMES = 2
     SENTENCE_DAYS = 14
+    SENTENCE_IDLE = 2 * 86400   # a sentence hold that has caught nothing for this long is let go (see _expire_blocks)
     SENTENCES_MAX = 3000
 
     @staticmethod
@@ -6869,6 +6956,8 @@ class SpamGuard:
             for k, v in list(self.sentences.items()):
                 if sum(1 for t in v["names"].values() if t >= cut) >= self.SENTENCE_NAMES and len(v["text"]) >= c["min_rule_chars"]:
                     key = "sentence:" + hashlib.sha1(k.encode(), usedforsecurity=False).hexdigest()[:10]
+                    if self.sentence_quiet.get(key, 0) >= max(v["names"].values()):
+                        continue   # let go for catching nothing, and not sent again since
                     if want(key, "text", v["text"], f"Sent by {len(v['names'])} different unknown names in the last fortnight",
                          "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400,
                          full=v.get("last") or None):
@@ -6881,7 +6970,7 @@ class SpamGuard:
                         ws = [w for w in ws if w in sorted(ws, key=len, reverse=True)[:5]]
                         if len(ws) >= 4:
                             wkey = "sentencew:" + hashlib.sha1("|".join(ws).encode(), usedforsecurity=False).hexdigest()[:10]
-                            if want(wkey, "words", ws, f"Sent by {len(v['names'])} different unknown names in the last fortnight",
+                            if self.sentence_quiet.get(wkey, 0) < max(v["names"].values()) and want(wkey, "words", ws, f"Sent by {len(v['names'])} different unknown names in the last fortnight",
                                     "campaign", channel=v["ch"], from_ts=max(v["names"].values()), ttl=self.SENTENCE_DAYS * 86400):
                                 self.blocks[wkey]["gate"] = True
 
@@ -7648,10 +7737,23 @@ class SpamGuard:
             if b["expires"] <= now and b.get("source") in self.KEEP_SOURCES and b["kind"] in self.KEEP_KINDS \
                     and float(b.get("last_spam") or 0) >= now - self.KEEP_RECENT and now < float(b.get("created") or now) + self.KEEP_MAX:
                 b["expires"] = min(now + self.KEEP_STEP, float(b.get("created") or now) + self.KEEP_MAX)
+        # A sentence hold that has caught nothing for two days is let go instead of waiting out its fortnight. It comes
+        # back if the sentence is sent again. One that another rule already covers is not judged: it catches nothing
+        # only because the other rule gets there first.
+        covered = getattr(self, "_cover", None) or ()
+        for k, b in self.blocks.items():
+            if k.startswith(("sentence:", "sentencew:")) and b["expires"] > now and now - max(
+                    float(b.get("created") or now), float(b.get("last_hit") or 0)) > self.SENTENCE_IDLE \
+                    and not (b["kind"] == "text" and all((k, i) in covered for i in range(len(self.block_texts(b))))):
+                b["expires"] = now
+                self.sentence_quiet[k] = now
+        for k in [k for k, t in self.sentence_quiet.items() if t < now - self.SENTENCE_DAYS * 86400]:
+            del self.sentence_quiet[k]
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
                 self._important = True
+                self._day_bump(now, "bx")
                 self.note(f"Stopped blocking {self.describe(b)} (expired after {b.get('hits', 0)} catches)")
             changed = True
         for k in [k for k, v in self.suppressed.items() if v <= now]:
@@ -7680,6 +7782,40 @@ class SpamGuard:
         main, tail = self.build_rule_sets()
         return main + tail
 
+    def _text_cover(self) -> set:
+        """Text pieces whose rule would never be the one to match, because an earlier rule of equal or wider reach
+        already holds a piece of text that sits inside them (the same channels, the same action, no sender left out).
+        Such a rule is left out of openHop's list and comes back by itself if the rule covering it goes away.
+        Rules placed before the known-people rule can cover those after it, never the other way round."""
+        cap = max(2, self.rule_ceiling())
+        kept: list[tuple[str, frozenset, str]] = []
+        skip: set = set()
+        seen = 0
+        rank = {"manual": 0, "hop": 1, "campaign": 2, "dedupe": 3}
+        for gated in (False, True):
+            items = sorted(((k, b) for k, b in self.blocks.items() if b["kind"] == "text" and isinstance(b.get("value"), str)
+                            and bool(self.gated(b)) == gated), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1]["created"]))
+            pieces = []
+            for key, b in items:
+                chc = self._channel_hash_cond(b)
+                if chc is None:
+                    continue
+                reach = frozenset([chc["value"]] if chc["op"] == "equals" else chc["value"])
+                action = self.rule_action(b)
+                for i, t in enumerate(self.block_texts(b)):
+                    if not t:
+                        continue
+                    seen += 1
+                    # Only rules well inside the allowance are trusted to cover others: a rule the limit might drop must not.
+                    pieces.append((len(t), seen, key, i, t, reach, action, seen <= cap // 2 and (gated or not b.get("sender"))))
+            pieces.sort(key=lambda x: (x[0], x[1]))
+            for _, _, key, i, t, reach, action, covers in pieces:
+                if any(kt in t and reach <= kr and action == ka for kt, kr, ka in kept):
+                    skip.add((key, i))
+                elif covers:
+                    kept.append((t, reach, action))
+        return skip
+
     def build_rule_sets(self) -> tuple[list[dict], list[dict]]:
         """(rules placed before your own openHop rules, rules placed after them).
         Rotation blocks contain 'allow' exceptions, so they go after your rules and never
@@ -7692,7 +7828,9 @@ class SpamGuard:
                    for b in self.blocks.values())
         self._rules_tight = need > 0.7 * self.rule_ceiling()
         if self.cfg.get("paused"):
+            self._cover = set()
             return [], []
+        self._cover = self._text_cover()
         tail: list[dict] = []
         for key, b in sorted(self.blocks.items(), key=lambda kv: kv[1]["id"]):
             if b["kind"] != "suffix":
@@ -8018,11 +8156,12 @@ class SpamGuard:
                 if chc is None:
                     continue
                 words = b["value"] if b["kind"] == "words" else [b["value"]]
-                conds = [("", [chc]
+                covered = getattr(self, "_cover", None) or ()
+                conds = [] if (key, 0) in covered and b["kind"] == "text" else [("", [chc]
                           + [{"field": "channel_message_body", "op": "contains", "value": w} for w in words])]
                 if b["kind"] == "text":
                     conds += [(f"alt{i}", [chc, {"field": "channel_message_body", "op": "contains", "value": a}])
-                              for i, a in enumerate(self.block_texts(b)[1:])]
+                              for i, a in enumerate(self.block_texts(b)[1:]) if (key, i + 1) not in covered]
             else:  # lockdown
                 conds = [("", [])]
             for sub, extra in conds:
@@ -8211,11 +8350,15 @@ class SpamGuard:
                 cond["all"] += sender_conds(b["sender"], negate=True)
             if b["kind"] == "repeat":
                 cond["all"] += sender_conds(b.get("who"))
-            rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
-                          "if": cond, "then": {"action": self.rule_action(b)}})
+            covered = getattr(self, "_cover", None) or ()
+            if (key, 0) not in covered:
+                rules.append({"id": b["id"], "name": f"{RULE_PREFIX}{key}" + self._rule_label(b), "enabled": True,
+                              "if": cond, "then": {"action": self.rule_action(b)}})
             if b["kind"] in ("text", "repeat"):
                 # The other pieces of the same message: any one of them holds it.
                 for i, a in enumerate(self.block_texts(b)[1:]):
+                    if (key, i + 1) in covered:
+                        continue
                     alt = {"all": [x if x.get("field") != "channel_message_body" else
                                    {"field": "channel_message_body", "op": "contains", "value": a} for x in cond["all"]]}
                     rules.append({"id": self._size_id(b, f"alt{i}"), "name": f"{RULE_PREFIX}{key}:alt{i}" + self._rule_label(b),
@@ -10032,6 +10175,7 @@ class SpamGuard:
             return {
                 "version": VERSION, "floodguard_version": FLOODGUARD_VERSION,
                 "mode": c["mode"], "paused": bool(c.get("paused")), "sensitivity": c["sensitivity"],
+                "password_set": bool(c.get("listen_api_key")),
                 "level": {"value": c.get("level", 50), "name": level_name(c.get("level", 50)),
                           "names": LEVEL_NAMES, "own": self.own_level_values(), "mine": self.my_level_values(),
                           "preview": self.preview_summary(), "auto": self.auto_level_status()},
@@ -10092,6 +10236,7 @@ class SpamGuard:
                           "watching": len(self.on_watch),
                           },
                 "metrics": self._section("metrics", self.metrics),
+                "held_summary": self._section("held_summary", self.held_summary),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)

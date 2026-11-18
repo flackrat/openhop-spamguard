@@ -147,5 +147,19 @@ async def main():
           found+= [page+"/"+x for x in v]
         check(f"axe finds no WCAG 2.1 AA problems ({scheme}, {'phone' if mob else 'desktop'})", not found, found[:6])
         await ctx.close()
+    # the colour schemes (6.43.0): every page, on a phone, AA for all of them and the AAA text contrast for two
+    for pal in ("cb","aaa","glare","yellow"):
+        ctx=await b.new_context(viewport={"width":390,"height":844},is_mobile=True,has_touch=True); pg,_=await setup(ctx)
+        await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.evaluate(f"localStorage.setItem('sgadv','1');localStorage.setItem('sgtheme','{pal}')")
+        found=[]
+        for page in PAGES:
+          await pg.goto(f"http://127.0.0.1:18171/#/{page}"); await pg.reload(); await pg.wait_for_timeout(700)
+          await pg.add_script_tag(content=AXE)
+          v=await pg.evaluate("""async(t)=>(await axe.run(document,{runOnly:{type:'tag',values:t}})).violations.map(v=>v.id+':'+v.nodes.length)""",['wcag2a','wcag2aa','wcag21a','wcag21aa'])
+          if pal in ("aaa","yellow"):
+            v+=await pg.evaluate("""async()=>(await axe.run(document,{runOnly:{type:'rule',values:['color-contrast-enhanced']}})).violations.map(v=>v.id+':'+v.nodes.length)""")
+          found+=[page+"/"+x for x in v]
+        check(f"axe finds no problems in the {pal} colour scheme ({'AA and AAA text contrast' if pal in ('aaa','yellow') else 'AA'})", not found, found[:6])
+        await ctx.close()
     print(f"{sum(1 for r in R if r[1])}/{len(R)} passed")
 asyncio.run(main())
