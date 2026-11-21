@@ -4,7 +4,7 @@ What is tested, how much, and what is not. Figures are from the full suite run f
 
 | Measure | Result |
 |---|---|
-| Test programs in the suite | 140, all passing |
+| Test programs in the suite | 141, all passing |
 | Checks that report a count | About 2,750 (some programs report pass or fail only) |
 | Statement coverage | Above 80 percent, reported by the `tests` job on every pull request |
 | Spam stopped, simulated attack | Between 97.6 and 98.4 percent on each of 10 random seeds, now including hundreds of small campaigns before a flood |

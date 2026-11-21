@@ -21,6 +21,7 @@ The detail is below, newest first. In short:
 - **Lighter on a small Pi.** Rule changes that only tidy up are written together every couple of minutes; new holds still go at once.
 - **Unreadable bytes** from names SpamGuard doesn't know are held.
 - **Trust is more careful.** Marking a held message as not spam trusts the name on that channel only, and marking a trusted name's message as spam ends its trust. Trust everywhere is one tap on People. An answer that goes against what SpamGuard saw (for example, a message you marked as spam before) is asked about first.
+- **After updating, check your trusted names.** Names you trusted before this version wait on the Overview for you to confirm, with the reason. Names in your config file are kept, and people SpamGuard knows still get through meanwhile.
 - **People** shows your marks on each name and flags names you've marked both ways, how close a new name is to being known, and where a name is trusted. Warnings about a trusted name arriving from a new place come at most twice a day.
 - **Adverts** flooding in through one neighbour are suggested for a hold (never held by themselves).
 - **Colour choices fit a phone screen**, in a grid with every label whole.

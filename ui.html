@@ -171,6 +171,9 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--signal);color:var(--signal-ink)}
 /* Many choices (colour schemes): a grid that wraps on a narrow screen, so no word is cut or broken letter by letter */
+.trust-rev{list-style:none;padding:0;margin:8px 0}
+.trust-rev li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.trust-rev .acts{margin-left:auto;display:flex;gap:8px}
 .seg.seg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr))}
 .seg.seg-grid button{border-right:0;box-shadow:1px 0 0 var(--line),0 1px 0 var(--line);min-height:2.75rem;overflow-wrap:normal;word-break:normal;hyphens:none}
 .seg.mode button[data-v=pause][aria-pressed=true]{background:var(--amber);color:#fff}
@@ -589,6 +592,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <p class="explain" id="autoUpdNote"></p>
     <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
       <button type="button" class="quiet" id="autoUpdNo">Not now</button></p>
+  </section>
+  <section id="trustRevSec" hidden>
+    <h2>Check the names you trusted</h2>
+    <p class="explain">Trust is safer in this version. Before, one press of <b>Not spam</b> trusted a name on every channel for good, so a slip could let a spammer in.</p>
+    <p class="explain">Now it trusts a name on that channel only. Trust again the names below that you know. People SpamGuard knows still get through meanwhile.</p>
+    <ul class="trust-rev" id="trustRevList"></ul>
+    <p><button type="button" class="quiet" id="trustRevAll">I've checked: drop the rest</button></p>
   </section>
   <section id="advSec" hidden>
     <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
@@ -1014,6 +1024,12 @@ function renderHeldSummary(d){
     +(HSP!=="week"?` Covers ${t.days} day${t.days===1?"":"s"} of ${hs.labels[HSP]}.`:"");
 }
 $("#heldSumTabs").addEventListener("click",e=>{ const v=e.target.dataset.v; if(!v) return; HSP=v; store.set("sgSumPeriod",v); if(typeof S!=="undefined"&&S) renderHeldSummary(S); });
+function renderTrustReview(d){
+  const rows=d.trust_review||[], sec=$("#trustRevSec"); sec.hidden=!rows.length; if(!rows.length) return;
+  $("#trustRevList").innerHTML=rows.map(r=>`<li><span class="what">${esc(r.name)}</span> <span class="explain">${r.known?"known":"not known"}${r.msgs?`, ${fmtN(r.msgs)} messages`:""}${r.last?`, last heard ${ago(r.last)}`:""}${r.spam_marks?`, <b>you marked ${fmtN(r.spam_marks)} of their messages as spam</b>`:""}</span>
+    <span class="acts">${btn("Trust again","/trust_review",{name:r.name,keep:true},"quiet")}${btn("Don't trust","/trust_review",{name:r.name,keep:false},"quiet")}</span></li>`).join("");
+}
+$("#trustRevAll").addEventListener("click",()=>{ if(confirm("Stop trusting every name still on this list?")) post("/trust_review",{all:true}); });
 function renderTop(d){
   const sm=d.summary, n=(d.metrics&&d.metrics.d1)?d.metrics.d1.c:Math.max(0,sm.caught_24h), plural=n===1?"":"s";
   let h1, sub;
@@ -1814,7 +1830,7 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);

@@ -1911,6 +1911,7 @@ class SpamGuard:
         self.trust_on: dict[str, dict] = {}      # name -> {channel: when}: trusted on those channels only
         self.mark_counts: dict[str, list] = {}   # name -> [spam marks, genuine marks, last mark]
         self.spam_texts: dict[str, float] = {}   # fingerprints of messages you marked as spam
+        self.trust_review: dict[str, float] = {}  # names trusted before 6.44, waiting for you to confirm
         self._trust_warned: dict[str, float] = {}
         self.allow_texts: set[str] = set()
         self.engine_on_seen = False   # openHop's rule engine has been on while SpamGuard had rules in it
@@ -2018,6 +2019,11 @@ class SpamGuard:
         self.verdict: collections.OrderedDict[str, list] = collections.OrderedDict()
         self.cfg: dict[str, Any] = {}
         self._load_state()
+        if getattr(self, "_trust_moved", 0):
+            n = self._trust_moved
+            self.note(f"Trust works differently from this version: {n} name{'s' if n != 1 else ''} you trusted before "
+                      f"{'are' if n != 1 else 'is'} waiting for you to confirm on the Overview")
+            self._important = True
         if getattr(self, "_restored_from_backup", False):
             self.note("The saved state was damaged (perhaps by a power cut), so SpamGuard carried on from its last good copy")
         self.rebuild_cfg()
@@ -2228,6 +2234,17 @@ class SpamGuard:
         self.mark_counts = {str(n): [int(v[0]), int(v[1]), float(v[2])] for n, v in (st.get("mark_counts") or {}).items()
                             if isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) for x in v)}
         self.spam_texts = {str(k): float(v) for k, v in (st.get("spam_texts") or {}).items() if isinstance(v, (int, float))}
+        self.trust_review = {str(k): float(v) for k, v in (st.get("trust_review") or {}).items() if isinstance(v, (int, float))}
+        if not st.get("trust_v") and self.allow_senders:
+            # Before 6.44 one "Not spam" tap trusted a name everywhere for good, so a spammer could be trusted by a
+            # slip. Names trusted from the page wait for you to confirm them (names in the config file are kept).
+            # Regulars SpamGuard knows still get through as known people meanwhile.
+            keep = set((getattr(self, "file_cfg", None) or {}).get("allow_senders") or [])
+            moved = sorted(self.allow_senders - keep)
+            if moved:
+                self.trust_review = {n: now for n in moved}
+                self.allow_senders -= set(moved)
+                self._trust_moved = len(moved)
         self.allow_texts = set(st.get("allow_texts", []))
         self.engine_on_seen = bool(st.get("engine_on_seen"))
         self.extra_channels = dict(st.get("extra_channels", {}))
@@ -2445,6 +2462,8 @@ class SpamGuard:
                     "allow_hops": sorted(self.allow_hops),
                     "allow_senders": sorted(self.allow_senders),
                     "trust_on": self.trust_on,
+                    "trust_v": 2,
+                    "trust_review": self.trust_review,
                     "mark_counts": dict(list(self.mark_counts.items())[-2000:]),
                     "spam_texts": dict(list(self.spam_texts.items())[-3000:]),
                     "allow_texts": sorted(self.allow_texts),
@@ -2529,6 +2548,7 @@ class SpamGuard:
         self.trust_on.clear()
         self.mark_counts.clear()
         self.spam_texts.clear()
+        self.trust_review.clear()
         self.allow_texts.clear()
         self.on_watch.clear()
         self.sentences.clear()
@@ -5402,6 +5422,16 @@ class SpamGuard:
         return {"rows": out, "total": total, "counts": counts, "show": show, "sort": sort, "offset": offset, "letters": letters[:40],
                 "limit": limit, "keep_learning_days": self.LEARNING_KEEP_DAYS, "keep_known_days": int(self.cfg.get("known_days", 30)),
                 "quiet_days": self.QUIET_DAYS}
+
+    def _trust_review_rows(self) -> list:
+        """Names trusted before 6.44 waiting for you, with what you'd want to know before trusting them again."""
+        out = []
+        for n in sorted(self.trust_review)[:50]:
+            mc = self.mark_counts.get(n) or [0, 0, 0.0]
+            k = self.known.get(n)
+            out.append({"name": n, "known": self.is_known(n), "msgs": int(k[2]) if k else 0,
+                        "last": float(k[1]) if k and k[1] else None, "spam_marks": mc[0]})
+        return out
 
     def _marks_of(self, name: str) -> Optional[dict]:
         """Your marks on this name's messages, and whether they disagree (some spam, some not)."""
@@ -10373,6 +10403,7 @@ class SpamGuard:
                           },
                 "metrics": self._section("metrics", self.metrics),
                 "held_summary": self._section("held_summary", self.held_summary),
+                "trust_review": self._trust_review_rows(),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
@@ -10954,6 +10985,22 @@ class SpamGuard:
                                or (b["kind"] == "burst" and b.get("value") == who))]:
                     self.blocks.pop(k)
                 self.offences.pop(who, None)
+            elif op == "trust_review":
+                # Confirm or drop a name that was trusted before 6.44 ("all" with keep false clears the list).
+                if body.get("all"):
+                    n = len(self.trust_review)
+                    self.trust_review.clear()
+                    msg = f"Done: {n} name{'s' if n != 1 else ''} no longer trusted"
+                else:
+                    name = str(body.get("name") or "")
+                    if name not in self.trust_review:
+                        raise ValueError("That name isn't waiting to be confirmed")
+                    self.trust_review.pop(name)
+                    if body.get("keep"):
+                        self.allow_senders.add(name)
+                        msg = f"'{name}' is trusted everywhere again"
+                    else:
+                        msg = f"'{name}' is no longer trusted"
             elif op == "unallow_sender":
                 self.allow_senders.discard(str(body.get("sender", "")))
                 self.trust_on.pop(str(body.get("sender", "")), None)
@@ -11155,7 +11202,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
