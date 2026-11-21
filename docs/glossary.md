@@ -16,6 +16,7 @@ MeshCore radios pass messages on for each other: a message sent on a **channel**
 | **Unscoped** | A flood packet sent without a region. `flood.max.unscoped` is MeshCore's limit on how many hops those may travel; FloodGuard keeps the same kind of limit. |
 | **Made-up name / rotating identity** | A spammer using a new random name (such as UD6DWREK) for each message, or a repeater that keeps changing its ID, so it can't simply be blocked by name. |
 | **Known people** | Names SpamGuard has seen sending genuine messages. They are let through blocks meant for spam. |
+| **Trusted** | A name let through SpamGuard's holds. **Trust** on People covers every channel; **Not spam** on a held message covers that channel only. A spam answer on a trusted name ends it. |
 | **Held** | On the People page: a name SpamGuard keeps having to stop for spam. It is never let through blocks. Trust the name if it got the wrong person. |
 | **On watch** | A known name you, or SpamGuard, have doubts about. It is treated like a stranger for a while and comes off watch by itself after normal messages. Nothing is held just for being on watch. |
 | **Spoofed (copied name)** | Someone sending under a real person's name. Answering **Spoofed** deals with the copy without blocking the real person. |
