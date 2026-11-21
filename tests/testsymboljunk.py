@@ -1,7 +1,7 @@
 # Keyboard-symbol junk on Public: a standing block (on by default) that holds Public messages containing
 # { } ` or \ unless the sender is known. It works on the first message from a new name. Checked against
 # openHop's own rule engine. All names and messages are made up.
-import sys, logging
+import sys, logging, json
 from harness import *
 logging.disable(logging.WARNING)
 ok=fail=0
@@ -77,6 +77,14 @@ g.action("unblock",{"key":"junk:symbols"}); g.decide(); sync(g)
 check("junk:symbols" not in g.blocks and not junk_rules(m),"removed by hand stays removed")
 g.suppressed.pop("junk:symbols",None); g.decide(); sync(g)
 check("junk:symbols" in g.blocks,"comes back once the day is up")
+
+# 5b. Raw bytes: openHop marks unreadable bytes with U+FFFD, so a message of raw bytes is held from a new name,
+# while a known name with one stray mark (a cut-off emoji) is not.
+raw="\ufffd(u\t\ufffd\ufffd\x16 \ufffdx"
+check(any(r for r in junk_rules(m) if "\ufffd" in json.dumps(r, ensure_ascii=False)),"a rule for the unreadable-bytes mark")
+check(act(m,raw,sender="?")=="drop","raw bytes from a nameless sender: held")
+check(act(m,raw,sender="Q7RT2KX9")=="drop","raw bytes from a new name: held")
+check(act(m,"Lovely sunset tonight \ufffd",sender="Ann Hill")=="allow","a known name with one stray mark: passed on")
 
 # 6. Switched off: block and rules go
 g.apply_settings({"symbol_junk":False}); g.decide(); sync(g)

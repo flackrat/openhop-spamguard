@@ -199,8 +199,8 @@ _W = ["quick", "private", "guaranteed", "weekly", "crypto", "loan", "photos", "m
 def a17(): send("17 many different campaigns (rule budget)", rnd(), " ".join(random.choice(_W) for _ in range(8)) + " site" + rnd(4).lower() + ".example",
                 [hexhop(), "9E01"] + LOCAL[:1])
 
-# attack 17 (hundreds of different campaigns) is opt-in: it shows a known gap, see claude/replay-experiments notes
-_SKIP=[x for x in os.environ.get('SKIP','17').split(',') if x]
+# SKIP=17 (comma-separated attack numbers) leaves attacks out of a run
+_SKIP=[x for x in os.environ.get('SKIP','').split(',') if x]
 ATTACKS[:]=[a for a in ATTACKS if a[0].split()[0] not in _SKIP]
 # ---------- run ----------
 TICK = 10
@@ -261,6 +261,7 @@ for k, s in GENUINE.items():
     print(f"{k:48} sent {s['sent']:4}  wrongly stopped {s['dropped']:3} ({100 * s['dropped'] / max(s['sent'], 1):.1f}%)")
     for ex in s["examples"][:3]: print(f"{'':52}{ex}")
 print(f"\nMost SpamGuard rules in openHop at once: {rule_peak} (limit {g.cfg['max_total_rules']})")
+print(f"Rule writes to openHop: {m.posts}")
 print(f"SpamGuard check time per poll: median {statistics.median(poll_times) * 1000:.0f} ms, 95th percentile "
       f"{sorted(poll_times)[int(len(poll_times) * .95)] * 1000:.0f} ms, worst {max(poll_times) * 1000:.0f} ms over {len(poll_times)} polls")
 print(f"Memory (peak resident): {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.0f} MB; wall time {wall:.0f} s")

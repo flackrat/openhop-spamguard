@@ -25,7 +25,7 @@ g.refresh_openhop_info=lambda *a,**k: None
 now=time.time()
 # an hour of airtime from direct packets only: nothing flooded, so no flood airtime is recorded for it
 g.ingest([pkt(now-60-i, 2) for i in range(5)])
-h=g.hist[str(int(now//3600*3600))]
+h=g.hist[str(int((now-60)//3600*3600))]   # the packets' own hour (they are a minute old)
 check(h.get("ar",0)>0 and "af" not in h, "setup: the hour has airtime and no flood airtime")
 try:
     st=g.status(); built=True

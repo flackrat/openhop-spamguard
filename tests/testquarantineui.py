@@ -43,11 +43,11 @@ async def main():
         check("Trail Runner 7" in await pg.text_content("#qList"), "and is found under Answered")
         await pg.click("#qList [data-qi='0']"); await pg.wait_for_timeout(400)
         await pg.click("#qDetail button[data-p='/verdict']"); await pg.wait_for_timeout(1500)
-        check("Trail Runner 7" not in g.allow_senders, "taking the answer back undoes the trust")
+        check("Trail Runner 7" not in g.allow_senders and "Trail Runner 7" not in g.trust_on, "taking the answer back undoes the trust")
         await pg.click("#qList [data-qi='0']") if await pg.query_selector("#qList [data-qi='0']") else None
         await pg.click("[data-q=held]"); await pg.wait_for_timeout(1000); await pg.click("#qList [data-qi='0']"); await pg.wait_for_timeout(400)
         await pg.click("#qDetail button.go"); await pg.wait_for_timeout(1500)
-        check("Trail Runner 7" in g.allow_senders, "and the sender is trusted from then on")
+        check(g.trusted_here("Trail Runner 7","#trailchat") and "Trail Runner 7" not in g.allow_senders, "and the sender is trusted on that channel from then on (not everywhere)")
         await pg.click("[data-q=all]"); await pg.wait_for_timeout(1200)
         t=await pg.text_content("#qList")
         check("×5" in t, "copies of one message are grouped")
