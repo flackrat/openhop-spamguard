@@ -33,8 +33,8 @@ SpamGuard is back or they are removed (`spamguard.py --remove-rules`, or uninsta
 ## The parts
 
 1. **Collector.** Reads new packets from openHop's live feed, with a timed check as a backup, and decrypts
-   the channel messages on the channels it has been given, using the channel keys openHop already holds. It also counts flooded requests, anonymous requests and
-   group data by the kind of packet, the first repeater and the time, without opening them. When the optional
+   the channel messages on the channels it has been given, using the channel keys openHop already holds. It also counts flooded requests, anonymous requests,
+   group data and adverts by the kind of packet, the first repeater and the time, without opening them. When the optional
    signed-message setting is on, it also reads the trailer at the end of a decrypted channel message (as bytes), checks the
    Ed25519 signature against a key learnt from an advert, and keeps only counts and short key ids.
    It also counts channel packets whose check value fails for a channel it holds the key for (copies changed by radio
@@ -44,7 +44,8 @@ SpamGuard is back or they are removed (`spamguard.py --remove-rules`, or uninsta
    (it applies one itself only if the operator turned that on). It keeps short-lived
    records (recent messages, names it has learnt are genuine, routes) in memory and in the state file.
 3. **Rules.** Turns each decision into an openHop rule with a lifetime, writes the full set to openHop's
-   policy API, and checks openHop really applied them. Every rule SpamGuard owns is named `spamguard:...`
+   policy API, and checks openHop really applied them. New holds are written at once; changes that only tidy up
+   (holds ending, people becoming known) are gathered and written together every couple of minutes. Every rule SpamGuard owns is named `spamguard:...`
    so it never touches the operator's own rules.
 4. **FloodGuard.** Measures how busy the radio is from the packets openHop reports, learns what's normal for
    the site, and adds hop limits when the radio is flooded. It also watches the noise floor for interference.

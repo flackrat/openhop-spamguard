@@ -142,7 +142,9 @@ curl -s http://127.0.0.1:8091/health
 
 | Symptom | Check / fix |
 |---|---|
-| A regular's messages are held by a repeater block | They aren't known yet. In **Messages**, open their held message and press **Let it through**: that trusts them and lets them through at once. |
+| A regular's messages are held by a repeater block | They aren't known yet. In **Messages**, open their held message and press **Let it through**: that trusts them on that channel and lets them through at once. |
+| A name you trusted is held on another channel | Trust from a held message covers its channel only. Open **People** and press **Trust everywhere**. |
+| After updating, the Overview lists names to check | From 6.44, names trusted before wait for you: **Trust again** the ones you know. People SpamGuard knows still get through meanwhile. |
 | A newcomer's link was held | Links from unknown names are held during spam campaigns. Press **Let it through** on it in **Messages**, or set Advanced > Known people > Hold links to Never. |
 | A newcomer's message was held on Public as keyboard-symbol junk | Messages or names with symbols people rarely use in chat are held from names SpamGuard doesn't know, or doesn't know well yet. Press **Let it through** on it in **Messages**, or switch off Advanced > Known people > Hold keyboard-symbol junk. |
 | Lockdown is holding too many people | Press **End lockdown**. The page shows how many names SpamGuard knows; with only a few, most people are held. |
