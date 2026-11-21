@@ -170,6 +170,9 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .seg button{flex:1;border:0;border-right:1px solid var(--line);border-radius:0;background:transparent;padding:8px 6px;font-weight:550}
 .seg button:last-child{border-right:0}
 .seg button[aria-pressed=true]{background:var(--signal);color:var(--signal-ink)}
+/* Many choices (colour schemes): a grid that wraps on a narrow screen, so no word is cut or broken letter by letter */
+.seg.seg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr))}
+.seg.seg-grid button{border-right:0;box-shadow:1px 0 0 var(--line),0 1px 0 var(--line);min-height:2.75rem;overflow-wrap:normal;word-break:normal;hyphens:none}
 .seg.mode button[data-v=pause][aria-pressed=true]{background:var(--amber);color:#fff}
 .explain{font-size:0.875rem;color:var(--soft);margin:0}
 .explain strong{color:var(--ink);font-weight:600}
@@ -913,7 +916,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="opt"><h3 id="optTextH">Text size</h3>
     <div class="seg" role="group" aria-labelledby="optTextH" data-opt="text"><button data-v="normal">Normal</button><button data-v="large">Large</button><button data-v="larger">Larger</button></div></div>
   <div class="opt"><h3 id="optThemeH">Colours</h3>
-    <div class="seg" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button></div>
+    <div class="seg seg-grid" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button></div>
     <p class="explain">The last four are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black. Colour is never the only signal.</p></div>
   <div class="opt"><h3 id="optContrastH">Contrast</h3>
     <p class="explain">High contrast darkens grey text and borders, outlines each panel, underlines every link and thickens the keyboard focus outline.</p>
@@ -985,6 +988,7 @@ async function post(path, body){
   const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:JSON.stringify(body||{})});
   if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return post(path,body); }
   let d={}; try{ d=await r.json(); }catch(e){}
+  if(d.confirm){ if(confirm(d.confirm)) return post(path, Object.assign({}, body, {confirm:true})); toast("Nothing changed"); return; }
   if(d.error){ toast(d.error,true); } else { toast(d.message || "Saved"); }
   await Promise.all([load(true), (typeof PAGE!=="undefined"&&PAGE==="messages")?qLoad():null]);
 }
@@ -1373,15 +1377,19 @@ function pplRender(){
   const ix=$("#pplIndex"); ix.hidden=!(d.letters&&d.letters.length>1);
   if(!ix.hidden) ix.innerHTML=d.letters.map(([l,o])=>`<button type="button" class="quiet" data-pj="${o}" aria-label="Names starting ${esc(l)}">${esc(l)}</button>`).join("");
   const code=h=>`<code>${esc(h)}</code>`;
-  $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=PPL_TAG[p.standing]||PPL_TAG.learning, w=p.watch;
+  $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=p.trusted_on&&p.trusted_on.length&&!p.trusted?["Trusted on "+p.trusted_on.join(", "),"ok"]:(PPL_TAG[p.standing]||PPL_TAG.learning), w=p.watch;
     const line=[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
     return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.quiet?"<span class='tag plain'>not heard lately</span>":""}</span>
       <span class="why">${line}</span>
       ${p.route&&p.route.level!=="grey"&&p.route.level!=="green"?`<span class="ppl-warn" role="note"><b>${p.route.level==="red"?"Probably a copy":"Check the route"}.</b> ${esc(p.route.level==="red"?p.route.signs.join(". "):p.route.why)}.</span>`:""}
       ${!p.route&&p.unusual?`<span class="ppl-warn">Last heard via ${code(p.last_route)}, not a way in they normally use. It may be someone copying the name.</span>`:""}
+      ${p.marks&&p.marks.mixed?`<span class="ppl-warn" role="note">You've marked ${fmtN(p.marks.spam)} of their messages as spam and ${fmtN(p.marks.genuine)} as not spam. Worth a check under Their messages.</span>`:""}
       ${w?`<span class="ppl-bar" role="img" aria-label="${w.days} of ${w.need} normal days"><i style="width:${Math.round(100*w.days/w.need)}%"></i></span><span class="why">${w.days} of ${w.need} normal days${w.ok<w.min_msgs?`, ${w.ok} of ${w.min_msgs} ordinary messages`:""}</span>`:""}</summary>
       <div class="ppl-body"><p class="why">${esc(p.why)}.</p>
       <dl class="q-dl">${p.ways.length?`<dt>Heard via</dt><dd>${p.ways.map(([h,n])=>`${code(h)} <span class="explain">${fmtN(n)}</span>`).join(" &nbsp; ")}</dd>`:""}
+        ${p.trusted_on&&p.trusted_on.length?`<dt>Trusted on</dt><dd>${p.trusted_on.map(esc).join(", ")} <span class="explain">from your not-spam mark; elsewhere they're treated like anyone else</span></dd>`:""}
+        ${p.marks?`<dt>Your marks</dt><dd>${fmtN(p.marks.spam)} spam, ${fmtN(p.marks.genuine)} not spam <span class="explain">last ${ago(p.marks.last)}</span></dd>`:""}
+        ${p.progress?`<dt>Becoming known</dt><dd>${fmtN(Math.min(p.progress.msgs,p.progress.need_msgs))} of ${fmtN(p.progress.need_msgs)} messages${p.progress.need_minutes?`, ${p.progress.minutes>=p.progress.need_minutes?"heard long enough":`${fmtN(p.progress.minutes)} of ${fmtN(p.progress.need_minutes)} minutes`}`:""}</dd>`:""}
         ${p.last_route?`<dt>Last route</dt><dd>${code(p.last_route)} <span class="explain">${ago(p.last_route_at)}</span></dd>`:""}
         ${p.spam?`<dt>Held</dt><dd>${fmtN(p.spam.copies)} of ${fmtN(p.spam.msgs)} messages in the last 7 days</dd>
           ${p.spam.holds.length?`<dt>Holding now</dt><dd>${p.spam.holds.map(esc).join("<br>")}${p.spam.until?` <span class="explain">${left(Math.max(0,p.spam.until-Date.now()/1000))}</span>`:""}</dd>`:""}
@@ -1390,7 +1398,7 @@ function pplRender(){
         ${p.route?`<dt>Route check</dt><dd><span class="tag ${({green:"ok",amber:"sus",red:"stop",grey:"plain"})[p.route.level]}">${({green:"Looks real",amber:"Worth a look",red:"Probably a copy",grey:"Can't tell yet"})[p.route.level]}</span> <span class="explain">${esc(p.route.why)}</span></dd>`:""}
         ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
         ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
-      <div class="acts" style="justify-content:flex-start">${p.trusted?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):btn("Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
+      <div class="acts" style="justify-content:flex-start">${p.trusted||(p.trusted_on&&p.trusted_on.length)?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):""}${p.trusted?"":btn(p.trusted_on&&p.trusted_on.length?"Trust everywhere":"Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
     ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":"Nobody here."}</p></li>`;
   const leftN=d.total-d.offset-PPL.rows.length;
   $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
@@ -1711,9 +1719,15 @@ $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
   if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
   sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
-  await Promise.all(sel.map(r=>fetch("/verdict",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
-    body:JSON.stringify({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status})})));
-  toast(sel.length===1?"Answer saved":`Answers saved for ${sel.length} messages`); Q.ticks={}; Q.sel=-1; load(true); qLoad(); });
+  const send=(r,extra)=>fetch("/verdict",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
+    body:JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},extra||{}))}).then(x=>x.json()).catch(()=>({}));
+  const res=await Promise.all(sel.map(r=>send(r)));
+  // Answers that go against strong evidence come back as a question: one prompt for all of them.
+  const ask=sel.filter((r,i)=>res[i]&&res[i].confirm);
+  let held=0;
+  if(ask.length){ if(confirm(ask.length===1?res[sel.indexOf(ask[0])].confirm:`${ask.length} of these answers go against what SpamGuard saw (for example: ${res[sel.indexOf(ask[0])].confirm}) Save them anyway?`)) await Promise.all(ask.map(r=>send(r,{confirm:true}))); else held=ask.length; }
+  const n=sel.length-held;
+  toast(held?`${n} saved, ${held} left unanswered`:(n===1?"Answer saved":`Answers saved for ${n} messages`)); Q.ticks={}; Q.sel=-1; load(true); qLoad(); });
 setInterval(()=>{ if(PAGE==="messages"&&!document.hidden&&Date.now()-Q.t>30000) qLoad(); },5000);
 
 function busy(){ const a=document.activeElement; return a && ["INPUT","SELECT","TEXTAREA"].includes(a.tagName) && a.id!=="advToggle"; }
