@@ -7,16 +7,16 @@ REPO=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI=open(os.path.join(REPO,'ui.html')).read()
 LF=os.environ.get('LEAFLET_DIST', os.path.join(REPO,'tests','.leaflet','node_modules','leaflet','dist'))+'/'
 now=time.time()
-ents=[{"key":"C4"*4,"name":"Ridge Relay","lat":51.50,"lon":-0.90,"code":"C4","d1":30,"d7":40,"s7":2,"s1":2,"exact":40,"codes":["C4"],"last":now,
+ents=[{"key":"C4"*4,"name":"Ridge Relay","lat":39.50,"lon":-95.90,"code":"C4","d1":30,"d7":40,"s7":2,"s1":2,"exact":40,"codes":["C4"],"last":now,
        "blocked":False,"typical_before":0,"kind":"id","shared":{"others":0,"unlocated":0}},
-      {"key":"9D"*4,"name":"Canal Node","lat":51.30,"lon":-1.10,"code":"9D","d1":4,"d7":6,"s7":6,"s1":4,"exact":6,"codes":["9D"],"last":now,
+      {"key":"9D"*4,"name":"Canal Node","lat":39.30,"lon":-96.10,"code":"9D","d1":4,"d7":6,"s7":6,"s1":4,"exact":6,"codes":["9D"],"last":now,
        "blocked":True,"typical_before":0,"kind":"id","shared":{"others":0,"unlocated":0}}]
-snd=[{"key":"sender:abc","names":["Fox One","Fox Two"],"lat":51.51,"lon":-0.85,"radius_km":6.5,"d7":17,"d1":5,"spread":False,
-      "repeaters":[{"name":"Ridge Relay","code":"C4","n":8,"lat":51.50,"lon":-0.90},{"name":"Mill Hill Rpt","code":"E1","n":5,"lat":51.56,"lon":-0.82},
-                   {"name":"Canal Node","code":"7B","n":4,"lat":51.46,"lon":-0.80}]}]
+snd=[{"key":"sender:abc","names":["Fox One","Fox Two"],"lat":39.51,"lon":-95.85,"radius_km":6.5,"d7":17,"d1":5,"spread":False,
+      "repeaters":[{"name":"Ridge Relay","code":"C4","n":8,"lat":39.50,"lon":-95.90},{"name":"Mill Hill Rpt","code":"E1","n":5,"lat":39.56,"lon":-95.82},
+                   {"name":"Canal Node","code":"7B","n":4,"lat":39.46,"lon":-95.80}]}]
 st={"version":"6.10.0","mode":"protect","metrics":{"d1":{},"d7":{"m":1,"spam":46},"hourly":[],"daily":[],"by_hour":[],
  "sources":[{"hop":"C4","d7":40,"d1":30,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
- "entries":ents,"unplaced":{"d1":0,"d7":3},"senders":snd,"senders_unplaced":1,"me":{"name":"Me","lat":51.46,"lon":-0.97},
+ "entries":ents,"unplaced":{"d1":0,"d7":3},"senders":snd,"senders_unplaced":1,"me":{"name":"Me","lat":39.46,"lon":-95.97},
  "radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
 asked=[]
 async def main():
@@ -56,7 +56,7 @@ async def main():
     hashv=await pg.evaluate("location.hash"); filt=await pg.text_content("#qFilters"); first=await pg.text_content("#qList")
     await pg.uncheck("#mapSenders") if False else None
     checks=[
-      ("One repeat spammer" in key and "Your repeater" in key and "Best guess" in key, "the map key is always shown"),
+      ("One repeat spammer" in key and "Your repeater" in key and "Rough guess" in key, "the map key is always shown"),
       ("Fox One, Fox Two" in ps and "Heard first by 3 repeaters" in ps and "6.5 km" in ps, "the purple area says it is one sender heard by three repeaters: "+ps[:120]),
       ("17 messages in 7 days" in ps and "not only the copies held" in ps, "and that every message they sent counts"),
       (lines==3, f"lines join the area to each of the three repeaters: {lines}"),

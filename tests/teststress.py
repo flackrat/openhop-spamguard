@@ -3,9 +3,9 @@ from harness import *
 logging.disable(logging.WARNING)
 random.seed(11)
 km=sg.SpamGuard._km
-ME=(51.455,-0.971)
+ME=(39.455,-95.787)   # a made-up spot in the USA
 def key(): return "".join(random.choice("0123456789ABCDEF") for _ in range(64))
-reps=[{"key":key(),"name":f"R{i}","lat":random.uniform(50.2,55.5),"lon":random.uniform(-5.5,1.8),"seen":time.time()} for i in range(5300)]
+reps=[{"key":key(),"name":f"R{i}","lat":random.uniform(38.2,43.5),"lon":random.uniform(-100.5,-93.2),"seen":time.time()} for i in range(5300)]
 cell=collections.defaultdict(list)
 for i,r in enumerate(reps): cell[(int(r["lat"]*3),int(r["lon"]*2))].append(i)
 def nbrs(i):
