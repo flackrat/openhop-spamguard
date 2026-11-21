@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.43.0"
+VERSION = "6.44.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -105,6 +105,9 @@ JUNK_CHARS = ("{", "}", "`", "\\", "\u200b", "\u200c", "\ufeff", "\u180e")
 # More invisible characters (soft hyphen, combining grapheme joiner, invisible maths operators, Hangul fillers),
 # added 16 Nov 2026: none in any evidence log (5,623 distinct messages to that date).
 JUNK_CHARS = JUNK_CHARS + ("\u00ad", "\u034f", "\u2061", "\u2062", "\u2063", "\u2064", "\u3164", "\uffa0")
+# The mark openHop puts where bytes aren't readable text: messages of raw bytes are full of it. In two weeks of real
+# traffic (about 8,000 messages, 21 Nov 2026) no unknown name sent one in an ordinary message.
+JUNK_CHARS = JUNK_CHARS + ("\ufffd",)
 # Cyrillic and Greek letters that look like Latin ones. None in any evidence log to 16 Nov 2026. Held on Public from
 # names SpamGuard doesn't know, with their own setting (someone writing in those alphabets is held too).
 # How some companion apps mark a message they have packed into letters and symbols that only the same app can
@@ -1539,7 +1542,11 @@ HEX_HOP = re.compile(r"[0-9A-F]{2}|[0-9A-F]{4}|[0-9A-F]{6}")
 # Blocks that hold people back by where their message came from, rather than by what it says.
 # Packets that aren't channel text but can still be flooded into the mesh: requests, group data and anonymous
 # requests. Only how many arrive, through which first repeater and how they travel is looked at: they are encrypted.
-TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests"}
+TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests", 4: "adverts"}
+# Adverts are only ever suggested, never held by themselves: holding a neighbour's adverts can cut this repeater off,
+# and one main neighbour normally carries most of them, so they count only against that neighbour's own recent rate.
+TYPE_SUGGEST_ONLY = {4}
+ADVERT_SURGE_TIMES = 5   # this many times a neighbour's usual adverts per ten minutes
 TYPE_SURGE_SECONDS = 600
 TYPE_SURGE_LONG_SECONDS = 7200   # a slow, steady flood is counted over this longer time
 TYPE_GROUP_MAX = 4   # a flood spread over up to this many first repeaters is still caught
@@ -1901,6 +1908,11 @@ class SpamGuard:
         self.released: dict[str, float] = {}
         self.allow_hops: set[str] = set()
         self.allow_senders: set[str] = set()
+        self.trust_on: dict[str, dict] = {}      # name -> {channel: when}: trusted on those channels only
+        self.mark_counts: dict[str, list] = {}   # name -> [spam marks, genuine marks, last mark]
+        self.spam_texts: dict[str, float] = {}   # fingerprints of messages you marked as spam
+        self.trust_review: dict[str, float] = {}  # names trusted before 6.44, waiting for you to confirm
+        self._trust_warned: dict[str, float] = {}
         self.allow_texts: set[str] = set()
         self.engine_on_seen = False   # openHop's rule engine has been on while SpamGuard had rules in it
         self.engine_off = False       # ...and is now off: you switched it off
@@ -2007,6 +2019,11 @@ class SpamGuard:
         self.verdict: collections.OrderedDict[str, list] = collections.OrderedDict()
         self.cfg: dict[str, Any] = {}
         self._load_state()
+        if getattr(self, "_trust_moved", 0):
+            n = self._trust_moved
+            self.note(f"Trust works differently from this version: {n} name{'s' if n != 1 else ''} you trusted before "
+                      f"{'are' if n != 1 else 'is'} waiting for you to confirm on the Overview")
+            self._important = True
         if getattr(self, "_restored_from_backup", False):
             self.note("The saved state was damaged (perhaps by a power cut), so SpamGuard carried on from its last good copy")
         self.rebuild_cfg()
@@ -2212,6 +2229,22 @@ class SpamGuard:
         self.released = {k: v for k, v in st.get("released", {}).items() if v > now - 86400}
         self.allow_hops = set(st.get("allow_hops", []))
         self.allow_senders = set(st.get("allow_senders", []))
+        self.trust_on = {str(n): {str(c): float(t) for c, t in v.items() if isinstance(t, (int, float))}
+                         for n, v in (st.get("trust_on") or {}).items() if isinstance(v, dict) and v}
+        self.mark_counts = {str(n): [int(v[0]), int(v[1]), float(v[2])] for n, v in (st.get("mark_counts") or {}).items()
+                            if isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) for x in v)}
+        self.spam_texts = {str(k): float(v) for k, v in (st.get("spam_texts") or {}).items() if isinstance(v, (int, float))}
+        self.trust_review = {str(k): float(v) for k, v in (st.get("trust_review") or {}).items() if isinstance(v, (int, float))}
+        if not st.get("trust_v") and self.allow_senders:
+            # Before 6.44 one "Not spam" tap trusted a name everywhere for good, so a spammer could be trusted by a
+            # slip. Names trusted from the page wait for you to confirm them (names in the config file are kept).
+            # Regulars SpamGuard knows still get through as known people meanwhile.
+            keep = set((getattr(self, "file_cfg", None) or {}).get("allow_senders") or [])
+            moved = sorted(self.allow_senders - keep)
+            if moved:
+                self.trust_review = {n: now for n in moved}
+                self.allow_senders -= set(moved)
+                self._trust_moved = len(moved)
         self.allow_texts = set(st.get("allow_texts", []))
         self.engine_on_seen = bool(st.get("engine_on_seen"))
         self.extra_channels = dict(st.get("extra_channels", {}))
@@ -2428,6 +2461,11 @@ class SpamGuard:
                     "released": self.released,
                     "allow_hops": sorted(self.allow_hops),
                     "allow_senders": sorted(self.allow_senders),
+                    "trust_on": self.trust_on,
+                    "trust_v": 2,
+                    "trust_review": self.trust_review,
+                    "mark_counts": dict(list(self.mark_counts.items())[-2000:]),
+                    "spam_texts": dict(list(self.spam_texts.items())[-3000:]),
                     "allow_texts": sorted(self.allow_texts),
                     "engine_on_seen": bool(getattr(self, "engine_on_seen", False)),
                     "extra_channels": self.extra_channels,
@@ -2507,6 +2545,10 @@ class SpamGuard:
         self._signed_ok.clear()
         self.allow_hops.clear()
         self.allow_senders.clear()
+        self.trust_on.clear()
+        self.mark_counts.clear()
+        self.spam_texts.clear()
+        self.trust_review.clear()
         self.allow_texts.clear()
         self.on_watch.clear()
         self.sentences.clear()
@@ -2617,6 +2659,12 @@ class SpamGuard:
         return b.get("match") or self.cfg.get("hop_match_mode", "starts_known")
 
     # ---- known people ----
+    TRUST_WARN_SECONDS = 12 * 3600
+
+    def trusted_here(self, name: str, channel) -> bool:
+        """Trusted on this channel only (from marking a held message there as not spam)."""
+        return bool(name) and channel in (self.trust_on.get(name) or ())
+
     def is_known(self, name: str) -> bool:
         if name in self.allow_senders:
             return True
@@ -2966,6 +3014,7 @@ class SpamGuard:
                 if now - f["busy_since"] >= sustain:
                     # Starts just past the routes it normally hears, then tightens a step at a time.
                     f.update(limit=start, since=now, last_step=now, peak=busy, episodes=int(f.get("episodes") or 0) + 1)
+                    self._urgent_sync = True
                     acting = c["mode"] == "protect" and not c.get("paused") and self.fg_can_act()
                     self.note(f"FloodGuard: the radio is {busy:.0f}% busy, {share:.0%} of it flood traffic. "
                               + (f"Flood packets that have already come {start} or more hops are not passed on until it calms down."
@@ -2978,6 +3027,7 @@ class SpamGuard:
                     changed = True
             elif target < f["limit"] and now - f["last_step"] >= self.FG_STEP_SECONDS:
                 f.update(limit=max(target, f["limit"] - 2), last_step=now)
+                self._urgent_sync = True
                 acting = c["mode"] == "protect" and not c.get("paused") and self.fg_can_act()
                 self.note(f"FloodGuard: still {busy:.0f}% busy, so flood packets from {f['limit']} or more hops away are now "
                           + ("held back too." if acting else "counted too (nothing is held back yet)."))
@@ -4418,6 +4468,14 @@ class SpamGuard:
         v, status = body["verdict"], body.get("status")
         sender, text = str(body.get("sender") or ""), str(body.get("text") or "")
         item = {k: body.get(k) for k in ("sender", "text", "path", "packet", "channel")}
+        doubt = None if body.get("confirm") else self._mark_doubt(v, sender, text, body)
+        if doubt:
+            # The answer goes against strong evidence: ask once before acting on it (a slip of the finger is easy).
+            return {"ok": False, "confirm": doubt}
+        if v == "spam" and text:
+            self.spam_texts[self._text_print(text)] = time.time()
+            while len(self.spam_texts) > 3000:
+                self.spam_texts.pop(next(iter(self.spam_texts)))
         key = str(body.get("packet") or "") or f"{sender}|{text}"
         self._review_count = (0, 0)
         did = self.verdict_done.pop(key, None) or {}
@@ -4438,6 +4496,18 @@ class SpamGuard:
         msg = self.action("label", dict(item, label=v)).get("message", "").split(". Labels are kept")[0].split(". Turn on the evidence")[0]
         msg = msg.replace("Labelled as spam", "Marked as spam").replace("Labelled as fine", "Marked as not spam")
         did = {}
+        if sender and v in ("spam", "not_spam"):
+            mc = self.mark_counts.setdefault(sender, [0, 0, 0.0])
+            mc[0 if v == "spam" else 1] += 1
+            mc[2] = time.time()
+            self.mark_counts[sender] = self.mark_counts.pop(sender)   # most recently marked last (kept when trimming)
+        if v == "spam" and sender and (sender in self.allow_senders or sender in self.trust_on):
+            # Spam under a trusted name: that trust was a mistake, or someone is using the name. Either way it
+            # stops; People still shows them, and marking one of their messages not spam trusts them again.
+            self.allow_senders.discard(sender)
+            self.trust_on.pop(sender, None)
+            self.note(f"'{sender}' is no longer trusted: you marked one of their messages as spam")
+            msg += f". '{sender}' is no longer trusted"
         if v == "spam" and status in ("letthrough", "genuine") and sender not in self.allow_senders and not self.is_known(sender):
             had, t0 = set(self.blocks), time.time()
             try:
@@ -4472,6 +4542,33 @@ class SpamGuard:
             while len(self.verdict_done) > 200:
                 self.verdict_done.pop(next(iter(self.verdict_done)))
         return {"ok": True, "message": msg.rstrip(".") + ".", "undo": True}
+
+    @staticmethod
+    def _text_print(text: str) -> str:
+        """A message's words, for spotting the same text again (case, spacing and punctuation ignored)."""
+        return hashlib.sha1(" ".join(re.findall(r"\w+", text.casefold()))[:120].encode(), usedforsecurity=False).hexdigest()[:16]
+
+    def _mark_doubt(self, v: str, sender: str, text: str, body: dict) -> Optional[str]:
+        """A question to ask before acting on an answer that goes against strong evidence, or None."""
+        mc = self.mark_counts.get(sender) or [0, 0, 0.0]
+        if v == "not_spam":
+            b = self.blocks.get(str(body.get("matched") or "")) or {}
+            if text and self._text_print(text) in self.spam_texts:
+                return "You marked this same message as spam before. Mark it as not spam (and trust the name) anyway?"
+            if mc[0]:
+                return (f"You've marked {mc[0]} of {sender}'s messages as spam before. "
+                        "Mark this one as not spam and trust the name anyway?")
+            if b.get("source") in ("campaign", "linkhost") and b.get("kind") in ("text", "words", "links"):
+                return ("This message is part of a campaign SpamGuard saw from several names. "
+                        "Mark it as not spam and trust the name anyway?")
+        elif v == "spam" and sender:
+            if mc[1] >= 2:
+                return f"You've marked {mc[1]} of {sender}'s messages as not spam before. Mark this one as spam anyway?"
+            k = self.known.get(sender)
+            if k and self.is_known(sender) and int(k[2] or 0) >= 30 and time.time() - float(k[0] or time.time()) >= 14 * 86400:
+                return (f"{sender} has sent {int(k[2])} messages over {int((time.time() - float(k[0])) // 86400)} days. "
+                        "If someone is using their name, answer 'Spoofed' instead. Mark as spam anyway?")
+        return None
 
     def messages_for(self, body: dict) -> dict:
         """The spam behind a point on the map (route codes), or everything from a repeat spammer (names)."""
@@ -5257,12 +5354,14 @@ class SpamGuard:
         quiet_before = now - self.QUIET_DAYS * 86400
         names = dict.fromkeys(self.known)
         names.update(dict.fromkeys(n for n in self.allow_senders if n))
+        names.update(dict.fromkeys(self.trust_on))
+        names.update(dict.fromkeys(n for n, mc in self.mark_counts.items() if mc[0] and mc[1]))   # marked both ways: worth a look
         names.update(dict.fromkeys(self.on_watch))
         counts = dict.fromkeys(self.PEOPLE_SHOW, 0)
         rows = []
         for n in names:
             v = self.known.get(n) or [None, None, 0]
-            st = ("trusted" if n in self.allow_senders else "watch" if n in self.on_watch
+            st = ("trusted" if n in self.allow_senders or n in self.trust_on else "watch" if n in self.on_watch
                   else "held" if self.spam_record(n, now)["held"]
                   else "learning" if not self.is_known(n) else "known")
             quiet = st == "known" and (v[1] or 0) < quiet_before
@@ -5307,6 +5406,8 @@ class SpamGuard:
                 forget_at = (v[1] or now) + int(self.cfg.get("known_days", 30)) * 86400
             out.append({"name": n, "standing": st2, "quiet": quiet, "why": why, "msgs": v[2], "first": v[0], "last": v[1],
                         "known": self.is_known(n), "trusted": n in self.allow_senders,
+                        "trusted_on": sorted(self.trust_on.get(n) or ()) if n not in self.allow_senders else [],
+                        "marks": self._marks_of(n), "progress": self._known_progress(n, v, now) if st == "learning" else None,
                         "usual": usual, "ways": sorted(hm.items(), key=lambda kv: -kv[1])[:5],
                         "last_route": lw[1] if lw else None, "last_route_at": lw[0] if lw else None,
                         # heard by a way in they have hardly ever used: possibly someone copying the name
@@ -5321,6 +5422,31 @@ class SpamGuard:
         return {"rows": out, "total": total, "counts": counts, "show": show, "sort": sort, "offset": offset, "letters": letters[:40],
                 "limit": limit, "keep_learning_days": self.LEARNING_KEEP_DAYS, "keep_known_days": int(self.cfg.get("known_days", 30)),
                 "quiet_days": self.QUIET_DAYS}
+
+    def _trust_review_rows(self) -> list:
+        """Names trusted before 6.44 waiting for you, with what you'd want to know before trusting them again."""
+        out = []
+        for n in sorted(self.trust_review)[:50]:
+            mc = self.mark_counts.get(n) or [0, 0, 0.0]
+            k = self.known.get(n)
+            out.append({"name": n, "known": self.is_known(n), "msgs": int(k[2]) if k else 0,
+                        "last": float(k[1]) if k and k[1] else None, "spam_marks": mc[0]})
+        return out
+
+    def _marks_of(self, name: str) -> Optional[dict]:
+        """Your marks on this name's messages, and whether they disagree (some spam, some not)."""
+        mc = self.mark_counts.get(name)
+        if not mc:
+            return None
+        return {"spam": mc[0], "genuine": mc[1], "last": mc[2], "mixed": mc[0] > 0 and mc[1] > 0}
+
+    def _known_progress(self, name: str, v, now: float) -> dict:
+        """How far a name still being learnt is from being known: messages and time still needed."""
+        need_msgs = int(self.cfg.get("known_min_msgs", 1))
+        need_min = int(self.cfg.get("known_min_minutes", 0))
+        first = float(v[0] or now)
+        return {"msgs": int(v[2] or 0), "need_msgs": need_msgs,
+                "minutes": max(0, int((now - first) // 60)), "need_minutes": need_min}
 
     def gated(self, b: dict) -> bool:
         """Blocks that let known people through (written after the 'known people' rule)."""
@@ -5494,13 +5620,13 @@ class SpamGuard:
             key_trusted = bool(dec.get("signed")) and bool(self.cfg.get("signed_watch")) \
                 and self._note_signed(dec["signed"], e, key, key in self.counted_packets)
             e.keyed = key_trusted
-            e.exempt = self.text_allowed(e.text) or self.is_own(e) or key_trusted
+            e.exempt = self.text_allowed(e.text) or self.is_own(e) or key_trusted or self.trusted_here(e.sender, e.channel)
             # A name you've tied to a signing key only counts as that person when the message carries their
             # signature. Anything else under the name is treated as a stranger, so copying the name gets nothing.
             e.unverified = bool(self.cfg.get("signed_watch")) and not key_trusted and not e.local \
                 and e.sender.casefold() in {v.casefold() for v in self.signer_bind.values()}
             e.replay = bool(self.cfg.get("replay_guard", True)) and not e.local and not e.exempt and self.replay_of(e)
-            trusted = e.sender in self.allow_senders
+            trusted = e.sender in self.allow_senders or self.trusted_here(e.sender, e.channel)
             e.name_score = name_score(e.sender, self.name_res)
             # Unreadable text only counts from names SpamGuard doesn't know: a regular whose radio sends
             # one garbled message is not a spammer.
@@ -5512,7 +5638,10 @@ class SpamGuard:
             if e.random and not e.local:
                 self.note_forged(e, ts)
             if trusted and e.first_hop not in h["hops"] and h["hops"] and not any(
-                    hops_related(e.first_hop, x) for x in h["hops"]):
+                    hops_related(e.first_hop, x) for x in h["hops"]) \
+                    and now - self._trust_warned.get(e.sender, 0) >= self.TRUST_WARN_SECONDS:
+                # At most twice a day for one name: someone who moves about would otherwise fill the Activity list.
+                self._trust_warned[e.sender] = now
                 self.note(f"Trusted name '{e.sender}' arrived from a new place (first hop {e.first_hop}) - "
                           "names can be faked, so check this is really them")
             again = key in self.counted_packets  # read again after a restart: don't count it twice
@@ -6097,6 +6226,7 @@ class SpamGuard:
 
     PASS_MIN_MSGS = 10  # ordinary messages before a name is safe from being held by name for repeating
     BIG_FLOOD_NAMES = 30   # made-up names in two minutes that start a lockdown even while they are paused
+    BIG_LOCKDOWNS_PER_HOUR = 4   # 15-minute lockdowns for a real flood while automatic ones are paused
     NEAR_SHARE = 0.75   # of the longer message's words
     NEAR_WORDS = 8   # only longer messages: short ones differ in few words anyway
 
@@ -6310,6 +6440,7 @@ class SpamGuard:
         if b is None and full and kind in ("text", "repeat"):
             extra = dict(extra or {}, alts=self._pieces_for(kind, full, exclude=value))
         if b is None:
+            self._urgent_sync = True   # a new hold goes to openHop straight away; tidying up can wait (SYNC_BATCH_SECONDS)
             self.blocks[key] = {"id": self._new_id(), "kind": kind, "value": value, "channel": channel,
                                 "reason": reason, "source": source, "created": now, "expires": expires,
                                 "hits": 0, "last_hit": None, "action": action, "match": match,
@@ -6858,6 +6989,14 @@ class SpamGuard:
         while self.type_events and self.type_events[0][0] < horizon:
             self.type_events.popleft()
 
+    def _advert_jump(self, base: str, n: int, now: float) -> bool:
+        """Far more adverts through this neighbour in the last ten minutes than it usually passes on (its average
+        over the rest of the last two hours)."""
+        before = sum(1 for ts, pt, hop, _ in self.type_events
+                     if pt == 4 and hop[:2] == base and now - TYPE_SURGE_LONG_SECONDS <= ts < now - TYPE_SURGE_SECONDS)
+        usual = before / max(1, (TYPE_SURGE_LONG_SECONDS - TYPE_SURGE_SECONDS) / TYPE_SURGE_SECONDS)
+        return n >= ADVERT_SURGE_TIMES * max(usual, 1)
+
     def type_surges(self, now: float) -> dict:
         """Kinds of packet where one first repeater sent most of what was flooded in, and a lot of it: over the
         last ten minutes (a burst), or over the last two hours at half the number (a slow, steady flood).
@@ -6878,11 +7017,12 @@ class SpamGuard:
                     slots.setdefault((ptype, base), set()).add(int(ts // 900))
                     if len(hop) > len(longest.get((ptype, base), "")):
                         longest[(ptype, base)] = hop
-            cands = [(k, n, False) for k, n in per.items() if n >= floor and n >= 0.6 * total[k[0]]]
+            cands = [(k, n, False) for k, n in per.items() if n >= floor and n >= 0.6 * total[k[0]]
+                     and (k[0] not in TYPE_SUGGEST_ONLY or (secs == TYPE_SURGE_SECONDS and self._advert_jump(k[1], n, now)))]
             # A flood spread over a few repeaters: none has most of it, but together they carry nearly all of it.
             single = {k[0] for k, _, _ in cands}
             for ptype, tot in total.items():
-                if tot < 2 * floor or ptype in single:
+                if tot < 2 * floor or ptype in single or ptype in TYPE_SUGGEST_ONLY:
                     continue
                 top = sorted(((n, k) for k, n in per.items() if k[0] == ptype), reverse=True)[:TYPE_GROUP_MAX]
                 if sum(n for n, _ in top) >= 0.75 * tot and all(n >= 0.15 * tot and n >= floor // 2 for n, _ in top):
@@ -7305,9 +7445,10 @@ class SpamGuard:
             recent = [e for e in a["window"] if e.ts >= now - 120 and e.random and not self.is_known(e.sender)]
             big_names, big_entries = len({e.sender for e in recent}), len({e.first_hop for e in recent})
             self.big_lockdowns = [t for t in getattr(self, "big_lockdowns", []) if t > now - 3600]
-            if big_names >= self.BIG_FLOOD_NAMES and big_entries >= 10 and not self.big_lockdowns:
-                # A flood far bigger than the pause was meant for (many more made-up names, each by a different
-                # way in, so no repeater can be held): a short lockdown anyway, at most once an hour.
+            # The pause is against a trickle keeping newcomers out all day. A real flood (many made-up names every
+            # two minutes, each by a different way in, so no repeater can be held) still gets a short lockdown, again
+            # if it is still going when one ends, up to a few an hour; smaller spam earlier can't use that up.
+            if big_names >= self.BIG_FLOOD_NAMES and big_entries >= 10 and len(self.big_lockdowns) < self.BIG_LOCKDOWNS_PER_HOUR:
                 self.big_lockdowns.append(now)
                 self._add_block("lockdown", "lockdown", None,
                                 f"Automatic 15-minute lockdown: {big_names} made-up names through {big_entries} repeaters in two minutes",
@@ -7434,7 +7575,7 @@ class SpamGuard:
             ttl = int(c.get("route_surge_ttl", 7200))
             auto = sum(1 for b in self.blocks.values() if b.get("source") == "type-auto")
             for key, d in list(found.items()):
-                if c.get("type_auto") and auto < TYPE_AUTO_MAX:
+                if c.get("type_auto") and auto < TYPE_AUTO_MAX and d["ptype"] not in TYPE_SUGGEST_ONLY:
                     want(key, "ptype", {"ptype": d["ptype"], "hop": d["hop"]},
                          f"{d['packets']} flooded {d['label']} ({d['share']}% of those heard) came through this repeater in {d['minutes']} minutes",
                          "type-auto", ttl=ttl)
@@ -8038,6 +8179,20 @@ class SpamGuard:
     def wardrive_rule_ids(self) -> set:
         return {v for k, v in self.rule_ids.items() if k.startswith("wardrive:")}
 
+    def _trusted_on_rules(self) -> list[dict]:
+        """Names trusted on one channel only: one 'allow' rule per such channel, just before the known-people rule."""
+        per: dict[str, list] = {}
+        for name, chans in sorted(self.trust_on.items()):
+            for ch in chans:
+                if ch in self.cfg["channels"]:
+                    per.setdefault(ch, []).append(name)
+        return [{"id": self._rid(f"trusted-on:{ch}"), "name": f"{RULE_PREFIX}trusted-on:{ch}", "enabled": True,
+                 "if": {"all": [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
+                                {"field": "channel_decryptable", "op": "equals", "value": True},
+                                {"field": "channel_hash", "op": "equals", "value": self.cfg["channels"][ch]},
+                                {"field": "channel_sender", "op": "in", "value": names}]},
+                 "then": {"action": "allow"}} for ch, names in sorted(per.items())][:20]
+
     def _known_rule(self) -> dict:
         return {"id": self._rid("known:*"), "name": f"{RULE_PREFIX}known-people", "enabled": True,
                 "if": {"all": [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT},
@@ -8117,6 +8272,7 @@ class SpamGuard:
                                   "if": {"all": readable + self._channel_cond(b)
                                          + [{"field": "channel_message_body", "op": "contains", "value": w}]},
                                   "then": {"action": self.rule_action(b)}})
+        rules.extend(self._trusted_on_rules())
         rules.append(self._known_rule())
         for key, b in gated:
             ids = b.setdefault("ids", {})
@@ -8444,6 +8600,10 @@ class SpamGuard:
             self.__dict__["_sync_seq"] = self.__dict__.get("_sync_seq", 0) + 1
         self.__dict__["_sync_pending"] = bool(v)
 
+    LIGHT_OPS = frozenset({"label", "not_spam", "preview_now", "dismiss_route", "dismiss_signer", "dismiss_type",
+                           "clear_history", "hide_source"})
+    SYNC_BATCH_SECONDS = 120   # changes that only loosen or tidy the rules wait this long to go together
+
     def request_sync(self) -> None:
         """After a change on the page: save and write the rules as soon as possible. With the main loop running
         that is done there, a moment later, so the page answers straight away instead of waiting for the state
@@ -8719,8 +8879,14 @@ class SpamGuard:
         self.last_error = None
         due = self.last_sync is None or time.time() - self.last_sync >= self.cfg["min_sync_seconds"]
         forced = bool(self.__dict__.get("_force_sync"))
+        # Only a new hold or a tighter flood limit is written at once. Holds ending, people becoming known and the
+        # like wait and go together, so a small Pi isn't rewriting openHop's rule file every minute.
+        if due and not forced and not getattr(self, "_urgent_sync", False) and self.last_sync is not None \
+                and time.time() - self.last_sync < self.SYNC_BATCH_SECONDS:
+            due = False
         if (self.sync_pending and (due or forced)) or self.last_sync is None:
             self._force_sync = False
+            self._urgent_sync = False
             self.sync_policy(force=forced or self.last_sync is None)
         elif time.time() - self.last_verify > 60:
             # Once a minute make sure openHop still has exactly our rules (e.g. after an openHop
@@ -10237,6 +10403,7 @@ class SpamGuard:
                           },
                 "metrics": self._section("metrics", self.metrics),
                 "held_summary": self._section("held_summary", self.held_summary),
+                "trust_review": self._trust_review_rows(),
                 "to_review": self.to_review(),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
@@ -10686,11 +10853,17 @@ class SpamGuard:
                 self.ev({"type": "label", "label": "not_spam", "sender": body.get("sender"), "text": body.get("text"),
                          "path": body.get("path"), "packet": body.get("packet"), "caught_by": body.get("matched")})
                 sender = str(body.get("sender", ""))
-                if sender:
-                    self.allow_senders.add(sender)
+                ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else None
+                if sender and sender not in self.allow_senders:
+                    # Trusted where the message was, not everywhere: one tap shouldn't give a name that anyone can
+                    # type a pass on every channel for good. Trust it everywhere from People if you mean that.
+                    if ch:
+                        self.trust_on.setdefault(sender, {})[ch] = now
+                    else:
+                        self.allow_senders.add(sender)
                 key = body.get("matched")
                 b = self.blocks.get(key) if key else None
-                msg = f"'{sender}' is now trusted."
+                msg = f"'{sender}' is now trusted" + (f" on {ch}." if ch and sender not in self.allow_senders else ".")
                 if b and b["kind"] == "text":
                     self.blocks.pop(key)
                     self.suppressed[key] = now + 86400
@@ -10805,14 +10978,32 @@ class SpamGuard:
             elif op == "allow_sender":
                 who = str(body.get("sender", ""))
                 self.allow_senders.add(who)
+                self.trust_on.pop(who, None)   # trusted everywhere now
                 # Trusting a name also ends SpamGuard's own holds on that name (never ones you made yourself).
                 for k in [k for k, b in self.blocks.items() if b.get("source") != "manual" and who
                           and ((b["kind"] in ("repeat", "imposter") and b.get("who") == who)
                                or (b["kind"] == "burst" and b.get("value") == who))]:
                     self.blocks.pop(k)
                 self.offences.pop(who, None)
+            elif op == "trust_review":
+                # Confirm or drop a name that was trusted before 6.44 ("all" with keep false clears the list).
+                if body.get("all"):
+                    n = len(self.trust_review)
+                    self.trust_review.clear()
+                    msg = f"Done: {n} name{'s' if n != 1 else ''} no longer trusted"
+                else:
+                    name = str(body.get("name") or "")
+                    if name not in self.trust_review:
+                        raise ValueError("That name isn't waiting to be confirmed")
+                    self.trust_review.pop(name)
+                    if body.get("keep"):
+                        self.allow_senders.add(name)
+                        msg = f"'{name}' is trusted everywhere again"
+                    else:
+                        msg = f"'{name}' is no longer trusted"
             elif op == "unallow_sender":
                 self.allow_senders.discard(str(body.get("sender", "")))
+                self.trust_on.pop(str(body.get("sender", "")), None)
             elif op == "allow_text":
                 t = str(body.get("text", "")).strip()
                 if len(t) < 3:
@@ -10987,7 +11178,18 @@ class SpamGuard:
                        "the evidence log keeps everything.")
             else:
                 raise ValueError("Unknown action")
-            self.request_sync()
+            if op in self.LIGHT_OPS:
+                # Marking messages, dismissing suggestions and the like: saved now, and any rule change goes out
+                # with the next batch (a new hold still goes at once), so marking a long list isn't a write per click.
+                self._important = True
+                self.sync_pending = True
+                if getattr(self, "_loop_alive", False):
+                    self.wake.set()
+                else:
+                    self._save_state(force=True)
+                    self.sync_policy()
+            else:
+                self.request_sync()
         return {"ok": True, "message": msg}
 
 
@@ -11000,7 +11202,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",

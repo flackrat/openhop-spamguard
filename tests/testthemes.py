@@ -69,6 +69,13 @@ async def main():
         check(await pg.evaluate("document.documentElement.dataset.palette")=="yellow", "kept after a reload, before the page draws")
         await pg.click("[data-opt=theme] button[data-v=light]"); await pg.wait_for_timeout(300)
         check(await pg.evaluate("document.documentElement.dataset.palette") is None and await pg.evaluate("document.documentElement.dataset.theme")=="light", "choosing Light puts the standard colours back")
+        # On a phone the seven colour choices wrap into a grid: every label whole, nothing off the edge
+        await pg.set_viewport_size({"width":360,"height":800}); await pg.wait_for_timeout(400)
+        lay=await pg.evaluate("""()=>{const g=document.querySelector('[data-opt=theme]'),W=document.documentElement.clientWidth;
+          return {fits:g.getBoundingClientRect().right<=W+1,
+                  broken:[...g.querySelectorAll('button')].filter(b=>{const r=document.createRange();r.selectNodeContents(b);
+                    return r.getClientRects().length>b.textContent.trim().split(/\\s+/).length}).map(b=>b.textContent)}}""")
+        check(lay["fits"] and not lay["broken"], f"colour choices fit a phone screen with every word whole: {lay}")
         check(not errs, f"no page errors: {errs}")
         await b.close()
 asyncio.run(main())
