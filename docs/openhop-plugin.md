@@ -35,7 +35,7 @@ The repeater stays protected the whole time, and the page carries on at the same
 | `level` | Protection level from 0 (gentle) to 100 (tough) at first start; 50 is balanced. The older `sensitivity` (`relaxed`, `balanced`, `strict`) still works |
 | `listen_port` | The port for SpamGuard's own page (default 8091) |
 | `hashtag_channels` | Extra hashtag channels to protect, e.g. `["#chat", "#test"]` |
-| `listen_api_key` | A password for changes on SpamGuard's page. Leave empty for none; anyone on your network can then change settings there |
+| `listen_api_key` | A password for SpamGuard's page. Leave empty for none; anyone on your network can then change settings there, and devices outside your network get no answer at all. Set one before reaching the page from outside, and always if a proxy or tunnel on the Pi passes visitors through |
 
 openHop saves these settings as a whole, so restart the plugin after changing them. Everything else is changed on SpamGuard's own page.
 
