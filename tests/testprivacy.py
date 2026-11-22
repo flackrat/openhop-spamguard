@@ -10,7 +10,7 @@ def check(c,msg):
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
 def run(args,cwd,env=None):
-    e=dict(os.environ); e.pop("GITHUB_ACTIONS",None); e.pop("PRIVACY_BLOCKLIST",None); e.update(env or {})
+    e=dict(os.environ); e.pop("GITHUB_ACTIONS",None); e.pop("PRIVACY_BLOCKLIST",None); [e.pop(k) for k in list(e) if k.startswith("PRIVACY_NAMES")]; e.update(env or {})
     r=subprocess.run([sys.executable,TOOL,*args],cwd=cwd,capture_output=True,text=True,env=e)
     return r.returncode, r.stdout+r.stderr
 
@@ -51,9 +51,43 @@ check(rc==0,"no-reply and example addresses pass: "+out)
 # 5. Pull request text
 rc,out=run(["--text-env","T"],d,{"T":"Fixes the map near 40.555,-96.444","PRIVACY_BLOCKLIST":""})
 check(rc==1 and "T line 1: map coordinates" in out,"checks pull request text: "+out)
+# 6. Places in Britain or Ireland at any precision, and British or Irish callsigns, are always found (6.46.0).
+# The samples are built at run time so no such value is ever written in the repository.
+la,lo=40+12,-1
+uk=[f"me=({la}.77,{lo+1}.04)",f'{{"lat":{la}.1,"lon":{lo}.2}}',f"<{la}.70210 {lo+1}.02790>"]
+for i,t in enumerate(uk):
+    rc,out=run(["--text-env","T"],d,{"T":t})
+    check(rc==1 and "a place in Britain or Ireland" in out,f"finds a British place written as sample {i}: {out}")
+open(os.path.join(d,".privacy-allow"),"w").write(uk[0][4:-1]+"\n")
+rc,out=run(["--text-env","T"],d,{"T":uk[0]})
+check(rc==1,"the allow file can't let a British place through")
+for cs in ("M"+"3ABC","G"+"6XYZ","2E"+"0ABC","EI"+"7QQ"):
+    rc,out=run(["--text-env","T"],d,{"T":f"Dave {cs} on the hill"})
+    check(rc==1 and "radio callsign" in out,f"finds a callsign: {out}")
+rc,out=run(["--text-env","T"],d,{"T":"Dave Q3ABC on the hill, SHA256 G6 M0 2E, version 6.46.0, -96.5 40.1"})
+check(rc==0,"made-up Q callsigns and ordinary text pass: "+out)
+rc,out=run(["--text-env","T"],d,{"T":"from Quillborough","PRIVACY_BLOCKLIST":"","PRIVACY_NAMES":"Quillborough\n"})
+check(rc==1 and "private blocklist entry #1" in out,"a second private list (names) is read too: "+out)
+open(os.path.join(d,"bl1"),"w").write("quill\n"); open(os.path.join(d,"bl2"),"w").write("borough\n")
+rc,out=run(["--text-env","T","--blocklist","bl1","--blocklist","bl2"],d,{"T":"borough"})
+check(rc==1 and "entry #2" in out,"several local blocklist files can be given: "+out)
+import gzip, base64
+gz="gz:"+base64.b64encode(gzip.compress(b"w:Quill Fen\n")).decode()
+rc,out=run(["--text-env","T"],d,{"T":"heard Quill Fen tonight","PRIVACY_NAMES2":gz})
+check(rc==1 and "entry #1" in out,"a compressed second names list is read: "+out)
+rc,out=run(["--text-env","T"],d,{"T":"QuillFenwick and Quill Fens","PRIVACY_NAMES2":gz})
+check(rc==0,"a whole-word name doesn't match inside longer words: "+out)
+rc,out=run(["--text-env","T"],d,{"T":"x","PRIVACY_NAMES":"gz:not-base64!"})
+check("can't be read" in out,"a broken compressed list is reported, not ignored silently: "+out)
+sys.path.insert(0,os.path.join(REPO,"tools"))
+import privacy_check as pchk
+bl=pchk.Blocklist()
+for e in ["w:Quill Fen","w:Q🐿 Ash","re:\\bQX\\d{2}\\b","fen","ab"]: bl.add(e)
+for t in ["quill fen","a Quill Fen.","Quill Fenwick","Q🐿 ash!","QX12","qx123","fenland","tab","nothing","Quill  Fen"]:
+    check(bl.hits(t)==[i for i,rx in enumerate(bl,1) if rx.search(t)],"the quick matcher agrees with the patterns: "+t)
 shutil.rmtree(d)
 
-# 6. The Presidio helper: only the readable parts of code are looked at, and it never fails a run
+# 7. The Presidio helper: only the readable parts of code are looked at, and it never fails a run
 sys.path.insert(0,os.path.join(REPO,"tools"))
 import presidio_check as pc
 check(pc.readable_parts("x.py",'m.add("Rowan Hill",TEXT)  # a made-up name')==["Rowan Hill"," a made-up name"],"code: quoted text and comments only")

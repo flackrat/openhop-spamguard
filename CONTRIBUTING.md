@@ -58,6 +58,9 @@ yourself before committing:
 
     python3 tools/privacy_check.py --staged
 
+A pushed branch is public at once, so the same checks also run before each push if you turn on the hook:
+`git config core.hooksPath tools/git-hooks`.
+
 ## Licence
 
 SpamGuard is released under the GNU AGPL version 3. By sending a change you agree that it is released under the

@@ -49,7 +49,7 @@ g3=sg.SpamGuard(dict(g.file_cfg)); check("Old Format" in g3.sender_history,"an o
 
 # 3. Keyboard-noise names
 check(all(sg.noise_name(n) for n in ("Q,ZWX*%B","(£TT4(K<","=M$9YRL-")),"keyboard-noise names spotted")
-check(not any(sg.noise_name(n) for n in ("GRUB#2","MOKKA-P7","G9XYZ/P1","BOT-01-X","Dave M","Hilltop Hiker","UXQWYXQQ","N0CALL")),"ordinary, callsign and short names are not")
+check(not any(sg.noise_name(n) for n in ("GRUB#2","MOKKA-P7","Q9XYZ/P1","BOT-01-X","Dave M","Hilltop Hiker","UXQWYXQQ","N0CALL")),"ordinary, callsign and short names are not")
 m=mock(); g=guard(m, floodguard=False); g.apply_settings({"mode":"protect"})
 for i,n in enumerate(("Q,ZWX*%B","(£TT4(K<","=M$9YRL-")): m.add(n,"Cheap watches and free prizes waiting for you on my page tonight",["9D","4C"],ago=60-i*5)
 sync(g)
