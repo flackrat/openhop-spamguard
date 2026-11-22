@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.46.0"
+VERSION = "6.47.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -450,10 +450,18 @@ SETTINGS_META: list[dict] = [
      "risk": "Off, nothing is blocked until you switch to Protect yourself.",
      "label": "Switch to Protect by itself after watching",
      "help": "A new SpamGuard starts in Monitor and switches itself to Protect after a day, once it has seen enough spam and nothing marked genuine. Choosing Monitor yourself turns this off."},
+    {"key": "set_forget_prompt", "group": "Timing", "type": "bool",
+     "risk": "Off = the Overview no longer offers it. You can still turn the three settings on one by one.",
+     "label": "Offer to look after itself on the Overview",
+     "help": "While automatic updates, Auto level or automatic route blocks are off, the Overview offers to turn them all on in one go."},
     {"key": "level_auto", "group": "Timing", "type": "bool",
      "risk": "On, the level moves by itself. Setting the level yourself switches this off. It tightens quickly, loosens slowly, never goes above your ceiling, and steps back if you mark a held message as fine.",
      "label": "Let SpamGuard move the protection level by itself",
      "help": "Once SpamGuard has watched your traffic for a few days it follows its own suggestion for the level, in small steps. Drag the slider yourself and it stops."},
+    {"key": "level_auto_early", "group": "Timing", "type": "bool",
+     "risk": "Without your marks it can't see a genuine message held, so it never goes past 70 this way.",
+     "label": "Let Auto level act before you have marked messages",
+     "help": "Auto level normally waits until you have marked a few messages. On, it follows the early suggestion too, between Balanced and 70. Turned on by Look after itself."},
     {"key": "level_auto_max", "group": "Timing", "type": "int", "min": 50, "max": 100,
      "risk": "Higher lets it become firmer, which holds more spam and a few more genuine messages.",
      "label": "Highest level Auto may reach",
@@ -668,6 +676,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "auto_protect": True,
     "level_auto": False,                  # off: the level only suggests; on: SpamGuard follows its own suggestion within limits
     "level_auto_max": 80,
+    "level_auto_early": False,            # follow the early (unmarked) suggestion too, capped
+    "set_forget_prompt": True,             # offer, on the Overview, to turn on the settings that let it run unattended
     "live_feed": True,
     "fetch_limit": 500,
     "max_total_rules": 300,
@@ -9368,11 +9378,16 @@ class SpamGuard:
         fam = next((f for f in self.advisor().get("families", []) if f.get("key") == "level"), None)
         pv = self.preview_summary()
         sug = pv.get("suggested")
-        if not fam or not fam.get("ready") or sug is None or pv.get("early"):
+        early_ok = bool(c.get("level_auto_early"))
+        if not fam or not fam.get("ready") or sug is None or (pv.get("early") and not early_ok):
             al["waiting"] = "gathering enough traffic and marks to suggest a level"
             return
         cur, cap = int(c.get("level", 50)), int(c.get("level_auto_max", 80))
         target = min(int(sug), cap)
+        if pv.get("early"):
+            # Blind to genuine messages held until you mark some: a guess may firm the level up a little while spam is
+            # heavy, but never past the early cap, and never eases it below Balanced (or below where you left it).
+            target = max(min(target, self.PREVIEW_EARLY_CAP), min(cur, 50))
         fine = [t for t in self.genuine_marks if t >= now - 86400]
         fine += [t for k, t in self.label_at.items() if self.labels.get(k) == "not_spam" and t >= now - 86400]
         newest_fine = max(fine) if fine else 0
@@ -10504,6 +10519,20 @@ class SpamGuard:
         out["requested"] = os.path.exists(os.path.join(folder, "update-request"))
         return out
 
+    def set_forget_status(self) -> dict:
+        """What "Look after itself" would turn on: the settings that act without asking, so a repeater can be left
+        alone. Automatic updates only where SpamGuard can update itself and looks for new versions."""
+        c = self.cfg
+        can_update = bool((IN_PLUGIN or os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"))
+                          and c.get("update_check", "daily") == "daily" and not managed_update())
+        # The evidence log is what the daily level suggestion is worked out from, so Auto level needs it.
+        want = {"auto_protect": True, "level_auto": True, "level_auto_early": True, "evidence_log": True, "route_auto": True}
+        if can_update:
+            want["auto_update"] = True
+        missing = [k for k, v in want.items() if bool(c.get(k)) != v]
+        return {"on": not missing, "missing": missing, "turn_on": {**want, "set_forget_prompt": False}, "can_update": can_update,
+                "offer": bool(c.get("set_forget_prompt", True)) and bool(missing) and not c.get("paused")}
+
     def update_summary(self) -> dict:
         i = self.update_info
         latest = i.get("latest")
@@ -10816,6 +10845,7 @@ class SpamGuard:
                              if x["ts"] >= getattr(self, "reset_at", 0)],
                 "reset_at": getattr(self, "reset_at", 0) or None,
                 "auto_protect": self.auto_protect_status(),
+                "set_forget": self.set_forget_status(),
                 "window_seconds": c["window_seconds"],
                 "update": self.update_summary(),
                 "install": {"kind": install_kind(), "instance": self.instance_id,
@@ -10981,6 +11011,9 @@ class SpamGuard:
             self.rebuild_cfg()
             self.snapshot_settings("changed on the page")
             self.request_sync()
+            if body.get("level_auto") is True and body.get("route_auto") is True and self.set_forget_status()["on"]:
+                self.note("Set to look after itself (turned on on the Overview)")
+                return {"ok": True, "message": "Done. SpamGuard will look after itself. You can change each part under Settings."}
         return {"ok": True}
 
     ACTION_TEXT_MAX = 2000      # no value the page sends is anywhere near this long

@@ -600,6 +600,12 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level means and would have done</summary><p class="explain" id="sensExplain"></p><div id="lvlDetail"></div></details>
   </section>
+  <section id="sfSec" hidden>
+    <h2>Let it look after itself</h2>
+    <p class="explain" id="sfNote"></p>
+    <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><button type="button" class="go" id="sfOn">Look after itself</button>
+      <button type="button" class="quiet" id="sfNo">Not now</button></p>
+  </section>
   <section id="autoUpdSec">
     <h2>Automatic updates</h2>
     <p class="explain" id="autoUpdNote"></p>
@@ -971,6 +977,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p>Wardriving apps such as MeshMapper send a ping with the phone's GPS position on <code>#wardriving</code> and log every repeater that echoes it. On the <a href="#/channels" class="quietlink">Channels</a> page you can stop this repeater echoing those pings, so it isn't put on those maps. Nothing else changes, and pings from this repeater's own companions still go out. It keeps the repeater off precise coverage maps, but its adverts (with a location, if you set one), its code in the routes of everything it repeats, and its radio signal itself still give it away to anyone determined to find it. Leaving the location out of adverts helps further.</p>
   <h3>Getting started</h3>
   <p>SpamGuard starts on <strong>Monitor</strong>. Messages it would have stopped are marked “Would be stopped”. If it is only catching spam, switch to <strong>Protect</strong>. If you don't, it switches itself once it has watched for at least a day and seen enough spam (or after three quiet days), and says so in Activity. The Overview shows when; press <strong>Stay in Monitor</strong> to keep it watching only. It won't switch by itself if you have marked anything as Not spam.</p>
+  <p>If you won't check in often, press <strong>Look after itself</strong> on the Overview. Updates, the protection level and route blocks then look after themselves, and a log of the last few days is kept on this device so the level can be worked out. Look at held messages now and then to free anyone genuine.</p>
   <h3>If it blocks someone genuine</h3>
   <p>Press <strong>Not spam</strong> on their message. Their name is trusted from then on, and if a text block caught them, that block is removed. If a whole repeater was blocked, remove that block above. Busy events and people repeating the same message are the usual causes. A gentler protection level makes both less likely.</p>
   <h3>Limits</h3>
@@ -1094,7 +1101,25 @@ function renderTop(d){
         :`It will switch itself to Protect on ${new Date(d.auto_protect.due*1000).toLocaleString([], {weekday:"short",hour:"2-digit",minute:"2-digit"})} unless you choose otherwise (${d.auto_protect.spam} spam spotted so far).`}
         ${btn("Stay in Monitor","/settings",{auto_protect:false},"quiet")}</span>`:"");
   renderLevel(d);
+  renderSetForget(d);
 }
+// "Look after itself": one tap turns on what lets a repeater be left alone. Offered until answered.
+function renderSetForget(d){
+  const f=d.set_forget||{}, sec=$("#sfSec");
+  sec.hidden=!f.offer;
+  if(!f.offer) return;
+  const parts=[], m=f.missing||[];
+  if(m.includes("auto_update")) parts.push("new versions install by themselves");
+  if(m.includes("level_auto")||m.includes("level_auto_early")) parts.push("the protection level firms up while spam is heavy and eases back after");
+  if(m.includes("route_auto")) parts.push("surging routes are blocked without asking");
+  if(m.includes("evidence_log")) parts.push(`a ${(d.settings||{}).evidence_days||7}-day log is kept on this device`);
+  if(m.includes("auto_protect")) parts.push("it switches itself to Protect once it is sure");
+  const list=parts.length>1?parts.slice(0,-1).join(", ")+" and "+parts[parts.length-1]:parts[0];
+  $("#sfNote").textContent="For a repeater you won't check often: "+list+". "
+    +"Look at held messages now and then to free anyone genuine. Each part can be changed under Settings.";
+}
+$("#sfOn").addEventListener("click",()=>{ const f=(S&&S.set_forget)||{}; if(f.turn_on) post("/settings",f.turn_on); });
+$("#sfNo").addEventListener("click",()=>{ $("#sfSec").hidden=true; post("/settings",{set_forget_prompt:false,auto_update_prompt:false}); });
 function setMode(v){ $("#modeConfirm").hidden=true; if(v==="pause") post("/settings",{paused:true}); else post("/settings",{paused:false,mode:v}); }
 let modeAsk=null;
 $("#modeSeg").addEventListener("click",e=>{const v=e.target.dataset.v; if(!v) return;
@@ -1823,7 +1848,8 @@ function renderUpdate(d){
   // The offer sits on the Overview only until it is answered: turned on (then it lives under Settings > Updates),
   // or Not now. Nothing is offered where SpamGuard can't update itself or isn't allowed to look for versions.
   const au=$("#autoUpd"); if(document.activeElement!==au) au.checked=!!u.auto_update;
-  $("#autoUpdSec").hidden=!!(u.auto_update||u.auto_update_prompt===false||u.managed_update||!u.installer_ready||!u.auto_check);
+  $("#autoUpdSec").hidden=!!(u.auto_update||u.auto_update_prompt===false||u.managed_update||!u.installer_ready||!u.auto_check
+    ||(S&&S.set_forget&&S.set_forget.offer));   // one offer at a time: the fuller one comes first
   $("#autoUpdNote").textContent="Recommended. Spammers change their tricks within days, and each new version answers the latest ones. "
     +"With this on, your repeater gets each fix a couple of hours after it comes out, without you having to check. "
     +"SpamGuard restarts for a minute while it updates and keeps your settings and blocks. You can change this later under Settings, Updates.";
