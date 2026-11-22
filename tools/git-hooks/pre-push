@@ -1,0 +1,23 @@
+#!/bin/sh
+# Stops a push that would publish personal details. A pushed branch is public at once, before any check on
+# GitHub runs, so this has to happen first. Install: git config core.hooksPath tools/git-hooks
+# Private lists, kept outside the repository: SG_PRIVACY_FILES="/path/one /path/two", or once for this clone
+# with git config sg.privacyFiles "/path/one /path/two". SG_PRIVACY_STRICT=1 (or git config sg.privacyStrict 1)
+# refuses to push without them.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+SG_PRIVACY_FILES="${SG_PRIVACY_FILES:-$(git config --get sg.privacyFiles || true)}"
+SG_PRIVACY_STRICT="${SG_PRIVACY_STRICT:-$(git config --get sg.privacyStrict || true)}"
+set --
+for f in $SG_PRIVACY_FILES; do
+  [ -r "$f" ] || { echo "pre-push: can't read the private list $f, so nothing was pushed." >&2; exit 1; }
+  set -- "$@" --blocklist "$f"
+done
+if [ $# -eq 0 ] && [ "${SG_PRIVACY_STRICT:-0}" = 1 ]; then
+  echo "pre-push: no private lists (SG_PRIVACY_FILES), so nothing was pushed." >&2
+  exit 1
+fi
+git fetch -q origin main 2>/dev/null || true
+python3 tools/privacy_check.py --tree "$@" || { echo "pre-push: personal details found, nothing was pushed." >&2; exit 1; }
+python3 tools/privacy_check.py --diff origin/main "$@" || { echo "pre-push: personal details found in the changes or commit messages, nothing was pushed." >&2; exit 1; }
+python3 tests/testnoukplaces.py >/dev/null || { echo "pre-push: a place in Britain or Ireland was found, nothing was pushed." >&2; exit 1; }

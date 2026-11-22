@@ -29,6 +29,8 @@ jobs:
         env:
           # A private list kept as a repository secret, so its entries never appear in the repository.
           PRIVACY_BLOCKLIST: ${{ secrets.PRIVACY_BLOCKLIST }}
+          PRIVACY_NAMES: ${{ secrets.PRIVACY_NAMES }}
+          PRIVACY_NAMES2: ${{ secrets.PRIVACY_NAMES2 }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           BASE_REF: ${{ github.base_ref }}
