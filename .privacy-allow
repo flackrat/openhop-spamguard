@@ -6,7 +6,7 @@
 192.168.1.50
 # tests/testprivacy.py plants these made-up values to prove the check finds them
 someone.real@mailbox.co.uk
-40.123,-96.179
-40.555,-96.170
+40.123,-96.456
+40.555,-96.444
 ZE9 9ZZ
 192.168.7.42

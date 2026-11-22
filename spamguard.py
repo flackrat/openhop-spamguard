@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.44.0"
+VERSION = "6.45.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1782,7 +1782,8 @@ def _signal(v):
 class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
-                 "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr")
+                 "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr",
+                 "direction", "copy")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -1811,6 +1812,8 @@ class Event:
         self.keyed = False        # correctly signed by a key you trust
         self.unverified = False   # under a name whose signing key you trust, but not signed by that key
         self.replay = False  # an old message sent again by another device
+        self.direction: Optional[str] = None   # "usual" or "new": the hops nearest the sender, against this name's history
+        self.copy: Optional[dict] = None       # signs that this message is someone else using the name
         self.recorded = False
         self.logged = False
         self.packet = ""
@@ -1889,6 +1892,7 @@ class SpamGuard:
         self.near: dict[str, list] = {}   # name family -> hop counts of its recent messages from its usual ways in
         self.fam_names: dict[str, set] = {}   # name family -> the names in it heard from their usual ways in
         self.clocks: dict[str, list] = {}    # name family -> [time heard, how far its device clock was out]
+        self.dirs: dict[str, dict] = {}      # name family -> the hops nearest the sender it is heard by, and copies seen
         self._adv_logged: dict[str, float] = {}
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
@@ -2164,6 +2168,7 @@ class SpamGuard:
                      "hash_bytes": len(e.path[0]) // 2 if e.path else None,
                      "rssi": e.rssi, "snr": e.snr, "neighbour": self.last_hop_neighbour(e.path),
                      "route_stem": self.route_key(e.path),
+                     "direction": e.direction, "copy": e.copy,
                      "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]})
 
     def snapshot_settings(self, why: str):
@@ -2378,6 +2383,10 @@ class SpamGuard:
                      and abs(x[1]) < 10 ** 10][-20:]
                 if d:
                     self.clocks[str(k)[:40]] = d
+        for k, v in list((st.get("dirs") or {}).items())[-3000:]:
+            d = self._clean_dir(v, now)
+            if d:
+                self.dirs[str(k)[:40]] = d
         self.count_ping = float(st.get("count_ping") or 0) if isinstance(st.get("count_ping"), (int, float)) else 0
         aut = st.get("auto_update_tried")
         if isinstance(aut, dict) and isinstance(aut.get("version"), str) and isinstance(aut.get("ts"), (int, float)):
@@ -2508,6 +2517,7 @@ class SpamGuard:
                     "near": {k: v[-30:] for k, v in list(self.near.items())[-3000:] if v},
                     "fam_names": {k: sorted(v)[:8] for k, v in list(self.fam_names.items())[-3000:] if v},
                     "clocks": {k: v[-20:] for k, v in list(self.clocks.items())[-3000:] if v},
+                    "dirs": dict(list(self.dirs.items())[-3000:]),
                     "spam_marked": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.spam_marked.items())[-2000:]
                                     if v and v[-1] > time.time() - 30 * 86400},
                     "label_at": {k: round(self.label_at[k], 1) for k in list(self.labels)[-1000:] if k in self.label_at},
@@ -3756,6 +3766,7 @@ class SpamGuard:
                 "sources": top, "flood_sources": flood_sources, "most_held": self.most_held(now),
                 "entries": entries, "unplaced": ent["unplaced"],
                 "senders": ent.get("senders") or [], "senders_unplaced": ent.get("senders_unplaced") or 0,
+                "copies": ent.get("copies") or [],
                 "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
                 "map_working": bool(ent.get("working")),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
@@ -3815,6 +3826,20 @@ class SpamGuard:
                 path = parse_path(p.get("original_path"))
                 self.ev({"type": "advert", "ts": round(float(p.get("timestamp") or t), 2), "name": adv["name"],
                          "key": adv["key"][:8], "adv_time": adv.get("time"), "path": path, "hops": len(path)})
+        if adv and adv["type"] in (2, 3) and re.fullmatch(r"[0-9A-F]{64}", adv["key"] or "") and adv["lat"] is not None \
+                and self.evidence is not None and (adv["lat"] or adv["lon"]) and abs(adv["lat"]) <= 90 and abs(adv["lon"]) <= 180:
+            # A repeater's (or room server's) advert, with the location it gives out publicly and the route it took,
+            # so a replay of the evidence log can work out the map as the repeater did. Once a day per route.
+            path = parse_path(p.get("original_path"))
+            lk = adv["key"][:12] + "|" + ">".join(path)
+            t = time.time()
+            if self._adv_logged.get(lk, 0) < t - 86400:
+                self._adv_logged[lk] = t
+                while len(self._adv_logged) > 3000:
+                    self._adv_logged.pop(next(iter(self._adv_logged)))
+                self.ev({"type": "advert", "node": "repeater" if adv["type"] == 2 else "room",
+                         "ts": round(float(p.get("timestamp") or t), 2), "name": adv["name"], "key": adv["key"][:12],
+                         "lat": round(adv["lat"], 3), "lon": round(adv["lon"], 3), "path": path, "hops": len(path)})
         if adv and adv["type"] in (2, 3) and re.fullmatch(r"[0-9A-F]{64}", adv["key"] or ""):
             try:
                 ts = float(p.get("timestamp") or time.time())
@@ -3921,6 +3946,12 @@ class SpamGuard:
         cost, _, placed = min(states.values(), key=lambda v: v[0])
         return cost, placed
 
+    REACH_DEFAULT_KM = 30   # how far a repeater hears, when its adverts haven't shown it yet
+
+    def reach_km(self, key: str) -> float:
+        r = (getattr(self, "_reach_table", None) or {}).get(key)
+        return float(min(max(r, 5.0), self.LINK_KM)) if r is not None else float(self.REACH_DEFAULT_KM)
+
     def _learned(self) -> dict:
         """(route code, the code after it, or 'ME') -> the repeater it is, learnt from advert routes.
         Built in the background by learn_step(); this only hands back the latest table."""
@@ -3986,6 +4017,20 @@ class SpamGuard:
             if top >= 3 and top >= 0.8 * total:
                 learned[ctx] = reps[k]
         self._learned_table = learned
+        # How far each learnt repeater hears: the distance from each advert's own location to the repeater that first
+        # passed it on. Spam handed to a repeater came from somewhere within about that distance of it.
+        heard: dict[str, list] = {}
+        for rk, (_cnt, last, lat, lon, _name) in routes.items():
+            if last < horizon:
+                continue
+            ps = rk.partition("|")[2]
+            path = ps.split(">") if ps else []
+            if not path:
+                continue
+            y = learned.get((path[0], path[1] if len(path) > 1 else "ME"))
+            if y and y["key"] != rk.partition("|")[0]:
+                heard.setdefault(y["key"], []).append(self._km((lat, lon), (y["lat"], y["lon"])))
+        self._reach_table = {k: sorted(v)[int(1.0 * (len(v) - 1))] for k, v in heard.items() if len(v) >= 3}
         self._learned_built = time.time()
         self._learned_stamp = self._adv_stamp
         return True
@@ -4005,9 +4050,41 @@ class SpamGuard:
             spammers = {n: {pk: dict(pv) for pk, pv in d.items()} for n, d in self.sender_paths.items()
                         if self.repeat_spammer(n, now)}
             links = {n: list(v.get("after", [])) for n, v in self.name_links.items() if v.get("ts", 0) >= now - 7 * 86400}
+            dirs = {k: {"who": d.get("who"), "up": d.get("up"), "copies": [list(c) for c in d["copies"]]}
+                    for k, d in self.dirs.items() if d.get("who") and any(c[2] == "red" for c in d["copies"])}
+            held = {b.get("who") for b in self.blocks.values() if b["kind"] == "imposter"}
         cut24, cut7 = self.windows(now)
-        geo["ent"] = self.spam_entries(cut24, cut7, hist, spammers, links)
+        ent = self.spam_entries(cut24, cut7, hist, spammers, links)
+        ent["copies"] = self.copy_places(dirs, held, now)
+        geo["ent"] = ent
         geo["ts"] = time.time()
+
+    def copy_places(self, dirs: dict, held: set, now: float) -> list:
+        """For the map: where probable copies of a name entered the mesh, next to where the real person is usually
+        heard from. Only copies SpamGuard was confident about (red), in the last week."""
+        out = []
+        for d in dirs.values():
+            red = [c for c in d["copies"] if c[2] == "red" and now - c[0] < self.DIR_KEEP and len(c) == 5 and c[4]]
+            if not red:
+                continue
+            at: dict = {}
+            for c in red:
+                r = self.resolve_path(c[4].split(">"))
+                if not r:
+                    continue
+                a = at.setdefault(r["key"], {"lat": r["lat"], "lon": r["lon"], "name": r.get("name") or "", "code": r["code"],
+                                              "kind": r["kind"], "sure": bool(r.get("sure")), "n": 0, "last": 0.0})
+                a["n"] += 1
+                a["last"] = max(a["last"], c[0])
+            if not at:
+                continue
+            real = self.resolve_path(d["up"].split(">")) if d.get("up") else None
+            out.append({"name": d["who"], "n": len(red), "last": max(c[0] for c in red), "held": d["who"] in held,
+                        "at": sorted(at.values(), key=lambda a: -a["n"])[:3],
+                        "real": {"lat": real["lat"], "lon": real["lon"], "name": real.get("name") or "", "kind": real["kind"],
+                                 "sure": bool(real.get("sure"))} if real else None})
+        out.sort(key=lambda x: -x["n"])
+        return out[:12]
 
     def map_loop(self, stop: threading.Event):
         while not stop.is_set():
@@ -4041,11 +4118,16 @@ class SpamGuard:
             return (path[i], path[i + 1] if i + 1 < len(path) else "ME")
         x = learned.get(ctx(0))
         y = learned.get(ctx(1)) if len(path) > 1 else None
+        z = learned.get(ctx(2)) if len(path) > 2 else None
+        if y and z and self._km((y["lat"], y["lon"]), (z["lat"], z["lon"])) > self.LINK_KM:
+            y = None   # out of radio range of the repeater after it: a code that only looks like a known one
         res = None
         far = bool(x and y and self._km((x["lat"], x["lon"]), (y["lat"], y["lon"])) > 2 * self.NEAR_KM)
         if x and not far and x["key"] not in distrust:
+            # Sure only when the repeater it handed the message to is known too, and in range: a first code on its
+            # own can be one the sender picked, and a short code is shared by repeaters all over the country.
             res = {"kind": "id", "key": x["key"], "name": x.get("name") or "", "lat": x["lat"], "lon": x["lon"],
-                   "index": 0, "code": path[0], "sure": True, "checked": bool(y)}
+                   "index": 0, "code": path[0], "sure": bool(y), "checked": bool(y)}
         elif y:
             res = {"kind": "next", "key": y["key"], "name": y.get("name") or "", "lat": y["lat"], "lon": y["lon"],
                    "index": 0, "code": path[0], "sure": True, "claims": (x.get("name") or "") if x else ""}
@@ -4233,7 +4315,9 @@ class SpamGuard:
                               "exact": d7 if sure else 0, "before": collections.Counter(), "codes": collections.Counter({code: d7}),
                               "last": max(p[1][4] for p in g), "kind": "area",
                               "near": [p[1][5] for p in sorted(g, key=lambda p: -p[1][2])[:4]],
-                              "claims": [n for n, _ in claims.most_common(2)], "spread_km": round(spread)}
+                              "claims": [n for n, _ in claims.most_common(2)], "spread_km": round(spread),
+                              # the sender is within hearing of the repeaters it handed spam to
+                              "radius_km": round(max(spread, min(self.reach_km(p[0]) for p in g)))}
                 by_code.setdefault(code, collections.Counter())[k] += d7
         out = []
         for e in sorted(entries.values(), key=lambda e: -e["d7"])[:25]:
@@ -4245,6 +4329,11 @@ class SpamGuard:
             e["typical_before"] = e["before"].most_common(1)[0][0] if e["before"] else 0
             del e["before"]
             e["shared"] = self.code_share(e["code"], e["key"])
+            if e.get("radius_km") is None:
+                e["radius_km"] = round(self.reach_km(e["key"]))
+            # certain: the first repeater, confirmed by the one after it; likely: an area the sender must be in,
+            # from the known repeaters it handed spam to; guess: hops fitted by distance alone
+            e["level"] = "certain" if e["kind"] == "id" and e["exact"] >= e["d7"] / 2 else "likely" if e["kind"] == "area" else "guess"
             out.append(e)
         names = {e["key"]: e for e in out}
         likely = {}
@@ -4320,13 +4409,14 @@ class SpamGuard:
                                  "known": self.is_known(e.sender), "campaign_senders": len(cc["senders"]) if cc else 0,
                                  "identity": self.identity_of(e),
                                  "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
-                                 "caught_source": b.get("source") if b else None, "own": self.is_own(e), "machine": e.machine})
+                                 "caught_source": b.get("source") if b else None, "own": self.is_own(e), "machine": e.machine,
+                                 "copy": e.copy})
             return rows, "memory"
         self.evidence.flush(force=True)
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -4441,6 +4531,7 @@ class SpamGuard:
                               "copies": 1, "_names": {m.get("sender")},
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
                               "machine": m.get("machine"), "identity": m.get("identity"), "like": "spam" if like else None,
+                              "copy": self._copy_row(m.get("copy")),
                               "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}"),
                               "label_at": self.label_at.get(str(m.get("packet") or "")) or self.label_at.get(f"{m.get('sender')}|{text}")}
             rows.append(r)
@@ -4561,6 +4652,9 @@ class SpamGuard:
             if b.get("source") in ("campaign", "linkhost") and b.get("kind") in ("text", "words", "links"):
                 return ("This message is part of a campaign SpamGuard saw from several names. "
                         "Mark it as not spam and trust the name anyway?")
+            if b.get("kind") == "imposter" and b.get("source") == "spoof":
+                return (f"SpamGuard thinks this was someone else using the name {sender}: it came from a direction "
+                        "and a device they don't normally use. Mark it as not spam and trust the name anyway?")
         elif v == "spam" and sender:
             if mc[1] >= 2:
                 return f"You've marked {mc[1]} of {sender}'s messages as not spam before. Mark this one as spam anyway?"
@@ -4635,7 +4729,9 @@ class SpamGuard:
             names_sorted = sorted(names, key=lambda x: -sum(sum(d.values()) for d in spammers[x].values()))
             out.append({"key": "sender:" + hashlib.sha1(head.encode(), usedforsecurity=False).hexdigest()[:8],
                         "names": names_sorted[:5], "lat": c[0], "lon": c[1],
-                        "radius_km": round(min(max(radius, 3.0), self.AREA_KM), 1), "d7": n7, "d1": n1,
+                        # within hearing of the repeaters that heard them first, not just between them
+                        "radius_km": round(min(max(radius, 3.0, min(self.reach_km(k) for k in pts)), self.AREA_KM), 1),
+                        "d7": n7, "d1": n1,
                         "repeaters": [{"name": p[3], "code": p[4], "n": p[2], "lat": p[0], "lon": p[1],
                                        "kind": p[5]} for p in ps[:6]],
                         "spread": len(ps) > 1 and ds[-1][0] > 2 * self.AREA_KM})
@@ -5257,7 +5353,13 @@ class SpamGuard:
         path = lf[1]
         signs = []
         first = path[0] if path else ""
-        if first and not any(first == h or hops_related(first, h) for h in ways):
+        d = self.dirs.get(self.name_family(name))
+        if d and d["n"] >= self.DIR_MIN and len(path) >= 3:
+            if any(self._hop_in(h, d["bad"]) for h in path[:3]):
+                signs.append("It came the same way as a copy of this name")
+            if not any(self._hop_in(h, d["h"]) for h in path[1:self.DIR_HOPS]):
+                signs.append("It came from a direction this name's messages don't normally come from")
+        elif first and not any(first == h or hops_related(first, h) for h in ways):
             signs.append("It came in by a way this name doesn't normally use")
         nb = self.last_hop_neighbour(path)
         if nb is False:
@@ -5338,7 +5440,7 @@ class SpamGuard:
             return "known", heard + ". Let through blocks meant for strangers"
         return "learning", heard + ". Not yet let through blocks"
 
-    PEOPLE_SHOW = ("active", "watch", "held", "trusted", "known", "learning", "quiet", "all")
+    PEOPLE_SHOW = ("active", "copied", "watch", "held", "trusted", "known", "learning", "quiet", "all")
 
     def people(self, body: Optional[dict] = None) -> dict:
         """The People page: everyone SpamGuard has heard, with standing and why, the usual ways in and the last
@@ -5357,6 +5459,8 @@ class SpamGuard:
         names.update(dict.fromkeys(self.trust_on))
         names.update(dict.fromkeys(n for n, mc in self.mark_counts.items() if mc[0] and mc[1]))   # marked both ways: worth a look
         names.update(dict.fromkeys(self.on_watch))
+        copied = self._copied_names(now)
+        names.update(dict.fromkeys(copied))   # someone using the name stays on the list even after you forget it
         counts = dict.fromkeys(self.PEOPLE_SHOW, 0)
         rows = []
         for n in names:
@@ -5368,6 +5472,8 @@ class SpamGuard:
             groups = ["all", "quiet" if quiet else st]
             if st != "learning" and not quiet:
                 groups.append("active")
+            if n in copied:
+                groups.append("copied")
             if q and q not in n.lower():
                 continue
             for grp in groups:
@@ -5379,7 +5485,8 @@ class SpamGuard:
         elif sort == "msgs":
             rows.sort(key=lambda r: -r[1][2])
         else:
-            rows.sort(key=lambda r: ({"watch": 0, "held": 1}.get(r[2], 2), -(r[1][1] or 0)))   # on watch, then held, then most recently heard
+            # copied names first, then on watch, then held, then most recently heard
+            rows.sort(key=lambda r: (0 if r[0] in copied else {"watch": 1, "held": 2}.get(r[2], 3), -(r[1][1] or 0)))
         total = len(rows)
         letters: list = []
         if sort == "name" and total > limit:   # where each first letter starts, so the page can jump to it
@@ -5414,6 +5521,8 @@ class SpamGuard:
                         "unusual": bool(ways and first and not any(first == h or hops_related(first, h) for h in ways)),
                         "forget_at": forget_at,
                         "route": self.route_status(n) if self.cfg.get("spoof_check") else None,
+                        "copies": self.copy_record(n, now) if self.cfg.get("spoof_watch") else None,
+                        "warmth": self.warmth(n, st2, now),
                         "spam": self.spam_record(n, now) if st == "held" else None,
                         "watch": ({"since": w["since"], "need": int(w.get("need", self.WATCH_DAYS)),
                                    "days": max(0, min(int(w.get("need", self.WATCH_DAYS)), int((now - w["clean_from"]) // 86400))),
@@ -5432,6 +5541,42 @@ class SpamGuard:
             out.append({"name": n, "known": self.is_known(n), "msgs": int(k[2]) if k else 0,
                         "last": float(k[1]) if k and k[1] else None, "spam_marks": mc[0]})
         return out
+
+    def _copied_names(self, now: float) -> set:
+        """Names someone else has probably used (red) in the last week."""
+        out = set()
+        for d in self.dirs.values():
+            if d.get("who") and any(c[2] == "red" and now - c[0] < self.DIR_KEEP for c in d["copies"]):
+                out.add(d["who"])
+        return out
+
+    WARMTH_BASE = {"trusted": 5, "settled": 10, "known": 15, "learning": 40, "watch": 60, "held": 85}
+
+    def warmth(self, name: str, standing: str, now: Optional[float] = None) -> dict:
+        """How likely this name's own messages are spam, 0 (cool, an ordinary settled person) to 100 (hot), with the
+        reasons. Someone copying the name doesn't warm it: that is shown separately, as it isn't the person's doing."""
+        now = now or time.time()
+        score = self.WARMTH_BASE.get(standing, 40)
+        why = []
+        mc = self.mark_counts.get(name) or [0, 0, 0.0]
+        if mc[0]:
+            score += min(45, 15 * int(mc[0]))
+            why.append("marked as spam by you")
+        if mc[1]:
+            score -= min(30, 10 * int(mc[1]))
+            why.append("marked not spam by you")
+        rec = self.spam_record(name, now)
+        if rec["msgs"] and rec["copies"]:
+            score += round(40 * rec["copies"] / rec["msgs"])
+            why.append("some of its messages were held")
+        if rec["offender"]:
+            score += 20
+            why.append("keeps sending the same message")
+        if name in self.allow_senders:
+            score = min(score, 15)
+        score = max(0, min(100, score))
+        level = "green" if score < 25 else "yellow" if score < 50 else "amber" if score < 75 else "red"
+        return {"score": score, "level": level, "why": why[:3]}
 
     def _marks_of(self, name: str) -> Optional[dict]:
         """Your marks on this name's messages, and whether they disagree (some spam, some not)."""
@@ -5667,6 +5812,8 @@ class SpamGuard:
                 self._note_machine(e)
             if not e.replay and not e.local and not again:
                 self._sense_note(e)
+            if not again and not e.replay and not e.local and e.sender and e.sender not in ("?", "Unknown"):
+                self._note_direction(e)
             if not again and not e.local and e.sent_ts and e.sender and not e.matched:
                 ck = self.clocks.setdefault(self.name_family(e.sender), [])
                 ck.append([round(e.ts), round(e.ts - e.sent_ts), e.first_hop or ""])
@@ -5859,6 +6006,202 @@ class SpamGuard:
         fam = self.name_family(e.sender)
         return any(x is not e and self.name_family(x.sender) == fam and abs(x.ts - e.ts) <= 600 and x.path
                    and len(x.path) <= self.LOCAL_HOPS and x.first_hop in hm and not x.matched for x in window)
+
+    # Which way a name's messages come from. The first repeater alone is not enough: people near each other share
+    # it, so a copy of a name can arrive by the very repeater the real person uses. The few hops after it differ.
+    DIR_MIN = 8            # messages learnt before a name's direction is judged
+    DIR_HOPS = 4           # the hops nearest the sender that make up its direction
+    DIR_PROMOTE_DAYS = 2   # a new direction seen on this many days, with nothing against it, becomes usual
+    DIR_KEEP = 7 * 86400   # copies remembered this long for the People page
+    COPY_WAY_TTL = 3 * 86400   # a copy held by a repeater the real person never uses
+
+    @staticmethod
+    def _clean_dir(v, now: float) -> Optional[dict]:
+        """A saved direction record, checked field by field (the state file is not trusted)."""
+        if not isinstance(v, dict):
+            return None
+        def counts(x, lim):   # noqa: E306
+            if not isinstance(x, dict):
+                return {}
+            out = {str(h)[:20]: int(n) for h, n in x.items()
+                   if isinstance(n, int) and not isinstance(n, bool) and 0 < n < 10 ** 9}
+            return dict(sorted(out.items(), key=lambda kv: -kv[1])[:lim])
+        hexes = lambda x: [str(h)[:6].upper() for h in x if isinstance(h, str) and HEX_HOP.fullmatch(str(h)[:6].upper())][:8] \
+            if isinstance(x, list) else []   # noqa: E731
+        d = {"h": counts(v.get("h"), 24), "all": counts(v.get("all"), 64), "p": counts(v.get("p"), 8),
+             "n": int(v["n"]) if isinstance(v.get("n"), int) and not isinstance(v.get("n"), bool) and v["n"] >= 0 else 0,
+             "last": float(v["last"]) if isinstance(v.get("last"), (int, float)) and 0 <= v["last"] <= now + 60 else 0.0,
+             "pend": {}, "bad": hexes(v.get("bad")), "auto": hexes(v.get("auto")), "copies": [],
+             "who": str(v["who"])[:40] if isinstance(v.get("who"), str) else "",
+             "up": str(v["up"])[:140] if isinstance(v.get("up"), str) else ""}
+        for k, days in (v.get("pend") or {}).items() if isinstance(v.get("pend"), dict) else ():
+            if isinstance(days, list):
+                d["pend"][str(k)[:20]] = [int(x) for x in days if isinstance(x, int) and not isinstance(x, bool)][-4:]
+        for c in v.get("copies") or [] if isinstance(v.get("copies"), list) else ():
+            if isinstance(c, list) and len(c) in (4, 5) and isinstance(c[0], (int, float)) and now - c[0] < SpamGuard.DIR_KEEP \
+                    and isinstance(c[1], str) and c[2] in ("amber", "red") and isinstance(c[3], list):
+                d["copies"].append([float(c[0]), c[1][:30], c[2], [str(x)[:12] for x in c[3]][:4]]
+                                   + ([c[4][:140]] if len(c) == 5 and isinstance(c[4], str) else []))
+        d["copies"] = d["copies"][-30:]
+        return d if d["n"] or d["copies"] else None
+
+    def _dir_rec(self, who: str, create: bool = False) -> Optional[dict]:
+        fam = self.name_family(who)
+        d = self.dirs.get(fam)
+        if d is None and create:
+            while len(self.dirs) >= 3000:
+                self.dirs.pop(next(iter(self.dirs)))
+            d = self.dirs[fam] = {"h": {}, "all": {}, "p": {}, "n": 0, "last": 0.0, "pend": {}, "bad": [], "auto": [], "copies": []}
+        return d
+
+    @staticmethod
+    def _hop_in(hop: str, hops) -> bool:
+        return hop in hops or any(hops_related(hop, x) for x in hops)
+
+    def _direction(self, e) -> Optional[str]:
+        """"usual" when one of the hops just after the first is one this name's messages normally take, "new" when
+        none is, None when there is not enough history (or the copied-name check is off)."""
+        if not self.cfg.get("spoof_watch") or not e.path or len(e.path) < 3 or e.local:
+            return None
+        d = self.dirs.get(self.name_family(e.sender))
+        if not d or d["n"] < self.DIR_MIN:
+            return None
+        return "usual" if any(self._hop_in(h, d["h"]) for h in e.path[1:self.DIR_HOPS]) else "new"
+
+    def _learn_direction(self, e, d: Optional[dict] = None) -> None:
+        d = d or self._dir_rec(e.sender, create=True)
+        def bump(c, k, lim):   # noqa: E306
+            c[k] = c.pop(k, 0) + 1
+            if len(c) > lim:
+                c.pop(min(c, key=c.get))
+        for h in e.path[:self.DIR_HOPS]:
+            bump(d["h"], h, 24)
+        for h in e.path[:20]:
+            bump(d["all"], h, 64)
+        bump(d["p"], ">".join(e.path[:2]), 8)
+        d["up"] = ">".join(e.path[:20])   # a recent route of the real person's, for the map
+        d["n"] += 1
+        d["last"] = max(d["last"], e.ts)
+
+    def _copy_signs(self, e, d: dict) -> dict:
+        """Why a message from a new direction may be someone else using the name. Red signs are strong enough to
+        hold the copy; amber ones are shown, never acted on."""
+        red, amber = [], ["new"]
+        if self._other_device(e):
+            red.append("device")
+        way = [h for h in e.path[:3] if self._hop_in(h, d["bad"])]
+        if way:
+            red.append("earlier" if any(self._hop_in(h, d["auto"]) for h in way) else "marked")
+        rh = self.route_history(e.path, who=e.sender)
+        if rh and rh["spam"] + rh["spoof"] >= 2 and rh["known"] == 0:
+            amber.append("route")
+        return {"level": "red" if red else "amber", "signs": red + amber}
+
+    def _copy_hop(self, who: str, path) -> Optional[str]:
+        """The repeater to hold a copy of this name by: the first on its route that the real person's messages never
+        pass through, so the person is untouched wherever they are heard from. None when there isn't one."""
+        d = self.dirs.get(self.name_family(who)) or {}
+        mine = set(d.get("all") or {}) | set(self._family_homes(who))
+        for h in list(path or [])[:3]:
+            if h and h != "DIRECT" and not self._hop_in(h, mine):
+                return h
+        return None
+
+    def _release_way(self, e) -> None:
+        """The name's own device (its clock right), still by one of its usual directions, heard by a way that was
+        held as a copy's: the person's route has changed. Stop treating that way as a copy's, and let an automatic
+        hold on it go. (A copy with its clock put right, from its own direction, doesn't end the hold.)"""
+        d = self.dirs.get(self.name_family(e.sender))
+        if not d or not d["auto"] or not e.sent_ts or abs(e.ts - e.sent_ts) >= 600 or not e.path:
+            return
+        ways = [h for h in d["auto"] if self._hop_in(h, e.path[:3])]   # (ways you marked yourself stay marked)
+        if not ways or not any(self._hop_in(h, d["h"]) for h in e.path[1:self.DIR_HOPS] if h not in ways) or not any(abs(off) < 600 for _t, off, *_r in self.clocks.get(self.name_family(e.sender), ())):
+            return
+        d["auto"] = [h for h in d["auto"] if h not in ways]
+        d["bad"] = [h for h in d["bad"] if h not in ways]
+        for k, b in self.blocks.items():
+            if b["kind"] == "imposter" and b.get("source") == "spoof" and b.get("who") == e.sender \
+                    and any(self._hop_in(str(b["value"]), [h]) for h in ways):
+                b["expires"] = min(b["expires"], e.ts)
+                self.suppressed[k] = e.ts + 86400   # not made again from the copies still in view
+                self.note(f"'{e.sender}' was heard from their own device by a way held as a copy's, so that hold ends")
+
+    def _note_direction(self, e) -> None:
+        """Judge and learn the direction of one message (once, when it is first read)."""
+        self._release_way(e)
+        e.direction = self._direction(e)
+        if not e.direction:
+            if self.cfg.get("spoof_watch") and e.path and len(e.path) >= 3 and not e.local and not e.matched \
+                    and not e.unverified and not self._quarantined(e) and not self._far_from_home(e):
+                self._learn_direction(e)
+            return
+        d = self.dirs[self.name_family(e.sender)]
+        if e.direction == "usual":
+            if not e.matched and not e.unverified:
+                self._learn_direction(e, d)
+            return
+        e.copy = self._copy_signs(e, d)
+        d["who"] = e.sender
+        d["copies"] = [c for c in d["copies"] if e.ts - c[0] < self.DIR_KEEP][-29:] + \
+            [[e.ts, ">".join(e.path[:3]), e.copy["level"], e.copy["signs"], ">".join(e.path[:20])]]
+        if e.copy["level"] == "red" or e.matched:
+            return
+        # A real change of route (a move, a new repeater) settles in: seen on two days with nothing against it.
+        key = ">".join(e.path[1:3])
+        days = d["pend"].setdefault(key, [])
+        day = int(e.ts // 86400)
+        if day not in days:
+            days.append(day)
+            del days[:-4]
+        while len(d["pend"]) > 12:
+            d["pend"].pop(next(iter(d["pend"])))
+        if len(days) >= self.DIR_PROMOTE_DAYS:
+            d["pend"].pop(key, None)
+            self._learn_direction(e, d)
+
+    COPY_SIGNS = {"device": "It was sent from a different device than the one this name normally uses",
+                  "marked": "You marked a copy of this name that came the same way",
+                  "earlier": "An earlier copy of this name came the same way",
+                  "new": "It came from a direction this name's messages don't normally come from",
+                  "route": "Other unknown names sent spam by the same route this week"}
+
+    def _copy_row(self, c) -> Optional[dict]:
+        """A message's copy signs in words, for the Messages page (saved records are checked, not trusted)."""
+        if not isinstance(c, dict) or c.get("level") not in ("amber", "red"):
+            return None
+        signs = [self.COPY_SIGNS[x] for x in c.get("signs") or [] if isinstance(x, str) and x in self.COPY_SIGNS]
+        return {"level": c["level"], "signs": signs[:4]}
+
+    def copy_record(self, name: str, now: Optional[float] = None) -> Optional[dict]:
+        """For the People page: the ways this name is usually heard from, and messages in the last week that came
+        from somewhere else, grouped by where they came from, each with a level."""
+        now = now or time.time()
+        d = self.dirs.get(self.name_family(name))
+        if not d:
+            return None
+        usual = [{"route": k, "n": n} for k, n in sorted(d["p"].items(), key=lambda kv: -kv[1])[:4]]
+        groups: dict = {}
+        for ts, route, level, signs, *_ in d["copies"]:
+            if now - ts >= self.DIR_KEEP:
+                continue
+            k = ">".join(route.split(">")[:2])
+            g = groups.setdefault(k, {"route": k, "n": 0, "red": 0, "last": 0, "signs": []})
+            g["n"] += 1
+            g["red"] += level == "red"
+            g["last"] = max(g["last"], ts)
+            for x in signs:
+                if x not in g["signs"]:
+                    g["signs"].append(x)
+        others = sorted(groups.values(), key=lambda g: (-g["red"], -g["last"]))[:4]
+        short = {"device": "a different device", "marked": "the same way as a copy you marked",
+                 "earlier": "the same way as an earlier copy", "route": "a route spam uses"}
+        for g in others:
+            g["level"] = "red" if g["red"] else "amber"
+            g["signs"] = [short[x] for x in g["signs"] if x in short][:3]
+        holds = [{"hop": str(b["value"]), "until": b["expires"]} for b in self.blocks.values()
+                 if b["kind"] == "imposter" and b.get("who") == name and b["expires"] > now][:3]
+        return {"usual": usual, "others": others, "learnt": d["n"], "holds": holds,
+                "red": sum(g["red"] for g in others), "amber": sum(g["n"] - g["red"] for g in others)}
 
     BUSY_HOME_PEOPLE = 5   # known people who usually start at a repeater before one sign can't block it alone
 
@@ -7741,16 +8084,24 @@ class SpamGuard:
             for e in a["window"]:
                 if e.matched or not e.path or e.local or e.exempt:
                     continue
-                if not self.is_known(e.sender) and not (fam_on and self._local(e.sender)):
-                    continue   # (with the copied-name check on, a new spelling of a nearby person's name counts too)
                 device = self._other_device(e)
+                # Another device under the name, from a direction the name never comes from, even by a first
+                # repeater the real person shares: the hops after it give the copy away.
+                other_way = fam_on and device and e.direction == "new"
+                if not self.is_known(e.sender) and not (fam_on and self._local(e.sender)) and not other_way:
+                    continue   # (with the copied-name check on, a new spelling of a nearby person's name counts too)
                 # This name's recent messages from here may already have been counted as a usual way in.
                 here = sum(1 for x in a["window"] if x.sender == e.sender and x.first_hop == e.first_hop)
                 base = self._family_homes(e.sender) if fam_on else (self.homes.get(e.sender) or {})
                 hm = {h: n - (here if h == e.first_hop else 0) for h, n in base.items()}
                 hm = {h: n for h, n in hm.items() if n > 0}
                 mine = any(h == e.first_hop or hops_related(e.first_hop, h) for h in hm)
-                if mine and (not device or self._good_clock_via(e.sender, e.first_hop)):
+                hop = e.first_hop
+                if mine and other_way:
+                    hop = self._copy_hop(e.sender, e.path)
+                    if not hop:
+                        continue   # every repeater on its route is one the real person uses: show it, hold nothing
+                elif mine and (not device or self._good_clock_via(e.sender, e.first_hop)):
                     continue   # a usual way in, and (for a wrong clock) one their own device is heard through
                 if not device and sum(hm.values()) < 5:
                     continue
@@ -7764,22 +8115,29 @@ class SpamGuard:
                         continue
                 elif not any(e.first_hop == x or hops_related(e.first_hop, x) for x in spam_in):
                     continue
-                key = "imposter:" + hashlib.sha1(f"{e.sender}|{e.first_hop}".encode(), usedforsecurity=False).hexdigest()[:10]
+                key = "imposter:" + hashlib.sha1(f"{e.sender}|{hop}".encode(), usedforsecurity=False).hexdigest()[:10]
                 if self.suppressed.get(key, 0) > now:
                     continue
-                self._unlearn_homes(e.sender, {e.first_hop: here})
+                if hop == e.first_hop:
+                    self._unlearn_homes(e.sender, {e.first_hop: here})
                 extra = {"who": e.sender}
                 if far:
                     fhm = self._family_homes(e.sender)
                     usual = self._usual_hops(e.sender)
                     via = max(fhm, key=fhm.get) if fhm else None
                     two = not device and self._two_places(e, a["window"])
-                    extra["spoof"] = {"of": e.sender, "hops": len(e.path), "via": e.first_hop, "usual_hops": usual,
+                    extra["spoof"] = {"of": e.sender, "hops": len(e.path), "via": hop, "usual_hops": usual,
                                       "usual_via": via, "why": "device" if device else "two places" if two else "far"}
                     if device:
-                        self._forget_way_in(e.sender, e.first_hop)
+                        if hop == e.first_hop:
+                            self._forget_way_in(e.sender, e.first_hop)
+                        dr = self._dir_rec(e.sender, create=True)
+                        if hop not in dr["bad"]:
+                            dr["bad"] = (dr["bad"] + [hop])[-8:]
+                        if hop not in dr["auto"]:
+                            dr["auto"] = (dr["auto"] + [hop])[-8:]
                         why = (f"Copied name: {e.sender} sent from a different device than the one they usually use; "
-                               f"this came {len(e.path)} hops via {e.first_hop}")
+                               f"this came {len(e.path)} hops via {hop}")
                     else:
                         why = (f"Copied name: {e.sender} is usually {usual if usual is not None else 'a few'} hops away"
                                + (f" via {via}" if via else "") + f"; this came {len(e.path)} hops via {e.first_hop}"
@@ -7787,8 +8145,11 @@ class SpamGuard:
                 else:
                     why = ("A well-known name sending something spam-shaped through a repeater it has never used" if calm
                            else "A known name heard through the repeater spam is coming in by, which it has never used")
-                if self._add_block(key, "imposter", e.first_hop, why, "spoof" if far else "imposter", channel=e.channel,
-                                   ttl=int(c["repeat_block_seconds"]), from_ts=e.ts, extra=extra):
+                # Held by a repeater the real person never passes through, a copy can be held for days without
+                # touching them; copies tend to come back in bursts hours apart.
+                ttl = self.COPY_WAY_TTL if other_way and hop != e.first_hop else int(c["repeat_block_seconds"])
+                if self._add_block(key, "imposter", hop, why, "spoof" if far else "imposter", channel=e.channel,
+                                   ttl=ttl, from_ts=e.ts, extra=extra):
                     changed = True
 
         # 5d. A name tied to a signing key, arriving unsigned (or signed by another key) through a repeater that
@@ -10835,6 +11196,15 @@ class SpamGuard:
                 if rk:
                     self._route_add(rk, "spoof", sender, now)
                 held, usual = "", False
+                dr = self.dirs.get(self.name_family(sender))
+                if re.fullmatch(r"[0-9A-F]{2,6}", hop) and dr and dr["n"] >= self.DIR_MIN \
+                        and any(hop == h or hops_related(hop, h) for h in self.usual_ways(sender)):
+                    # The real person shares this first repeater: hold the copy by the first one on its route that
+                    # the person's own messages never pass through, if there is one.
+                    hop = str(self._copy_hop(sender, [str(h).strip().upper() for h in hops]) or hop)
+                if re.fullmatch(r"[0-9A-F]{2,6}", hop) and dr is not None and hop not in dr["bad"] \
+                        and not self._hop_in(hop, dr["all"]):
+                    dr["bad"] = (dr["bad"] + [hop])[-8:]   # later messages by that way are shown as probable copies
                 if re.fullmatch(r"[0-9A-F]{2,6}", hop) and (self.is_known(sender) or sender in self.allow_senders
                                                             or sum((self.homes.get(sender) or {}).values()) >= 1):
                     usual = any(hop == h or hops_related(hop, h) for h in self.usual_ways(sender))
@@ -10868,6 +11238,15 @@ class SpamGuard:
                     self.blocks.pop(key)
                     self.suppressed[key] = now + 86400
                     msg += " The text rule that caught it was removed."
+                elif b and b["kind"] == "imposter":
+                    # You say it was them: stop holding the name that way, and stop treating that way as a copy's.
+                    self.blocks.pop(key)
+                    self.suppressed[key] = now + 86400
+                    d = self.dirs.get(self.name_family(sender))
+                    if d:
+                        d["bad"] = [h for h in d["bad"] if h != b["value"]]
+                        d["auto"] = [h for h in d["auto"] if h != b["value"]]
+                    msg += f" The hold on that name through repeater {b['value']} was removed."
                 elif b and b["kind"] == "hop" and self.gated(b):
                     msg += f" Their messages now get through the block on repeater {b['value']}."
                 elif b and b["kind"] == "hop":

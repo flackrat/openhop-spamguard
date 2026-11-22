@@ -6,9 +6,9 @@ UI=open(os.path.join(REPO,'ui.html')).read()
 LF=os.environ.get('LEAFLET_DIST', os.path.join(REPO,'tests','.leaflet','node_modules','leaflet','dist'))+'/'
 now=time.time()
 def ent(name,lat,lon,d7,exact,blocked=False,codes=("98",)): return {"key":name*8,"name":name,"lat":lat,"lon":lon,"code":codes[0],"d1":d7,"d7":d7,"exact":exact,"codes":list(codes),"last":now,"blocked":blocked,"typical_before":1}
-ents=[dict(ent("",39.1,-96.42,20,20),kind="area",near=["Bluestem Rpt","Prairie Hill"],claims=["Liar"],spread_km=12,key="area:98:0"),ent("Sure A",39.07,-96.45,12,12,True),ent("Sure B",39.2,-95.2,6,4),ent("Guess C",39.5,-94.78,30,0),ent("Guess D",39.3,-95.6,5,1)]
+ents=[dict(ent("",39.1,-96.75,20,20),kind="area",near=["Bluestem Rpt","Prairie Hill"],claims=["Liar"],spread_km=12,key="area:98:0"),ent("Sure A",39.07,-96.79,12,12,True),ent("Sure B",39.2,-95.2,6,4),ent("Guess C",39.5,-94.73,30,0),ent("Guess D",39.3,-95.8,5,1)]
 st={"version":"5.13.3","metrics":{"d1":{},"d7":{"m":1,"spam":53},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"98","d7":53,"d1":53,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
- "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":39.46,"lon":-95.79},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
+ "entries":ents,"unplaced":{"d1":2,"d7":2},"me":{"name":"Me","lat":39.46,"lon":-95.97},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
 async def main():
   async with async_playwright() as p:
     b=await p.chromium.launch(); pg=await b.new_page(viewport={"width":420,"height":900})
@@ -33,8 +33,8 @@ async def main():
     await pg.screenshot(path=os.path.join(REPO,"tests",".out_area_popup.png"))
     await pg.click("#mapGuess"); await pg.wait_for_timeout(600); s2=await state(); print(s2)
     await pg.screenshot(path=os.path.join(REPO,"tests",".out_guess_on.png"))
-    await pg.reload(); await pg.wait_for_timeout(2000); await pg.evaluate("renderSources(S)"); await pg.wait_for_timeout(800); s3=await state(); print("after reload",s3[0],s3[2]); s3ok=s3[0]==6
+    await pg.reload(); await pg.wait_for_timeout(2000); await pg.evaluate("renderSources(S)"); await pg.wait_for_timeout(800); s3=await state(); print("after reload",s3[0],s3[2]); s3ok=s3[0]==5
     print("errors",errs)
-    assert s1[0]==4 and "37 of 75" in s1[1] and s2[0]==6 and s3[2] and s3ok
+    assert s1[0]==3 and "37 of 75" in s1[1] and s2[0]==5 and s3[2] and s3ok   # (Sure A and the unlisted area, 4 km apart, are one place)
     print("ok")
 asyncio.run(main())

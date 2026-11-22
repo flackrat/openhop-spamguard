@@ -196,6 +196,19 @@ textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;
 .ppl details{grid-column:1/-1}.ppl summary{cursor:pointer;display:grid;gap:3px;min-height:44px;align-content:center;list-style-position:outside}
 .ppl summary .what{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ppl-body{padding:8px 0 4px;display:grid;gap:8px}
 .ppl-warn{background:var(--amber-tint);color:var(--amber-text);border-radius:6px;padding:6px 9px;font-size:.8125rem}
+.map-sq span{display:block;width:14px;height:14px;border:2px solid #fff;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.map-h{margin:16px 0 6px;font-size:.95rem}
+.ppl-copy{background:var(--stop-tint);color:var(--ink);border-left:4px solid var(--stop)}
+.warm{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.warm-track{position:relative;display:inline-block;width:110px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--signal) 0%,var(--amber) 55%,var(--stop) 100%)}
+.warm-track i{position:absolute;top:-4px;width:4px;height:16px;margin-left:-2px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 2px var(--panel)}
+.warm-txt{font-size:.8125rem;font-weight:600;color:var(--soft)}
+.warm-green{color:var(--signal-text)}.warm-amber{color:var(--amber-text)}.warm-red{color:var(--stop)}
+.dir-h{margin:10px 0 4px;font-size:.875rem}
+.dirs{list-style:none;margin:0 0 4px;padding:0}
+.dirs .dir{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.875rem}
+.dirs .dot{flex:none;width:10px;height:10px;border-radius:50%}
+.dir-green .dot{background:var(--signal)}.dir-amber .dot{background:var(--amber)}.dir-red .dot{background:var(--stop)}
 .ppl-bar{display:block;height:8px;border-radius:99px;background:var(--line);overflow:hidden}.ppl-bar i{display:block;height:100%;background:var(--amber)}
 .ppl-index{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px}.ppl-index button{min-width:44px;min-height:44px;flex:none}
 .rows li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 14px;padding:11px 0;border-top:1px solid var(--line)}
@@ -745,15 +758,19 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 <div class="page" data-page="sources">
 <section>
   <h2>Spam sources</h2>
-  <p class="lead">Where spam entered the mesh, last 7 days. Each route is traced back hop by hop, using repeater adverts to tell apart repeaters that share a code.</p>
+  <p class="lead">Where spam entered the mesh, last 7 days. A dot is the first repeater that passed spam on. The shaded circle is where the sender can be: within that repeater's hearing.</p>
   <div class="map-ctl">
     <span class="map-by"><span class="explain" aria-hidden="true">Size by</span><span class="seg" role="group" aria-label="Size circles by" id="mapBy"><button type="button" data-v="messages">Messages</button><button type="button" data-v="senders">Senders</button></span></span>
     <label class="switch"><input type="checkbox" id="mapSenders" checked> Show repeat spammers</label>
+    <label class="switch"><input type="checkbox" id="mapCopies" checked> Show copied names</label>
     <label class="switch"><input type="checkbox" id="mapGuess"> Show best guesses too</label>
   </div>
   <div id="mapBox" class="map"></div>
   <div id="mapKey" class="map-key" aria-label="Map key"></div>
   <p class="explain" id="mapNote"></p>
+  <h3 class="map-h">Where spam entered</h3>
+  <div class="scroll"><table id="entTable"></table></div>
+  <div id="copyList"></div>
 </section>
 <section>
   <h2>All spam sources</h2>
@@ -881,7 +898,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 </section><section id="wdSec"></section></div>
 <div class="page" data-page="people"><section id="pplSec">
   <div class="health-head"><h2>People</h2><span class="explain" id="pplShowing" aria-live="polite"></span></div>
-  <p class="lead">Everyone SpamGuard has heard, how far it trusts each name and why. Trust builds from a person's own ordinary messages. Choose a name for where they are usually heard from and what you can do.</p>
+  <p class="lead">Everyone SpamGuard has heard and how far it trusts them. Trust builds from a person's own ordinary messages. The bar runs from cool (looks genuine) to hot (probably spam). Choose a name for more.</p>
   <div class="q-chips" id="pplChips" role="group" aria-label="Show"></div>
   <div class="blk-ctl"><input id="pplFind" type="search" aria-label="Search names" placeholder="Search names" autocomplete="off">
     <label class="explain" for="pplSort">Order</label><select id="pplSort"><option value="recent">Recently heard</option><option value="name">A to Z</option><option value="msgs">Most messages</option></select></div>
@@ -1385,9 +1402,20 @@ async function pplLoad(more,keep){
     if(!d.error){ PPL.rows=more?PPL.rows.concat(d.rows):d.rows; PPL.data=d; pplRender(); }
   }catch(e){} finally{ PPL.busy=false; }
 }
+// How likely a name's own messages are spam, cool to hot. The words carry the meaning; the colour only adds to it.
+const WARM={green:"Looks genuine",yellow:"Not known yet",amber:"Worth a look",red:"Probably spam"};
+function warmBar(w){ const t=WARM[w.level]||"";
+  return `<span class="warm" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w.score}" aria-valuetext="${esc(t)}${w.why.length?": "+esc(w.why.join(", ")):""}" aria-label="How likely their messages are spam">
+    <span class="warm-track" aria-hidden="true"><i style="left:${Math.max(0,Math.min(100,w.score))}%"></i></span><span class="warm-txt warm-${w.level}">${esc(t)}</span></span>`; }
+function copyBanner(p){ const c=p.copies, red=c.others.filter(g=>g.level==="red"), n=red.reduce((a,g)=>a+g.red,0), code=h=>`<code>${esc(h)}</code>`;
+  return `<span class="ppl-warn ppl-copy" role="note"><b>Someone else is probably using this name.</b> ${fmtN(n)} message${n===1?"":"s"} in the last week came from ${red.map(g=>code(g.route)).join(", ")}${c.usual.length?`, not the way they are normally heard (${c.usual.slice(0,3).map(g=>code(g.route)).join(", ")})`:""}. ${c.holds&&c.holds.length?` Copies are held when they come through ${c.holds.map(h=>code(h.hop)).join(", ")} (${left(Math.max(0,c.holds[0].until-Date.now()/1000))}); the real person still gets through.`:` Nothing is held yet. Press <b>Spoofed</b> on one of the copies under Their messages to hold them.`}</span>`; }
+function dirList(p){ const c=p.copies, code=h=>`<code>${esc(h)}</code>`;
+  const row=(lv,label,g,extra)=>`<li class="dir dir-${lv}"><span class="dot" aria-hidden="true"></span><span><b>${label}</b> ${code(g.route)} <span class="explain">${fmtN(g.n)} message${g.n===1?"":"s"}${extra||""}</span></span></li>`;
+  return `<h4 class="dir-h">Where their messages come from</h4><ul class="dirs">${c.usual.map(g=>row("green","Usual",g)).join("")}${c.others.map(g=>row(g.level,g.level==="red"?"Probable copy":"New direction",g,`, last ${ago(g.last)}${g.signs&&g.signs.length?": "+esc(g.signs.join(", ")):""}`)).join("")}</ul>
+    <p class="explain">The first repeaters after the sender. Someone copying a name usually comes from a different direction, even through the same first repeater.</p>`; }
 function pplRender(){
   const d=PPL.data; if(!d) return; const c=d.counts||{};
-  $("#pplChips").innerHTML=[["active","Active"],["watch","On watch"],["held","Held"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
+  $("#pplChips").innerHTML=[["active","Active"],["copied","Name copied"],["watch","On watch"],["held","Held"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
     .map(([k,t])=>`<button type="button" class="q-chip" data-ps="${k}" aria-pressed="${PPL.show===k}">${t} <b>${fmtN(c[k]||0)}</b></button>`).join("");
   $("#pplShowing").textContent=`${fmtN(d.total)} ${d.total===1?"name":"names"}`+(PPL.q?" matching":"");
   const ix=$("#pplIndex"); ix.hidden=!(d.letters&&d.letters.length>1);
@@ -1395,13 +1423,16 @@ function pplRender(){
   const code=h=>`<code>${esc(h)}</code>`;
   $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=p.trusted_on&&p.trusted_on.length&&!p.trusted?["Trusted on "+p.trusted_on.join(", "),"ok"]:(PPL_TAG[p.standing]||PPL_TAG.learning), w=p.watch;
     const line=[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
-    return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.quiet?"<span class='tag plain'>not heard lately</span>":""}</span>
+    return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.copies&&p.copies.red?"<span class='tag stop'>Name copied</span>":""}${p.quiet?"<span class='tag plain'>not heard lately</span>":""}</span>
       <span class="why">${line}</span>
       ${p.route&&p.route.level!=="grey"&&p.route.level!=="green"?`<span class="ppl-warn" role="note"><b>${p.route.level==="red"?"Probably a copy":"Check the route"}.</b> ${esc(p.route.level==="red"?p.route.signs.join(". "):p.route.why)}.</span>`:""}
-      ${!p.route&&p.unusual?`<span class="ppl-warn">Last heard via ${code(p.last_route)}, not a way in they normally use. It may be someone copying the name.</span>`:""}
+      ${p.warmth?warmBar(p.warmth):""}
+      ${p.copies&&p.copies.red?copyBanner(p):""}
+      ${!p.route&&!p.copies&&p.unusual?`<span class="ppl-warn">Last heard via ${code(p.last_route)}, not a way in they normally use. It may be someone copying the name.</span>`:""}
       ${p.marks&&p.marks.mixed?`<span class="ppl-warn" role="note">You've marked ${fmtN(p.marks.spam)} of their messages as spam and ${fmtN(p.marks.genuine)} as not spam. Worth a check under Their messages.</span>`:""}
       ${w?`<span class="ppl-bar" role="img" aria-label="${w.days} of ${w.need} normal days"><i style="width:${Math.round(100*w.days/w.need)}%"></i></span><span class="why">${w.days} of ${w.need} normal days${w.ok<w.min_msgs?`, ${w.ok} of ${w.min_msgs} ordinary messages`:""}</span>`:""}</summary>
       <div class="ppl-body"><p class="why">${esc(p.why)}.</p>
+      ${p.copies&&(p.copies.usual.length||p.copies.others.length)?dirList(p):""}
       <dl class="q-dl">${p.ways.length?`<dt>Heard via</dt><dd>${p.ways.map(([h,n])=>`${code(h)} <span class="explain">${fmtN(n)}</span>`).join(" &nbsp; ")}</dd>`:""}
         ${p.trusted_on&&p.trusted_on.length?`<dt>Trusted on</dt><dd>${p.trusted_on.map(esc).join(", ")} <span class="explain">from your not-spam mark; elsewhere they're treated like anyone else</span></dd>`:""}
         ${p.marks?`<dt>Your marks</dt><dd>${fmtN(p.marks.spam)} spam, ${fmtN(p.marks.genuine)} not spam <span class="explain">last ${ago(p.marks.last)}</span></dd>`:""}
@@ -1630,6 +1661,8 @@ adv.onchange=()=>{ store.set("sgadv",adv.checked?"1":"0"); document.body.classLi
 $("#mapGuess").checked=store.get("sgguess")==="1";
 $("#mapGuess").onchange=e=>{ store.set("sgguess",e.target.checked?"1":"0"); if(S) renderSources(S); };
 $("#mapSenders").checked=store.get("sgsenders")!=="0";
+$("#mapCopies").checked=store.get("sgcopies")!=="0";
+$("#mapCopies").onchange=e=>{ store.set("sgcopies",e.target.checked?"1":"0"); if(S) renderSources(S); };
 $("#mapSenders").onchange=e=>{ store.set("sgsenders",e.target.checked?"1":"0"); if(S) renderSources(S); };
 $("#mapBy").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; store.set("sgmapby",b.dataset.v); if(S) renderSources(S); });
 // "Show these messages" in a map popup or the sources table: the spam behind that point, on the Messages page
@@ -1668,7 +1701,7 @@ function qRender(){
   $("#qShowing").textContent=`${fmtN(d.shown)} ${what}, last ${d.days===1?"24 hours":"7 days"}${Q.group&&d.rows.length<d.shown?`, ${d.rows.length} after grouping copies`:""}`;
   const rows=d.rows;
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
-    <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b><span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
+    <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b>${copyTag(r.copy)}<span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
       <span class="q-txt">${esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
     <span class="q-line" style="justify-content:flex-end">${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
     :`<li><p class="empty">${Q.q||fl?"Nothing matches.":Q.status==="review"?"Nothing is waiting for your answer.":"Nothing here for the last "+(d.days===1?"24 hours":"7 days")+"."}</p></li>`;
@@ -1687,6 +1720,8 @@ function qBulk(){
 const qLabWhen=ts=>"on "+new Date(ts*1000).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 const qLab=r=>r.label==="spam"?"You marked this as spam":r.label==="not_spam"?"You marked this as not spam":"";
 const qLabTag=r=>!r.label&&r.like?`<span class="tag plain q-lab">Like one you said was spam</span>`:r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"You said spam":"You said not spam"}</span>`:"";
+// A message that may be someone else using the name: red is probably a copy, amber only came from somewhere new
+function copyTag(c){ return !c?"":c.level==="red"?" <span class='tag stop'>Probably a copy</span>":" <span class='tag plain'>New direction</span>"; }
 function qDetail(){
   const d=Q.data, r=d&&d.rows[Q.sel], box=$("#qDetail");
   if(!r){ box.innerHTML=`<p class="explain" style="margin:0">Choose a message to see why SpamGuard did what it did, and to change it.</p>`; return; }
@@ -1708,6 +1743,7 @@ function qDetail(){
     <dl><dt>Why</dt><dd>${esc(r.why)}</dd>
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
+      ${r.copy?`<dt>Name</dt><dd>${copyTag(r.copy)} ${esc(r.copy.signs.join(". "))}.</dd>`:""}
       ${rhTxt?`<dt>This route</dt><dd>${esc(rhTxt)}<span class="explain"> (after the first repeater, this week)</span></dd>`:""}
       <dt>Sender</dt><dd>${who}${r.identity==="signed"?" <span class='tag ok' title='Signed by the key you tied to this name'>Signed</span>":r.identity==="copied"?" <span class='tag sus' title='Uses the name of someone you tied to a key, but is not signed by it'>Name copied</span>":r.identity==="name"?" <span class='tag plain' title='A name SpamGuard knows. Names can be copied'>Name only</span>":""}</dd></dl>
     <p class="q-line" style="gap:8px" role="group" aria-label="Your answer">${acts}</p>
@@ -2246,6 +2282,21 @@ function loadLeaflet(){
   });
   return LEAFLET;
 }
+// Places within a few km of each other are one place on the map (often one sender using several codes).
+function kmBetween(a,b){ const r=Math.PI/180, dl=(b.lat-a.lat)*r, dn=(b.lon-a.lon)*r, h=Math.sin(dl/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dn/2)**2; return 12742*Math.asin(Math.min(1,Math.sqrt(h))); }
+function mergePlaces(list){
+  const rank={certain:2,likely:1,guess:0}, lv=e=>e.level||(e.exact>=e.d7/2?"certain":"guess"), out=[];
+  list.slice().sort((a,b)=>b.d7-a.d7).forEach(e=>{
+    const g=out.find(p=>kmBetween(p,e)<=15);
+    if(!g){ out.push(Object.assign({},e,{codes:[...(e.codes||[])],members:[e]})); return; }
+    g.members.push(e); g.d7+=e.d7; g.d1+=e.d1; g.exact+=e.exact; g.blocked=g.blocked||e.blocked;
+    g.s7=e.s7==null?g.s7:Math.max(g.s7||0,e.s7);   // (the same senders often use several codes: the largest, not the sum)
+    (e.codes||[]).concat([e.code]).forEach(c=>{ if(!g.codes.includes(c)) g.codes.push(c); });
+    g.radius_km=Math.round(Math.max(g.radius_km||30,(e.radius_km||30)+kmBetween(g,e)));
+    if(rank[lv(e)]<rank[lv(g)]&&e.d7*3>=g.d7) g.level=lv(e);   // never surer than a third or more of it
+  });
+  return out;
+}
 function renderSources(d){
   const m=d.metrics; if(!m) return;
   $("#srcTable").innerHTML=srcRows(m.sources,true);
@@ -2257,28 +2308,35 @@ function renderSources(d){
   document.querySelectorAll("#mapBy button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===by)));
   const sizeOf=e=>by==="senders"&&e.s7!=null?e.s7:e.d7;
   const snd=showSnd?(m.senders||[]):[];
-  const isSure=e=>e.exact>=e.d7/2, ents=guesses?placed:placed.filter(isSure);
+  const lvl=e=>e.level||(e.exact>=e.d7/2?"certain":"guess"), isSure=e=>lvl(e)!=="guess", ents=mergePlaces(guesses?placed:placed.filter(isSure));
+  const cps=$("#mapCopies").checked?(m.copies||[]):[];
   const un=(m.unplaced||{}).d7||0, tot=placed.reduce((a,e)=>a+e.d7,0)+un, hidN=guesses?0:placed.filter(e=>!isSure(e)).reduce((a,e)=>a+e.d7,0);
   let note;
   if(!m.sources.length) note="No spam recorded yet, so there's nothing to map.";
   else if(!meOk) note="Set your repeater's location in openHop so routes can be traced.";
   else if(m.map_working) note="Working out where spam entered. This takes a minute or two.";
   else if(!placed.length) note="Nothing can be placed yet. New spam will appear here.";
-  else if(guesses) note=`Dashed circles are best guesses.${un?` ${un} of ${tot} couldn't be placed.`:""}`;
-  else note=`${ents.length?"Only entry points SpamGuard is sure of are shown.":"No sure entry points yet."}${hidN+un?` ${hidN+un} of ${tot} aren't placed for certain; tick “Show best guesses too” to see them.`:""}`;
+  else if(guesses) note=`Dashed circles are rough guesses from distances alone.${un?` ${un} of ${tot} couldn't be placed.`:""}`;
+  else note=`${ents.length?"Only places SpamGuard can back up are shown.":"Nothing can be placed with confidence yet."}${hidN+un?` ${hidN+un} of ${tot} spam messages can only be guessed at; tick “Show best guesses too” to see them.`:""}`;
   if(ents.some(e=>(e.shared||{}).others)) note+=" A dotted ring means another repeater shares that code.";
   if(m.sources.length&&meOk&&!m.map_directory) note+=" To place far-away repeaters, turn on the public MeshCore map in Settings.";
   else if(m.map_directory&&m.public_error&&!m.public_repeaters) note+=" The public map couldn't be downloaded yet; retrying.";
   if(snd.length) note+=` Purple areas: ${snd.length} repeat spammer${snd.length===1?"":"s"}.`;
+  if(cps.length) note+=` Red squares: where copies of ${cps.length===1?"a name":cps.length+" names"} came from.`;
   if((m.senders_unplaced||0)&&showSnd) note+=` ${m.senders_unplaced} more not placed yet.`;
   if(by==="senders"&&placed.some(e=>e.s7==null)) note+=" Older spam is sized by messages.";
   $("#mapNote").textContent=note;
-  $("#mapKey").innerHTML=`<span><i style="background:var(--c-let)"></i>Spam entered here</span><span><i style="background:transparent;border:2px dashed var(--c-let)"></i>Best guess</span><span><i style="background:radial-gradient(#fff 32%,var(--stop) 36%)"></i>Blocked now</span>${showSnd?`<span><i style="background:rgba(91,63,184,.15);border:2px dashed #5b3fb8"></i>One repeat spammer</span>`:""}<span><i style="background:var(--c-stop);border:2px solid #fff"></i>Your repeater</span><span>Size: ${by==="senders"?"number of senders":"number of spam messages"}, last 7 days</span>`;
+  $("#mapKey").innerHTML=`<span><i style="background:var(--c-let)"></i>First repeater (certain)</span><span><i style="background:color-mix(in srgb,var(--c-let) 18%,transparent);border:1px solid var(--c-let)"></i>Where the sender can be</span><span><i style="background:transparent;border:2px dashed var(--c-let)"></i>Rough guess</span>${cps.length?`<span><i style="background:var(--stop);border-radius:2px"></i>Copies of a name</span><span><i style="background:${isDark()?"#6cc070":"#2e7d32"};border-radius:2px"></i>The real person</span>`:""}<span><i style="background:radial-gradient(#fff 32%,var(--stop) 36%)"></i>Blocked now</span>${showSnd?`<span><i style="background:rgba(91,63,184,.15);border:2px dashed #5b3fb8"></i>One repeat spammer</span>`:""}<span><i style="background:var(--c-stop);border:2px solid #fff"></i>Your repeater</span><span>Size: ${by==="senders"?"number of senders":"number of spam messages"}, last 7 days</span>`;
+  const confW={certain:"Certain",likely:"Likely",guess:"Rough guess"};
+  $("#entTable").innerHTML=ents.length?`<tr><th>Where</th><th>How sure</th><th class="num">Sender within</th><th class="num">Spam, 7 days</th><th class="num">Senders</th><th>Now</th></tr>`+
+    ents.slice().sort((a,b)=>b.d7-a.d7).slice(0,12).map(e=>`<tr><td class="lead-cell">${e.kind==="area"?`Unlisted repeater near ${esc((e.near||[])[0]||"(no name)")}`:esc(e.name||"(no name)")} <span class="route">${esc([...new Set([e.code].concat(e.codes||[]))].join(", "))}</span>${(e.members||[]).length>1?` <span class="explain">and ${e.members.length-1} more nearby</span>`:""}</td><td data-label="How sure">${confW[lvl(e)]}</td><td class="num" data-label="Sender within">${e.radius_km||30} km</td><td class="num" data-label="Spam, 7 days">${e.d7}</td><td class="num" data-label="Senders">${e.s7==null?"":e.s7}</td><td data-label="Now">${e.blocked?"<span class='tag stop'>blocked</span>":""}</td></tr>`).join("")
+    :`<tr><td class="empty">Nothing placed with confidence yet.</td></tr>`;
+  $("#copyList").innerHTML=(m.copies||[]).length?`<h3 class="map-h">Copied names</h3><ul class="rows">${(m.copies||[]).map(c=>`<li><div><div class="what">${esc(c.name)} <span class="tag stop">${c.n} cop${c.n===1?"y":"ies"}</span>${c.held?" <span class='tag plain'>held</span>":""}</div><div class="why">Copies came from near ${c.at.map(a=>esc(a.name||"repeater "+a.code)+(a.sure?"":" (rough guess)")).join(", ")}${c.real?`; the real person is usually heard from near ${esc(c.real.name||"elsewhere")}${c.real.sure?"":" (rough guess)"}`:""}.</div></div></li>`).join("")}</ul>`:"";
   if(!ents.length&&!meOk){ $("#mapBox").style.display="none"; return; }
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false,keyboard:true,zoomAnimation:!reduceMotion(),fadeAnimation:!reduceMotion(),markerZoomAnimation:!reduceMotion()}); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,referrerPolicy:"strict-origin-when-cross-origin",attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
-    const sig=JSON.stringify([guesses,by,ents.map(e=>[e.key,e.d1,e.d7,e.s7,e.blocked,(e.shared||{}).others||0,(e.shared||{}).unlocated||0]),snd.map(x=>[x.key,x.d7,x.radius_km]),meOk?[me.lat,me.lon]:0]);
+    const sig=JSON.stringify([guesses,by,ents.map(e=>[e.key,e.d1,e.d7,e.s7,e.blocked,e.radius_km,(e.shared||{}).others||0,(e.shared||{}).unlocated||0]),snd.map(x=>[x.key,x.d7,x.radius_km]),cps.map(c=>[c.name,c.n]),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
@@ -2296,23 +2354,39 @@ function renderSources(d){
       bounds.push([x.lat,x.lon]);
     });
     ents.forEach(e=>{
-      const r=Math.min(26,6+Math.sqrt(sizeOf(e))*(by==="senders"&&e.s7!=null?4:2.2)), exact=e.exact>=e.d7/2;
-      const near=(e.near||[]).map(n=>esc(n||"(no name)")).join(", ");
-      const title=e.kind==="area"?`Unlisted repeater using code ${esc(e.code)}`:esc(e.name||"(no name)");
-      const where=e.kind==="area"?`Spam entered the mesh around here. The first repeater isn't on any list (often the spammer's own), but it handed the spam to ${near}${e.spread_km!=null?`, typically ${e.spread_km} km from this point`:""}.${exact?"":" Only one known neighbour so far, so this is a best guess."}`
-        :exact?"Spam entered the mesh at this repeater (learnt from the routes repeater adverts take)."
-        :e.typical_before?`Best guess: spam entered the mesh about ${e.typical_before} hop${e.typical_before===1?"":"s"} before this repeater.`:"Best guess: spam entered the mesh at this repeater, but its route code is shared with others.";
+      const r=Math.min(26,6+Math.sqrt(sizeOf(e))*(by==="senders"&&e.s7!=null?4:2.2)), lv=lvl(e), exact=lv==="certain", col=e.blocked?red:org;
+      const near=(e.near||[]).map(n=>esc(n||"(no name)")).join(", "), rk=e.radius_km||30;
+      const title=e.kind==="area"?`Spam entered somewhere in this circle`:esc(e.name||"(no name)");
+      const where=lv==="certain"?`${esc(e.name||"This repeater")} was the first repeater to pass the spam on, and the repeater after it confirms that. The sender was within its hearing, about ${rk} km.`
+        :e.kind==="area"?`The first repeater isn't on any list (often the spammer's own), but it handed the spam to ${near}. The sender is within about ${rk} km of here.${(e.near||[]).length>1?"":" Only one known repeater so far."}`
+        :`Rough guess from distances alone: the codes on the route could belong to other repeaters.`;
       const sh=e.shared||{}, shN=sh.others||0, shU=sh.unlocated||0;
       const share=shN?`<br><i>Code ${esc(e.code)} is also used by ${shN} other repeater${shN===1?"":"s"} heard here${shU?`, ${shU} with no location`:""}, so the spam may have come through ${shN===1?"that one":"one of them"} instead.</i>`
         :(e.kind!=="area"&&exact?"<br>No other repeater heard here uses this code.":"");
       const claim=(e.claims||[]).length?`<br><i>Also advertises as “${(e.claims||[]).map(esc).join("”, “")}” with a location its neighbours contradict.</i>`:"";
       const rot=e.codes.length>=3?`<br><i>The first repeater's code keeps changing (${e.codes.map(esc).join(", ")}): probably one sender changing identity.</i>`:`<br>First repeater code${e.codes.length>1?"s":""}: ${e.codes.map(esc).join(", ")}`;
-      const mk=L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":(e.blocked?red:org),weight:2,dashArray:exact?null:"4 4",fillColor:e.blocked?red:org,fillOpacity:exact?.85:.45})
-       .bindPopup(`<b>${title}</b><br>${where}${share}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${e.s7!=null?`, from ${e.s7} sender${e.s7===1?"":"s"}`:""}${rot}<br>${e.blocked?"Blocked now":"Not blocked"}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({codes:[...new Set([e.code].concat(e.codes||[]))],title:"Spam that entered near "+(e.kind==="area"?"an unlisted repeater using code "+e.code:(e.name||"repeater "+e.code))}))}">Show these messages</button>`).addTo(MAPLAYER);
+      const conf={certain:"Certain",likely:"Likely",guess:"Rough guess"}[lv];
+      const others=(e.members||[]).slice(1), also=others.length?`<br><i>Shown together with ${others.map(x=>esc(x.name||(x.near||[])[0]||"code "+x.code)).join(", ")}, within a few km.</i>`:"";
+      const pop=`<b>${title}</b>${also}<br><span class="tag ${lv==="certain"?"ok":lv==="likely"?"plain":"would"}">${conf}</span> ${where}${share}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${e.s7!=null?`, from ${e.s7} sender${e.s7===1?"":"s"}`:""}${rot}<br>${e.blocked?"Blocked now":"Not blocked"}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({codes:[...new Set([e.code].concat(e.codes||[]))],title:"Spam that entered near "+(e.kind==="area"?"an unlisted repeater using code "+e.code:(e.name||"repeater "+e.code))}))}">Show these messages</button>`;
+      // the area the sender can be in: what the map actually knows
+      L.circle([e.lat,e.lon],{radius:rk*1000,color:col,weight:lv==="guess"?1.5:1,dashArray:lv==="guess"?"5 6":null,fillColor:col,fillOpacity:lv==="guess"?.04:.1,interactive:false}).addTo(MAPLAYER);
+      const mk=L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":col,weight:2,dashArray:lv==="guess"?"4 4":null,fillColor:col,fillOpacity:exact?.85:lv==="likely"?.55:.35}).bindPopup(pop).addTo(MAPLAYER);
       if(shN) L.circleMarker([e.lat,e.lon],{radius:r+5,color:org,weight:2,dashArray:"2 5",fill:false,interactive:false}).addTo(MAPLAYER);
       if(e.blocked) L.circleMarker([e.lat,e.lon],{radius:Math.max(3,r/3.2),stroke:false,fillColor:"#fff",fillOpacity:1,interactive:false}).addTo(MAPLAYER);
-      keyMarker(mk,`${e.kind==="area"?"Unlisted repeater using code "+e.code:(e.name||"Repeater "+e.code)}: ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${exact?"":", best guess"}${shN?`, code also used by ${shN} other repeater${shN===1?"":"s"} heard here`:""}`);
+      keyMarker(mk,`${e.kind==="area"?"Area near "+(e.near||[""])[0]:(e.name||"Repeater "+e.code)}: ${conf.toLowerCase()}, sender within about ${rk} km, ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${shN?`, code also used by ${shN} other repeater${shN===1?"":"s"} heard here`:""}`);
       bounds.push([e.lat,e.lon]);
+    });
+    // copied names: where the copies came from, next to where the real person is usually heard
+    const grn=dark?"#6cc070":"#2e7d32";
+    cps.forEach(c=>{
+      const sq=(lat,lon,fill,label,pop)=>{ const mk=L.marker([lat,lon],{icon:L.divIcon({className:"map-sq",html:`<span style="background:${fill}"></span>`,iconSize:[16,16]}),keyboard:true,title:label}).bindPopup(pop).addTo(MAPLAYER); keyMarker(mk,label); bounds.push([lat,lon]); return mk; };
+      const real=c.real&&(c.real.sure||guesses)?c.real:null;   // rough guesses only when you ask for them
+      c.at.filter(a=>a.sure||guesses).forEach(a=>{
+        if(real) L.polyline([[a.lat,a.lon],[real.lat,real.lon]],{color:red,weight:1.5,dashArray:"4 6",interactive:false}).addTo(MAPLAYER);
+        sq(a.lat,a.lon,red,`Copies of ${c.name} came from here: ${a.n} in 7 days${a.sure?"":", rough guess"}`,
+          `<b>Copies of ${esc(c.name)} came from here</b><br>${a.n} probable cop${a.n===1?"y":"ies"} in 7 days, first passed on by ${esc(a.name||"repeater "+a.code)}${a.sure?"":" (a rough guess)"}.${c.real?` The real ${esc(c.name)} is usually heard from ${esc(c.real.name||"elsewhere")}.`:""}${c.held?"<br>Copies are held.":""}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[c.name],title:"Messages from "+c.name}))}">Show their messages</button>`);
+      });
+      if(real&&c.at.some(a=>a.sure||guesses)) sq(c.real.lat,c.real.lon,grn,`The real ${c.name} is usually heard from here`,`<b>The real ${esc(c.name)}</b><br>Usually first passed on by ${esc(c.real.name||"this repeater")}${c.real.sure?"":" (a rough guess)"}. Copies of the name came from somewhere else.`);
     });
     if(meOk){ const meMk=L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); keyMarker(meMk,"Your repeater"); bounds.push([me.lat,me.lon]); }
     const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],10); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:11}); }

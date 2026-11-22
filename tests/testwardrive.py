@@ -20,7 +20,7 @@ class P:
 def act(m, key, text, local=False):
     return PolicyEngine(m.policy["policy_engine"]).evaluate(P(key,text),{"payload_type":5,"hop_count":1,"route_type":1,
         "local_transmission":local}).action
-PING="@[MapperBot]<39.70210 -94.97740> 22"
+PING="@[MapperBot]<39.70210 -94.97210> 22"
 def sync(g): g.last_sync=0; g.sync_pending=True; g.poll_once()
 
 m=mock(); g=guard(m, floodguard=False); sync(g)

@@ -24,7 +24,7 @@ def git(*a): subprocess.run(["git",*a],cwd=d,check=True,capture_output=True)
 git("init","-q"); git("config","user.email","t@example.com"); git("config","user.name","t")
 open(os.path.join(d,"a.txt"),"w").write("nothing personal here\n"); git("add","."); git("commit","-qm","start")
 git("branch","base")
-planted={"email":"write to someone.real@mailbox.co.uk","coords":"home is at 40.123,-96.179 roughly",
+planted={"email":"write to someone.real@mailbox.co.uk","coords":"home is at 40.123,-96.456 roughly",
          "postcode":"post it to ZE9 9ZZ please","ip":"the pi is on 192.168.7.42","locator":"grid square IO91wm",
          "secret":"meet at Quillborough green"}
 open(os.path.join(d,"b.txt"),"w").write("\n".join(planted.values())+"\n")
@@ -40,7 +40,7 @@ rc,out=run(["--diff","base"],d,BL)
 check(rc==1 and "commit " in out and "message line" in out,"checks commit messages too: "+out)
 check("b.txt:" in out,"and the added lines: "+out)
 # 3. The allow file lets made-up values through
-open(os.path.join(d,".privacy-allow"),"w").write("40.123,-96.179\n")
+open(os.path.join(d,".privacy-allow"),"w").write("40.123,-96.456\n")
 rc,out=run(["--tree"],d)
 check("map coordinates" not in out,"an allowed made-up value is let through: "+out)
 # 4. No-reply and example addresses are fine
@@ -49,7 +49,7 @@ git("add","."); git("commit","-qm","c")
 rc,out=run(["--diff","HEAD~1"],d)
 check(rc==0,"no-reply and example addresses pass: "+out)
 # 5. Pull request text
-rc,out=run(["--text-env","T"],d,{"T":"Fixes the map near 40.555,-96.170","PRIVACY_BLOCKLIST":""})
+rc,out=run(["--text-env","T"],d,{"T":"Fixes the map near 40.555,-96.444","PRIVACY_BLOCKLIST":""})
 check(rc==1 and "T line 1: map coordinates" in out,"checks pull request text: "+out)
 shutil.rmtree(d)
 

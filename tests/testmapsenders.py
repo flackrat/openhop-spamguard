@@ -32,7 +32,7 @@ g._save_state(force=True); g2=sg.SpamGuard(dict(g.file_cfg))
 check(g2.sender_paths.get("Bargain Barry")==sp, "what's remembered survives a restart")
 
 # --- one sender, placed from several repeaters (locations made up, around an invented town)
-LOC={"C4":(39.50,-95.73,"Ridge Relay"),"E1":(39.56,-95.66,"Mill Hill Rpt"),"7B":(39.46,-95.65,"Canal Node")}
+LOC={"C4":(39.50,-95.90,"Ridge Relay"),"E1":(39.56,-95.82,"Mill Hill Rpt"),"7B":(39.46,-95.80,"Canal Node")}
 def fake_resolve(path, distrust=frozenset()):
     c=path[0]
     if c not in LOC: return None
@@ -49,7 +49,7 @@ check(len(fox)==1 and set(fox[0]["names"])=={"Fox One","Fox Two"}, f"names that 
 if fox:
     f=fox[0]
     check(f["d7"]==17 and len(f["repeaters"])==3, f"every message counts, and all three repeaters that heard them first: {f['d7']} {len(f['repeaters'])}")
-    check(51.45<f["lat"]<51.57 and -0.91<f["lon"]<-0.79, "the area sits among those repeaters")
+    check(39.45<f["lat"]<39.57 and -95.91<f["lon"]<-95.79, "the area sits among those repeaters")
     check(3<=f["radius_km"]<=g.AREA_KM, f"with a sensible radius: {f['radius_km']}")
     check(f["repeaters"][0]["code"]=="C4", "the repeater that hears them most comes first")
 check(unpl==1, "a sender whose repeaters can't be placed is counted as unplaced, not drawn")
