@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.47.1"
+VERSION = "6.48.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -502,6 +502,11 @@ SETTINGS_META: list[dict] = [
      "risk": "A newcomer who uses such an app with its text packing switched on is held on Public until SpamGuard knows them.",
      "label": "Hold app-packed text on Public from names it doesn't know (experimental)",
      "help": "Some companion apps can pack a message into symbols only the same app can read. SpamGuard can't read or count those, so spam can hide in them. High level only: it is off by default, it only looks at Public and at names SpamGuard doesn't know (known names always pass), and every hold shows its reason."},
+    {"key": "machine_block", "group": "Experimental", "type": "choice",
+     "choices": [["off", "Off: count them only"], ["public", "Stop them on Public"], ["all", "Stop them on every channel"]],
+     "risk": "A bridge or program you want on that channel (a Reticulum link, say) is stopped too. Choose Public only, or Off, to let one through on other channels.",
+     "label": "Stop machine messages (experimental)",
+     "help": "Messages that look like a program, not chat (a Reticulum bridge, or long runs of encoded characters), are counted on the Overview. With this on they are not passed on: Reticulum ones from the start, others after the first one from each name. Your own companions are never touched."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -630,6 +635,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vary_limits": True,
     "repeat_guard": True,
     "public_bots": True,
+    "machine_block": "off",               # stop machine messages (experimental): off, public or all
     "public_bots_log_only": False,
     "quick_resend": True,
     "quick_resend_hold": True,
@@ -6492,29 +6498,28 @@ class SpamGuard:
         self.pubbots.append((e.ts, ms))
         self._hist_bump(e.ts, "pb")
 
-    def machine_by_hour(self) -> list:
-        """Machine messages in each of the last 24 hours, oldest first, for the little bar on the page."""
-        now = time.time()
-        out = [0] * 24
-        for t, _, _ in self.machine:
-            age = int((now - t) // 3600)
-            if 0 <= age < 24:
-                out[23 - age] += 1
-        return out
-
     def _note_machine(self, e) -> None:
         """Machine traffic on a channel (for example a Reticulum bridge): counted with its airtime and mentioned
-        once a day. Nothing is held for being machine traffic; this only makes it visible. The ordinary checks
-        (copies under other names, one name sending far too much) still apply to it as to anything else."""
+        once a day. Held only where you chose to stop machine messages (experimental, off by default); otherwise this
+        only makes it visible. The ordinary checks still apply to it as to anything else."""
         ms = self.airtime_ms(e.length)
         self.stats["machine"] = self.stats.get("machine", 0) + 1
         self.machine.append((e.ts, ms, e.machine))
         self._hist_bump(e.ts, "mt")
         today = time.strftime("%Y-%m-%d", time.localtime(e.ts))
+        stop = e.channel in self.machine_channels()
+        if stop and e.sender and e.sender not in ("?", "Unknown") and not self.is_own(e) \
+                and e.sender not in self.allow_senders and not self.trusted_here(e.sender, e.channel):
+            key = "machine:" + hashlib.sha1(f"{e.sender}|{e.channel}".encode(), usedforsecurity=False).hexdigest()[:10]
+            if self.suppressed.get(key, 0) <= time.time() and self._add_block(
+                    key, "burst", e.sender, "Sends messages that look like a program, not chat", "machine",
+                    channel=e.channel, ttl=86400, from_ts=e.ts):
+                self.request_sync()
         if getattr(self, "_machine_noted", "") != today:
             self._machine_noted = today
             self.note(f"Heard messages from '{str(e.sender)[:24]}' on {e.channel} that look like a program, not chat "
-                      "(a Reticulum bridge, say). Counted, not held for that.")
+                      "(a Reticulum bridge, say). " + ("Stopped there, as you chose under Experimental." if stop
+                                                       else "Counted, not held for that."))
 
     def _note_echo(self, key, p) -> None:
         """The same packet heard again with this repeater's code in its path and more repeaters after it: another
@@ -8468,7 +8473,7 @@ class SpamGuard:
         # Standing rules are never pushed out by the limit, however many blocks a spam wave creates: the
         # wardriving rule, FloodGuard's rules and the known-people rule they rely on. They count towards
         # the limit; the blocks share what is left.
-        wd = self._not_own(self._build_wardrive() + self._build_damaged() + self._build_public_bots())
+        wd = self._not_own(self._build_wardrive() + self._build_damaged() + self._build_public_bots() + self._build_machine())
         keep_ids = {r["id"] for r in flood}
         if flood:
             keep_ids.add(self._rid("known:*"))
@@ -8600,6 +8605,32 @@ class SpamGuard:
             rules.append({"id": self._rid(f"pubbot:{i}"), "name": f"{RULE_PREFIX}bots on Public ({i + 1})",
                           "enabled": True, "if": {"all": conds}, "then": {"action": act}})
         return rules
+
+    def machine_channels(self) -> list[str]:
+        """The channels where machine messages are stopped (experimental, off by default)."""
+        scope = self.cfg.get("machine_block") or "off"
+        if scope == "public":
+            return [n for n in self.cfg["channels"] if self.is_public_channel(n)] or ["Public"]
+        if scope == "all":
+            return sorted(n for n in self.cfg["channels"] if n not in self.watch_channels)
+        return []
+
+    def _build_machine(self) -> list[dict]:
+        """Stop Reticulum traffic carried over a channel from its first message: one rule on the chosen channels.
+        Other machine messages can't be described to openHop by their shape, so those are held per name instead
+        (_note_machine). This repeater's own companions are never affected (_not_own)."""
+        chans = self.machine_channels()
+        keys = list(dict.fromkeys(self.cfg["channels"].get(n, PUBLIC_CHANNEL_KEY) for n in chans))
+        if not keys:
+            return []
+        act = "drop" if self.cfg["mode"] == "protect" and not self.cfg.get("paused") else "log_only"
+        chc = {"field": "channel_hash", "op": "equals", "value": keys[0]} if len(keys) == 1 else \
+            {"field": "channel_hash", "op": "in", "value": keys}
+        return [{"id": self._rid("machine:rns"), "name": f"{RULE_PREFIX}machine messages (Reticulum)", "enabled": True,
+                 "if": {"all": [{"field": "payload_type", "op": "equals", "value": PAYLOAD_TYPE_GRP_TXT}, chc,
+                                {"field": "channel_decryptable", "op": "equals", "value": True},
+                                {"field": "channel_message_body", "op": "starts_with", "value": "RNS:"}]},
+                 "then": {"action": act}}]
 
     def damaged_rule_ids(self) -> set:
         return {v for k, v in self.rule_ids.items() if k.startswith("damaged:")}
@@ -10818,7 +10849,7 @@ class SpamGuard:
                             "machine_24h": sum(1 for t, _, _ in self.machine if t >= time.time() - 86400),
                             "machine_reticulum_24h": sum(1 for t, _, k in self.machine if t >= time.time() - 86400 and k == "reticulum"),
                             "machine_airtime_s_24h": round(sum(m for t, m, _ in self.machine if t >= time.time() - 86400) / 1000, 1),
-                            "machine_by_hour": self.machine_by_hour(),
+                            "machine_stop": bool(self.machine_channels()),
                             "pubbots_24h": sum(1 for t, _ in self.pubbots if t >= time.time() - 86400),
                             "pubbot_airtime_s_24h": round(sum(m for t, m in self.pubbots if t >= time.time() - 86400) / 1000, 1),
                             "pubbots_mode": ("off" if not c.get("public_bots") else ("count" if c.get("public_bots_log_only", False) else "stop")),
@@ -11364,6 +11395,10 @@ class SpamGuard:
                         d["bad"] = [h for h in d["bad"] if h != b["value"]]
                         d["auto"] = [h for h in d["auto"] if h != b["value"]]
                     msg += f" The hold on that name through repeater {b['value']} was removed."
+                elif b and b["kind"] == "burst" and b.get("source") == "machine":
+                    self.blocks.pop(key)
+                    self.suppressed[key] = now + 86400
+                    msg += " Their machine messages now get through here."
                 elif b and b["kind"] == "hop" and self.gated(b):
                     msg += f" Their messages now get through the block on repeater {b['value']}."
                 elif b and b["kind"] == "hop":
