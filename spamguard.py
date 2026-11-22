@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.47.0"
+VERSION = "6.47.1"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -11810,6 +11810,20 @@ def host_is_local(host, allowed=()) -> bool:
         or h in {str(a).strip().lower().rstrip(".") for a in allowed}
 
 
+def peer_is_local(addr) -> bool:
+    """Whether a connecting device is on this machine or a private network (home LAN, a VPN such as Tailscale,
+    Docker's own network): any address that isn't routable on the open internet."""
+    try:
+        ip = ipaddress.ip_address(str(addr or "").split("%", 1)[0])
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_unspecified or ip.is_multicast:
+        return False
+    return not ip.is_global
+
+
 def hide_channel_keys(rules):
     """The rule list as shown to a reader: each channel's key replaced by a short fingerprint."""
     def walk(x):
@@ -11845,6 +11859,17 @@ def make_handler(guard: SpamGuard):
         def _key_ok(self) -> bool:
             key = guard.cfg.get("listen_api_key")
             return not key or hmac.compare_digest(str(self.headers.get("X-API-Key") or "").encode(), str(key).encode())
+
+        def _peer_ok(self) -> bool:
+            """Without a password, only devices on this machine or a private network get an answer. Someone who can
+            reach this port from the internet (a forwarded port, a cloud machine) must use the page password."""
+            if guard.cfg.get("listen_api_key"):
+                return True
+            return peer_is_local((self.client_address or ("",))[0])
+
+        def _refuse_peer(self):
+            return self._send(403, {"error": "This SpamGuard only answers devices on its own network until a page "
+                                             "password is set (listen_api_key in the config)."})
 
         def _host_ok(self) -> bool:
             """Without a password, only answer to names a home network uses (an address, localhost, a name
@@ -11887,6 +11912,8 @@ def make_handler(guard: SpamGuard):
 
         def _get(self):
             path = self.path.split("?")[0]
+            if not self._peer_ok():
+                return self._refuse_peer()
             if not self._host_ok():
                 return self._send(403, {"error": "Unknown host name. Add it to allowed_hosts in the config to use it."})
             if path in ("/", "/index.html"):
@@ -11936,6 +11963,8 @@ def make_handler(guard: SpamGuard):
             return self._send(404, {"error": "not found"})
 
         def do_POST(self):
+            if not self._peer_ok():
+                return self._refuse_peer()
             if not self._host_ok():
                 return self._send(403, {"error": "Unknown host name. Add it to allowed_hosts in the config to use it."})
             if not self._key_ok():

@@ -111,6 +111,26 @@ end=max(b["expires"] for b in auto)
 g._expire_blocks(end+1)
 check(not [b for b in g.blocks.values() if b.get("source")=="route-auto"],"and every one ends by itself")
 
+# --- both together on one repeater: Auto level moving doesn't undo route blocks, and a firmer level makes them easier
+m,g=fresh(known_min_msgs=3); g.apply_settings(g.set_forget_status()["turn_on"]); g.apply_settings({"mode":"protect"})
+g.advisor=lambda: {"families":[{"key":"level","ready":True}]}
+g.preview_summary=lambda: {"suggested":70,"levels":[1],"early":True}
+for i,t in enumerate(["Morning all","Nice and clear","Anyone about"]): m.add("Quarry Pete",t,["B7","A7","DE"],ago=3000-i*60)
+for i in range(9): m.add(f"W0x{i:02d}",f"Hi there {i}",["B7","A7","DE"],ago=1500-i*40)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+ra=[k for k,b in g.blocks.items() if b.get("source")=="route-auto"]
+check(len(ra)==1,"a route surge is blocked: %d"%len(ra))
+n50=g.cfg["route_surge_names"]
+g._maybe_auto_level(time.time()); g._maybe_auto_level(time.time()+2000)
+check(g.cfg["level"]==70,"Auto level firms up meanwhile: %s"%g.cfg["level"])
+check(all(k in g.blocks for k in ra),"and the route block stays in place")
+check(g.cfg["route_surge_names"]<=n50,"a firmer level needs no more names to block a route: %s then %s"%(n50,g.cfg["route_surge_names"]))
+for r in range(1,6):
+    for i in range(9): m.add(f"W{r}x{i:02d}",f"Hi there {r} {i}",[f"B{r}",f"A{r}","DE"],ago=900-i*30)
+g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
+check(len([b for b in g.blocks.values() if b.get("source")=="route-auto"])<=3,"still at most three automatic route blocks")
+check(g.is_known("Quarry Pete") and m.decide("Quarry Pete","Morning",["B7","A7","DE"])=="allow","a known person still passes on the blocked route")
+
 # --- updates install by themselves once a version has been out a while
 m,g=fresh(); g.apply_settings(g.set_forget_status()["turn_on"])
 newer=".".join(str(int(x)+(1 if i==0 else 0)) for i,x in enumerate(sg.VERSION.split(".")))
