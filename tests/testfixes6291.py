@@ -20,7 +20,7 @@ def act(m,text,sender,path):
     return PolicyEngine(m.policy["policy_engine"]).evaluate(P(text,sender,path),{"payload_type":5,"hop_count":len(path),
         "route_type":1,"local_transmission":False}).action
 def sync(g): g.last_sync=0; g.sync_pending=True; g.poll_once()
-JUNK=[("J,YSY*%Z","YF^;ri}12`Rnue/"),("Q#$Q3<M=","CT[36%X+{/%!R"),("H=UC(#0P","m{\\F^yG,tz"),("E1N%2(1D","}<hZy\\NI*ER"),("PQ;RS",".hC*6JrB`M9SEz")]
+JUNK=[("K,WQV*%R","QT^;wo}47`Pmax/"),("W#$R5<N=","DV[48%Y+{/%!T"),("K=WD(#7Q","n{\\G^zH,uy"),("F2P%4(3E","}<jXw\\MK*FT"),("RS;TU",".jD*8KsC`N2TFx")]
 
 # 1. Symbol junk is spam, not "possibly genuine": a fresh install in Monitor still switches itself on
 m=mock(); g=guard(m,floodguard=False,symbol_junk=True,mode="monitor")

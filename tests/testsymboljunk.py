@@ -49,9 +49,9 @@ check(g.settled("Ann Hill") and act(m,"a { b } ^ c \\o/","Ann Hill")=="allow","a
 check(act(m,"Morning all, lovely clear skies")=="allow","ordinary chat from a new name is passed on")
 check(act(m,"@[SAY>NO^] it isn't all one person's fault though")=="allow" and act(m,"^ this")=="allow",
       "a reply to a name with ^ in it, or \"^ this\", is passed on")
-check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("J,YSY*%Z","$OY685UKL","AB<CD>EF","X:Y:Z","P;Q","J++BXP2>","4A=XHV4Z","£O_*B_Q")),
+check(all(act(m,"Communication broke down, classic",n)=="drop" for n in ("K,WQV*%R","$TQ482MNP","AB<CD>EF","X:Y:Z","P;Q","R++QWT7>","7C=QWE9P","£T_*W_R")),
       "an ordinary-looking message from a keyboard-mashed name is dropped on the first message")
-check(all(act(m,"Morning all",n)=="allow" for n in ("Mark~G6BNB/R","Dave M3MHA (Thurrock)","GROC#2","John's T-deck","Bingo | Chris")),
+check(all(act(m,"Morning all",n)=="allow" for n in ("Mark~Q6XYZ/R","Dave Q3ABC (Plainsfield)","PLNS#2","John's T-deck","Bingo | Chris")),
       "new names with symbols real people use are passed on")
 check(act(m,"Morning","Ann Hill")=="allow","a known name is passed on (name rules too)")
 check(act(m,"@[Sam] Rx5 | 9 hops | 4E>B7>9C","Bot 2")=="allow","route replies with | are passed on")
@@ -59,8 +59,8 @@ check(act(m,"CT[36%X+{/%!R",key=sg.hashtag_secret("#test"))=="allow","other chan
 check(act(m,"CT[36%X+{/%!R",local=True)=="allow","this repeater's own companion is never stopped")
 
 # 3. SpamGuard's own records agree (what the page and the evidence log show)
-m.add("J,YSY*%Z","YF^;ri}12`Rnue/",["9A","4C"],ago=0); sync(g)
-e=next(x for x in g.events if x.sender=="J,YSY*%Z")
+m.add("K,WQV*%R","QT^;wo}47`Pmax/",["9A","4C"],ago=0); sync(g)
+e=next(x for x in g.events if x.sender=="K,WQV*%R")
 check(e.matched=="junk:symbols","the junk message is recorded as caught by the junk block")
 m.add("Ann Hill","code is {x}",["4C"],ago=0); sync(g)
 e=next(x for x in g.events if x.sender=="Ann Hill" and "{x}" in x.text)

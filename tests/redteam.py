@@ -80,7 +80,7 @@ def send(kind, sender, text, path, channel="Public", nameless=False):
 FIRST = ["Peter", "Lotte", "Sanne", "Daan", "Bram", "Femke", "Joris", "Anouk", "Ruben", "Iris", "Thijs", "Eva",
          "Koen", "Lisa", "Stijn", "Noor", "Jasper", "Fleur", "Wouter", "Sophie", "Gijs", "Mila"]
 REGULARS = [f"{n} {random.choice('ABCDEFGHJKLMNPRSTVW')}" for n in FIRST] + \
-           ["Hilltop Hiker", "Canal Boat Ted", "Base Camp 3", "PD3XYZ", "PA0QRS", "M0ABC", "NL-XYZ-P01", "NL-XYZ-TST",
+           ["Hilltop Hiker", "Canal Boat Ted", "Base Camp 3", "QD3XYZ", "QA0QRS", "Q0ABC", "NL-XYZ-P01", "NL-XYZ-TST",
             "Radio Ruth", "Quarry Pete"]
 REG_ENTRY = {r: random.choice(GOOD_ENTRIES) for r in REGULARS}
 CHAT = ["Goedemorgen allemaal", "Anyone hearing me from the dyke?", "Nice signal today", "Radio check please",

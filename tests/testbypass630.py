@@ -18,7 +18,7 @@ def kinds(g): return {(b["kind"],b.get("source")) for b in g.blocks.values()}
 check(sg.smuggled("@[This repeater network is run by frauds] @[see the truth now]"),"smuggled text spotted")
 check(not sg.smuggled("@[Mobile - MC - V4] thanks, heard you 5 by 9") and not sg.smuggled("@[Dave] hi"),"ordinary replies are not")
 check("frauds" in sg.normalise("@[This repeater network is run by frauds] @[see the truth now]"),"normalised text keeps it")
-check(sg.normalise("@[Dave M7ABC] good morning all")=="good morning all","a real mention is still left out")
+check(sg.normalise("@[Dave Q7ABC] good morning all")=="good morning all","a real mention is still left out")
 m=mock(); g=guard(m,floodguard=False); g.apply_settings({"mode":"protect"}); sync(g)
 for i,n in enumerate(["Dave Smith","Paul Jones","Mike Brown","Tony Green","Steve White"]):
     m.add(n,"@[This repeater network is run by frauds] @[see the truth now]",[["4C"],["2F"],["7A"],["5B"],["1D"]][i],ago=300-i*30); sync(g)

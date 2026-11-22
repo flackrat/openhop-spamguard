@@ -25,7 +25,7 @@ print("\n== 2. Lowercase / longer / mixed-case random names")
 for n in ["ud6dwrek","xk7qp2mz9","Qx7Tp2Lm","4kd9w2pq7z"]:
     sc=sg.name_score(n,[__import__("re").compile(p,2) for p in sg.DEFAULT_CONFIG["random_name_patterns"]])
     check(f"'{n}' scored as random ({sc})", sc>=3)
-for n in ["Bob42","Sarah2","Riverside⚡","Dave M","BOT-01-TEST","HomeRepeater1","G4XYZ Pete","Sarah","M0ABC","Dave1985","ChrisP"]:
+for n in ["Bob42","Sarah2","Riverside⚡","Dave M","BOT-01-TEST","HomeRepeater1","Q4XYZ Pete","Sarah","Q0ABC","Dave1985","ChrisP"]:
     sc=sg.name_score(n,[__import__("re").compile(p,2) for p in sg.DEFAULT_CONFIG["random_name_patterns"]])
     check(f"'{n}' not random at balanced ({sc})", sc<3)
 
@@ -77,7 +77,7 @@ check("relaxed sensitivity tolerates 8 new names (busy event)", "hop:A9" not in 
 print("\n== 7. Genuine traffic is left alone")
 m=mock()
 legit=[("Riverside⚡","It's the usual crowd 😂",["36","21"]),("Dave M","Morning all",["B1","7E"]),("Dave M","Morning all",["B1","7E"]),
-       ("Pete","Morning all",["44"]),("G4XYZ Pete","Testing new antenna on the mast, signal report appreciated",["44","7E"]),
+       ("Pete","Morning all",["44"]),("Q4XYZ Pete","Testing new antenna on the mast, signal report appreciated",["44","7E"]),
        ("BOT-01-TEST","ACK T-Rx-01, H: 10",["4A","2D"]),("BOT-01-TEST","ACK T-Rx-01, H: 11",["4A","2D"])]
 for i,(s_,t,p) in enumerate(legit): m.add(s_,t,p,ago=500-i*30)
 g=guard(m); run(m,g)
