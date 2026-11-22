@@ -8,23 +8,23 @@ from playwright.async_api import async_playwright
 AXE=open(os.environ.get("AXE_JS", os.path.join(REPO,"tests",".axe","node_modules","axe-core","axe.min.js"))).read()
 LF=REPO+"/tests/.leaflet/node_modules/leaflet/dist/"
 now=time.time()
-ME=(52.93,-0.62)   # made-up spot for "your repeater"
+ME=(40.93,-95.62)   # made-up spot for "your repeater"
 def k(code): return code+"".join("%02X"%((i*37+ord(code[0])*11)%256) for i in range(31))
 def rep(code,name,lat,lon): return {"key":k(code),"name":name,"seen":now-3600,"lat":lat,"lon":lon}
 entries=[
- {"key":"area:C4:0","name":"","lat":52.06,"lon":-2.62,"code":"C4","d1":19,"d7":46,"exact":46,"codes":["C4"],"last":now-900,"kind":"area",
+ {"key":"area:C4:0","name":"","lat":40.06,"lon":-97.62,"code":"C4","d1":19,"d7":46,"exact":46,"codes":["C4"],"last":now-900,"kind":"area",
   "near":["Quarry Hill Solar","Beacon Lane Rpt","Old Mill Mast"],"claims":["FREE WIFI NODE"],"spread_km":14,"blocked":True,"typical_before":0},
- {"key":k("5E"),"name":"Canal Basin Rpt","lat":52.38,"lon":-0.55,"code":"5E","d1":6,"d7":18,"exact":18,"codes":["5E"],"last":now-5400,"kind":"id",
+ {"key":k("5E"),"name":"Canal Basin Rpt","lat":40.38,"lon":-95.55,"code":"5E","d1":6,"d7":18,"exact":18,"codes":["5E"],"last":now-5400,"kind":"id",
   "near":[],"claims":[],"spread_km":None,"blocked":False,"typical_before":0},
- {"key":"area:C4:1","name":"","lat":51.62,"lon":-3.05,"code":"C4","d1":2,"d7":9,"exact":9,"codes":["C4"],"last":now-20000,"kind":"area",
+ {"key":"area:C4:1","name":"","lat":39.62,"lon":-98.05,"code":"C4","d1":2,"d7":9,"exact":9,"codes":["C4"],"last":now-20000,"kind":"area",
   "near":["Hawthorn Ridge","Market Cross Node"],"claims":[],"spread_km":19,"blocked":True,"typical_before":0},
- {"key":k("B7"),"name":"Lakeside Solar","lat":52.62,"lon":-0.48,"code":"B7","d1":1,"d7":5,"exact":0,"codes":["B7"],"last":now-40000,"kind":"guess",
+ {"key":k("B7"),"name":"Lakeside Solar","lat":40.62,"lon":-95.48,"code":"B7","d1":1,"d7":5,"exact":0,"codes":["B7"],"last":now-40000,"kind":"guess",
   "near":[],"claims":[],"spread_km":None,"blocked":False,"typical_before":2},
 ]
 sources=[
- {"hop":"C4","d7":55,"d1":21,"last":now-900,"blocked":True,"allowed":False,"candidates":[rep("C4","Ridgeway Relay",51.55,-1.40)],"likely":{"name":"Quarry Hill Solar","key":"area:C4:0","exact":False}},
- {"hop":"5E","d7":18,"d1":6,"last":now-5400,"blocked":False,"allowed":False,"candidates":[rep("5E","Canal Basin Rpt",52.38,-0.55)],"likely":{"name":"Canal Basin Rpt","key":k("5E"),"exact":True}},
- {"hop":"B7","d7":5,"d1":1,"last":now-40000,"blocked":False,"allowed":False,"candidates":[rep("B7","Lakeside Solar",52.62,-0.48),rep("B7","Moorgate Tower",53.4,-1.5)],"likely":None},
+ {"hop":"C4","d7":55,"d1":21,"last":now-900,"blocked":True,"allowed":False,"candidates":[rep("C4","Ridgeway Relay",39.55,-96.40)],"likely":{"name":"Quarry Hill Solar","key":"area:C4:0","exact":False}},
+ {"hop":"5E","d7":18,"d1":6,"last":now-5400,"blocked":False,"allowed":False,"candidates":[rep("5E","Canal Basin Rpt",40.38,-95.55)],"likely":{"name":"Canal Basin Rpt","key":k("5E"),"exact":True}},
+ {"hop":"B7","d7":5,"d1":1,"last":now-40000,"blocked":False,"allowed":False,"candidates":[rep("B7","Lakeside Solar",40.62,-95.48),rep("B7","Moorgate Tower",41.4,-96.5)],"likely":None},
 ]
 def patch(d):
     d["summary"]["caught_24h"]=d["metrics"]["d1"]["c"]
@@ -37,7 +37,7 @@ def patch(d):
     m["radio_known"]=True
     m["most_held"]=[{"name":"Rowan Hill again","held":14,"messages":61,"days":3,"per_day":20,"today":4,"also":["Rowan Hill"]},
                     {"name":"QX7TP2LM","held":6,"messages":6,"days":1,"per_day":6,"today":0}]
-    m["flood_sources"]=[{"hop":"9A","d1":420,"d7":2210,"last":now-600,"candidates":[rep("9A","Hawthorn Ridge",52.1,-1.2)]},
+    m["flood_sources"]=[{"hop":"9A","d1":420,"d7":2210,"last":now-600,"candidates":[rep("9A","Hawthorn Ridge",40.1,-96.2)]},
                         {"hop":"B2","d1":0,"d7":35,"last":now-90000,"candidates":[]}]
     for i,r in enumerate(m["daily"]): r.update(ar=(180+i*12)*60000,sa=(2+i%3)*1000,fs=(30+i*9)*60000)
     for i,r in enumerate(m["hourly"]): r.update(bz=None if i in (3,4) else 8+(i*7)%23, af=40+(i*11)%50)

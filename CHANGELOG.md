@@ -15,6 +15,17 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.45.0
+
+- **Better at telling a person from someone using their name.** More copies are recognised, only the copy is held, and the hold ends if it turns out to be the real person.
+- **People shows a copied name clearly.** A Name copied filter, a warning on the name, and a list of where its messages come from, each marked Usual, New direction or Probable copy.
+- **A bar under each name** runs from cool (looks genuine) to hot (probably spam), with the reason in words.
+- **Messages** tags a probable copy, and Spoofed holds only the copy.
+- **Not spam on a held copy** asks first, then lifts the hold if you say it was them.
+- **The spam map says how sure it is.** Each place shows the area the sender can be in, marked Certain, Likely or Rough guess, with a table underneath. Places it can't back up are no longer shown as certain.
+- **Copied names on the map**: where copies of a name came from, next to where the real person is usually heard.
+- **The evidence log keeps repeaters' public locations**, so a log can rebuild the map later.
+
 ## v6.44.0
 
 - **Steadier under a long attack.** Protection keeps something in reserve for a large flood, however much smaller spam came first.

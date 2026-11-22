@@ -9,7 +9,7 @@ def check(c,msg):
     global ok,fail
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
-g.me={"name":"Home Mast","lat":51.5,"lon":-0.5,"hash":"A1"}
+g.me={"name":"Home Mast","lat":39.5,"lon":-95.5,"hash":"A1"}
 LF=os.path.join(os.path.dirname(os.path.abspath(__file__)),".leaflet","node_modules","leaflet","dist")+"/"
 async def main():
     async with async_playwright() as p:

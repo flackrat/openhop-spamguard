@@ -24,6 +24,7 @@ import hashlib
 import hmac
 import json
 import os
+import struct
 import sys
 import tempfile
 import time as _real_time
@@ -48,16 +49,32 @@ class Clock:
         return getattr(_real_time, name)
 
 
-def encrypt(sender: str, text: str, key_hex: str) -> str:
+def encrypt(sender: str, text: str, key_hex: str, sent: int = 0) -> str:
+    """sent: the sender's own device clock, when the log has it (0 when it doesn't)."""
     k = sg._secret32(key_hex)
-    pt = b"\x00\x00\x00\x00\x00" + f"{sender}: {text}".encode()
+    pt = int(max(0, min(sent, 2 ** 32 - 1))).to_bytes(4, "little") + b"\x00" + f"{sender}: {text}".encode()
     pt += b"\x00" * ((-len(pt)) % 16)
     ct = AES.new(k[:16], AES.MODE_ECB).encrypt(pt)
     return (bytes([sg.channel_hash_byte(key_hex)]) + hmac.new(k, ct, hashlib.sha256).digest()[:2] + ct).hex()
 
 
+def advert_payload(r) -> str:
+    """A repeater advert rebuilt from its evidence record: the key (completed from the part logged), the location
+    and the name. Not signed: SpamGuard reads adverts, it doesn't check them."""
+    k = str(r.get("key") or "")
+    key = bytes.fromhex((k + hashlib.sha256(k.encode()).hexdigest())[:64])
+    flags = (2 if r.get("node") == "repeater" else 3) | 0x10 | 0x80
+    app = bytes([flags]) + struct.pack("<ii", int(r["lat"] * 1e6), int(r["lon"] * 1e6)) + str(r.get("name") or "").encode()[:32]
+    return (key + struct.pack("<I", int(r["ts"])) + bytes(64) + app).hex()
+
+
+def sent_clock(m) -> int:
+    off = m.get("sent_offset_s")
+    return int(m["ts"] - off) if isinstance(off, (int, float)) and not isinstance(off, bool) else 0
+
+
 def load(path):
-    msgs, labels, settings = [], {}, None
+    msgs, labels, settings, adverts = [], {}, None, []
     with open(path, encoding="utf-8") as f:
         for line in f:
             try:
@@ -67,6 +84,8 @@ def load(path):
             t = r.get("type")
             if t == "msg":
                 msgs.append(r)
+            elif t == "advert" and r.get("node") and isinstance(r.get("lat"), (int, float)) and isinstance(r.get("ts"), (int, float)):
+                adverts.append(r)   # a repeater's advert with its location: lets a replay rebuild the map
             elif t == "label":
                 # match a label to a message by packet id, else by sender + text
                 k = r.get("packet") or f"{r.get('sender')}|{r.get('text')}"
@@ -74,6 +93,8 @@ def load(path):
             elif t == "settings" and settings is None:
                 settings = r
     msgs.sort(key=lambda r: r["ts"])
+    adverts.sort(key=lambda r: r["ts"])
+    load.adverts = adverts   # (kept apart from the messages, so counts and summaries are unchanged)
     for m in msgs:
         m["_label"] = labels.get(m.get("packet")) or labels.get(f"{m['sender']}|{m['text']}")
     return msgs, labels, settings
@@ -94,7 +115,7 @@ def load_marks(path) -> list:
     return out
 
 
-def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False, marks=None):
+def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False, marks=None, adverts=None):
     """quiet_step: when no message arrives, step the clock this far at a time instead of one poll (quicker).
     known_at_start: begin knowing the people the Pi already knew when the log starts, as it did."""
     sg.time = Clock()  # SpamGuard now runs on log time
@@ -125,6 +146,8 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
     end = (msgs[-1]["ts"] + 300) if msgs else 0
     marks = list(marks or []) if overrides.get("text_sense") else []   # marks only matter to what learns from them
     mi = 0
+    adverts = list(adverts or [])
+    ai = 0
     while Clock.now <= end:
         while mi < len(marks) and marks[mi]["ts"] <= Clock.now:
             r = marks[mi]
@@ -136,11 +159,16 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
                     g.labels[kk] = r["label"]
             g._sense_label(key, str(r.get("text") or ""), r["label"])
         batch = []
+        while ai < len(adverts) and adverts[ai]["ts"] <= Clock.now:
+            r = adverts[ai]
+            batch.append({"id": 10 ** 7 + ai, "timestamp": r["ts"], "type": sg.PAYLOAD_TYPE_ADVERT, "payload": advert_payload(r),
+                          "packet_hash": f"a{ai}", "original_path": json.dumps(r.get("path") or [])})
+            ai += 1
         while i < len(msgs) and msgs[i]["ts"] <= Clock.now:
             m = msgs[i]
             key = keys.get(m.get("channel") or "Public", sg.PUBLIC_CHANNEL_KEY)
             batch.append({"id": i, "timestamp": m["ts"], "type": sg.PAYLOAD_TYPE_GRP_TXT,
-                          "payload": encrypt(m["sender"], m["text"], key), "packet_hash": f"r{i}",
+                          "payload": encrypt(m["sender"], m["text"], key, sent_clock(m)), "packet_hash": f"r{i}",
                           "original_path": json.dumps(m.get("path") or [])})
             i += 1
         if batch:
