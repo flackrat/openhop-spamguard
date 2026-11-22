@@ -26,12 +26,14 @@ OFF=265*86400
 REAL=[["CF","19","73","B0"],["6E","19","B5","73"],["6D","19","31","C7"]]
 words=["morning","weather","antenna","coffee","radio","garden","football","traffic","lunch","repeater","solar","rain"]
 
-def setup(**kw):
+def setup(two_days=True, **kw):
     m=mock(); g=guard(m,floodguard=False,known_min_msgs=3,known_min_minutes=60,spoof_watch=True,**kw)
     for i in range(12):
         ago=7000-i*500
         add_at(m,"Moor Walker",f"{words[i]} chat {i}",REAL[i%3],time.time()-ago+20,ago=ago)
     g.apply_settings({"mode":"protect"}); sync(g)
+    if two_days and g.dirs.get("moorwalker"):
+        today=int(time.time()//86400); g.dirs["moorwalker"]["dd"]=[today-1,today]   # as if she was also heard yesterday
     return m,g
 
 m,g=setup()
@@ -125,6 +127,40 @@ pd=g4.dirs["moorwalker"]["pend"]; k=next(iter(pd)); pd[k]=[x-1 for x in pd[k]]  
 add_at(m4,"Moor Walker","new road 2",["CF","A1","A2"],time.time()+30); sync(g4)
 add_at(m4,"Moor Walker","now usual",["CF","A1","A2"],time.time()+30); sync(g4)
 check(g4.events[-1].direction=="usual","a new route seen on two days becomes usual")
+
+# a burst on one day isn't a baseline: nothing is judged until a second day
+m7,g7=setup(two_days=False)
+add_at(m7,"Moor Walker","copy on day one",["CF","5D","82"],time.time()-OFF); sync(g7)
+check(g7.events[-1].direction is None and not any(b["kind"]=="imposter" for b in g7.blocks.values()),"one day of messages: direction not judged yet")
+check(g7.dirs["moorwalker"]["n"]>=g7.DIR_MIN and len(g7.dirs["moorwalker"]["dd"])==1,"(though enough messages were learnt)")
+
+# a new direction that other names' spam has used never settles in as hers
+m8,g8=setup()
+g8.route_history=lambda path,who=None:{"spam":3,"spoof":0,"known":0}   # other unknown names sent spam that way
+for k in range(3):
+    add_at(m8,"Moor Walker",f"via the spam route {k}",["CF","B1","B2"],time.time()+20); sync(g8)
+    pd=g8.dirs["moorwalker"]["pend"]
+    for key in pd: pd[key]=[x-1 for x in pd[key]]   # as if each was a day apart
+e=g8.events[-1]
+check(e.direction=="new" and e.copy and "route" in e.copy["signs"],"still a new direction, with the spam-route sign")
+check(not any(x in g8.dirs["moorwalker"]["h"] for x in ("B1","B2")),"and it never became one of her usual ways")
+check(not any(b["kind"]=="imposter" for b in g8.blocks.values()),"(shown only, nothing held)")
+
+# device clock boundaries
+for off,red in ((sg.SpamGuard.CLOCK_OFF-120,False),(sg.SpamGuard.CLOCK_OFF+120,True)):
+    m9,g9=setup()
+    add_at(m9,"Moor Walker","clock test",["CF","5D","82"],time.time()-off); sync(g9)
+    e=g9.events[-1]
+    check(e.direction=="new" and (e.copy["level"]=="red")==red,f"a clock {'over' if red else 'under'} a day out is {'' if red else 'not '}another device")
+    check(any(b["kind"]=="imposter" for b in g9.blocks.values())==red,f"and {'is' if red else 'is not'} held")
+# her own replacement device, clock unset, heard her usual way: nothing happens
+m10,g10=setup()
+add_at(m10,"Moor Walker","new radio, clock not set",["6E","19","B5"],time.time()-OFF); sync(g10)
+e=g10.events[-1]
+check(e.direction=="usual" and e.copy is None and not any(b["kind"]=="imposter" for b in g10.blocks.values()),"her new device her usual way: not a copy")
+# her replacement device from somewhere new: amber at most until a copy way is known
+add_at(m10,"Moor Walker","on holiday",["CF","D7","E2"],time.time()+10); sync(g10)
+check(g10.events[-1].copy["level"]=="amber","her own clock, somewhere new: shown, not held")
 
 # a name with no history is never judged; the check off learns nothing
 m5,g5=setup(); add_at(m5,"Brand New","hello",["CF","5D","82"],time.time()-OFF); sync(g5)

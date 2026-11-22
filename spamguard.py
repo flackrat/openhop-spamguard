@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.45.0"
+VERSION = "6.46.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1718,7 +1718,23 @@ class EvidenceLog:
         return {"days": len(fs), "bytes": sum(os.path.getsize(f) for f in fs),
                 "first": os.path.basename(fs[0])[:10] if fs else None, "pending": len(self.buf)}
 
-    def export(self, days: int, scramble: bool) -> str:
+    PLACES = ("exact", "round", "drop")   # repeater locations in an export: as heard, to about 10 km, or left out
+
+    @staticmethod
+    def _places(r: dict, places: str) -> dict:
+        if r.get("type") == "advert" and r.get("node") and places != "exact":
+            if places == "drop":
+                r.pop("lat", None)
+                r.pop("lon", None)
+            else:
+                for k in ("lat", "lon"):
+                    if isinstance(r.get(k), (int, float)):
+                        r[k] = round(r[k], 1)
+        return r
+
+    def export(self, days: int, scramble: bool, places: Optional[str] = None) -> str:
+        """places: repeater locations, "exact", "round" or "drop"; by default rounded in a scrambled file."""
+        places = places if places in self.PLACES else ("round" if scramble else "exact")
         self.flush(force=True)
         cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
         lines = []
@@ -1727,6 +1743,9 @@ class EvidenceLog:
                 with open(fpath, encoding="utf-8") as f:
                     lines.extend(ln for ln in f.read().splitlines() if ln.strip())
         if not scramble:
+            if places != "exact":
+                lines = [json.dumps(self._places(json.loads(ln), places), ensure_ascii=False) if '"node"' in ln else ln
+                         for ln in lines]
             return "\n".join(lines) + ("\n" if lines else "")
         salt = secrets.token_hex(8)
         names: dict[str, str] = {}
@@ -1770,7 +1789,7 @@ class EvidenceLog:
                         if len(n) >= 3:
                             t = t.replace(n, names[n])
                     r[k] = t
-            out.append(json.dumps(r, ensure_ascii=False))
+            out.append(json.dumps(self._places(r, places), ensure_ascii=False))
         return "\n".join(out) + ("\n" if out else "")
 
 
@@ -4059,6 +4078,14 @@ class SpamGuard:
         geo["ent"] = ent
         geo["ts"] = time.time()
 
+    def _place_level(self, r: dict) -> dict:
+        """A resolved route as a place on the map, with how sure it is and the area the sender can be in: the first
+        repeater confirmed by the next (certain); one hop before a known repeater (likely, an area near it); or
+        fitted by distance alone (rough guess)."""
+        level = "certain" if r["kind"] == "id" and r.get("sure") else "likely" if r["kind"] == "next" else "guess"
+        return {"lat": r["lat"], "lon": r["lon"], "name": r.get("name") or "", "code": r.get("code") or "", "kind": r["kind"],
+                "level": level, "sure": level != "guess", "radius_km": round(self.reach_km(r["key"]))}
+
     def copy_places(self, dirs: dict, held: set, now: float) -> list:
         """For the map: where probable copies of a name entered the mesh, next to where the real person is usually
         heard from. Only copies SpamGuard was confident about (red), in the last week."""
@@ -4072,17 +4099,16 @@ class SpamGuard:
                 r = self.resolve_path(c[4].split(">"))
                 if not r:
                     continue
-                a = at.setdefault(r["key"], {"lat": r["lat"], "lon": r["lon"], "name": r.get("name") or "", "code": r["code"],
-                                              "kind": r["kind"], "sure": bool(r.get("sure")), "n": 0, "last": 0.0})
+                a = at.setdefault(r["key"], dict(self._place_level(r), n=0, last=0.0))
                 a["n"] += 1
                 a["last"] = max(a["last"], c[0])
             if not at:
                 continue
             real = self.resolve_path(d["up"].split(">")) if d.get("up") else None
+            placed = sorted(at.values(), key=lambda a: -a["n"])[:3]
             out.append({"name": d["who"], "n": len(red), "last": max(c[0] for c in red), "held": d["who"] in held,
-                        "at": sorted(at.values(), key=lambda a: -a["n"])[:3],
-                        "real": {"lat": real["lat"], "lon": real["lon"], "name": real.get("name") or "", "kind": real["kind"],
-                                 "sure": bool(real.get("sure"))} if real else None})
+                        "at": placed, "unplaced": len(red) - sum(a["n"] for a in placed),
+                        "real": self._place_level(real) if real else None})
         out.sort(key=lambda x: -x["n"])
         return out[:12]
 
@@ -6010,6 +6036,7 @@ class SpamGuard:
     # Which way a name's messages come from. The first repeater alone is not enough: people near each other share
     # it, so a copy of a name can arrive by the very repeater the real person uses. The few hops after it differ.
     DIR_MIN = 8            # messages learnt before a name's direction is judged
+    DIR_DAYS = 2           # ... and the days they came on: a burst on one day doesn't make a baseline
     DIR_HOPS = 4           # the hops nearest the sender that make up its direction
     DIR_PROMOTE_DAYS = 2   # a new direction seen on this many days, with nothing against it, becomes usual
     DIR_KEEP = 7 * 86400   # copies remembered this long for the People page
@@ -6030,6 +6057,8 @@ class SpamGuard:
             if isinstance(x, list) else []   # noqa: E731
         d = {"h": counts(v.get("h"), 24), "all": counts(v.get("all"), 64), "p": counts(v.get("p"), 8),
              "n": int(v["n"]) if isinstance(v.get("n"), int) and not isinstance(v.get("n"), bool) and v["n"] >= 0 else 0,
+             "dd": sorted({int(x) for x in v["dd"] if isinstance(x, int) and not isinstance(x, bool) and 0 < x < 10 ** 6})[-3:]
+             if isinstance(v.get("dd"), list) else None,
              "last": float(v["last"]) if isinstance(v.get("last"), (int, float)) and 0 <= v["last"] <= now + 60 else 0.0,
              "pend": {}, "bad": hexes(v.get("bad")), "auto": hexes(v.get("auto")), "copies": [],
              "who": str(v["who"])[:40] if isinstance(v.get("who"), str) else "",
@@ -6043,6 +6072,8 @@ class SpamGuard:
                 d["copies"].append([float(c[0]), c[1][:30], c[2], [str(x)[:12] for x in c[3]][:4]]
                                    + ([c[4][:140]] if len(c) == 5 and isinstance(c[4], str) else []))
         d["copies"] = d["copies"][-30:]
+        if d["dd"] is None:   # saved before 6.46: a baseline that was already being judged stays judged
+            d["dd"] = [0, 1] if d["n"] >= SpamGuard.DIR_MIN else []
         return d if d["n"] or d["copies"] else None
 
     def _dir_rec(self, who: str, create: bool = False) -> Optional[dict]:
@@ -6051,7 +6082,8 @@ class SpamGuard:
         if d is None and create:
             while len(self.dirs) >= 3000:
                 self.dirs.pop(next(iter(self.dirs)))
-            d = self.dirs[fam] = {"h": {}, "all": {}, "p": {}, "n": 0, "last": 0.0, "pend": {}, "bad": [], "auto": [], "copies": []}
+            d = self.dirs[fam] = {"h": {}, "all": {}, "p": {}, "n": 0, "last": 0.0, "pend": {}, "bad": [], "auto": [], "copies": [],
+                                  "dd": []}
         return d
 
     @staticmethod
@@ -6064,7 +6096,7 @@ class SpamGuard:
         if not self.cfg.get("spoof_watch") or not e.path or len(e.path) < 3 or e.local:
             return None
         d = self.dirs.get(self.name_family(e.sender))
-        if not d or d["n"] < self.DIR_MIN:
+        if not d or d["n"] < self.DIR_MIN or len(d.get("dd") or ()) < self.DIR_DAYS:
             return None
         return "usual" if any(self._hop_in(h, d["h"]) for h in e.path[1:self.DIR_HOPS]) else "new"
 
@@ -6080,6 +6112,11 @@ class SpamGuard:
             bump(d["all"], h, 64)
         bump(d["p"], ">".join(e.path[:2]), 8)
         d["up"] = ">".join(e.path[:20])   # a recent route of the real person's, for the map
+        day = int(e.ts // 86400)
+        dd = d.setdefault("dd", [])
+        if day not in dd:
+            dd.append(day)
+            del dd[:-3]
         d["n"] += 1
         d["last"] = max(d["last"], e.ts)
 
@@ -6144,8 +6181,8 @@ class SpamGuard:
         d["who"] = e.sender
         d["copies"] = [c for c in d["copies"] if e.ts - c[0] < self.DIR_KEEP][-29:] + \
             [[e.ts, ">".join(e.path[:3]), e.copy["level"], e.copy["signs"], ">".join(e.path[:20])]]
-        if e.copy["level"] == "red" or e.matched:
-            return
+        if e.copy["level"] == "red" or e.matched or "route" in e.copy["signs"]:
+            return   # (a direction other names' spam has used doesn't settle in as this name's own)
         # A real change of route (a move, a new repeater) settles in: seen on two days with nothing against it.
         key = ">".join(e.path[1:3])
         days = d["pend"].setdefault(key, [])
@@ -11802,8 +11839,9 @@ def make_handler(guard: SpamGuard):
                 except ValueError:
                     return self._send(400, {"error": "days must be a number"})
                 scramble = (q.get("scramble") or ["1"])[0] != "0"
+                places = (q.get("places") or [""])[0]
                 folder = guard.cfg["evidence_dir"]
-                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble).encode("utf-8")
+                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, places).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
                 self.send_header("Content-Disposition",

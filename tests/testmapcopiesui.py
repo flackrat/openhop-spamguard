@@ -13,7 +13,7 @@ def check(c,msg):
 def ent(name,lat,lon,d7,level,kind,radius,code):
     return {"key":name or "area:"+code,"name":name,"lat":lat,"lon":lon,"code":code,"d1":1,"d7":d7,"exact":d7 if level=="certain" else 0,"codes":[code],"last":now,"blocked":False,"typical_before":0,"kind":kind,"level":level,"radius_km":radius,"near":["Plain Relay"] if kind=="area" else [],"claims":[],"s7":3,"s1":1,"shared":{"others":0,"unlocated":0}}
 ents=[ent("Hill Fort",40.27,-96.16,120,"certain","id",48,"5D"),ent("",39.1,-96.8,80,"likely","area",34,"EC"),ent("Vale Rpt",39.5,-97.5,30,"guess","guess",30,"29")]
-copies=[{"name":"Moor Walker","n":10,"last":now,"held":True,"at":[{"lat":40.25,"lon":-96.0,"name":"Hill Fort","code":"5D","kind":"id","sure":True,"n":8,"last":now},{"lat":38.9,"lon":-95.5,"name":"Far Rpt","code":"82","kind":"guess","sure":False,"n":2,"last":now}],"real":{"lat":40.6,"lon":-93.3,"name":"Coast Rpt","kind":"id","sure":True}}]
+copies=[{"name":"Moor Walker","n":10,"last":now,"held":True,"at":[{"lat":40.25,"lon":-96.0,"name":"Hill Fort","code":"5D","kind":"next","level":"likely","radius_km":25,"sure":True,"n":8,"last":now},{"lat":38.9,"lon":-95.5,"name":"Far Rpt","code":"82","kind":"guess","sure":False,"n":2,"last":now}],"real":{"lat":40.6,"lon":-93.3,"name":"Coast Rpt","kind":"id","sure":True}}]
 st={"version":"6.45.0","metrics":{"d1":{},"d7":{"m":1,"spam":230},"hourly":[],"daily":[],"by_hour":[],"sources":[{"hop":"5D","d7":120,"d1":40,"last":now,"blocked":False,"allowed":False,"candidates":[],"likely":None}],
  "entries":ents,"unplaced":{"d1":0,"d7":0},"copies":copies,"senders":[],"me":{"name":"Me","lat":40.2,"lon":-95.5},"radio_known":True,"map_directory":True,"public_repeaters":4000,"public_error":None,"since":now-86400*7}}
 async def main():
@@ -34,7 +34,7 @@ async def main():
       await pg.goto("http://sg.test/#/sources"); await pg.wait_for_timeout(3000)
       await pg.evaluate("renderSources(S)"); await pg.wait_for_timeout(700)
       circles=await pg.evaluate("(()=>{let n=0;MAPLAYER.eachLayer(l=>{if(l instanceof L.Circle)n++});return n})()")
-      check(circles==2,f"an area circle for each confident place, guesses hidden ({circles})")
+      check(circles==3,f"an area circle for each confident place and the copies placed near a repeater, guesses hidden ({circles})")
       t=await pg.inner_text("#entTable")
       check("Hill Fort" in t and "Certain" in t and "48 km" in t and "Likely" in t and "Plain Relay" in t and "Vale Rpt" not in t,"the table says where, how sure and how far")
       sq=await pg.evaluate("document.querySelectorAll('#mapBox .map-sq').length")
@@ -42,10 +42,10 @@ async def main():
       cl=await pg.inner_text("#copyList")
       check("Moor Walker" in cl and "10 copies" in cl and "Far Rpt (rough guess)" in cl and "Coast Rpt" in cl,"copied names are listed in words")
       lab=await pg.evaluate("[...document.querySelectorAll('#mapBox [aria-label]')].map(e=>e.getAttribute('aria-label')).join(' | ')")
-      check("Copies of Moor Walker came from here" in lab and "sender within about 48 km" in lab,"screen readers hear the copies and the area")
+      check("Copies of Moor Walker came from near here" in lab and "within about 25 km" in lab and "sender within about 48 km" in lab,"screen readers hear the copies, how near, and the area")
       await pg.evaluate("MAPLAYER.eachLayer(l=>{if(l.getPopup&&l.getPopup()&&l.getPopup().getContent().includes('Copies of Moor Walker'))l.openPopup()})"); await pg.wait_for_timeout(300)
       pop=await pg.evaluate("(document.querySelector('.leaflet-popup-content')||{}).innerText||''")
-      check("8 probable copies" in pop and "real Moor Walker is usually heard from Coast Rpt" in pop,"the copies' popup explains")
+      check("8 probable copies" in pop and "within about 25 km of Hill Fort" in pop and "real Moor Walker is usually heard from Coast Rpt" in pop,"the copies' popup says how near")
       await pg.click("#mapCopies"); await pg.wait_for_timeout(500)
       check(await pg.evaluate("document.querySelectorAll('#mapBox .map-sq').length")==0,"copied names can be hidden")
       await pg.click("#mapCopies"); await pg.click("#mapGuess"); await pg.wait_for_timeout(500)
