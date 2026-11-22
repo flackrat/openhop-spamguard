@@ -916,10 +916,11 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div id="evStatus"></div>
   <div class="blk-ctl" id="evCtl">
     <select id="evDays" aria-label="How many days"><option value="1">Today</option><option value="3">Last 3 days</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select>
+    <select id="evPlaces" aria-label="Repeater locations in the file"><option value="round" selected>Repeater places to about 10 km</option><option value="drop">No repeater places</option><option value="exact">Exact repeater places</option></select>
     <button class="go" id="evScr">Download, names scrambled</button>
     <button id="evPlain">Download with real names</button>
   </div>
-  <p class="explain">Scrambled downloads replace names and @mentions with codes, so the file can be shared. Message text is kept.</p>
+  <p class="explain">Scrambled downloads replace names and @mentions with codes, so the file can be shared. Message text is kept. Repeaters' public locations are rounded unless you choose otherwise.</p>
 </section></div>
 <div class="page" data-page="health"><section id="healthSec">
   <div class="health-head"><h2>Health</h2><span id="hPill"></span></div>
@@ -1642,7 +1643,7 @@ $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:
 
 async function download(scramble){
   const days=$("#evDays").value;
-  const r=await fetch(`/evidence?days=${days}&scramble=${scramble?1:0}`,{headers:{"X-API-Key":store.get("sgkey")||""}});
+  const r=await fetch(`/evidence?days=${days}&scramble=${scramble?1:0}&places=${encodeURIComponent($("#evPlaces").value)}`,{headers:{"X-API-Key":store.get("sgkey")||""}});
   if(r.status===401){ const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(!k) return; store.set("sgkey",k); return download(scramble); }
   if(!r.ok){ toast("Download failed",true); return; }
   const blob=await r.blob();
@@ -2331,7 +2332,7 @@ function renderSources(d){
   $("#entTable").innerHTML=ents.length?`<tr><th>Where</th><th>How sure</th><th class="num">Sender within</th><th class="num">Spam, 7 days</th><th class="num">Senders</th><th>Now</th></tr>`+
     ents.slice().sort((a,b)=>b.d7-a.d7).slice(0,12).map(e=>`<tr><td class="lead-cell">${e.kind==="area"?`Unlisted repeater near ${esc((e.near||[])[0]||"(no name)")}`:esc(e.name||"(no name)")} <span class="route">${esc([...new Set([e.code].concat(e.codes||[]))].join(", "))}</span>${(e.members||[]).length>1?` <span class="explain">and ${e.members.length-1} more nearby</span>`:""}</td><td data-label="How sure">${confW[lvl(e)]}</td><td class="num" data-label="Sender within">${e.radius_km||30} km</td><td class="num" data-label="Spam, 7 days">${e.d7}</td><td class="num" data-label="Senders">${e.s7==null?"":e.s7}</td><td data-label="Now">${e.blocked?"<span class='tag stop'>blocked</span>":""}</td></tr>`).join("")
     :`<tr><td class="empty">Nothing placed with confidence yet.</td></tr>`;
-  $("#copyList").innerHTML=(m.copies||[]).length?`<h3 class="map-h">Copied names</h3><ul class="rows">${(m.copies||[]).map(c=>`<li><div><div class="what">${esc(c.name)} <span class="tag stop">${c.n} cop${c.n===1?"y":"ies"}</span>${c.held?" <span class='tag plain'>held</span>":""}</div><div class="why">Copies came from near ${c.at.map(a=>esc(a.name||"repeater "+a.code)+(a.sure?"":" (rough guess)")).join(", ")}${c.real?`; the real person is usually heard from near ${esc(c.real.name||"elsewhere")}${c.real.sure?"":" (rough guess)"}`:""}.</div></div></li>`).join("")}</ul>`:"";
+  $("#copyList").innerHTML=(m.copies||[]).length?`<h3 class="map-h">Copied names</h3><ul class="rows">${(m.copies||[]).map(c=>`<li><div><div class="what">${esc(c.name)} <span class="tag stop">${c.n} cop${c.n===1?"y":"ies"}</span>${c.held?" <span class='tag plain'>held</span>":""}</div><div class="why">Copies came from near ${c.at.map(a=>esc(a.name||"repeater "+a.code)+((a.level||(a.sure?"certain":"guess"))==="guess"?" (rough guess)":"")).join(", ")}${c.unplaced?` (${c.unplaced} not placed)`:""}${c.real?`; the real person is usually heard from near ${esc(c.real.name||"elsewhere")}${(c.real.level||(c.real.sure?"certain":"guess"))==="guess"?" (rough guess)":""}`:""}.</div></div></li>`).join("")}</ul>`:"";
   if(!ents.length&&!meOk){ $("#mapBox").style.display="none"; return; }
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
@@ -2380,13 +2381,19 @@ function renderSources(d){
     const grn=dark?"#6cc070":"#2e7d32";
     cps.forEach(c=>{
       const sq=(lat,lon,fill,label,pop)=>{ const mk=L.marker([lat,lon],{icon:L.divIcon({className:"map-sq",html:`<span style="background:${fill}"></span>`,iconSize:[16,16]}),keyboard:true,title:label}).bindPopup(pop).addTo(MAPLAYER); keyMarker(mk,label); bounds.push([lat,lon]); return mk; };
-      const real=c.real&&(c.real.sure||guesses)?c.real:null;   // rough guesses only when you ask for them
-      c.at.filter(a=>a.sure||guesses).forEach(a=>{
+      // how sure a copy's place is: the first repeater (certain), near a known repeater (likely, drawn as an area), or a rough guess
+      const lv=p=>p.level||(p.sure?"certain":"guess"), how=p=>({certain:"",likely:" (somewhere near it)",guess:" (a rough guess)"})[lv(p)];
+      const area=(p,col)=>{ if(lv(p)!=="certain") L.circle([p.lat,p.lon],{radius:(p.radius_km||30)*1000,color:col,weight:1,dashArray:lv(p)==="guess"?"5 6":null,fillColor:col,fillOpacity:lv(p)==="guess"?.03:.08,interactive:false}).addTo(MAPLAYER); };
+      const real=c.real&&(lv(c.real)!=="guess"||guesses)?c.real:null;   // rough guesses only when you ask for them
+      const shown=c.at.filter(a=>lv(a)!=="guess"||guesses);
+      shown.forEach(a=>{
+        area(a,red);
         if(real) L.polyline([[a.lat,a.lon],[real.lat,real.lon]],{color:red,weight:1.5,dashArray:"4 6",interactive:false}).addTo(MAPLAYER);
-        sq(a.lat,a.lon,red,`Copies of ${c.name} came from here: ${a.n} in 7 days${a.sure?"":", rough guess"}`,
-          `<b>Copies of ${esc(c.name)} came from here</b><br>${a.n} probable cop${a.n===1?"y":"ies"} in 7 days, first passed on by ${esc(a.name||"repeater "+a.code)}${a.sure?"":" (a rough guess)"}.${c.real?` The real ${esc(c.name)} is usually heard from ${esc(c.real.name||"elsewhere")}.`:""}${c.held?"<br>Copies are held.":""}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[c.name],title:"Messages from "+c.name}))}">Show their messages</button>`);
+        const where=lv(a)==="likely"?`came from within about ${a.radius_km||30} km of ${esc(a.name||"repeater "+a.code)}, the first known repeater they reached`:`were first passed on by ${esc(a.name||"repeater "+a.code)}${how(a)}`;
+        sq(a.lat,a.lon,red,`Copies of ${c.name} ${lv(a)==="likely"?"came from near here":"came from here"}: ${a.n} in 7 days${lv(a)==="certain"?"":lv(a)==="likely"?", within about "+(a.radius_km||30)+" km":", rough guess"}`,
+          `<b>Copies of ${esc(c.name)}</b><br>${a.n} probable cop${a.n===1?"y":"ies"} in 7 days ${where}.${c.real?` The real ${esc(c.name)} is usually heard from ${esc(c.real.name||"elsewhere")}${how(c.real)}.`:""}${c.unplaced?`<br>${c.unplaced} more couldn't be placed.`:""}${c.held?"<br>Copies are held.":""}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[c.name],title:"Messages from "+c.name}))}">Show their messages</button>`);
       });
-      if(real&&c.at.some(a=>a.sure||guesses)) sq(c.real.lat,c.real.lon,grn,`The real ${c.name} is usually heard from here`,`<b>The real ${esc(c.name)}</b><br>Usually first passed on by ${esc(c.real.name||"this repeater")}${c.real.sure?"":" (a rough guess)"}. Copies of the name came from somewhere else.`);
+      if(real&&shown.length){ area(real,grn); sq(real.lat,real.lon,grn,`The real ${c.name} is usually heard from ${lv(real)==="likely"?"near ":""}here`,`<b>The real ${esc(c.name)}</b><br>Usually first passed on by ${esc(real.name||"this repeater")}${how(real)}. Copies of the name came from somewhere else.`); }
     });
     if(meOk){ const meMk=L.circleMarker([me.lat,me.lon],{radius:7,color:"#fff",weight:2,fillColor:teal,fillOpacity:1}).bindPopup(`<b>${esc(me.name||"Your repeater")}</b><br>Your repeater`).addTo(MAPLAYER); keyMarker(meMk,"Your repeater"); bounds.push([me.lat,me.lon]); }
     const fit=JSON.stringify(bounds); if(fit!==MAPFIT){ MAPFIT=fit; if(bounds.length===1) MAP.setView(bounds[0],10); else MAP.fitBounds(bounds,{padding:[30,30],maxZoom:11}); }

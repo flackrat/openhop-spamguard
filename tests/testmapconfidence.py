@@ -86,6 +86,8 @@ check(len(out)==1 and out[0]["name"]=="Moor Walker" and out[0]["n"]==2 and out[0
 a=out[0]["at"][0] if out else {}
 check(a and km((a["lat"],a["lon"]),AWAY)<60,"where the copies came from")
 check(out and out[0]["real"] and km((out[0]["real"]["lat"],out[0]["real"]["lon"]),HOME)<60,"and where the real person is heard from")
+check(a and a.get("level") in ("certain","likely","guess") and 5<=a.get("radius_km",0)<=130,"each copy place says how sure it is, with an area")
+check(out and out[0]["unplaced"]==0 and (out[0]["real"] or {}).get("level") in ("certain","likely","guess"),"and how many couldn't be placed")
 check(g.copy_places({"x":{"who":"Old","up":"","copies":[[now-600,"A>B>C","red",["device"]]]}},set(),now)==[],"copies saved before 6.45 (no full route) are skipped")
 
 # repeater adverts go into the evidence log with their location, once a day per route
@@ -105,6 +107,35 @@ rep=[r for r in evs if r.get("node")]
 check(len(rep)==2 and rep[0]["node"]=="repeater" and rep[0]["lat"]==40.123 and rep[0]["lon"]==-96.235 and rep[0]["path"]==["AB","CD"],"a repeater advert is logged once with its location, rounded")
 check(rep[1]["node"]=="room","room servers too")
 check(not any(r.get("lat") is not None and r.get("name")=="Pocket Phone" for r in evs),"a companion's location is never logged")
+# several neighbouring repeaters advertising the same false location never make the map confidently wrong
+def liar_guard(w,seed,liars,fake):
+    st=os.path.join(tempfile.mkdtemp(prefix="sgtest-map-"),"state.json")
+    g=sg.SpamGuard({"mode":"monitor","state_file":st,"evidence_log":False,"map_directory":True}); g._save_state=lambda *a,**k:None
+    g.me={"name":"Me","lat":w.me["lat"],"lon":w.me["lon"],"hash":"00"}
+    R=random.Random(seed); now=time.time(); listed=[]; pub=[]
+    for r in w.reps:
+        lat,lon=fake if r["i"] in liars else (r["lat"],r["lon"])
+        pub.append({"key":r["key"],"name":r["name"],"lat":lat,"lon":lon,"seen":now-86400,"src":"map"})
+        if r["i"] in w.dist and (R.random()<0.6 or r["i"] in liars) and w.dist[r["i"]][0]<=11:
+            p=w.path(w.prev[r["i"]]) if w.prev[r["i"]] is not None else []
+            g.adv_routes[r["key"]+"|"+">".join(p)]=[R.randint(5,20),now-R.uniform(0,5*86400),lat,lon,r["name"]]
+            listed.append({"key":r["key"],"name":r["name"],"seen":now-3600,"lat":lat,"lon":lon})
+    g.repeaters={"ts":now,"list":listed}; g.public_reps={"ts":now,"list":pub,"error":None}; g._rep_idx=None
+    while g.learn_step(rest_s=0): pass
+    return g
+wrong=placed=0
+for ws in (1,2):
+    w=World(seed=ws); R=random.Random(900+ws)
+    for t in range(5):
+        c=R.choice([r for r in w.reps if r["i"] in w.dist and 4<=w.dist[r["i"]][0]<=9])
+        liars={c["i"],*[j for j,_ in w.adj[c["i"]] if j in w.dist][:2]}
+        fake=(c["lat"]+R.choice([-1,1])*2.0,c["lon"]+R.choice([-1,1])*2.5)
+        g=liar_guard(w,ws*10+t,liars,fake)
+        for e in entries(g,collections.Counter({">".join(w.path(c["i"])):40}))["entries"]:
+            if e["level"]!="guess":
+                placed+=1; wrong+=km((e["lat"],e["lon"]),(c["lat"],c["lon"]))>60
+check(placed>=5 and wrong==0,f"three repeaters telling the same lie: nothing shown with confidence in the wrong place ({wrong} of {placed})")
+
 # a replay rebuilds the advert from that record
 sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import replay
