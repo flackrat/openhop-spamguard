@@ -25,6 +25,7 @@ async def main():
             check(rows==20,f"one screenful of names, not all of them ({rows})")
             first=await pg.inner_text("#pplList > li >> nth=0")
             check("Loud Larry" in first and "On watch" in first and "normal days" in first,"a name on watch is first, with its progress")
+            await pg.evaluate("document.querySelector('#pplMoreChips').open=true")   # the rarer filters fold under More
             chips=await pg.inner_text("#pplChips")
             check("Active" in chips and "On watch" in chips and "Learning" in chips and "Not heard lately" in chips,"filters with counts")
             check("newcomer" not in await pg.inner_text("#pplList"),"names still being learnt are not in the everyday list")
@@ -47,6 +48,7 @@ async def main():
             check((await pg.inner_text("#pplList > li >> nth=0")).strip().upper().startswith("M"),"choosing a letter jumps to it")
             await pg.click("#pplMoreBtn"); await pg.wait_for_timeout(900)
             check(await pg.locator("#pplList > li").count()==40,"Show more adds the next screenful")
+            await pg.evaluate("document.querySelector('#pplMoreChips').open=true")
             await pg.click("[data-ps=learning]"); await pg.wait_for_timeout(900)
             check("newcomer" in await pg.inner_text("#pplList") and "dropped" in await pg.inner_text("#pplAge"),"Learning lists the newcomers, and the page says they age out")
             check(await pg.evaluate("document.documentElement.scrollWidth<=innerWidth"),f"no sideways scroll at {vp['width']}px")

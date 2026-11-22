@@ -91,6 +91,11 @@ section > .lead{color:var(--soft);margin:0 0 12px;font-size:0.875rem;max-width:7
 .q-chips button{border-radius:999px;display:inline-flex;align-items:center;gap:6px;min-height:36px}
 .q-chips button[aria-pressed=true]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .q-chips i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.ppl-more{display:contents}
+.ppl-more>summary{list-style:none;border-radius:999px;display:inline-flex;align-items:center;min-height:36px;background:var(--panel);border:1px solid var(--line);padding:5px 11px;cursor:pointer;font-size:0.875rem}
+.ppl-more>summary::-webkit-details-marker{display:none}
+.ppl-more>summary::after{content:" \25BE";margin-left:4px}
+.ppl-more[open]>summary::after{content:" \25B4"}
 .q-tools{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:0 0 10px}
 .q-tools input[type=search]{flex:1 1 220px;min-height:40px}
 #qFilters:empty{display:none}
@@ -907,7 +912,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="lead">Everyone SpamGuard has heard and how far it trusts them. Trust builds from a person's own ordinary messages. The bar runs from cool (looks genuine) to hot (probably spam). Choose a name for more.</p>
   <div class="q-chips" id="pplChips" role="group" aria-label="Show"></div>
   <div class="blk-ctl"><input id="pplFind" type="search" aria-label="Search names" placeholder="Search names" autocomplete="off">
-    <label class="explain" for="pplSort">Order</label><select id="pplSort"><option value="recent">Recently heard</option><option value="name">A to Z</option><option value="msgs">Most messages</option></select></div>
+    <label class="explain" for="pplSort">Order</label><select id="pplSort"><option value="recent">Recently heard</option><option value="warmth">Most likely spam first</option><option value="name">A to Z</option><option value="msgs">Most messages</option></select></div>
   <div class="ppl-index" id="pplIndex" role="group" aria-label="Jump to a letter" hidden></div>
   <ul class="rows ppl" id="pplList"><li><p class="empty">Loading…</p></li></ul>
   <p class="more" id="pplMore"></p>
@@ -1189,7 +1194,8 @@ function renderLevel(d){
   const pin=$("#lvlPin");
   if(pv.suggested!=null){ pin.hidden=false; pin.textContent=pv.early?"Early guess":"Suggested"; pin.style.left=`calc(15px + (100% - 30px) * ${pv.suggested/100})`; } else pin.hidden=true;
   $("#sensExplain").innerHTML=esc(LVL_SAYS[Math.min(4,Math.floor(p/20))]);
-  $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(esc).join(", ")}${own.length>3?" and more":""}. <a href="#/settings" onclick="return openSettings(${esc(JSON.stringify(own[0]))})">See ${own.length===1?"it":"them"} in Settings</a></p>`:"";
+  $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(esc).join(", ")}${own.length>3?" and more":""}. <a href="#/settings" onclick="return openSettings(${esc(JSON.stringify(own[0]))})">See ${own.length===1?"it":"them"} in Settings</a></p>`
+    +(lvlDrag==null&&((L.own||[]).some(o=>!o.file))?`<p class="explain">${L.auto&&L.auto.on?"Auto level can't change these while they are yours. ":""}<button type="button" class="quiet" id="lvlOwnClear" data-confirm="Clear your own values for the settings this level sets, so the level's values are used? Settings the level doesn't set are kept.">Use the level's values instead</button></p>`:""):"";
   const ex=$("#lvlExact"); if(ex && document.activeElement!==ex) ex.value=L.value;
   const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)}. You can also slide it on the Overview.`;
   const key=JSON.stringify([p,pv,L.mine,d.settings&&d.settings.evidence_log]); if(key===lvlKey) return; lvlKey=key;
@@ -1240,6 +1246,7 @@ $("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactS
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
+$("#lvlOwn").addEventListener("click",e=>{ if(e.target.id==="lvlOwnClear") post("/settings",{replace_own:true}); });
 $("#autoUpd").addEventListener("change",e=>{ post("/settings",{auto_update:e.target.checked}); });
 $("#autoUpdNo").addEventListener("click",()=>{ $("#autoUpdSec").hidden=true; post("/settings",{auto_update_prompt:false}); });
 $("#lvlApply").addEventListener("click",()=>{ if(lvlDrag==null) return; const v=lvlDrag; if(S&&S.level&&v===S.level.value){ lvlDrag=null; renderLevel(S); return; } lvlSend(v); });
@@ -1415,7 +1422,10 @@ function renderChannels(d){
   $("#chHint").hidden=!only;
 }
 // People: searched, filtered and paged by SpamGuard, so the page never loads everyone
-let PPL={show:"active",sort:"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
+let PPL={show:store.get("sgPplShow")||"active",sort:store.get("sgPplSort")||"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
+// The chips a phone shows first; the rest fold under More (opened by itself when one of them is chosen).
+const PPL_MAIN=[["active","Active"],["worth","Worth a look"],["copied","Name copied"],["check","Check the route"],["held","Held"],["watch","On watch"]];
+const PPL_MORE=[["marked","Marked spam by you"],["mixed","Marked both ways"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]];
 const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"],held:["Held","stop"]};
 async function pplLoad(more,keep){
   if(PPL.busy) return; PPL.busy=true;
@@ -1441,8 +1451,11 @@ function dirList(p){ const c=p.copies, code=h=>`<code>${esc(h)}</code>`;
     <p class="explain">The first repeaters after the sender. Someone copying a name usually comes from a different direction, even through the same first repeater.</p>`; }
 function pplRender(){
   const d=PPL.data; if(!d) return; const c=d.counts||{};
-  $("#pplChips").innerHTML=[["active","Active"],["copied","Name copied"],["watch","On watch"],["held","Held"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]]
-    .map(([k,t])=>`<button type="button" class="q-chip" data-ps="${k}" aria-pressed="${PPL.show===k}">${t} <b>${fmtN(c[k]||0)}</b></button>`).join("");
+  const chip=([k,t])=>`<button type="button" class="q-chip" data-ps="${k}" aria-pressed="${PPL.show===k}">${t} <b>${fmtN(c[k]||0)}</b></button>`;
+  const moreOpen=PPL_MORE.some(([k])=>k===PPL.show)||($("#pplMoreChips")||{}).open;
+  $("#pplChips").innerHTML=PPL_MAIN.map(chip).join("")
+    +`<details class="ppl-more" id="pplMoreChips"${moreOpen?" open":""}><summary class="q-chip">More</summary>${PPL_MORE.map(chip).join("")}</details>`;
+  if($("#pplSort").value!==PPL.sort) $("#pplSort").value=PPL.sort;
   $("#pplShowing").textContent=`${fmtN(d.total)} ${d.total===1?"name":"names"}`+(PPL.q?" matching":"");
   const ix=$("#pplIndex"); ix.hidden=!(d.letters&&d.letters.length>1);
   if(!ix.hidden) ix.innerHTML=d.letters.map(([l,o])=>`<button type="button" class="quiet" data-pj="${o}" aria-label="Names starting ${esc(l)}">${esc(l)}</button>`).join("");
@@ -1472,7 +1485,7 @@ function pplRender(){
         ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
         ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
       <div class="acts" style="justify-content:flex-start">${p.trusted||(p.trusted_on&&p.trusted_on.length)?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):""}${p.trusted?"":btn(p.trusted_on&&p.trusted_on.length?"Trust everywhere":"Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
-    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":"Nobody here."}</p></li>`;
+    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":PPL.show==="worth"?"Nobody looks like a spammer right now.":PPL.show==="check"?"No name has come from a new direction this week.":PPL.show==="marked"?"You haven't marked anyone's message as spam.":PPL.show==="mixed"?"No name has marks both ways.":"Nobody here."}</p></li>`;
   const leftN=d.total-d.offset-PPL.rows.length;
   $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
   $("#pplAge").textContent=`A name that never becomes known is dropped ${d.keep_learning_days} days after it was last heard, and a known person after ${d.keep_known_days} days, so throwaway names don't pile up. Trusted names are kept until you remove them.`;
@@ -1631,8 +1644,8 @@ $("#trustTextBtn").onclick=()=>post("/allow_text",{text:$("#trustTextIn").value.
 $("#chFind").addEventListener("input",()=>{ if(S) renderChannels(S); });
 let pplT=0;
 $("#pplFind").addEventListener("input",e=>{ clearTimeout(pplT); pplT=setTimeout(()=>{ PPL.q=e.target.value.trim(); pplLoad(); },250); });
-$("#pplSort").onchange=e=>{ PPL.sort=e.target.value; pplLoad(); };
-$("#pplChips").addEventListener("click",e=>{ const b=e.target.closest("[data-ps]"); if(b){ PPL.show=b.dataset.ps; pplLoad(); } });
+$("#pplSort").onchange=e=>{ PPL.sort=e.target.value; store.set("sgPplSort",PPL.sort); pplLoad(); };
+$("#pplChips").addEventListener("click",e=>{ const b=e.target.closest("[data-ps]"); if(b){ PPL.show=b.dataset.ps; store.set("sgPplShow",PPL.show); pplLoad(); } });
 $("#pplList").addEventListener("click",e=>{ const b=e.target.closest("[data-pf]"); if(b){ PPL.q=b.dataset.pf; PPL.show="all"; PPL.open=b.dataset.pf; $("#pplFind").value=PPL.q; pplLoad(); } });
 $("#pplIndex").addEventListener("click",e=>{ const b=e.target.closest("[data-pj]"); if(b){ PPL.jump=+b.dataset.pj; pplLoad(); } });
 $("#pplMore").addEventListener("click",e=>{ if(e.target.id==="pplMoreBtn") pplLoad(true); else if(e.target.id==="pplTop") pplLoad(); });

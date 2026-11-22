@@ -19,6 +19,10 @@ The detail is below, newest first. In short:
 
 - **Look after itself:** a new install can be set to run unattended in one tap from the Overview. It turns on automatic updates, Auto level, route blocks without asking and the evidence log Auto level needs. Each part can still be changed under Settings.
 - Auto level can follow its early suggestion before you have marked messages, up to a cap, when you choose.
+- **People** can be ordered with the most likely spam first, and filtered to names worth a look, names to check, and names you marked. Rarer filters fold under More, and your choice is remembered.
+- Old values of your own that override the protection level can be cleared in one tap.
+- Marking a message as spam ends the channel trust its sender got from an earlier Not spam.
+- Labels in the evidence log record when and where the message was heard, and replays treat a Not spam answer as the Pi does.
 
 ## v6.46.0
 
