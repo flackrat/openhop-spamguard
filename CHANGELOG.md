@@ -15,6 +15,15 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.47.0
+
+- **Look after itself:** a new install can be set to run unattended in one tap from the Overview. It turns on automatic updates, Auto level, route blocks without asking and the evidence log Auto level needs. Each part can still be changed under Settings.
+- Auto level can follow its early suggestion before you have marked messages, up to a cap, when you choose.
+- **People** can be ordered with the most likely spam first, and filtered to names worth a look, names to check, and names you marked. Rarer filters fold under More, and your choice is remembered.
+- Old values of your own that override the protection level can be cleared in one tap.
+- Marking a message as spam ends the channel trust its sender got from an earlier Not spam.
+- Labels in the evidence log record when and where the message was heard, and replays treat a Not spam answer as the Pi does.
+
 ## v6.46.0
 
 - **Copied names:** a name's usual pattern takes a little longer to learn, and is harder to teach from the wrong side.

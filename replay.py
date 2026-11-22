@@ -144,7 +144,9 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
     i = 0
     Clock.now = msgs[0]["ts"] if msgs else 0
     end = (msgs[-1]["ts"] + 300) if msgs else 0
-    marks = list(marks or []) if overrides.get("text_sense") else []   # marks only matter to what learns from them
+    marks = list(marks or [])
+    sense = bool(overrides.get("text_sense"))
+    chan_of = {str(m.get("packet")): m.get("channel") for m in msgs if m.get("packet")}
     mi = 0
     adverts = list(adverts or [])
     ai = 0
@@ -152,6 +154,19 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
         while mi < len(marks) and marks[mi]["ts"] <= Clock.now:
             r = marks[mi]
             mi += 1
+            who = str(r.get("sender") or "")
+            if r["label"] == "not_spam" and "caught_by" in r and who:
+                # Not spam on a held message trusts the name where the message was, from the moment it was given,
+                # as it does on the Pi (labels from 6.47 say the channel; older ones are matched to their message).
+                ch = r.get("channel") or chan_of.get(str(r.get("packet") or ""))
+                if ch:
+                    g.trust_on.setdefault(who, {})[ch] = r["ts"]
+                else:
+                    g.allow_senders.add(who)
+            elif r["label"] == "spam" and who and not r.get("spoofed"):
+                g.trust_on.pop(who, None)   # a spam mark ends trust from a Not spam tap, as on the Pi
+            if not sense:
+                continue   # the rest only matters to what learns from your marks
             key = str(r.get("packet") or "") or f"{r.get('sender')}|{r.get('text')}"
             for kk in {key, f"{r.get('sender')}|{r.get('text')}"}:
                 g.labels.pop(kk, None)
@@ -226,11 +241,11 @@ def summarise(msgs, caught):
 REPEAT_SOURCES = {"repeat", "slowrepeat", "replay"}
 
 
-def level_report(msgs, overrides, channels, levels) -> dict:
+def level_report(msgs, overrides, channels, levels, marks=None) -> dict:
     """What each protection level would have held, for SpamGuard's own page."""
     out = []
     for lv in levels:
-        caught, _ = run(msgs, dict(overrides, level=lv), channels, quiet_step=60, known_at_start=True)
+        caught, _ = run(msgs, dict(overrides, level=lv), channels, quiet_step=60, known_at_start=True, marks=marks)
         r = summarise(msgs, caught)
         out.append({"level": lv, "held": r["caught"], "spam": r["spam_caught"], "repeats": r["repeats"],
                     "wrong": r["genuine_caught"], "check": len(r["check"]),
@@ -300,7 +315,7 @@ def main():
             levels = [max(0, min(100, int(x))) for x in a.levels.split(",") if x.strip()]
         except ValueError:
             sys.exit("--levels takes numbers from 0 to 100, separated by commas")
-        rep = level_report(msgs, overrides, channels, levels)
+        rep = level_report(msgs, overrides, channels, levels, marks=marks)
         rep["skipped"] = skipped
         if a.json:
             print(json.dumps(rep, ensure_ascii=False))

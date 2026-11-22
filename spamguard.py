@@ -79,7 +79,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.46.0"
+VERSION = "6.47.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -450,10 +450,18 @@ SETTINGS_META: list[dict] = [
      "risk": "Off, nothing is blocked until you switch to Protect yourself.",
      "label": "Switch to Protect by itself after watching",
      "help": "A new SpamGuard starts in Monitor and switches itself to Protect after a day, once it has seen enough spam and nothing marked genuine. Choosing Monitor yourself turns this off."},
+    {"key": "set_forget_prompt", "group": "Timing", "type": "bool",
+     "risk": "Off = the Overview no longer offers it. You can still turn the three settings on one by one.",
+     "label": "Offer to look after itself on the Overview",
+     "help": "While automatic updates, Auto level or automatic route blocks are off, the Overview offers to turn them all on in one go."},
     {"key": "level_auto", "group": "Timing", "type": "bool",
      "risk": "On, the level moves by itself. Setting the level yourself switches this off. It tightens quickly, loosens slowly, never goes above your ceiling, and steps back if you mark a held message as fine.",
      "label": "Let SpamGuard move the protection level by itself",
      "help": "Once SpamGuard has watched your traffic for a few days it follows its own suggestion for the level, in small steps. Drag the slider yourself and it stops."},
+    {"key": "level_auto_early", "group": "Timing", "type": "bool",
+     "risk": "Without your marks it can't see a genuine message held, so it never goes past 70 this way.",
+     "label": "Let Auto level act before you have marked messages",
+     "help": "Auto level normally waits until you have marked a few messages. On, it follows the early suggestion too, between Balanced and 70. Turned on by Look after itself."},
     {"key": "level_auto_max", "group": "Timing", "type": "int", "min": 50, "max": 100,
      "risk": "Higher lets it become firmer, which holds more spam and a few more genuine messages.",
      "label": "Highest level Auto may reach",
@@ -668,6 +676,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "auto_protect": True,
     "level_auto": False,                  # off: the level only suggests; on: SpamGuard follows its own suggestion within limits
     "level_auto_max": 80,
+    "level_auto_early": False,            # follow the early (unmarked) suggestion too, capped
+    "set_forget_prompt": True,             # offer, on the Overview, to turn on the settings that let it run unattended
     "live_feed": True,
     "fetch_limit": 500,
     "max_total_rules": 300,
@@ -2084,7 +2094,7 @@ class SpamGuard:
             mine = self.settings.get(k, self.file_cfg.get(k))
             if mine is not None and mine != v:
                 out.append({"key": k, "label": META_BY_KEY[k]["label"], "yours": mine, "level": v,
-                            "unit": META_BY_KEY[k].get("unit")})
+                            "unit": META_BY_KEY[k].get("unit"), "file": k not in self.settings})
         return out
 
     # ---- configuration layering: defaults < protection level < config file < web page
@@ -2145,6 +2155,20 @@ class SpamGuard:
         elif self.evidence is not None:
             self.evidence.flush(force=True, keep_days=cfg["evidence_days"])
             self.evidence = None
+
+    def _label_ref(self, body: dict) -> dict:
+        """When and on which channel the marked message was heard, so a label in the evidence log can be matched to
+        its message and replayed with the trust it gave."""
+        out = {}
+        pk = str(body.get("packet") or "")
+        sender, text = body.get("sender"), body.get("text")
+        for e in reversed(self.events):
+            if (pk and e.packet == pk) or (not pk and e.sender == sender and e.text == text):
+                out = {"msg_ts": round(e.ts, 2), "channel": e.channel}
+                break
+        if not out.get("channel") and body.get("channel") in self.cfg["channels"]:
+            out["channel"] = body.get("channel")
+        return out
 
     def ev(self, record: dict):
         if self.evidence is not None:
@@ -5466,7 +5490,8 @@ class SpamGuard:
             return "known", heard + ". Let through blocks meant for strangers"
         return "learning", heard + ". Not yet let through blocks"
 
-    PEOPLE_SHOW = ("active", "copied", "watch", "held", "trusted", "known", "learning", "quiet", "all")
+    PEOPLE_SHOW = ("active", "worth", "copied", "check", "watch", "held", "marked", "mixed", "trusted", "known", "learning",
+                   "quiet", "all")
 
     def people(self, body: Optional[dict] = None) -> dict:
         """The People page: everyone SpamGuard has heard, with standing and why, the usual ways in and the last
@@ -5474,7 +5499,7 @@ class SpamGuard:
         everyone. Names and repeater codes only, never messages."""
         body = body if isinstance(body, dict) else {}
         show = body.get("show") if body.get("show") in self.PEOPLE_SHOW else "active"
-        sort = body.get("sort") if body.get("sort") in ("recent", "name", "msgs") else "recent"
+        sort = body.get("sort") if body.get("sort") in ("recent", "name", "msgs", "warmth") else "recent"
         q = str(body.get("q") or "").strip().lower()[:80]
         limit = max(1, min(100, int(_num(body.get("limit"), 20))))
         offset = max(0, int(_num(body.get("offset"), 0)))
@@ -5487,6 +5512,7 @@ class SpamGuard:
         names.update(dict.fromkeys(self.on_watch))
         copied = self._copied_names(now)
         names.update(dict.fromkeys(copied))   # someone using the name stays on the list even after you forget it
+        checking = self._new_direction_names(now) - copied   # a new direction (amber), nothing probable yet
         counts = dict.fromkeys(self.PEOPLE_SHOW, 0)
         rows = []
         for n in names:
@@ -5500,16 +5526,28 @@ class SpamGuard:
                 groups.append("active")
             if n in copied:
                 groups.append("copied")
+            if n in checking:
+                groups.append("check")
+            mc = self.mark_counts.get(n) or (0, 0)
+            if mc[0]:
+                groups.append("marked")
+                if mc[1]:
+                    groups.append("mixed")
             if q and q not in n.lower():
                 continue
+            heat = self.warmth(n, self.standing(n)[0], now)["score"]
+            if heat >= 50:
+                groups.append("worth")   # the bar's amber and red: worth a look, or probably spam
             for grp in groups:
                 counts[grp] += 1
             if show in groups:
-                rows.append((n, v, st, quiet))
+                rows.append((n, v, st, quiet, heat))
         if sort == "name":
             rows.sort(key=lambda r: (not r[0][:1].isalnum(), r[0].lower()))   # names starting with a symbol go last
         elif sort == "msgs":
             rows.sort(key=lambda r: -r[1][2])
+        elif sort == "warmth":
+            rows.sort(key=lambda r: (-r[4], 0 if r[0] in copied else 1, -(r[1][1] or 0)))   # most likely spam first
         else:
             # copied names first, then on watch, then held, then most recently heard
             rows.sort(key=lambda r: (0 if r[0] in copied else {"watch": 1, "held": 2}.get(r[2], 3), -(r[1][1] or 0)))
@@ -5524,7 +5562,7 @@ class SpamGuard:
                         continue
                     letters.append([ch, i])
         out = []
-        for n, v, st, quiet in rows[offset:offset + limit]:
+        for n, v, st, quiet, _heat in rows[offset:offset + limit]:
             st2, why = self.standing(n)
             hm = self.homes.get(n) or {}
             ways = self.usual_ways(n)
@@ -5573,6 +5611,14 @@ class SpamGuard:
         out = set()
         for d in self.dirs.values():
             if d.get("who") and any(c[2] == "red" and now - c[0] < self.DIR_KEEP for c in d["copies"]):
+                out.add(d["who"])
+        return out
+
+    def _new_direction_names(self, now: float) -> set:
+        """Names heard from a new direction (amber or red) in the last week."""
+        out = set()
+        for d in self.dirs.values():
+            if d.get("who") and any(c[2] in ("amber", "red") and now - c[0] < self.DIR_KEEP for c in d["copies"]):
                 out.add(d["who"])
         return out
 
@@ -9368,11 +9414,16 @@ class SpamGuard:
         fam = next((f for f in self.advisor().get("families", []) if f.get("key") == "level"), None)
         pv = self.preview_summary()
         sug = pv.get("suggested")
-        if not fam or not fam.get("ready") or sug is None or pv.get("early"):
+        early_ok = bool(c.get("level_auto_early"))
+        if not fam or not fam.get("ready") or sug is None or (pv.get("early") and not early_ok):
             al["waiting"] = "gathering enough traffic and marks to suggest a level"
             return
         cur, cap = int(c.get("level", 50)), int(c.get("level_auto_max", 80))
         target = min(int(sug), cap)
+        if pv.get("early"):
+            # Blind to genuine messages held until you mark some: a guess may firm the level up a little while spam is
+            # heavy, but never past the early cap, and never eases it below Balanced (or below where you left it).
+            target = max(min(target, self.PREVIEW_EARLY_CAP), min(cur, 50))
         fine = [t for t in self.genuine_marks if t >= now - 86400]
         fine += [t for k, t in self.label_at.items() if self.labels.get(k) == "not_spam" and t >= now - 86400]
         newest_fine = max(fine) if fine else 0
@@ -10504,6 +10555,20 @@ class SpamGuard:
         out["requested"] = os.path.exists(os.path.join(folder, "update-request"))
         return out
 
+    def set_forget_status(self) -> dict:
+        """What "Look after itself" would turn on: the settings that act without asking, so a repeater can be left
+        alone. Automatic updates only where SpamGuard can update itself and looks for new versions."""
+        c = self.cfg
+        can_update = bool((IN_PLUGIN or os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"))
+                          and c.get("update_check", "daily") == "daily" and not managed_update())
+        # The evidence log is what the daily level suggestion is worked out from, so Auto level needs it.
+        want = {"auto_protect": True, "level_auto": True, "level_auto_early": True, "evidence_log": True, "route_auto": True}
+        if can_update:
+            want["auto_update"] = True
+        missing = [k for k, v in want.items() if bool(c.get(k)) != v]
+        return {"on": not missing, "missing": missing, "turn_on": {**want, "set_forget_prompt": False}, "can_update": can_update,
+                "offer": bool(c.get("set_forget_prompt", True)) and bool(missing) and not c.get("paused")}
+
     def update_summary(self) -> dict:
         i = self.update_info
         latest = i.get("latest")
@@ -10816,6 +10881,7 @@ class SpamGuard:
                              if x["ts"] >= getattr(self, "reset_at", 0)],
                 "reset_at": getattr(self, "reset_at", 0) or None,
                 "auto_protect": self.auto_protect_status(),
+                "set_forget": self.set_forget_status(),
                 "window_seconds": c["window_seconds"],
                 "update": self.update_summary(),
                 "install": {"kind": install_kind(), "instance": self.instance_id,
@@ -10981,6 +11047,15 @@ class SpamGuard:
             self.rebuild_cfg()
             self.snapshot_settings("changed on the page")
             self.request_sync()
+            if body == {"replace_own": True}:
+                left = [o["label"] for o in self.own_level_values()]
+                self.note("Your own values for settings the level sets were cleared, so the level's are used")
+                return {"ok": True, "message": "Done. The level's values are used now." + (
+                    f" {len(left)} still come{'s' if len(left) == 1 else ''} from the config file, which only you can edit."
+                    if left else "")}
+            if body.get("level_auto") is True and body.get("route_auto") is True and self.set_forget_status()["on"]:
+                self.note("Set to look after itself (turned on on the Overview)")
+                return {"ok": True, "message": "Done. SpamGuard will look after itself. You can change each part under Settings."}
         return {"ok": True}
 
     ACTION_TEXT_MAX = 2000      # no value the page sends is anywhere near this long
@@ -11147,7 +11222,7 @@ class SpamGuard:
             elif op in ("block_text", "mark_spam"):
                 if op == "mark_spam" and not body.get("_quiet_label"):
                     self.ev({"type": "label", "label": "spam", "sender": body.get("sender"), "text": body.get("text"),
-                             "path": body.get("path"), "packet": body.get("packet")})
+                             "path": body.get("path"), "packet": body.get("packet"), **self._label_ref(body)})
                 text = whole = str(body.get("text", "")).strip()
                 if op == "mark_spam":
                     text = middle_chunk(text, self.cfg["text_rule_chars"])
@@ -11189,7 +11264,7 @@ class SpamGuard:
                 if not key.strip("|"):
                     raise ValueError("Which message?")
                 self.ev({"type": "label", "label": lab, "sender": sender, "text": text,
-                         "path": body.get("path"), "packet": body.get("packet"), "by": "label"})
+                         "path": body.get("path"), "packet": body.get("packet"), "by": "label", **self._label_ref(body)})
                 self.labels.pop(key, None)
                 self.label_at.pop(key, None)
                 acted = ""
@@ -11198,6 +11273,10 @@ class SpamGuard:
                     if acted != "copy":
                         self.spam_marked.setdefault(sender, []).append(now)
                         self.spam_marked[sender] = self.spam_marked[sender][-20:]
+                        if self.trust_on.pop(sender, None) is not None:
+                            # Trust from an earlier Not spam tap ends: the name itself sent spam. Trust you gave it
+                            # everywhere, from People, is yours to take back.
+                            acted = acted or "untrusted"
                 if lab != "none":
                     self.labels[key] = lab
                     self.label_at[key] = now
@@ -11210,6 +11289,7 @@ class SpamGuard:
                     "copy": f". It came through a repeater '{sender}' doesn't use, so that name is held from there for "
                             "7 days; the real person still gets through.",
                     "known": f". '{sender}' no longer counts as a known person, so the usual checks apply to them again.",
+                    "untrusted": f". '{sender}' is no longer trusted on a channel, so the usual checks apply to them again.",
                 }.get(acted, "") + (
                     ". Labels are kept in the evidence log, for checking SpamGuard's accuracy later."
                     if self.evidence is not None else ". Turn on the evidence log to keep labels.")
@@ -11224,7 +11304,7 @@ class SpamGuard:
                 hops = [h for h in (path if isinstance(path, list) else str(path or "").replace(",", ">").split(">")) if h]
                 hop = str(hops[0]).strip().upper() if hops else ""
                 self.ev({"type": "label", "label": "spam", "spoofed": True, "sender": sender, "text": text,
-                         "path": body.get("path"), "packet": body.get("packet"), "by": "label"})
+                         "path": body.get("path"), "packet": body.get("packet"), "by": "label", **self._label_ref(body)})
                 self.labels.pop(key, None)
                 self.label_at.pop(key, None)
                 self.labels[key] = "spam"
@@ -11258,7 +11338,7 @@ class SpamGuard:
             elif op == "not_spam":
                 self.genuine_marks.append(now)
                 self.ev({"type": "label", "label": "not_spam", "sender": body.get("sender"), "text": body.get("text"),
-                         "path": body.get("path"), "packet": body.get("packet"), "caught_by": body.get("matched")})
+                         "path": body.get("path"), "packet": body.get("packet"), "caught_by": body.get("matched"), **self._label_ref(body)})
                 sender = str(body.get("sender", ""))
                 ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else None
                 if sender and sender not in self.allow_senders:
