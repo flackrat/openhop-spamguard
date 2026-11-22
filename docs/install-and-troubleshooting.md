@@ -82,6 +82,8 @@ cat /var/lib/openhop_spamguard/update-status.json           # result of the last
 
 Or from the folder you cloned: `cd ~/openhop-spamguard && git pull && sudo bash install.sh`.
 
+If `git pull` there says the histories differ (the repository's history was tidied on 22 November 2026), clone it again: `cd ~ && rm -rf openhop-spamguard && git clone https://github.com/flackrat/openhop-spamguard.git && cd openhop-spamguard && sudo bash install.sh`. Your config, blocks and everything learnt are kept outside that folder.
+
 Upgrading from a version installed from a .tar.gz file: install once with the git commands above. Your config and blocks are kept.
 
 ## Everyday commands
