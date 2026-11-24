@@ -6,11 +6,6 @@ title = "SpamGuard"
 useDefault = true
 
 [[allowlists]]
-description = "MeshCore's published Public channel key"
+description = "MeshCore's published Public channel key, and a made-up channel key used in tests"
 regexTarget = "secret"
-regexes = ['''^8b3387e9c5cdea6ac9e5edbaa115cd72$''']
-
-[[allowlists]]
-description = "A made-up channel key used in tests"
-regexTarget = "secret"
-regexes = ['''^0123456789abcdef0123456789abcdef$''']
+regexes = ['''^8b3387e9c5cdea6ac9e5edbaa115cd72$''', '''^0123456789abcdef0123456789abcdef$''']
