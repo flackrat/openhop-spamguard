@@ -1,11 +1,11 @@
 # Test scorecard
 
-What is tested, how much, and what is not. Figures are from the full suite run for 6.46.0 on 22 November 2026, unless a row says otherwise. All test data is made up.
+What is tested, how much, and what is not. Figures are from the full suite run for 6.48.0 on 24 November 2026, unless a row says otherwise. All test data is made up.
 
 | Measure | Result |
 |---|---|
-| Test programs in the suite | 146, all passing |
-| Checks that report a count | About 2,750 (some programs report pass or fail only) |
+| Test programs in the suite | 166, all passing |
+| Checks that report a count | About 4,700 (some programs report pass or fail only) |
 | Statement coverage | Above 80 percent, reported by the `tests` job on every pull request |
 | Spam stopped, simulated attack | Between 97.6 and 98.4 percent on each of 10 random seeds, now including hundreds of small campaigns before a flood |
 | Ordinary messages held by mistake | 0.4 to 1.7 percent of regulars' messages over whole runs |
