@@ -36,8 +36,11 @@ async def main():
             if not calls["open"]: break
             await pg.wait_for_timeout(500)
         mode["m"]="fail"
-        await pg.evaluate("load()"); await pg.wait_for_timeout(1500)
-        check(await pg.locator("#connNote").is_visible(),"one miss: a small note")
+        await pg.evaluate("load()")
+        for _ in range(12):   # a slow CI machine: give the failed refresh time to come back
+            await pg.wait_for_timeout(500)
+            if await pg.locator("#connNote").is_visible(): break
+        check(await pg.locator("#connNote").is_visible(),"one miss: a small note (misses %s)"%await pg.evaluate("load.misses"))
         check("Not responding" not in await pg.locator("#hPill").inner_text() and "Can't reach" not in await pg.locator("#hero").inner_text(),"and the last screen stays")
         for i in range(4): await pg.evaluate("load()"); await pg.wait_for_timeout(500)
         check("Can't reach" in await pg.locator("#hero").inner_text(),"several misses: Not responding")
