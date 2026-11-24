@@ -494,6 +494,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
 .lead a,.explain a,.help a,.howto a,.note a,p a,.callout span a,.foot a{text-decoration:underline;text-underline-offset:2px}
 .skip{position:absolute;left:-9999px;top:8px;z-index:60;background:var(--panel);color:var(--ink);border:2px solid var(--focus);border-radius:6px;padding:10px 14px}
 .skip:focus{left:12px}
+h3.sub{font-size:.95rem;margin:16px 0 6px}
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 main:focus{outline:none}
 .page h2[tabindex="-1"]:focus{outline:none}
@@ -819,6 +820,15 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="lead">Per hour, by the limit that stopped each packet. Packets over a limit that were still passed on are shown too.</p>
   <div class="legend" id="floodLegend"></div>
   <div class="chart" id="chartFlood" role="img"></div>
+</section>
+<section id="airSec">
+  <h2>What the airtime went on, last hour</h2>
+  <p class="lead">Every packet heard, by kind, and the repeaters most of it came in through. Contents are encrypted, so this is counts only.</p>
+  <div id="airBody"><p class="empty">Nothing heard yet.</p></div>
+</section>
+<section id="ohAdvSec" hidden>
+  <h2>openHop's own advert limit</h2>
+  <div id="ohAdvBody"></div>
 </section>
 <section id="floodSrcSec">
   <h2>Where floods come into the mesh</h2>
@@ -1232,7 +1242,7 @@ function lvlDetail(d,p,pv){
     <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><tr><th scope="col">Level</th><th scope="col" class="num">Held back</th><th scope="col" class="num">Repeats${pv.labelled_spam?" or spam":""}</th><th scope="col" class="num">Worth a look</th>${pv.labelled_fine?`<th scope="col" class="num">Marked fine</th>`:""}</tr>
       ${pv.levels.map(x=>`<tr><td>${x.level} ${lvlName(x.level)}</td><td class="num">${x.held}</td><td class="num">${x.repeats+x.spam}</td><td class="num">${x.check}</td>${pv.labelled_fine?`<td class="num">${x.wrong}</td>`:""}</tr>`).join("")}</table></div></details>
     ${near.check_items&&near.check_items.length?`<p style="margin:10px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({packets:near.check_items.map(m=>m.packet).filter(Boolean),title:"Held at this level, worth a look"}))}">See the ${near.check_items.length} worth a look in Messages</button></p>`:""}
-    <p class="explain">Worked out ${ago(pv.ran)}. You have answered ${fmtN(pv.marked)} message${pv.marked===1?"":"s"} as spam or not spam. ${pv.early?`The pin on the slider is an early guess from repeats alone, so it never goes past Firm. Mark at least 5 held messages to firm it up.`:"Your marks place the Suggested pin where spam stops and people chatting normally aren't held."}</p>
+    <p class="explain">Worked out ${ago(pv.ran)}.${pv.route_auto?" Automatic route blocks are included.":""}${pv.source_holds?" Congestion holds aren't: the evidence log keeps channel messages, not the other packets they act on.":""} You have answered ${fmtN(pv.marked)} message${pv.marked===1?"":"s"} as spam or not spam. ${pv.early?`The pin on the slider is an early guess from repeats alone, so it never goes past Firm. Mark at least 5 held messages to firm it up.`:"Your marks place the Suggested pin where spam stops and people chatting normally aren't held."}</p>
     <p>${pv.suggested!=null&&pv.suggested!==d.level.value?`<button type="button" onclick="lvlSend(${pv.suggested})">${pv.early?"Try the early guess":"Use the suggested level"} (${lvlName(pv.suggested)}, ${pv.suggested})</button> `:""}${pv.running?"":btn("Work it out again","/preview_now",{},"quiet")}</p>`;
   }
   return out+`<h3 style="font-size:0.9375rem;margin:12px 0 0">What this level does</h3>`+rules;
@@ -1289,6 +1299,11 @@ function renderHealth(d){
     st("Time per check", h.check_ms!=null?h.check_ms+" ms":"–")+
     st("Errors (last hour)", h.errors_hour??"–")+
     st("Rules put back", h.self_heals??0)+
+    st("Rules last sent to openHop", h.last_sync?ago(h.last_sync):"not yet")+
+    st("Last saved", h.last_save?ago(h.last_save):"not yet")+
+    st("Page status takes", h.status_ms!=null?h.status_ms+" ms":"–")+
+    st("Evidence log", h.evidence_mb!=null?h.evidence_mb+" MB":"off")+
+    st("Messages you let through this week", fmtN(h.released_week||0))+
     st("This repeater's own companions", (d.own&&d.own.length)?d.own.map(o=>esc(o.name)+(o.id?` <span class="route">${esc(o.id)}</span>`:"")).join(", ")+" (never blocked)":"none found")+
     st("Live packet feed", {on:"on",reconnecting:"reconnecting",unavailable:"not offered by this openHop",off:"off"}[h.live_feed]||"–")+
     (h.kind&&h.kind!=="normal"?"":st("openHop service", h.openhop_service||"–"))+
@@ -1313,7 +1328,7 @@ function renderBlocks(d){
     <div class="why">${x.names} brand-new name${x.names===1?"":"s"} started on it in the last ${x.minutes} minutes (${x.messages} message${x.messages===1?"":"s"}). Blocking would last ${dur(x.ttl)}.</div></div>
     <div class="acts">${btn("Block it","/accept_route",{route:x.route},"go")}${btn("Not now","/dismiss_route",{route:x.route},"quiet")}</div></li>`).join("");
   const list=d.blocks.filter(b=>b.source!=="dedupe"), dups=d.blocks.filter(b=>b.source==="dedupe");
-  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>","type-auto":"<span class='tag plain'>automatic hold</span>",repeat:"<span class='tag plain'>repeating</span>",slowrepeat:"<span class='tag plain'>repeating all day</span>",replay:"<span class='tag plain'>replay</span>",budget:"<span class='tag plain'>too many messages</span>",linkhost:"<span class='tag plain'>link campaign</span>",junk:"<span class='tag plain'>symbol junk</span>",imposter:"<span class='tag would'>copied name?</span>",spoof:"<span class='tag would'>copied name</span>",hop:""}[b.source]||"");
+  const kindTag=b=>({manual:"<span class='tag plain'>added by you</span>",dedupe:"<span class='tag plain'>duplicate</span>",campaign:"<span class='tag plain'>campaign</span>",links:"<span class='tag plain'>links</span>",lockdown:"<span class='tag would'>lockdown</span>",rotation:"<span class='tag plain'>changing identity</span>","route-auto":"<span class='tag plain'>automatic route block</span>","hop-route":"<span class='tag plain'>automatic route block</span>","type-auto":"<span class='tag plain'>automatic hold</span>","source-auto":"<span class='tag would'>congestion hold</span>",repeat:"<span class='tag plain'>repeating</span>",slowrepeat:"<span class='tag plain'>repeating all day</span>",replay:"<span class='tag plain'>replay</span>",budget:"<span class='tag plain'>too many messages</span>",linkhost:"<span class='tag plain'>link campaign</span>",junk:"<span class='tag plain'>symbol junk</span>",imposter:"<span class='tag would'>copied name?</span>",spoof:"<span class='tag would'>copied name</span>",hop:""}[b.source]||"");
   const eff=b=>b.effective==="drop"?"<span class='tag stop'>blocking</span>":b.effective==="paused"?"<span class='tag plain'>paused</span>":"<span class='tag would'>watching only</span>";
   const item=b=>{
     const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
@@ -1429,7 +1444,7 @@ function renderChannels(d){
 let PPL={show:store.get("sgPplShow")||"active",sort:store.get("sgPplSort")||"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
 // The chips a phone shows first; the rest fold under More (opened by itself when one of them is chosen).
 const PPL_MAIN=[["active","Active"],["worth","Worth a look"],["copied","Name copied"],["check","Check the route"],["held","Held"],["watch","On watch"]];
-const PPL_MORE=[["marked","Marked spam by you"],["mixed","Marked both ways"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]];
+const PPL_MORE=[["marked","Marked spam by you"],["mixed","Marked both ways"],["renames","Changes name"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]];
 const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"],held:["Held","stop"]};
 async function pplLoad(more,keep){
   if(PPL.busy) return; PPL.busy=true;
@@ -1466,7 +1481,7 @@ function pplRender(){
   const code=h=>`<code>${esc(h)}</code>`;
   $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=p.trusted_on&&p.trusted_on.length&&!p.trusted?["Trusted on "+p.trusted_on.join(", "),"ok"]:(PPL_TAG[p.standing]||PPL_TAG.learning), w=p.watch;
     const line=[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
-    return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.copies&&p.copies.red?"<span class='tag stop'>Name copied</span>":""}${p.quiet?"<span class='tag plain'>not heard lately</span>":""}</span>
+    return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.copies&&p.copies.red?"<span class='tag stop'>Name copied</span>":""}${p.quiet?"<span class='tag plain'>not heard lately</span>":""}${p.device&&p.device.devices>1?"<span class='tag plain'>more than one device</span>":""}</span>
       <span class="why">${line}</span>
       ${p.route&&p.route.level!=="grey"&&p.route.level!=="green"?`<span class="ppl-warn" role="note"><b>${p.route.level==="red"?"Probably a copy":"Check the route"}.</b> ${esc(p.route.level==="red"?p.route.signs.join(". "):p.route.why)}.</span>`:""}
       ${p.warmth?warmBar(p.warmth):""}
@@ -1480,6 +1495,8 @@ function pplRender(){
         ${p.trusted_on&&p.trusted_on.length?`<dt>Trusted on</dt><dd>${p.trusted_on.map(esc).join(", ")} <span class="explain">from your not-spam mark; elsewhere they're treated like anyone else</span></dd>`:""}
         ${p.marks?`<dt>Your marks</dt><dd>${fmtN(p.marks.spam)} spam, ${fmtN(p.marks.genuine)} not spam <span class="explain">last ${ago(p.marks.last)}</span></dd>`:""}
         ${p.progress?`<dt>Becoming known</dt><dd>${fmtN(Math.min(p.progress.msgs,p.progress.need_msgs))} of ${fmtN(p.progress.need_msgs)} messages${p.progress.need_minutes?`, ${p.progress.minutes>=p.progress.need_minutes?"heard long enough":`${fmtN(p.progress.minutes)} of ${fmtN(p.progress.need_minutes)} minutes`}`:""}</dd>`:""}
+        ${p.device&&p.device.also.length?`<dt>Also called</dt><dd>${p.device.also.map(n=>`<button type="button" class="quietlink" data-pf="${esc(n)}">${esc(n)}</button>`).join(", ")} <span class="explain">names the same device has used in the last month</span></dd>`:""}
+        ${p.device&&p.device.devices>1?`<dt>Devices</dt><dd>${fmtN(p.device.devices)} devices have used this name in the last month <span class="explain">from their signed adverts</span></dd>`:""}
         ${p.last_route?`<dt>Last route</dt><dd>${code(p.last_route)} <span class="explain">${ago(p.last_route_at)}</span></dd>`:""}
         ${p.spam?`<dt>Held</dt><dd>${fmtN(p.spam.copies)} of ${fmtN(p.spam.msgs)} messages in the last 7 days</dd>
           ${p.spam.holds.length?`<dt>Holding now</dt><dd>${p.spam.holds.map(esc).join("<br>")}${p.spam.until?` <span class="explain">${left(Math.max(0,p.spam.until-Date.now()/1000))}</span>`:""}</dd>`:""}
@@ -1489,7 +1506,7 @@ function pplRender(){
         ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
         ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
       <div class="acts" style="justify-content:flex-start">${p.trusted||(p.trusted_on&&p.trusted_on.length)?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):""}${p.trusted?"":btn(p.trusted_on&&p.trusted_on.length?"Trust everywhere":"Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
-    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":PPL.show==="worth"?"Nobody looks like a spammer right now.":PPL.show==="check"?"No name has come from a new direction this week.":PPL.show==="marked"?"You haven't marked anyone's message as spam.":PPL.show==="mixed"?"No name has marks both ways.":"Nobody here."}</p></li>`;
+    ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":PPL.show==="worth"?"Nobody looks like a spammer right now.":PPL.show==="check"?"No name has come from a new direction this week.":PPL.show==="marked"?"You haven't marked anyone's message as spam.":PPL.show==="mixed"?"No name has marks both ways.":PPL.show==="renames"?"No device has changed its name in the last month.":"Nobody here."}</p></li>`;
   const leftN=d.total-d.offset-PPL.rows.length;
   $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
   $("#pplAge").textContent=`A name that never becomes known is dropped ${d.keep_learning_days} days after it was last heard, and a known person after ${d.keep_known_days} days, so throwaway names don't pile up. Trusted names are kept until you remove them.`;
@@ -2095,9 +2112,36 @@ function renderFloodNav(d){
   const noise=jm.since&&jm.rise!=null?`<div class="callout"><span><strong>Interference on the radio.</strong> Noise is ${Math.round(jm.rise)} dB above normal, so this repeater hears only about ${jm.range}% as far as usual.</span>${lnk}</div>`:"";
   c.innerHTML=flood+noise;
 }
+function renderAirBreakdown(fg){
+  const b=fg.breakdown, el=$("#airBody"); if(!el) return;
+  if(!b||!b.packets){ el.innerHTML=`<p class="empty">Nothing heard in the last hour.</p>`; return; }
+  const sec=x=>x>=60?`${(x/60).toFixed(1)} min`:`${x} s`, cd=x=>x==="direct"?"heard directly":`<span class="route">${esc(x)}</span>`;
+  let h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""}</p>
+  <div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>
+  ${b.kinds.map(k=>`<tr><td>${esc(k.kind[0].toUpperCase()+k.kind.slice(1))}</td><td class="num">${fmtN(k.packets)}</td><td class="num">${sec(k.airtime_s)}</td><td class="num">${k.share}%</td></tr>`).join("")}</table></div>
+  ${b.radios&&b.radios.length?`<h3 class="sub">By radio</h3><p class="explain">openHop says which of this repeater's radios heard each packet.</p><div class="scroll"><table><caption class="sr-only">Airtime by receiving radio</caption><tr><th scope="col">Radio</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Busy</th></tr>${b.radios.map(r=>`<tr><td>${esc(r.radio)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${sec(r.airtime_s)}</td><td class="num">${r.busy}%</td></tr>`).join("")}</table></div>`:""}
+  <h3 class="sub">Came in through</h3><div class="scroll"><table><caption class="sr-only">Airtime by the repeater it came in through</caption><tr><th scope="col">First repeater</th><th scope="col">Mostly</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Share</th></tr>
+  ${b.entry.map(r=>`<tr><td>${cd(r.hop)}</td><td>${esc(r.main)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${r.share}%</td></tr>`).join("")}</table></div>`;
+  if(b.clockwork&&b.clockwork.length) h+=`<h3 class="sub">Sent like clockwork</h3><ul class="rows">${b.clockwork.map(r=>`<li><span class="what">${esc(r.kind[0].toUpperCase()+r.kind.slice(1))} from ${r.anon?"key":"code"} <span class="route">${esc(r.from)}</span>${r.to_me?" to this repeater":r.to?` to <span class="route">${esc(r.to)}</span>`:""}</span><span class="why">every ${r.every} s, ${fmtN(r.packets)} times, via ${cd(r.entry)}. Often an app polling for telemetry.</span></li>`).join("")}</ul><p class="explain">The codes are one byte of each device's key, so several devices can share one: a tag, not an identity. What a request asks for is encrypted, so telemetry, status and other requests look the same.</p>`;
+  if(b.hours&&b.hours.length>1){ const ks=[...new Set(b.hours.flatMap(x=>Object.keys(x.kinds)))].sort((a,c)=>b.hours.reduce((s,x)=>s+((x.kinds[c]||[0,0])[1]-(x.kinds[a]||[0,0])[1]),0)).slice(0,6);
+    h+=`<details class="chart-data"><summary>By kind, each hour of the last 24</summary><div class="scroll"><table><caption class="sr-only">Seconds of airtime by kind of packet, per hour</caption><tr><th scope="col">Hour</th>${ks.map(k=>`<th scope="col" class="num">${esc(k[0].toUpperCase()+k.slice(1))}</th>`).join("")}</tr>
+      ${b.hours.slice().reverse().map(x=>`<tr><td>${new Date(x.hour*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</td>${ks.map(k=>`<td class="num">${x.kinds[k]?Math.round(x.kinds[k][1]/1000)+" s":""}</td>`).join("")}</tr>`).join("")}</table></div></details>`; }
+  if(b.anon&&b.anon.length) h+=`<h3 class="sub">Anonymous requests by sender key</h3><p class="explain">These carry the start of the sender's key in the clear, so one device asking a lot shows up here.</p><div class="scroll"><table><caption class="sr-only">Anonymous requests by sender key</caption><tr><th scope="col">Key starts</th><th scope="col">Asking</th><th scope="col">Via</th><th scope="col" class="num">Packets</th></tr>
+    ${b.anon.map(a=>`<tr><td><span class="route">${esc(a.key)}</span></td><td>${a.to_me?"this repeater":`<span class="route">${esc(a.to)}</span>`}</td><td>${cd(a.entry)}</td><td class="num">${fmtN(a.packets)}</td></tr>`).join("")}</table></div>`;
+  if(b.holds&&b.holds.length) h+=`<h3 class="sub">Congestion holds${fg.source_holds==="watch"?" (watch only)":""}</h3><ul class="rows">${b.holds.map(x=>`<li><span class="what"><span class="route">${esc(x.hop)}</span> ${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}${x.times>1?`, ${x.times} times today`:""}</span></li>`).join("")}</ul>`;
+  el.innerHTML=h;
+}
+function renderOhAdverts(fg){
+  const a=fg.oh_adverts, el=$("#ohAdvBody"); if(!el) return;
+  $("#ohAdvSec").hidden=!(a&&a.available);
+  if(!a||!a.available) return;
+  el.innerHTML=`<p class="explain">openHop can limit how often each node's adverts are passed on (a burst of ${a.burst}, then one every ${a.per_hours} hours)${a.penalty?", and sit out nodes that keep breaking it":""}. ${a.on?"It is on.":"It is off."}${a.dropped!=null?` Since openHop last started it has let ${fmtN(a.allowed)} adverts through and stopped ${fmtN(a.dropped)}${a.penalties?`; ${a.penalties} node${a.penalties===1?" is":"s are"} sitting out now`:""}.`:""} This is openHop's setting, separate from FloodGuard's.</p>
+  <p>${a.on?`<button class="quiet" data-confirm="Switch off openHop's own advert limit?" onclick="post('/oh_advert_limit',{on:false})">Switch it off</button>`:`<button class="quiet" data-confirm="Switch on openHop's own advert limit? Nodes that advert far more often than usual have the extra adverts dropped by openHop." onclick="post('/oh_advert_limit',{on:true})">Switch it on</button>`}</p>`;
+}
 function renderFloodPage(d){
   const m=d.metrics; if(!m) return;
   const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  renderAirBreakdown(fg); renderOhAdverts(fg);
   const fixed=[fg.unscoped?`flood packets with no region stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
   const monitor=d.mode!=="protect"||d.paused;
   let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?(fgLong(fg)?"<span class='tag plain'>holding back floods</span>":"<span class='tag would'>containing a flood</span>"):"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;

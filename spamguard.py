@@ -512,6 +512,11 @@ SETTINGS_META: list[dict] = [
      "risk": "A bridge or program you want on that channel (a Reticulum link, say) is stopped too. Choose Public only, or Off, to let one through on other channels.",
      "label": "Stop machine messages (experimental)",
      "help": "Messages that look like a program, not chat (a Reticulum bridge, or long runs of encoded characters), are counted on the Overview. With this on they are not passed on: Reticulum ones from the start, others after the first one from each name. Your own companions are never touched."},
+    {"key": "source_holds", "group": "Experimental", "type": "choice",
+     "choices": [["off", "Off"], ["watch", "Watch only: say what it would hold"], ["on", "On: hold it for ten minutes"]],
+     "risk": "A genuine app polling through that repeater during a flood waits until the hold ends. Channel messages, direct messages and control traffic are never held.",
+     "label": "Hold the kind of packet one repeater floods in while the radio is congested (experimental)",
+     "help": "While FloodGuard sees the radio congested, a repeater sending far more than its share of one kind of packet (requests, anonymous requests or group data) has that kind held for ten minutes, at most three at a time. Each hold ends by itself and is explained under Blocks. Watch only notes what it would hold, for you to judge first."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -640,6 +645,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vary_limits": True,
     "repeat_guard": True,
     "public_bots": True,
+    "source_holds": "off",                # congestion holds by entry repeater and packet kind: off, watch or on
     "machine_block": "off",               # stop machine messages (experimental): off, public or all
     "public_bots_log_only": False,
     "quick_resend": True,
@@ -1660,6 +1666,9 @@ TYPE_SURGE = {0: "requests", 6: "group data", 7: "anonymous requests", 4: "adver
 # Adverts are only ever suggested, never held by themselves: holding a neighbour's adverts can cut this repeater off,
 # and one main neighbour normally carries most of them, so they count only against that neighbour's own recent rate.
 TYPE_SUGGEST_ONLY = {4}
+PTYPE_LABEL = {0: "requests", 1: "responses", 2: "direct messages", 3: "acknowledgements", 4: "adverts", 5: "channel messages",
+               6: "group data", 7: "anonymous requests", 8: "path updates", 9: "traces", 10: "multipart", 11: "control",
+               15: "custom"}
 ADVERT_SURGE_TIMES = 5   # this many times a neighbour's usual adverts per ten minutes
 TYPE_SURGE_SECONDS = 600
 TYPE_SURGE_LONG_SECONDS = 7200   # a slow, steady flood is counted over this longer time
@@ -2024,6 +2033,7 @@ class SpamGuard:
         self.labels: collections.OrderedDict = collections.OrderedDict()
         self.spam_marked: dict[str, list] = {}   # name -> when you marked one of their messages as spam
         self.near: dict[str, list] = {}   # name family -> hop counts of its recent messages from its usual ways in
+        self.dev_names: collections.OrderedDict = collections.OrderedDict()   # companion key -> [[name, first, last]]
         self.fam_names: dict[str, set] = {}   # name family -> the names in it heard from their usual ways in
         self.heard_recent: dict[str, collections.deque] = {}   # channel -> (name, text, sender's time, heard) for reactions
         self.clocks: dict[str, list] = {}    # name family -> [time heard, how far its device clock was out]
@@ -2032,6 +2042,9 @@ class SpamGuard:
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
+        self.air_kinds: collections.deque = collections.deque(maxlen=40000)   # (ts, type, entry, ms, from, to, anon key)
+        self._kind_seen: collections.OrderedDict = collections.OrderedDict()
+        self.source_watch: dict = {}     # congestion holds it would make (watch only) or made, for the FloodGuard page
         self.type_events: collections.deque = collections.deque(maxlen=60000)   # (ts, type, first repeater, packet id)
         self._type_seen: collections.OrderedDict = collections.OrderedDict()
         self.type_suggest: dict[str, dict] = {}
@@ -2515,6 +2528,13 @@ class SpamGuard:
         if isinstance(st.get("text_sense"), dict):
             self.sense.load(st["text_sense"])
             self.sense_learned = {str(k): str(v) for k, v in (st["text_sense"].get("learned") or {}).items()}
+        for k, v in (st.get("dev_names") or {}).items():
+            if re.fullmatch(r"[0-9A-F]{64}", str(k)) and isinstance(v, list):
+                rows = [[str(x[0])[:40], float(x[1]), float(x[2])] for x in v
+                        if isinstance(x, list) and len(x) == 3 and isinstance(x[1], (int, float)) and isinstance(x[2], (int, float))
+                        and float(x[2]) > now - self.DEV_DAYS * 86400]
+                if rows:
+                    self.dev_names[str(k)] = rows[-self.DEV_NAMES_MAX:]
         for k, v in (st.get("name_links") or {}).items():
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
@@ -2667,6 +2687,7 @@ class SpamGuard:
                     "labels": dict(list(self.labels.items())[-1000:]),
                     "near": {k: v[-30:] for k, v in list(self.near.items())[-3000:] if v},
                     "fam_names": {k: sorted(v)[:8] for k, v in list(self.fam_names.items())[-3000:] if v},
+                    "dev_names": {k: v for k, v in list(self.dev_names.items())[-4000:]},
                     "clocks": {k: v[-20:] for k, v in list(self.clocks.items())[-3000:] if v},
                     "dirs": dict(list(self.dirs.items())[-3000:]),
                     "spam_marked": {k: [round(t, 1) for t in v[-20:]] for k, v in list(self.spam_marked.items())[-2000:]
@@ -3003,6 +3024,10 @@ class SpamGuard:
         h["ar"] = round(h.get("ar", 0) + on_air)
         if not local:
             h["pk"] = h.get("pk", 0) + 1
+            if 0 <= ptype <= 15:   # packets and airtime by kind, per hour, for FloodGuard's breakdown
+                kt = h.setdefault("kt", {}).setdefault(str(ptype), [0, 0])
+                kt[0] += 1
+                kt[1] = round(kt[1] + ms)
         if keyed:
             h["gp"] = h.get("gp", 0) + 1            # channel packets we hold a key for
         if damaged:
@@ -3522,7 +3547,17 @@ class SpamGuard:
                 "reach": reach, "floor": c.get("flood_hop_floor"), "damaged": self.damaged_stats(), "coding_rate": self.coding_rate(),
                 "unscoped": int(c.get("flood_max_unscoped") or 0) if c.get("floodguard") else 0,
                 "advert": int(c.get("flood_max_advert") or 0) if c.get("floodguard") else 0,
-                "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else []}
+                "rules": sorted(self.fg_rule_ids()) if c.get("floodguard") and (f.get("limit") or c.get("flood_max_unscoped") or c.get("flood_max_advert")) else [],
+                "source_holds": c.get("source_holds") or "off", "breakdown": self._breakdown_cached(),
+                "oh_adverts": getattr(self, "oh_adverts", None)}
+
+    def _breakdown_cached(self) -> dict:
+        """The breakdown, worked out at most every 30 seconds: the page asks for status every few seconds."""
+        now = time.time()
+        bc = getattr(self, "_bd_cache", None)
+        if not bc or now - bc[0] > 30:
+            bc = self._bd_cache = (now, self.fg_breakdown(now))
+        return bc[1]
 
     def _held_day(self, e: Event) -> Optional[list]:
         """[messages, copies held] for this name on the day of this message, or None for our own messages."""
@@ -3734,7 +3769,7 @@ class SpamGuard:
         anything else is counted in the total only."""
         if not b:
             return "ko"
-        if b.get("kind") in ("hop", "route", "stem", "suffix", "ptype") or b.get("source") in ("hop", "rotation", "type-auto"):
+        if b.get("kind") in ("hop", "route", "stem", "suffix", "ptype") or b.get("source") in ("hop", "rotation", "type-auto", "source-auto"):
             return "kr"
         if b.get("kind") in ("text", "words", "repeat", "burst", "imposter", "links"):
             return "kc"
@@ -3961,12 +3996,59 @@ class SpamGuard:
         return {"key": key, "type": node_type, "lat": lat, "lon": lon, "name": name,
                 "time": struct.unpack_from("<I", payload, 32)[0]}
 
+    DEV_NAMES_MAX = 8          # names kept per device
+    DEV_DAYS = 30              # how long a device's names are remembered after it was last heard
+
+    def note_device_name(self, payload: bytes, adv: dict, ts: float):
+        """A companion's advert names the device by its key. Only an advert correctly signed by that key counts,
+        so nobody can add a name to someone else's device. A name change keeps the device's history."""
+        key = adv.get("key") or ""
+        name = str(adv.get("name") or "").strip()[:40]
+        if not re.fullmatch(r"[0-9A-F]{64}", key) or not name:
+            return
+        names = self.dev_names.get(key)
+        cur = next((x for x in names or () if x[0] == name), None)
+        if cur is not None and cur is names[-1] and ts - cur[2] < 1800:
+            cur[2] = max(cur[2], ts)     # the same name again soon: no need to check the signature again
+            return
+        if verify_signed(payload[:32], payload[36:100], payload[:36] + payload[100:]) != "ok":
+            return
+        if names is None:
+            names = self.dev_names[key] = []
+        else:
+            self.dev_names.move_to_end(key)
+        if cur is not None:
+            cur[2] = max(cur[2], ts)
+            names.remove(cur)
+            names.append(cur)
+        else:
+            if names and names[-1][0] != name:
+                self.stats["renames"] = self.stats.get("renames", 0) + 1
+            names.append([name, ts, ts])
+            del names[:-self.DEV_NAMES_MAX]
+        while len(self.dev_names) > 4000:
+            self.dev_names.popitem(last=False)
+
+    def device_names(self, name: str, now: Optional[float] = None) -> dict:
+        """For one name: the other names its devices have used lately, and how many devices use it."""
+        now = now or time.time()
+        cut = now - self.DEV_DAYS * 86400
+        keys = [k for k, v in self.dev_names.items() if any(x[0] == name and x[2] >= cut for x in v)]
+        also: dict[str, float] = {}
+        for k in keys:
+            for n, _first, last in self.dev_names[k]:
+                if n != name and last >= cut:
+                    also[n] = max(also.get(n, 0), last)
+        return {"also": sorted(also, key=lambda n: -also[n])[:6], "devices": len(keys)}
+
     def learn_advert(self, p: dict):
         """Remember the route a fixed node's advert (repeater or room server, with a location) took."""
         try:
             adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
         except ValueError:
             return
+        if adv and adv["type"] == 1 and adv["name"]:
+            self.note_device_name(bytes.fromhex(p.get("payload") or ""), adv, float(p.get("timestamp") or time.time()))
         if adv and adv["type"] == 1 and adv["name"] and self.cfg.get("spoof_watch"):
             # A companion's advert (signed by its own key in standard MeshCore): where it was heard from, for the
             # copied-name check to learn from later. At most once every 30 minutes per companion.
@@ -5104,7 +5186,9 @@ class SpamGuard:
         marked = len(self.labels)
         out = {"running": bool(self._preview_busy), "enabled": self.evidence is not None,
                "switched_on": bool(self.cfg.get("level_preview", True)), "marked": marked,
-               "ran": p.get("ran"), "error": p.get("error") if (p.get("failed") or 0) > (p.get("ran") or 0) else None}
+               "ran": p.get("ran"), "error": p.get("error") if (p.get("failed") or 0) > (p.get("ran") or 0) else None,
+               "route_auto": bool(self.cfg.get("route_auto")),
+               "source_holds": self.cfg.get("source_holds") in ("watch", "on") and bool(self.cfg.get("floodguard"))}
         if p.get("levels"):
             out.update({k: p.get(k) for k in ("from", "to", "messages", "skipped", "labelled_spam", "labelled_fine", "took")})
             # your marks show straight away, not only after the next daily run
@@ -5199,6 +5283,27 @@ class SpamGuard:
         """A message this repeater sent itself: it has no path, and the name is one of its own companions."""
         return getattr(e, "local", False) or (not e.path and e.sender in (getattr(self, "own_names", None) or {}))
 
+    def _note_oh_adverts(self, rp: dict):
+        """openHop's own advert limits (a token bucket per sender and a penalty box), from its config, and how
+        many adverts they have stopped, from its statistics where this openHop has them."""
+        if "advert_rate_limit" not in rp:
+            self.oh_adverts = {"available": False}
+            return
+        rate, pen = rp.get("advert_rate_limit") or {}, rp.get("advert_penalty_box") or {}
+        out = {"available": True, "on": bool(rate.get("enabled")), "penalty": bool(pen.get("enabled")),
+               "per_hours": round(float(rate.get("refill_interval_seconds") or 36000) / 3600, 1),
+               "burst": int(rate.get("bucket_capacity") or 2), "ts": time.time()}
+        try:
+            r = self._api("GET", "/api/advert_rate_limit_stats", timeout=10)
+            d = r.get("data", r) if isinstance(r, dict) else {}
+            stt = d.get("stats") or {}
+            if isinstance(stt, dict) and "adverts_dropped" in stt:
+                out.update(allowed=int(stt.get("adverts_allowed") or 0), dropped=int(stt.get("adverts_dropped") or 0),
+                           penalties=len(d.get("active_penalties") or {}), tier=(d.get("adaptive") or {}).get("current_tier"))
+        except Exception as e:
+            log.debug("openHop advert statistics not available: %s", e)
+        self.oh_adverts = out
+
     def refresh_openhop_info(self, force: bool = False):
         """Radio settings (for airtime) and the repeater directory (for the map), at most every 30 min."""
         now = time.time()
@@ -5213,6 +5318,7 @@ class SpamGuard:
             rp = conf.get("repeater") or {}
             self.me = {"name": conf.get("node_name") or rp.get("node_name") or st.get("site_name") or "", "hash": str(st.get("local_hash") or "").upper(),
                        "lat": rp.get("latitude"), "lon": rp.get("longitude")}
+            self._note_oh_adverts(rp)
         except Exception as e:
             log.debug("openHop stats not available: %s", e)
         if (self.me or {}).get("lat") is None:
@@ -5600,8 +5706,8 @@ class SpamGuard:
             return "known", heard + ". Let through blocks meant for strangers"
         return "learning", heard + ". Not yet let through blocks"
 
-    PEOPLE_SHOW = ("active", "worth", "copied", "check", "watch", "held", "marked", "mixed", "trusted", "known", "learning",
-                   "quiet", "all")
+    PEOPLE_SHOW = ("active", "worth", "copied", "check", "watch", "held", "marked", "mixed", "renames", "trusted", "known",
+                   "learning", "quiet", "all")
 
     def people(self, body: Optional[dict] = None) -> dict:
         """The People page: everyone SpamGuard has heard, with standing and why, the usual ways in and the last
@@ -5623,6 +5729,12 @@ class SpamGuard:
         copied = self._copied_names(now)
         names.update(dict.fromkeys(copied))   # someone using the name stays on the list even after you forget it
         checking = self._new_direction_names(now) - copied   # a new direction (amber), nothing probable yet
+        cut_dev = now - self.DEV_DAYS * 86400
+        renamed: set = set()   # names whose device has used another name lately
+        for v in self.dev_names.values():
+            recent = [x[0] for x in v if x[2] >= cut_dev]
+            if len(set(recent)) > 1:
+                renamed.update(recent)
         counts = dict.fromkeys(self.PEOPLE_SHOW, 0)
         rows = []
         for n in names:
@@ -5638,6 +5750,8 @@ class SpamGuard:
                 groups.append("copied")
             if n in checking:
                 groups.append("check")
+            if n in renamed:
+                groups.append("renames")
             mc = self.mark_counts.get(n) or (0, 0)
             if mc[0]:
                 groups.append("marked")
@@ -5697,6 +5811,7 @@ class SpamGuard:
                         "route": self.route_status(n) if self.cfg.get("spoof_check") else None,
                         "copies": self.copy_record(n, now) if self.cfg.get("spoof_watch") else None,
                         "warmth": self.warmth(n, st2, now),
+                        "device": self.device_names(n, now),
                         "spam": self.spam_record(n, now) if st == "held" else None,
                         "watch": ({"since": w["since"], "need": int(w.get("need", self.WATCH_DAYS)),
                                    "days": max(0, min(int(w.get("need", self.WATCH_DAYS)), int((now - w["clean_from"]) // 86400))),
@@ -5921,6 +6036,7 @@ class SpamGuard:
                 continue
             self.fg_observe(p)
             self._type_note(p, ptype)
+            self._kind_note(p, ptype)
             self._note_hash_size(p)
             if ptype == PAYLOAD_TYPE_ADVERT:
                 if self.cfg.get("signed_watch"):
@@ -7549,6 +7665,150 @@ class SpamGuard:
         while self.type_events and self.type_events[0][0] < horizon:
             self.type_events.popleft()
 
+    def _kind_note(self, p: dict, ptype: int):
+        """Airtime by kind of packet and the repeater it entered through, for FloodGuard's breakdown. For
+        requests the one-byte codes of who it is from and to; for anonymous requests the start of the sender's
+        key, which they carry in the clear. Never contents. Packets this repeater sent itself don't count."""
+        if "rssi" in p and not p.get("rssi") and not p.get("snr") and not p.get("rx_radio_id"):
+            return
+        try:
+            ts, length = float(p.get("timestamp") or 0), int(p.get("length") or 0)
+        except (TypeError, ValueError):
+            return
+        pid = str(p.get("packet_hash") or p.get("id") or "")
+        if not pid or pid in self._kind_seen:
+            return
+        self._kind_seen[pid] = None
+        while len(self._kind_seen) > 30000:
+            self._kind_seen.popitem(last=False)
+        path = parse_path(p.get("original_path"))
+        try:
+            pl = bytes.fromhex(str(p.get("payload") or "")[:70])
+        except ValueError:
+            pl = b""
+        src = dst = akey = ""
+        if ptype in (0, 1, 2, 8) and len(pl) >= 2:
+            dst, src = pl[:1].hex().upper(), pl[1:2].hex().upper()
+        elif ptype == 7 and len(pl) >= 33:
+            dst, akey = pl[:1].hex().upper(), pl[1:5].hex().upper()
+        ms = self.airtime_ms(length) if length > 0 else 0.0
+        radio = str(p.get("rx_radio_id") or "")[:24]
+        self.air_kinds.append((ts, ptype, path[0].upper() if path else "", ms, src, dst, akey, radio))
+        while self.air_kinds and self.air_kinds[0][0] < time.time() - 3600:
+            self.air_kinds.popleft()
+
+    @staticmethod
+    def _every(times: list) -> Optional[int]:
+        """Seconds between sends when they come like clockwork (at least six, evenly spaced), else None."""
+        if len(times) < 6:
+            return None
+        gaps = [b - a for a, b in zip(times, times[1:]) if b - a > 0.5]
+        if len(gaps) < 5:
+            return None
+        mid = statistics.median(gaps)
+        if mid < 2 or statistics.pstdev(gaps) > 0.25 * mid:
+            return None
+        return int(round(mid))
+
+    def fg_breakdown(self, now: Optional[float] = None, secs: int = 3600) -> dict:
+        """What the last hour's airtime went on: each kind of packet, the repeaters most of it came in through,
+        anonymous requests by sender key, requests sent to this repeater, and anything sent like clockwork."""
+        now = now or time.time()
+        cut = now - secs
+        rows = [r for r in self.air_kinds if cut <= r[0] <= now]
+        total = sum(r[3] for r in rows) or 0.0
+        kinds: dict = {}
+        entry: dict = {}
+        anon: dict = {}
+        polls: dict = {}
+        me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
+        to_me = 0
+        radios: dict = {}
+        for ts, pt, hop, ms, src, dst, akey, radio in rows:
+            if radio:
+                rr = radios.setdefault(radio, [0, 0.0])
+                rr[0] += 1
+                rr[1] += ms
+            k = kinds.setdefault(pt, [0, 0.0])
+            k[0] += 1
+            k[1] += ms
+            base = hop[:2] or "direct"
+            en = entry.setdefault(base, {"packets": 0, "ms": 0.0, "kinds": collections.Counter(), "hop": hop})
+            en["packets"] += 1
+            en["ms"] += ms
+            en["kinds"][pt] += 1
+            if len(hop) > len(en["hop"]):
+                en["hop"] = hop
+            if akey:
+                a = anon.setdefault(akey, {"packets": 0, "to": collections.Counter(), "entry": collections.Counter()})
+                a["packets"] += 1
+                a["to"][dst] += 1
+                a["entry"][base] += 1
+            if pt in (0, 7) and me and dst == me:
+                to_me += 1
+            if pt in (0, 7) and (akey or src):
+                polls.setdefault((pt, akey or src, dst, base), []).append(ts)
+        clock = []
+        for (pt, who, dst, base), times in polls.items():
+            ev = self._every(sorted(times))
+            if ev:
+                clock.append({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "from": who, "anon": pt == 7, "to": dst,
+                              "to_me": bool(me) and dst == me, "entry": base, "every": ev, "packets": len(times)})
+        clock.sort(key=lambda r: -r["packets"])
+        return {"minutes": secs // 60, "airtime_s": round(total / 1000, 1), "packets": len(rows), "me": me or None,
+                "kinds": sorted(({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "ptype": pt, "packets": v[0],
+                                  "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0}
+                                 for pt, v in kinds.items()), key=lambda r: -r["airtime_s"]),
+                "entry": [{"hop": v["hop"] if v["hop"] else "direct", "packets": v["packets"], "airtime_s": round(v["ms"] / 1000, 1),
+                           "share": round(100 * v["ms"] / total) if total else 0,
+                           "main": PTYPE_LABEL.get(v["kinds"].most_common(1)[0][0], "?")}
+                          for _b, v in sorted(entry.items(), key=lambda kv: -kv[1]["ms"])[:6]],
+                "anon": [{"key": k, "packets": v["packets"], "to": v["to"].most_common(1)[0][0],
+                          "to_me": bool(me) and v["to"].most_common(1)[0][0] == me, "entry": v["entry"].most_common(1)[0][0]}
+                         for k, v in sorted(anon.items(), key=lambda kv: -kv[1]["packets"])[:6]],
+                "to_me": to_me, "clockwork": clock[:6],
+                # Only when openHop says which radio heard each packet, and more than one did: never guessed.
+                "radios": [{"radio": k, "packets": v[0], "airtime_s": round(v[1] / 1000, 1),
+                            "busy": round(100 * v[1] / (secs * 1000), 1)} for k, v in sorted(radios.items())] if len(radios) > 1 else [],
+                "hours": [{"hour": int(k), "kinds": {PTYPE_LABEL.get(int(pt), f"type {pt}"): v for pt, v in (self.hist[k].get("kt") or {}).items()}}
+                          for k in sorted(self.hist) if int(k) >= now - 86400 and self.hist[k].get("kt")],
+                "holds": self.source_holds_view(now)}
+
+    SOURCE_HOLD_SHARE = 0.35    # one repeater's share of all airtime, for one kind, before it counts as over its budget
+    SOURCE_HOLD_PACKETS = 20
+    SOURCE_HOLD_SECONDS = 600
+    SOURCE_HOLD_MAX = 3
+    SOURCE_HOLD_KINDS = (0, 6, 7)   # requests, group data, anonymous requests; never channel text, direct or control
+
+    def source_over_budget(self, now: float) -> dict:
+        """While the radio is congested: repeaters using more than their share of airtime for one kind of packet."""
+        busy, share, n = self.fg_load(now)
+        level = float(self.cfg.get("flood_busy_percent") or 15)
+        if busy < level or n < self.FG_MIN_PACKETS:
+            return {}
+        cut = now - self.FG_WINDOW
+        tot = 0.0
+        per: dict = {}
+        for ts, pt, hop, ms, _s, _d, _a, _r in self.air_kinds:
+            if cut <= ts <= now:
+                tot += ms
+                if pt in self.SOURCE_HOLD_KINDS and hop:
+                    v = per.setdefault((pt, hop[:2]), [0, 0.0, hop])
+                    v[0] += 1
+                    v[1] += ms
+                    if len(hop) > len(v[2]):
+                        v[2] = hop
+        out = {}
+        for (pt, _b), (cnt, ms, hop) in per.items():
+            if tot and cnt >= self.SOURCE_HOLD_PACKETS and ms >= self.SOURCE_HOLD_SHARE * tot and not self.hop_allowed(hop):
+                out[f"ptype:{pt}:{hop}"] = {"ptype": pt, "hop": hop, "packets": cnt, "share": round(100 * ms / tot),
+                                            "busy": round(busy), "label": PTYPE_LABEL.get(pt, f"type {pt}")}
+        return out
+
+    def source_holds_view(self, now: float) -> list:
+        return [dict(v, key=k, active=k in self.blocks) for k, v in sorted(self.source_watch.items(), key=lambda kv: -kv[1]["last"])
+                if v["last"] > now - 86400][:10]
+
     def _advert_jump(self, base: str, n: int, now: float) -> bool:
         """Far more adverts through this neighbour in the last ten minutes than it usually passes on (its average
         over the rest of the last two hours)."""
@@ -8151,6 +8411,28 @@ class SpamGuard:
                 self.type_suggest[key] = dict(d, first=self.type_suggest.get(key, {}).get("first", now))
         elif self.type_suggest:
             self.type_suggest = {}
+
+        # 3d. Congestion (experimental): one entry repeater over its airtime budget for one kind of packet.
+        mode = c.get("source_holds") if c.get("source_holds") in ("watch", "on") else "off"
+        if mode != "off" and c.get("floodguard"):
+            for key, d in self.source_over_budget(now).items():
+                w = self.source_watch.get(key)
+                held = sum(1 for b in self.blocks.values() if b.get("source") == "source-auto")
+                act = mode == "on" and held < self.SOURCE_HOLD_MAX and key not in self.blocks \
+                    and self.suppressed.get(key, 0) <= now
+                if w is None or now - w["last"] > 3600:
+                    self.note(f"FloodGuard: repeater {d['hop']} used {d['share']}% of the airtime on {d['label']} while the radio was "
+                              f"{d['busy']}% busy. " + ("Held for ten minutes." if act else "Watch only, so nothing was held."
+                                                        if mode == "watch" else "Not held: three such holds are already on."))
+                    self.source_watch[key] = dict(d, first=now, last=now, times=1 + int((w or {}).get("times", 0)), watch=mode == "watch")
+                else:
+                    w.update(d, last=now, watch=mode == "watch")
+                if act:
+                    want(key, "ptype", {"ptype": d["ptype"], "hop": d["hop"]},
+                         f"{d['share']}% of the airtime on {d['label']} through this repeater while the radio was {d['busy']}% busy",
+                         "source-auto", ttl=self.SOURCE_HOLD_SECONDS)
+            while len(self.source_watch) > 50:
+                self.source_watch.pop(min(self.source_watch, key=lambda k: self.source_watch[k]["last"]))
 
         if self.learn_paths(a["long"]):
             changed = True
@@ -8966,7 +9248,7 @@ class SpamGuard:
         return rules
 
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
-                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto",
+                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto", "source-auto": "congestion",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
                    "budget": "too many", "linkhost": "link campaign", "imposter": "copied name?", "junk": "symbol junk", "spoof": "copied name"}
 
@@ -10388,9 +10670,19 @@ class SpamGuard:
                 "errors_hour": errors_hour, "last_error": self.last_error,
                 "last_heard": self.last_packet_ts, "openhop_lag_s": None if lag is None else round(lag),
                 "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
-                "kind": install_kind(),
+                "kind": install_kind(), "last_sync": self.last_sync, "last_save": self._last_save or None,
+                "status_ms": getattr(self, "status_ms", None), "evidence_mb": self._evidence_mb(),
+                "released_week": sum(1 for k, v in self.labels.items() if v == "not_spam" and float(self.label_at.get(k) or 0) > now - 7 * 86400),
                 "can_apply_fix": install_kind() == "normal"
                 and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"), **sysr}
+
+    def _evidence_mb(self) -> Optional[float]:
+        if self.evidence is None:
+            return None
+        try:
+            return round(sum(os.path.getsize(f) for f in self.evidence.files()) / 1e6, 1)
+        except OSError:
+            return None
 
     # ---- updates from GitHub (only installed when asked) ----
     @staticmethod
@@ -10997,7 +11289,7 @@ class SpamGuard:
                                "label": self.labels.get(e.packet or "") or self.labels.get(f"{e.sender}|{e.text}"),
                                "matched_desc": self.describe(self.blocks[e.matched]) if e.matched in self.blocks else None})
             blocks = []
-            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "type-auto": 1, "links": 1, "junk": 1, "spoof": 1, "campaign": 2, "dedupe": 3}
+            rank = {"lockdown": -1, "manual": 0, "hop": 1, "rotation": 1, "route-auto": 1, "hop-route": 1, "type-auto": 1, "source-auto": 1, "links": 1, "junk": 1, "spoof": 1, "campaign": 2, "dedupe": 3}
             for k, b in sorted(self.blocks.items(), key=lambda kv: (rank.get(kv[1].get("source"), 2), -kv[1].get("hits", 0))):
                 blocks.append({"key": k, "kind": b["kind"], "value": b["value"], "source": b.get("source"),
                                "reason": b.get("reason"), "hits": b.get("hits", 0), "last_hit": b.get("last_hit"),
@@ -11851,6 +12143,15 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
                 msg = ("Automatic blocks cleared. SpamGuard won't re-create those for 24 hours "
                        "(Blocks > Never blocked > Not re-blocked > Clear undoes that). New spam can still make new ones.")
+            elif op == "oh_advert_limit":
+                on = bool(body.get("on"))
+                r = self._api("POST", "/api/update_advert_rate_limit_config", {"rate_limit_enabled": on}, timeout=20)
+                if not (isinstance(r, dict) and r.get("success", True) is not False):
+                    raise ValueError("openHop didn't accept the change.")
+                self.oh_adverts = dict(getattr(self, "oh_adverts", None) or {}, on=on)
+                self.repeaters["ts"] = 0   # read it back from openHop on the next check
+                self.note(f"openHop's own advert limit switched {'on' if on else 'off'} from FloodGuard's page")
+                msg = f"openHop's advert limit is {'on' if on else 'off'}."
             elif op == "engine_on":
                 self.engine_on_seen = False   # the next sync switches it on
                 msg = "Switching on openHop's rule engine"
@@ -11943,7 +12244,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
@@ -12190,7 +12491,10 @@ def make_handler(guard: SpamGuard):
             if path in ("/status", "/rules") and not self._key_ok():
                 return self._send(401, {"error": "This SpamGuard needs its access key"})
             if path == "/status":
-                return self._send(200, guard.status_now())
+                t0 = time.monotonic()
+                out = guard.status_now()
+                guard.status_ms = round((time.monotonic() - t0) * 1000)
+                return self._send(200, out)
             if path == "/rules":
                 with guard.lock:
                     rules = guard.build_rules()
