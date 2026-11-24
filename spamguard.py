@@ -2042,6 +2042,7 @@ class SpamGuard:
         self.sentence_quiet: dict[str, float] = {}  # a sentence hold let go early for catching nothing -> when
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
+        self.links_dismissed: dict[str, float] = {}   # campaign link groups you set aside, and when
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
         self.held_names: dict[str, dict] = {}
         # Where repeat spammers are heard from: name -> first hops of the route -> day -> messages. Only kept
@@ -2556,6 +2557,9 @@ class SpamGuard:
                         and float(x[2]) > now - self.DEV_DAYS * 86400]
                 if rows:
                     self.dev_names[str(k)] = rows[-self.DEV_NAMES_MAX:]
+        for k, v in (st.get("links_dismissed") or {}).items():
+            if isinstance(v, (int, float)) and re.fullmatch(r"[0-9a-f]{10}", str(k)):
+                self.links_dismissed[str(k)] = float(v)
         for k, v in (st.get("name_links") or {}).items():
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
@@ -2701,6 +2705,7 @@ class SpamGuard:
                     "senders": {k: [round(v["first"], 1), v["count"], round(float(v.get("last") or v["first"]), 1)]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                     "name_links": self.name_links,
+                    "links_dismissed": {k: v for k, v in self.links_dismissed.items() if v > time.time() - 7 * 86400},
                     "signer_bind": dict(list(self.signer_bind.items())[-500:]),
                     "signed_stats": self.signed_stats,
                     "held_names": dict(list(self.held_names.items())[-3000:]),
@@ -7885,6 +7890,85 @@ class SpamGuard:
         tot = sum(d.values()) or 1
         return [{"name": k, "share": round(100 * v / tot)} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:top]]
 
+    def campaign_links(self, camps: dict) -> list:
+        """How spam campaigns link up, for reading only: nothing here ever holds or blocks anything. Two campaigns
+        are linked when they share names (strong if two or more), when one name took over another's repeats or two
+        names came from one device (strong), or when most of their copies came in through the same repeater (weak).
+        Each group says why, and can be set aside for a week."""
+        cs = [(cid, cc) for cid, cc in camps.items() if cc.get("senders")][:40]
+        if not cs:
+            return []
+        dev_of: dict = {}
+        cut = time.time() - self.DEV_DAYS * 86400
+        for key, rows in self.dev_names.items():
+            for n, _f, last in rows:
+                if last >= cut:
+                    dev_of.setdefault(n, set()).add(key)
+        took = {(a, b) for a, v in self.name_links.items() for b in v.get("after", [])}
+        parent = list(range(len(cs)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+        why: dict = {}
+
+        def link(i, j, text, strong):
+            ri, rj = find(i), find(j)
+            if ri != rj:
+                parent[ri] = rj
+            why.setdefault((min(i, j), max(i, j)), []).append((text, strong))
+        top = [(cc["hops"].most_common(1)[0] if cc.get("hops") else (None, 0)) for _c, cc in cs]
+        for i in range(len(cs)):
+            si = cs[i][1]["senders"]
+            for j in range(i + 1, len(cs)):
+                sj = cs[j][1]["senders"]
+                both = si & sj
+                if both:
+                    link(i, j, f"{len(both)} name{'s' if len(both) != 1 else ''} sent both", len(both) >= 2)
+                pairs = [(a, b) for a in si for b in sj if (a, b) in took or (b, a) in took]
+                if pairs:
+                    link(i, j, f"'{pairs[0][0][:24]}' and '{pairs[0][1][:24]}' took over each other's repeats", True)
+                dev = [(a, b) for a in si - both for b in sj - both if dev_of.get(a, set()) & dev_of.get(b, set())]
+                if dev:
+                    link(i, j, f"'{dev[0][0][:24]}' and '{dev[0][1][:24]}' came from the same device", True)
+                hi, hj = top[i], top[j]
+                if hi[0] and hi[0] == hj[0] and hi[1] * 2 >= len(cs[i][1]["events"]) and hj[1] * 2 >= len(cs[j][1]["events"]):
+                    link(i, j, f"most copies of both came in through {hi[0]}", False)
+        groups: dict = {}
+        for i in range(len(cs)):
+            groups.setdefault(find(i), []).append(i)
+        out = []
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            reasons = [r for (a, b), rs in why.items() if a in members and b in members for r in rs]
+            texts = sorted(cs[i][1]["events"][-1].text[:60] for i in members)
+            gid = hashlib.sha1("|".join(texts).encode(), usedforsecurity=False).hexdigest()[:10]
+            if self.links_dismissed.get(gid, 0) > time.time() - 7 * 86400:
+                continue
+            names = collections.Counter()
+            hops = collections.Counter()
+            for i in members:
+                for e in cs[i][1]["events"]:
+                    names[e.sender] += 1
+                hops.update(cs[i][1]["hops"])
+            seen = set()
+            rs = []
+            for t, st in sorted(reasons, key=lambda r: not r[1]):
+                if t not in seen:
+                    seen.add(t)
+                    rs.append({"text": t, "strong": st})
+            tot = sum(hops.values()) or 1
+            out.append({"id": gid, "strong": any(r["strong"] for r in rs), "reasons": rs[:6],
+                        "campaigns": [{"example": cs[i][1]["events"][-1].text[:80], "copies": len(cs[i][1]["events"]),
+                                       "names": len(cs[i][1]["senders"])} for i in members][:8],
+                        "names": [n for n, _c in names.most_common(8)], "name_count": len(names),
+                        "hops": [{"hop": h, "share": round(100 * c / tot)} for h, c in hops.most_common(4)]})
+        out.sort(key=lambda g: (not g["strong"], -g["name_count"]))
+        return out[:8]
+
     SOURCE_HOLD_SHARE = 0.35    # one repeater's share of all airtime, for one kind, before it counts as over its budget
     SOURCE_HOLD_PACKETS = 20
     SOURCE_HOLD_SECONDS = 600
@@ -11385,6 +11469,7 @@ class SpamGuard:
                              "confidence": self.code_confidence(k) if k != "DIRECT" else None})
             hops.sort(key=lambda x: (-x["caught"] - x["random"] * 3, -x["messages"]))
             direct = next((h for h in hops if h["hop"] == "DIRECT" and h["signals"]), None)
+            campaign_links = self.campaign_links(a["campaigns"])
             campaigns = []
             for _cid, cc in sorted(a["campaigns"].items(), key=lambda kv: -len(kv[1]["senders"])):
                 campaigns.append({"senders": len(cc["senders"]), "count": len(cc["events"]),
@@ -11487,7 +11572,7 @@ class SpamGuard:
                                        "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,
                                        "ttl": int(c.get("route_surge_ttl", 7200))}
                                       for k, v in sorted(self.route_suggest.items(), key=lambda kv: -kv[1]["names"])],
-                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
+                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "campaign_links": campaign_links, "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "own": self.own_summary(),
@@ -12259,6 +12344,13 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
                 msg = ("Automatic blocks cleared. SpamGuard won't re-create those for 24 hours "
                        "(Blocks > Never blocked > Not re-blocked > Clear undoes that). New spam can still make new ones.")
+            elif op == "dismiss_link":
+                gid = str(body.get("id") or "")
+                if not re.fullmatch(r"[0-9a-f]{10}", gid):
+                    raise ValueError("Unknown link group.")
+                self.links_dismissed[gid] = time.time()
+                self._save_state(force=True)
+                msg = "Set aside for a week."
             elif op == "oh_advert_limit":
                 on = bool(body.get("on"))
                 r = self._api("POST", "/api/update_advert_rate_limit_config", {"rate_limit_enabled": on}, timeout=20)
@@ -12360,7 +12452,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",

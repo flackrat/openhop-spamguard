@@ -506,6 +506,8 @@ body:not([data-page=overview]) .ov-only{display:none}
 .blk-panel{padding:8px 0 2px;display:flex;flex-direction:column;gap:8px}
 summary.as-button{display:inline-flex;align-items:center;min-height:44px;padding:4px 16px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:600}
 #adminSec details{border-top:1px solid var(--line);padding:6px 0}#adminSec summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.linkgrp{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0}.lg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}.lg-head h3{margin:0;font-size:1rem}.lg-head button{margin-left:auto}
+.lg-why{list-style:none;margin:8px 0;padding:0}.lg-why li{margin:4px 0}.lg-list{margin:6px 0;padding-left:18px}
 h3.sub{font-size:.95rem;margin:16px 0 6px}
 .mode-h{font-size:1rem;margin:0 0 8px}hr.soft{border:0;border-top:1px solid var(--line);margin:14px 0}
 #careSec .care-part+.care-part{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}#careSec h3{font-size:.95rem;margin:0 0 6px}
@@ -848,6 +850,11 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h2>Spam campaigns</h2>
   <p class="lead">Groups of near-identical messages sent under different names. SpamGuard groups them even when words are added, capitals change or look-alike letters are swapped in.</p>
   <div class="scroll"><table id="campaigns"></table></div>
+</section>
+<section id="linksSec">
+  <h2>How they link up</h2>
+  <p class="lead">Campaigns that look like the same sender at work, and why. For your information only: nothing is held or blocked from here.</p>
+  <div id="linksBody"></div>
 </section></div>
 <div class="page" data-page="activity"><section>
   <h2>Activity</h2>
@@ -1586,6 +1593,7 @@ function renderAdvanced(d){
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
       <td class="act-cell">${h.hop==="DIRECT"?"":(h.blocked?"":btn("Block","/block_hop",{hop:h.hop},"quiet"))+(h.allowed?btn("Allow blocking","/unallow_hop",{hop:h.hop},"quiet"):btn("Never block","/allow_hop",{hop:h.hop},"quiet"))}</td></tr>`).join("")
      || `<tr><td colspan="8" class="empty">No messages in the last few minutes.</td></tr>`);
+  renderLinks(d);
   $("#campaigns").innerHTML=`<tr><th>Example</th><th class="num">Names</th><th class="num">Messages</th><th class="num">Versions</th><th>Entered via</th><th></th></tr>`+
     (d.campaigns.map(c=>`<tr><td class="msg-text lead-cell">${esc(c.example)}</td><td class="num" data-label="Names">${c.senders}</td><td class="num" data-label="Messages">${c.count}</td><td class="num" data-label="Versions">${c.variants}</td>
       <td class="route" data-label="Entered via">${esc(Object.entries(c.hops).map(([k,v])=>k+" ("+v+")").join(", "))}</td><td class="act-cell">${btn("Block text","/mark_spam",{text:c.example},"quiet")}</td></tr>`).join("")
@@ -2282,6 +2290,19 @@ function renderAirBreakdown(fg,force){
     r.tip=`${hhm(t)}: `+segs.map(x=>`${x[1].toLowerCase()} ${r[x[0]]} s`).join(", "); rows.push(r); }
   columns(ch,rows,{every:6,col:"Hour",unit:"",segs:segs.map(x=>x[0]),cols:segs.map(x=>[x[0],x[1]," s"])});
   ch.setAttribute("aria-label","Seconds of airtime by kind of packet, each hour of the last 24 hours. The numbers are in the table below.");
+}
+function renderLinks(d){
+  const el=$("#linksBody"); if(!el) return; const gs=d.campaign_links||[];
+  if(!gs.length){ el.innerHTML=`<p class="explain">No campaigns look linked right now.</p>`; return; }
+  el.innerHTML=gs.map(g=>`<article class="linkgrp">
+    <div class="lg-head"><h3>${g.campaigns.length} campaigns, ${fmtN(g.name_count)} name${g.name_count===1?"":"s"}</h3>${g.strong?"<span class='tag stop'>strongly linked</span>":"<span class='tag plain'>loosely linked</span>"}
+      <button type="button" class="quiet" onclick="post('/dismiss_link',{id:'${esc(g.id)}'})" aria-label="Set this group aside for a week">Set aside</button></div>
+    <ul class="lg-why">${g.reasons.map(r=>`<li><span class="tag ${r.strong?"stop":"plain"}">${r.strong?"strong":"weak"}</span> ${esc(r.text)}</li>`).join("")}</ul>
+    <details><summary>The campaigns, names and repeaters</summary>
+      <ul class="lg-list">${g.campaigns.map(c=>`<li>“${esc(c.example)}” <span class="explain">${fmtN(c.copies)} copies from ${fmtN(c.names)} name${c.names===1?"":"s"}</span></li>`).join("")}</ul>
+      <p class="explain">Names: ${g.names.map(esc).join(", ")}${g.name_count>g.names.length?`, and ${g.name_count-g.names.length} more`:""}.</p>
+      <p class="explain">Came in through: ${g.hops.map(h=>`<span class="route">${esc(h.hop)}</span> ${h.share}%`).join(", ")}.</p></details>
+  </article>`).join("");
 }
 function renderAirWeek(d){ const m=d.metrics; if(!m||PAGE!=="floodguard") return;
   const day=t=>new Date(t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"});
