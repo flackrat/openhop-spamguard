@@ -33,6 +33,10 @@ ps=[pk(T-3000+i*40,[["A7","C4","2F"][i%3]],5,80,radio=["radio-1","radio-2"][i%2]
 ps+=[pk(T-2400+i*60,["7D"],0,30,"5AC4"+"00"*20,radio="radio-1") for i in range(30)]
 ps+=[pk(T-2000+i*45+(i%4)*17,["7D"],7,60,"5A"+"AB12CD34"+"00"*40,radio="radio-1") for i in range(14)]
 for p in ps: g._kind_note(p,p["type"]); g.fg_observe(p)
+import random as _r
+for k in range(24):   # a day of made-up airtime by kind
+    hk=str(int(T//3600*3600)-k*3600); hh=g.hist.setdefault(hk,{"m":0,"c":0,"x":0,"g":0,"a":0.0,"h":{}})
+    hh["kt"]={"5":[60,_r.randint(20,60)*1000],"0":[30,_r.randint(5,25)*1000],"7":[10,(_r.randint(30,90) if 18<=k<=20 else 3)*1000],"4":[200,_r.randint(10,30)*1000],"3":[50,4000],"9":[3,800],"1":[20,6000]}
 g.cfg["source_holds"]="watch"
 g.source_watch["ptype:7:7D"]={"ptype":7,"hop":"7D","packets":120,"share":48,"busy":31,"label":"anonymous requests","first":T-900,"last":T-600,"times":1,"watch":True}
 g.oh_adverts={"available":True,"on":False,"penalty":True,"per_hours":10.0,"burst":2,"allowed":930,"dropped":41,"penalties":1}
@@ -64,6 +68,12 @@ async def main():
                 check("Requests" in t and "Anonymous requests" in t and "Channel messages" in t,f"{tag}: kinds listed")
                 check("every 60 s" in t and "this repeater" in t,f"{tag}: polling to this repeater shown")
                 check("AB12CD34" in t,f"{tag}: anonymous requests by key")
+                check(await pg.locator("#airKindSec .sharebar i").count()>=3,f"{tag}: the last hour as a share bar")
+                segs=await pg.eval_on_selector_all("#chartAirKind path","s=>[...new Set(s.map(x=>x.getAttribute('class')))].sort()")
+                check({"k0","k1","k2","k3","k5"}<=set(segs),f"{tag}: the 24-hour chart has a colour per kind and Other: {segs}")
+                leg=await pg.eval_on_selector_all("#airKindLegend span","s=>s.map(x=>x.textContent)")
+                heads=await pg.eval_on_selector_all("#chartAirKind + details th","s=>s.map(x=>x.textContent)")
+                check(len(heads)==1+len(leg),f"{tag}: a table column per legend entry: {heads} {leg}")
                 check("By radio" in t and "radio-2" in t,f"{tag}: two radios shown")
                 check("would hold" in t,f"{tag}: the watch-only congestion hold shown")
                 check(not await pg.is_hidden("#ohAdvSec") and "stopped 41" in await pg.inner_text("#ohAdvSec"),f"{tag}: openHop's advert limit shown")
