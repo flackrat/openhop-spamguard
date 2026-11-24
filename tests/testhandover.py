@@ -8,7 +8,7 @@ def check(c,msg):
     global ok,fail
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
-for u in ("http://127.0.0.1:8091/handover?key=x","http://192.168.1.20:8091/handover?key=x","http://172.17.0.2:8091/handover",
+for u in ("http://127.0.0.1:8091/handover?key=x","http://192.168.1.20:8091/handover?key=x","http://172.17.0.1:8091/handover",
           "http://localhost:8091/handover","http://[::1]:8091/handover"):
     check(P.handover_url_ok(u),"followed: "+u)
 for u in ("http://8.8.8.8/handover","https://q-site.example/handover","http://127.0.0.1:8091/status","file:///etc/passwd",

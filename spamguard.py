@@ -516,7 +516,7 @@ SETTINGS_META: list[dict] = [
      "choices": [["off", "Off"], ["watch", "Watch only: say what it would hold"], ["on", "On: hold it for ten minutes"]],
      "risk": "A genuine app polling through that repeater during a flood waits until the hold ends. Channel messages, direct messages and control traffic are never held.",
      "label": "Hold the kind of packet one repeater floods in while the radio is congested (experimental)",
-     "help": "While FloodGuard sees the radio congested, a repeater sending far more than its share of one kind of packet (requests, anonymous requests or group data) has that kind held for ten minutes, at most three at a time. Each hold ends by itself and is explained under Blocks. Watch only notes what it would hold, for you to judge first."},
+     "help": "While the radio is congested, a repeater sending far more than its share of one kind of packet (requests, anonymous requests or group data) has that kind held for ten minutes, at most three at a time. Each hold ends by itself and is explained under Blocks. Watch only notes what it would hold."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",

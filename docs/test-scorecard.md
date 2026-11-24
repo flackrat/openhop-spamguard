@@ -22,10 +22,24 @@ What is tested, how much, and what is not. Figures are from the full suite run f
 | Spam detection | `redteam.py` (17 kinds of attack over simulated hours), `scenarios.py`, route and rotation tests, `teststemmem.py` |
 | Not harming genuine people | `testfreespeech.py`, known people always pass, three-regular route protection, new-user cases |
 | Feedback and Auto level | `testautolevel.py`, `testautoadv.py` (fake marks, a flapping suggestion, mark storms, a backwards clock, random input over simulated months) |
-| Flood and airtime protection | `testfloodguard.py`, `soakfloodguard.py` |
-| Web page | Browser tests for accessibility (axe), labelling, level slider, message list, map |
+| Flood and airtime protection | `testfloodguard.py`, `soakfloodguard.py`, `testfgflap.py` (no flapping on and off), `testsourceholds.py` |
+| Web page | Browser tests for accessibility (axe), labelling, level slider, message list, map, a slow connection; `testwebpeer.py` and `testwebsocket.py` for who the page answers |
 | Updates and installs | `testupdsh.py`, `testupdprog.py`, `testupdverify.py` (checksum checks), `testinstpw.py` (password offer) |
 | Secrets and state | `testsecrets.py`, state-file loading with malformed and edited values |
+| Rules sent to openHop | `testrulevalid.py` (a rule that could match everything is never sent), `testrulecheck.py` |
+
+## Release test programme
+
+What each release is checked against before it ships, and where the checks stop.
+
+| Stage | How | Gap |
+|---|---|---|
+| Unit and scenario tests | Full suite on every pull request, plus the `tests` job | Made-up traffic only |
+| Browser and accessibility | Playwright with axe, desktop and phone widths, light and dark | Chromium only |
+| Real traffic | The owner's recent evidence logs replayed at each level, compared with the previous version | Small labelled set; floods and other packet kinds aren't in the logs |
+| Network boundary | Real connections from loopback addresses, IPv4 and IPv6 where available | A real outside client can't be made in CI |
+| Live repeater | Run on the maintainer's Pi before release | One repeater, one mesh |
+| Experiments | Off by default; congestion holds also have a watch-only mode | Judged on live use before any becomes a default |
 
 ## What this does not show
 

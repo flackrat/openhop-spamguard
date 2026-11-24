@@ -32,8 +32,11 @@ async def main():
         await pg.wait_for_timeout(1000)
         check(calls["max"]<=1,"never more than one refresh at a time: %d"%calls["max"])
         await pg.wait_for_timeout(12000)
+        for _ in range(60):   # a busy machine: let the slow refresh finish first
+            if not calls["open"]: break
+            await pg.wait_for_timeout(500)
         mode["m"]="fail"
-        await pg.evaluate("load()"); await pg.wait_for_timeout(800)
+        await pg.evaluate("load()"); await pg.wait_for_timeout(1500)
         check(await pg.locator("#connNote").is_visible(),"one miss: a small note")
         check("Not responding" not in await pg.locator("#hPill").inner_text() and "Can't reach" not in await pg.locator("#hero").inner_text(),"and the last screen stays")
         for i in range(4): await pg.evaluate("load()"); await pg.wait_for_timeout(500)

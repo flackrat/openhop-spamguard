@@ -18,6 +18,13 @@ The detail is below, newest first. In short:
 ## v6.48.0
 
 - **New experiment: stop machine messages** on Public or on every channel. Off by default; they are still counted on the Overview.
+- **New experiment: congestion holds.** While the radio is congested, one repeater flooding in one kind of packet can have that kind held for a few minutes. Off by default, with a watch-only mode.
+- **FloodGuard shows what the airtime went on:** each kind of packet, the repeaters it came in through, steady polling, anonymous requests and, where openHop reports it, each radio. Also openHop's own advert limit, which can be switched on there.
+- **People shows device names:** other names a device has used, and names used by more than one device.
+- Emoji reactions from some companion apps are no longer mistaken for repeats.
+- Automatic updates retry and say why one didn't finish. The page copes better with a weak signal.
+- Safer by default: an explicit list of home networks (with a setting for extra ones such as Tailscale), tighter checks on plugin handover, and a rule that could match everything is never sent to openHop.
+- The Health page warns when openHop's rule-check fix can't be checked, and shows a few more readings.
 - The Overview's line about machine messages is shorter.
 
 ## v6.47.1
