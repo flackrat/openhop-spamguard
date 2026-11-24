@@ -8849,6 +8849,11 @@ class SpamGuard:
                 self.sentence_quiet[k] = now
         for k in [k for k, t in self.sentence_quiet.items() if t < now - self.SENTENCE_DAYS * 86400]:
             del self.sentence_quiet[k]
+        # A bot or machine hold on a name ends once you trust that name there (from a Not spam answer, say).
+        for b in self.blocks.values():
+            if b.get("source") in ("pubbot", "machine") and b["expires"] > now and (
+                    b.get("value") in self.allow_senders or self.trusted_here(b.get("value"), b.get("channel") or "Public")):
+                b["expires"] = now
         for k in [k for k, b in self.blocks.items() if b["expires"] <= now]:
             b = self.blocks.pop(k)
             if b.get("source") != "dedupe":
