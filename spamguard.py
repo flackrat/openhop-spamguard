@@ -1411,6 +1411,24 @@ def bot_shaped(text: str) -> bool:
                for op, vals in PUBLIC_BOT_SHAPES)
 
 
+def shared_template(a: str, b: str) -> Optional[str]:
+    """Two messages that are one fixed text with a short part that changes (a welcome bot greeting each new name,
+    say): the fixed text around the changing part, else None."""
+    wa, wb = a.split(" "), b.split(" ")
+    i = 0
+    while i < min(len(wa), len(wb)) and wa[i] == wb[i]:
+        i += 1
+    j = 0
+    while j < min(len(wa), len(wb)) - i and wa[-1 - j] == wb[-1 - j]:
+        j += 1
+    pre, suf = " ".join(wa[:i]), " ".join(wa[len(wa) - j:]) if j else ""
+    ma, mb = " ".join(wa[i:len(wa) - j]), " ".join(wb[i:len(wb) - j])
+    keep = len(pre) + len(suf)
+    if not ma or not mb or ma == mb or keep < 20 or len(ma) > 32 or len(mb) > 32 or keep < 0.6 * len(a) or keep < 0.6 * len(b):
+        return None
+    return pre + "\x00" + suf
+
+
 def longest_piece(text: str) -> str:
     return max((p.strip() for p in text.split("\n")), key=len, default="")
 
@@ -6738,6 +6756,7 @@ class SpamGuard:
         if not self.cfg.get("public_bots") or self.is_own(e) or not self.is_public_channel(e.channel):
             return
         if not bot_shaped(e.text):
+            self._note_template_bot(e)
             return
         v = self.verdict.get(packet_key) or [False]
         ms = self.airtime_ms(e.length) * (2 if v[0] else 1)
@@ -6745,6 +6764,41 @@ class SpamGuard:
         self.stats["pubbot_ms"] += int(ms)
         self.pubbots.append((e.ts, ms))
         self._hist_bump(e.ts, "pb")
+
+    TEMPLATE_BOT_SENDS = 3     # different messages from one name on one fixed text with a changing part, in a day
+
+    def _note_template_bot(self, e) -> None:
+        """A name on Public sending one fixed text with a short changing part (a welcome bot greeting each newcomer):
+        a bot. Held on Public for a day when bots are kept off Public; counted only when that is record-only."""
+        if not e.sender or e.sender in ("?", "Unknown") or e.reaction or e.sender in self.allow_senders \
+                or self.trusted_here(e.sender, e.channel) or len(e.text) < 20:
+            return
+        rec = self.__dict__.setdefault("_tmpl_sent", collections.OrderedDict())
+        lst = rec.pop(e.sender, [])
+        lst = [x for x in lst if e.ts - x[0] < 86400][-10:]
+        same = {e.text}
+        key = None
+        for _ts, t in lst:
+            k = shared_template(e.text, t)
+            if k and (key is None or k == key):
+                key = k
+                same.add(t)
+        lst.append((e.ts, e.text))
+        rec[e.sender] = lst
+        while len(rec) > 2000:
+            rec.popitem(last=False)
+        if key is None or len(same) < self.TEMPLATE_BOT_SENDS:
+            return
+        self.stats["pubbots"] += 1
+        self._hist_bump(e.ts, "pb")
+        bk = "pubbot:" + hashlib.sha1(f"{e.sender}|{e.channel}".encode(), usedforsecurity=False).hexdigest()[:10]
+        if self.cfg.get("public_bots_log_only", False) or bk in self.blocks or self.suppressed.get(bk, 0) > time.time():
+            return
+        if self._add_block(bk, "burst", e.sender, "Sends the same text with one part changed, like a bot", "pubbot",
+                           channel=e.channel, ttl=86400, from_ts=e.ts):
+            self.note(f"'{str(e.sender)[:24]}' sends the same message with one part changed, like a bot, so it is held on "
+                      f"{e.channel} for a day (bots are kept off Public). Trust the name to let it through.")
+            self._important = self.sync_pending = self._urgent_sync = True   # written to openHop on the next pass
 
     def _note_machine(self, e) -> None:
         """Machine traffic on a channel (for example a Reticulum bridge): counted with its airtime and mentioned
@@ -6762,7 +6816,7 @@ class SpamGuard:
             if self.suppressed.get(key, 0) <= time.time() and self._add_block(
                     key, "burst", e.sender, "Sends messages that look like a program, not chat", "machine",
                     channel=e.channel, ttl=86400, from_ts=e.ts):
-                self.request_sync()
+                self._important = self.sync_pending = self._urgent_sync = True   # written to openHop on the next pass
         if getattr(self, "_machine_noted", "") != today:
             self._machine_noted = today
             self.note(f"Heard messages from '{str(e.sender)[:24]}' on {e.channel} that look like a program, not chat "
@@ -9293,7 +9347,7 @@ class SpamGuard:
         return rules
 
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
-                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto", "source-auto": "congestion",
+                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto", "source-auto": "congestion", "pubbot": "bot on Public", "machine": "machine messages",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
                    "budget": "too many", "linkhost": "link campaign", "imposter": "copied name?", "junk": "symbol junk", "spoof": "copied name"}
 
