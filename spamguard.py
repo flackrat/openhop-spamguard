@@ -1411,6 +1411,48 @@ def bot_shaped(text: str) -> bool:
                for op, vals in PUBLIC_BOT_SHAPES)
 
 
+def attestation_ok(got: dict, digest: str, repo: str, workflow: str) -> bool:
+    """One of GitHub's attestations for a file is a build provenance naming its sha256, made by this repository's
+    release workflow, signed with the certificate it carries, and that certificate names the same workflow."""
+    try:
+        from Crypto.Hash import SHA256 as _H
+        from Crypto.PublicKey import ECC as _ECC
+        from Crypto.Signature import DSS as _DSS
+    except ImportError:
+        return False
+    who = f"https://github.com/{repo}/{workflow}@".encode()
+    for a in (got or {}).get("attestations") or []:
+        try:
+            b = a["bundle"]
+            env = b["dsseEnvelope"]
+            payload = base64.b64decode(env["payload"])
+            st = json.loads(payload)
+            if st.get("predicateType") != "https://slsa.dev/provenance/v1":
+                continue
+            if not any((x.get("digest") or {}).get("sha256") == digest for x in st.get("subject") or []):
+                continue
+            wf = st["predicate"]["buildDefinition"]["externalParameters"]["workflow"]
+            if wf.get("repository") != f"https://github.com/{repo}" or wf.get("path") != workflow:
+                continue
+            vm = b["verificationMaterial"]
+            der = base64.b64decode((vm.get("certificate") or {}).get("rawBytes")
+                                   or vm["x509CertificateChain"]["certificates"][0]["rawBytes"])
+            if who not in der:
+                continue
+            ptype = env["payloadType"].encode()
+            pae = b"DSSEv1 %d %s %d %s" % (len(ptype), ptype, len(payload), payload)
+            key = _ECC.import_key(der)
+            for sg in env.get("signatures") or []:
+                try:
+                    _DSS.new(key, "fips-186-3", encoding="der").verify(_H.new(pae), base64.b64decode(sg["sig"]))
+                    return True
+                except ValueError:
+                    pass
+        except (KeyError, ValueError, TypeError, IndexError):
+            continue
+    return False
+
+
 def shared_template(a: str, b: str) -> Optional[str]:
     """Two messages that are one fixed text with a short part that changes (a welcome bot greeting each new name,
     say): the fixed text around the changing part, else None."""
@@ -11196,6 +11238,31 @@ class SpamGuard:
         if hashlib.sha256(data).hexdigest() != want[name]:
             raise ValueError(f"The download of {name} doesn't match the release's checksum, so it wasn't installed")
 
+    RELEASE_WORKFLOW = ".github/workflows/release.yml"
+
+    def _check_build_attestation(self, name: str, data: bytes) -> None:
+        """Before installing, ask GitHub for the build attestation of this exact file and check it: a provenance
+        record naming the file's checksum, made by this project's release workflow, whose signature matches the
+        certificate it carries. A file someone uploaded by hand, or changed, has none and isn't installed. This
+        isn't full offline Sigstore verification (that needs libraries too heavy for a small Pi); the record
+        comes from GitHub over a checked connection."""
+        digest = hashlib.sha256(data).hexdigest()
+        repo = self._repo()
+        url = f"https://api.github.com/repos/{repo}/attestations/sha256:{digest}"
+        req = urllib.request.Request(url, headers={"User-Agent": "SpamGuard-updater", "Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                got = json.loads(r.read(4_000_000).decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise ValueError(f"GitHub has no build record for {name}, so it wasn't installed") from None
+            raise ValueError(f"Couldn't check the build record with GitHub (HTTP {e.code}); it is tried again later") from None
+        except Exception as e:
+            raise ValueError(f"Couldn't check the build record with GitHub ({e}); it is tried again later") from None
+        if attestation_ok(got, digest, repo, self.RELEASE_WORKFLOW):
+            return
+        raise ValueError(f"The build record for {name} didn't check out, so it wasn't installed")
+
     def start_plugin_update(self, want: str, force: bool = False, auto: bool = False) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
         restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
@@ -11224,6 +11291,9 @@ class SpamGuard:
                     wheel = bytes(buf)
                 if not self.cfg.get("plugin_wheel_url"):
                     self._check_release_file(want, name, wheel)
+                    if self.cfg.get("plugin_verify_build", True):
+                        self._update_step("Checking GitHub's build record for this version...", pct=33)
+                        self._check_build_attestation(name, wheel)
                 if not force and self.cfg.get("plugin_preflight", True):
                     self._update_step("Checking the update can install on this machine...", pct=34)
                     why = self.plugin_preflight(wheel)

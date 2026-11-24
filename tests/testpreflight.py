@@ -91,6 +91,7 @@ try:
     class Sums(Resp):
         def __init__(s): s.b=io.BytesIO(SUMS)
     real_open=urllib.request.urlopen
+    sg.SpamGuard._check_build_attestation=lambda self,name,data: None   # GitHub's build record is tested in testattestation
     urllib.request.urlopen=lambda url,*a,**k: Sums() if str(getattr(url,"full_url",url)).endswith("SHA256SUMS") else Resp()
     def wait():
         for _ in range(100):
