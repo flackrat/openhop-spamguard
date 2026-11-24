@@ -1,5 +1,5 @@
 # Gitleaks settings for the leak check in .github/workflows/tests.yml: its standard rules for passwords,
-# keys and tokens, apart from MeshCore's Public channel key, which is published and not a secret.
+# keys and tokens, apart from MeshCore's Public channel key, which is published and not a secret, and a made-up test key.
 title = "SpamGuard"
 
 [extend]
@@ -9,3 +9,8 @@ useDefault = true
 description = "MeshCore's published Public channel key"
 regexTarget = "secret"
 regexes = ['''^8b3387e9c5cdea6ac9e5edbaa115cd72$''']
+
+[[allowlists]]
+description = "A made-up channel key used in tests"
+regexTarget = "secret"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']
