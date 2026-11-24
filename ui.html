@@ -541,6 +541,30 @@ html[data-contrast=high] main a{text-decoration:underline}
 html[data-contrast=high] :focus-visible{outline-width:3px}
 html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px solid var(--line)}
 /* ---------- colour schemes: complete palettes, each checked by tests/testthemes.py ---------- */
+/* Styles (6.49): full colour sets with a little character. Dark ones sit on the dark theme, Ordnance on the light one. */
+html[data-palette=retro][data-palette]{--paper:#1a0b2e;--panel:#25103f;--ink:#fbeaff;--soft:#c9a8ea;--line:#4b2a70;--signal:#ff3ea5;--signal-ink:#1a0b2e;--signal-tint:#3d1446;--amber:#ffd319;--amber-tint:#3a2a12;--stop:#ff6b6b;--stop-tint:#40172b;--bar:#2de2e6;--focus:#2de2e6;--amber-text:#ffd319;--signal-text:#ff7cc3;--field:#8a64b5;--c-stop:#2de2e6;--c-let:#ffd319;--c-flood:#ff3ea5;--c-fu:#5b8cff;--c-fa:#ff9f43;--c-fd:#ff6b6b;--c-fw:#7cff6b;--c-used:#9a7fc0;--nav:#12061f;--nav-ink:#f3d9ff;--nav-active:#3a1250}
+html[data-palette=redteam][data-palette]{--paper:#0a0b0a;--panel:#111412;--ink:#d8e6d8;--soft:#8fa38f;--line:#253025;--signal:#ff4a4d;--signal-ink:#0a0b0a;--signal-tint:#2a1112;--amber:#f4a259;--amber-tint:#2a1d10;--stop:#ff5a5a;--stop-tint:#2b1010;--bar:#39ff88;--focus:#39ff88;--amber-text:#f4a259;--signal-text:#ff6b6e;--field:#6a826a;--c-stop:#4cc9f0;--c-let:#ffd166;--c-flood:#e5383b;--c-fu:#39ff88;--c-fa:#f4a259;--c-fd:#ff8a8a;--c-fw:#a8e05f;--c-used:#7d8c7d;--nav:#060706;--nav-ink:#c9d9c9;--nav-active:#1c2a1f}
+html[data-palette=amber][data-palette]{--paper:#14110a;--panel:#1d1910;--ink:#ffcf7a;--soft:#c79a4e;--line:#3d3220;--signal:#ffb000;--signal-ink:#14110a;--signal-tint:#33270c;--amber:#ffd27a;--amber-tint:#2e2410;--stop:#ff7a4d;--stop-tint:#33180e;--bar:#ffb000;--focus:#fff0c2;--amber-text:#ffd27a;--signal-text:#ffc14d;--field:#8f7848;--c-stop:#ffb000;--c-let:#ff7a4d;--c-flood:#ffd27a;--c-fu:#c79a4e;--c-fa:#ff9e6b;--c-fd:#ff5a3d;--c-fw:#f0e6a0;--c-used:#93805a;--nav:#0f0c06;--nav-ink:#ffcf7a;--nav-active:#2e2410}
+html[data-palette=ordnance][data-palette]{--paper:#f3efe2;--panel:#fffdf6;--ink:#1f2a1f;--soft:#5b6352;--line:#d9d2bc;--signal:#c2185b;--signal-ink:#ffffff;--signal-tint:#f7e1ea;--amber:#b26a00;--amber-tint:#f7ebd3;--stop:#b3261e;--stop-tint:#f6e0dd;--bar:#1f6f8b;--focus:#1f6f8b;--amber-text:#8a5200;--signal-text:#a01450;--field:#837e66;--c-stop:#1f6f8b;--c-let:#b26a00;--c-flood:#c2185b;--c-fu:#3949ab;--c-fa:#6a8d2f;--c-fd:#b3261e;--c-fw:#2e7d32;--c-used:#8a846c;--nav:#e6dfc8;--nav-ink:#1f2a1f;--nav-active:#d8e6c8}
+html[data-palette=matrix][data-palette]{--paper:#000600;--panel:#031103;--ink:#b8ffb8;--soft:#5fd35f;--line:#0f3a0f;--signal:#00ff41;--signal-ink:#001a05;--signal-tint:#062b0c;--amber:#c8ff5a;--amber-tint:#1a2a06;--stop:#ff5f5f;--stop-tint:#2a0a0a;--bar:#00ff41;--focus:#c8ffc8;--amber-text:#c8ff5a;--signal-text:#3dff6e;--field:#3f8a3f;--c-stop:#00ff41;--c-let:#c8ff5a;--c-flood:#3dff6e;--c-fu:#00b82e;--c-fa:#e8ff9a;--c-fd:#ff5f5f;--c-fw:#7dff9a;--c-used:#4f8f4f;--nav:#000300;--nav-ink:#9cff9c;--nav-active:#08260b}
+html[data-palette=meshblue][data-palette]{--paper:#0b1630;--panel:#122247;--ink:#e8f0ff;--soft:#a9bbe0;--line:#24386a;--signal:#4f9dff;--signal-ink:#06132b;--signal-tint:#16315f;--amber:#ffb84d;--amber-tint:#33290f;--stop:#ff7a7a;--stop-tint:#3a1a26;--bar:#4f9dff;--focus:#9fd0ff;--amber-text:#ffc670;--signal-text:#7fb8ff;--field:#5a74ab;--c-stop:#4f9dff;--c-let:#ffb84d;--c-flood:#a78bfa;--c-fu:#7fd0ff;--c-fa:#34d3c4;--c-fd:#ff7a7a;--c-fw:#6ee7a0;--c-used:#7085b0;--nav:#081126;--nav-ink:#dbe6ff;--nav-active:#1a3366}
+html[data-palette=retro] body{background-image:linear-gradient(180deg,#1a0b2e 0,#2a0f45 55%,#3b0f4f 100%);background-attachment:fixed}
+html[data-palette=retro] h1,html[data-palette=retro] h2,html[data-palette=retro] .brand{font-family:"Trebuchet MS",Verdana,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#ff7cc3;text-shadow:0 0 8px rgba(255,62,165,.55)}
+html[data-palette=retro] section,html[data-palette=retro] .card{border:1px solid #6b2a8f!important;box-shadow:0 0 0 1px rgba(45,226,230,.15),0 0 18px rgba(255,62,165,.18)}
+html[data-palette=redteam] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem}
+html[data-palette=redteam] h1,html[data-palette=redteam] h2{text-transform:uppercase;letter-spacing:.08em;color:#ff6b6e}
+html[data-palette=redteam] h2::before{content:"// "/"";color:#39ff88}
+html[data-palette=redteam] *{border-radius:2px!important}
+html[data-palette=redteam] section,html[data-palette=redteam] .card{border:1px solid #2c3a2c!important}
+html[data-palette=amber] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem;text-shadow:0 0 2px rgba(255,176,0,.35)}
+html[data-palette=ordnance] h1,html[data-palette=ordnance] h2{font-family:Georgia,"Times New Roman",serif;font-weight:700;color:#1f2a1f}
+html[data-palette=ordnance] section,html[data-palette=ordnance] .card{border:1px solid #cfc6a8!important}
+html[data-palette=retro] a,html[data-palette=retro] .quietlink,html[data-palette=redteam] a,html[data-palette=redteam] .quietlink{color:var(--signal-text)}
+html[data-palette=retro] .brand small{text-transform:none;text-shadow:none;color:var(--soft)}
+html[data-palette=matrix] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem;text-shadow:0 0 3px rgba(0,255,65,.35)}
+html[data-palette=matrix] a,html[data-palette=matrix] .quietlink{color:var(--signal-text)}
+html[data-palette=matrix] *{border-radius:0!important}
+html[data-palette=meshblue] a,html[data-palette=meshblue] .quietlink{color:var(--signal-text)}
 html[data-palette=cb][data-palette]{--paper:#f3f4f6;--panel:#ffffff;--ink:#14202b;--soft:#4a5560;--line:#c9d0d8;--signal:#00588f;--signal-ink:#ffffff;--signal-tint:#e1edf7;--amber:#8f4a00;--amber-tint:#fdecd9;--stop:#8a1f5b;--stop-tint:#f6e3ee;--bar:#00588f;--focus:#7a3e00;--amber-text:#7a3e00;--signal-text:#00497a;--field:#6b7580;--nav:#e4e8ee;--nav-ink:#14202b;--nav-active:#d0e1f0;--c-stop:#0072B2;--c-let:#B35900;--c-flood:#7E3F8F;--c-fu:#2288C8;--c-fa:#B0568A;--c-fd:#8F3A00;--c-fw:#5E6B00;--c-used:#7b8794}
 html[data-palette=cb] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
 html[data-palette=cb] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
@@ -558,7 +582,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 .cmdbox{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 .25rem}
 .cmdbox code{flex:1 1 18rem;min-width:0;overflow-wrap:anywhere;padding:.4rem .55rem;border:1px solid var(--line);border-radius:6px;font-size:.85em}
 </style>
-<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme"),PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};if(t==="light"||t==="dark")d.dataset.theme=t;else if(PAL[t]){d.dataset.theme=PAL[t];d.dataset.palette=t;}if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
+<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme"),PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark",retro:"dark",redteam:"dark",amber:"dark",matrix:"dark",meshblue:"dark",ordnance:"light"};if(t==="light"||t==="dark")d.dataset.theme=t;else if(PAL[t]){d.dataset.theme=PAL[t];d.dataset.palette=t;}if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
 </head>
 <body>
 <a class="skip" href="#main" id="skipLink">Skip to content</a>
@@ -969,8 +993,8 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="opt"><h3 id="optTextH">Text size</h3>
     <div class="seg" role="group" aria-labelledby="optTextH" data-opt="text"><button data-v="normal">Normal</button><button data-v="large">Large</button><button data-v="larger">Larger</button></div></div>
   <div class="opt"><h3 id="optThemeH">Colours</h3>
-    <div class="seg seg-grid" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button></div>
-    <p class="explain">The last four are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black. Colour is never the only signal.</p></div>
+    <div class="seg seg-grid" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button><button data-v="meshblue">Mesh blue</button><button data-v="retro">Retro 80s</button><button data-v="redteam">Red team</button><button data-v="matrix">Matrix</button><button data-v="amber">Amber terminal</button><button data-v="ordnance">Map</button></div>
+    <p class="explain">The rest are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black, then six styles just for fun. Colour is never the only signal.</p></div>
   <div class="opt"><h3 id="optContrastH">Contrast</h3>
     <p class="explain">High contrast darkens grey text and borders, outlines each panel, underlines every link and thickens the keyboard focus outline.</p>
     <div class="seg" role="group" aria-labelledby="optContrastH" data-opt="contrast"><button data-v="standard">Standard</button><button data-v="high">High</button></div></div>
@@ -2535,7 +2559,7 @@ function optGet(k){ return store.get(OPT_KEYS[k])||OPT_DEF[k]; }
 function optApply(){
   const d=document.documentElement;
   d.dataset.text=optGet("text"); d.dataset.contrast=optGet("contrast");
-  const t=optGet("theme"), PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};
+  const t=optGet("theme"), PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark",retro:"dark",redteam:"dark",amber:"dark",matrix:"dark",meshblue:"dark",ordnance:"light"};
   if(PAL[t]){ d.dataset.theme=PAL[t]; d.dataset.palette=t; } else { delete d.dataset.palette; if(t==="device") delete d.dataset.theme; else d.dataset.theme=t; }
   if(optGet("motion")==="reduce") d.dataset.motion="reduce"; else delete d.dataset.motion;
   document.querySelectorAll("[data-opt]").forEach(g=>g.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===optGet(g.dataset.opt)))));

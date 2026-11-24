@@ -148,7 +148,7 @@ async def main():
         check(f"axe finds no WCAG 2.1 AA problems ({scheme}, {'phone' if mob else 'desktop'})", not found, found[:6])
         await ctx.close()
     # the colour schemes (6.43.0): every page, on a phone, AA for all of them and the AAA text contrast for two
-    for pal in ("cb","aaa","glare","yellow"):
+    for pal in ("cb","aaa","glare","yellow","retro","redteam","amber","matrix","meshblue","ordnance"):
         ctx=await b.new_context(viewport={"width":390,"height":844},is_mobile=True,has_touch=True); pg,_=await setup(ctx)
         await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.evaluate(f"localStorage.setItem('sgadv','1');localStorage.setItem('sgtheme','{pal}')")
         found=[]
