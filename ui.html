@@ -2039,7 +2039,7 @@ function renderSubTabs(p){ const el=$("#subTabs"), g=PARENT[p]; if(!el) return;
   const adv=document.body.classList.contains("advanced"), ps=g?GROUPS[g].filter(x=>adv||!ADV_PAGES.includes(x)):[];
   el.hidden=ps.length<2;
   el.innerHTML=ps.map(x=>`<a href="#/${x}"${x===p?' aria-current="page"':""}>${TABNAME[x]}${x==="updates"?'<b class="badge" id="nb-updates"></b>':""}</a>`).join("");
-  if(S) renderNav(S); }
+  if(S&&S.summary) renderNav(S); }
 function route(keepMenu){
   let p=(location.hash.match(/^#\/([a-z]+)/)||[])[1]||"overview";
   if(p==="lockdown") p="blocks";   // lockdown now lives on the Blocks page

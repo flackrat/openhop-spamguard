@@ -17,7 +17,10 @@ The detail is below, newest first. In short:
 
 ## v6.49.0
 
-- **Six new colour styles** on the Display page: Mesh blue, Retro 80s, Red team, Matrix, Amber terminal and Map. Saved per browser; every one passes the same contrast checks.
+- **A simpler page.** Fewer menu entries, with related pages as tabs; shorter Overview and FloodGuard pages; charts you can tap into for detail; one Change button per block; tables that keep their labels on a phone.
+- **How campaigns link up:** a read-only view of campaigns that look like the same sender, and why.
+- **Six new colour styles** under Display: Mesh blue, Retro 80s, Red team, Matrix, Amber terminal and Map. Every one passes the same contrast checks.
+- Plugin updates also check GitHub's build record for the exact file before installing.
 
 ## v6.48.0
 
