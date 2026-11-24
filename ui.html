@@ -67,8 +67,9 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 .banner a{color:inherit;text-decoration:underline;font-weight:600}
 .banner.dismissable{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .banner.dismissable button{flex:none}
-#heldSumSec .hs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
-#heldSumSec .hs-grid>div{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#heldSumSec .hs-grid{margin:12px 0}
+.dleg a.row{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 8px;border-radius:6px;color:var(--ink);text-decoration:none}.dleg a.row:hover{background:var(--signal-tint)}
+#heldSumSec .hs-grid>div{border:0;padding:0}
 #heldSumSec .hs-grid b{display:block;font-size:1.35rem}#heldSumSec .hs-grid span{color:var(--soft);font-size:.8125rem}
 #heldSumSec .hs-rows{list-style:none;margin:0;padding:0}#heldSumSec .hs-rows li{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:.875rem}
 #heldSumSec .hs-rows .l{width:8.5em;color:var(--soft)}#heldSumSec .hs-rows .bar{flex:1;height:10px;background:var(--paper);border-radius:5px;overflow:hidden}
@@ -497,7 +498,39 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
 .lead a,.explain a,.help a,.howto a,.note a,p a,.callout span a,.foot a{text-decoration:underline;text-underline-offset:2px}
 .skip{position:absolute;left:-9999px;top:8px;z-index:60;background:var(--panel);color:var(--ink);border:2px solid var(--focus);border-radius:6px;padding:10px 14px}
 .skip:focus{left:12px}
+body:not([data-page=overview]) .ov-only{display:none}
+.subtabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:0 0 14px}
+.subtabs a{padding:10px 14px;min-height:44px;display:inline-flex;align-items:center;gap:6px;color:var(--soft);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px;font-weight:600}
+.subtabs a:hover{color:var(--ink)}.subtabs a[aria-current=page]{color:var(--ink);border-bottom-color:var(--signal)}
+.blk-change{grid-column:1/-1;margin-top:4px}.blk-change>summary{display:inline-flex;align-items:center;min-height:36px;padding:2px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:.875rem}
+.blk-panel{padding:8px 0 2px;display:flex;flex-direction:column;gap:8px}
+summary.as-button{display:inline-flex;align-items:center;min-height:44px;padding:4px 16px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:600}
+#adminSec details{border-top:1px solid var(--line);padding:6px 0}#adminSec summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+.linkgrp{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0}.lg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}.lg-head h3{margin:0;font-size:1rem}.lg-head button{margin-left:auto}
+.lg-why{list-style:none;margin:8px 0;padding:0}.lg-why li{margin:4px 0}.lg-list{margin:6px 0;padding-left:18px}
 h3.sub{font-size:.95rem;margin:16px 0 6px}
+.mode-h{font-size:1rem;margin:0 0 8px}hr.soft{border:0;border-top:1px solid var(--line);margin:14px 0}
+#careSec .care-part+.care-part{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}#careSec h3{font-size:.95rem;margin:0 0 6px}
+.donut{width:176px;height:176px;border-radius:50%;display:grid;place-items:center;flex:none}
+.donut>div{width:104px;height:104px;border-radius:50%;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2}
+.donut b{font-size:1.375rem}.donut span{font-size:.75rem;color:var(--soft)}
+.dwrap{display:flex;flex-wrap:wrap;align-items:center;gap:20px;margin:8px 0}
+.dleg{flex:1 1 200px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dleg button,.worth button{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 8px;background:none;border:0;border-radius:6px;color:var(--ink);text-align:left;cursor:pointer;width:100%}
+.dleg button:hover,.worth button:hover,.hbar:hover{background:var(--signal-tint)}
+.dleg .nm{flex:1;min-width:0}.chev{color:var(--soft)}
+.dleg .sw{flex:none}.dleg .row{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 8px}
+.drill2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px}
+.worth{display:flex;flex-direction:column;gap:8px}
+.worth button{border:1px solid var(--line);background:var(--paper)}
+.worth button>span:first-child{flex:1}
+.hbars{display:flex;flex-direction:column;gap:2px}
+.hbar{display:grid;grid-template-columns:minmax(70px,170px) minmax(0,1fr) 48px;align-items:center;gap:10px;width:100%;min-height:40px;padding:2px 6px;background:none;border:0;border-radius:6px;color:var(--ink);text-align:left;cursor:pointer}
+.hbar .tr{height:14px;background:var(--line);border-radius:4px;overflow:hidden}.hbar .tr i{display:block;height:100%;border-radius:4px}
+.hbar b{text-align:right}
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.875rem;color:var(--soft)}.crumb .quietlink{min-height:44px}
+#airKindSec h4{margin:18px 0 6px;font-size:.9375rem}
+
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 main:focus{outline:none}
 .page h2[tabindex="-1"]:focus{outline:none}
@@ -541,6 +574,30 @@ html[data-contrast=high] main a{text-decoration:underline}
 html[data-contrast=high] :focus-visible{outline-width:3px}
 html[data-contrast=high] section,html[data-contrast=high] .kpis div{border:1px solid var(--line)}
 /* ---------- colour schemes: complete palettes, each checked by tests/testthemes.py ---------- */
+/* Styles (6.49): full colour sets with a little character. Dark ones sit on the dark theme, Ordnance on the light one. */
+html[data-palette=retro][data-palette]{--paper:#1a0b2e;--panel:#25103f;--ink:#fbeaff;--soft:#c9a8ea;--line:#4b2a70;--signal:#ff3ea5;--signal-ink:#1a0b2e;--signal-tint:#3d1446;--amber:#ffd319;--amber-tint:#3a2a12;--stop:#ff6b6b;--stop-tint:#40172b;--bar:#2de2e6;--focus:#2de2e6;--amber-text:#ffd319;--signal-text:#ff7cc3;--field:#8a64b5;--c-stop:#2de2e6;--c-let:#ffd319;--c-flood:#ff3ea5;--c-fu:#5b8cff;--c-fa:#ff9f43;--c-fd:#ff6b6b;--c-fw:#7cff6b;--c-used:#9a7fc0;--nav:#12061f;--nav-ink:#f3d9ff;--nav-active:#3a1250}
+html[data-palette=redteam][data-palette]{--paper:#0a0b0a;--panel:#111412;--ink:#d8e6d8;--soft:#8fa38f;--line:#253025;--signal:#ff4a4d;--signal-ink:#0a0b0a;--signal-tint:#2a1112;--amber:#f4a259;--amber-tint:#2a1d10;--stop:#ff5a5a;--stop-tint:#2b1010;--bar:#39ff88;--focus:#39ff88;--amber-text:#f4a259;--signal-text:#ff6b6e;--field:#6a826a;--c-stop:#4cc9f0;--c-let:#ffd166;--c-flood:#e5383b;--c-fu:#39ff88;--c-fa:#f4a259;--c-fd:#ff8a8a;--c-fw:#a8e05f;--c-used:#7d8c7d;--nav:#060706;--nav-ink:#c9d9c9;--nav-active:#1c2a1f}
+html[data-palette=amber][data-palette]{--paper:#14110a;--panel:#1d1910;--ink:#ffcf7a;--soft:#c79a4e;--line:#3d3220;--signal:#ffb000;--signal-ink:#14110a;--signal-tint:#33270c;--amber:#ffd27a;--amber-tint:#2e2410;--stop:#ff7a4d;--stop-tint:#33180e;--bar:#ffb000;--focus:#fff0c2;--amber-text:#ffd27a;--signal-text:#ffc14d;--field:#8f7848;--c-stop:#ffb000;--c-let:#ff7a4d;--c-flood:#ffd27a;--c-fu:#c79a4e;--c-fa:#ff9e6b;--c-fd:#ff5a3d;--c-fw:#f0e6a0;--c-used:#93805a;--nav:#0f0c06;--nav-ink:#ffcf7a;--nav-active:#2e2410}
+html[data-palette=ordnance][data-palette]{--paper:#f3efe2;--panel:#fffdf6;--ink:#1f2a1f;--soft:#5b6352;--line:#d9d2bc;--signal:#c2185b;--signal-ink:#ffffff;--signal-tint:#f7e1ea;--amber:#b26a00;--amber-tint:#f7ebd3;--stop:#b3261e;--stop-tint:#f6e0dd;--bar:#1f6f8b;--focus:#1f6f8b;--amber-text:#8a5200;--signal-text:#a01450;--field:#837e66;--c-stop:#1f6f8b;--c-let:#b26a00;--c-flood:#c2185b;--c-fu:#3949ab;--c-fa:#6a8d2f;--c-fd:#b3261e;--c-fw:#2e7d32;--c-used:#8a846c;--nav:#e6dfc8;--nav-ink:#1f2a1f;--nav-active:#d8e6c8}
+html[data-palette=matrix][data-palette]{--paper:#000600;--panel:#031103;--ink:#b8ffb8;--soft:#5fd35f;--line:#0f3a0f;--signal:#00ff41;--signal-ink:#001a05;--signal-tint:#062b0c;--amber:#c8ff5a;--amber-tint:#1a2a06;--stop:#ff5f5f;--stop-tint:#2a0a0a;--bar:#00ff41;--focus:#c8ffc8;--amber-text:#c8ff5a;--signal-text:#3dff6e;--field:#3f8a3f;--c-stop:#00ff41;--c-let:#c8ff5a;--c-flood:#3dff6e;--c-fu:#00b82e;--c-fa:#e8ff9a;--c-fd:#ff5f5f;--c-fw:#7dff9a;--c-used:#4f8f4f;--nav:#000300;--nav-ink:#9cff9c;--nav-active:#08260b}
+html[data-palette=meshblue][data-palette]{--paper:#0b1630;--panel:#122247;--ink:#e8f0ff;--soft:#a9bbe0;--line:#24386a;--signal:#4f9dff;--signal-ink:#06132b;--signal-tint:#16315f;--amber:#ffb84d;--amber-tint:#33290f;--stop:#ff7a7a;--stop-tint:#3a1a26;--bar:#4f9dff;--focus:#9fd0ff;--amber-text:#ffc670;--signal-text:#7fb8ff;--field:#5a74ab;--c-stop:#4f9dff;--c-let:#ffb84d;--c-flood:#a78bfa;--c-fu:#7fd0ff;--c-fa:#34d3c4;--c-fd:#ff7a7a;--c-fw:#6ee7a0;--c-used:#7085b0;--nav:#081126;--nav-ink:#dbe6ff;--nav-active:#1a3366}
+html[data-palette=retro] body{background-image:linear-gradient(180deg,#1a0b2e 0,#2a0f45 55%,#3b0f4f 100%);background-attachment:fixed}
+html[data-palette=retro] h1,html[data-palette=retro] h2,html[data-palette=retro] .brand{font-family:"Trebuchet MS",Verdana,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#ff7cc3;text-shadow:0 0 8px rgba(255,62,165,.55)}
+html[data-palette=retro] section,html[data-palette=retro] .card{border:1px solid #6b2a8f!important;box-shadow:0 0 0 1px rgba(45,226,230,.15),0 0 18px rgba(255,62,165,.18)}
+html[data-palette=redteam] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem}
+html[data-palette=redteam] h1,html[data-palette=redteam] h2{text-transform:uppercase;letter-spacing:.08em;color:#ff6b6e}
+html[data-palette=redteam] h2::before{content:"// "/"";color:#39ff88}
+html[data-palette=redteam] *{border-radius:2px!important}
+html[data-palette=redteam] section,html[data-palette=redteam] .card{border:1px solid #2c3a2c!important}
+html[data-palette=amber] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem;text-shadow:0 0 2px rgba(255,176,0,.35)}
+html[data-palette=ordnance] h1,html[data-palette=ordnance] h2{font-family:Georgia,"Times New Roman",serif;font-weight:700;color:#1f2a1f}
+html[data-palette=ordnance] section,html[data-palette=ordnance] .card{border:1px solid #cfc6a8!important}
+html[data-palette=retro] a,html[data-palette=retro] .quietlink,html[data-palette=redteam] a,html[data-palette=redteam] .quietlink{color:var(--signal-text)}
+html[data-palette=retro] .brand small{text-transform:none;text-shadow:none;color:var(--soft)}
+html[data-palette=matrix] body{font-family:ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;font-size:.875rem;text-shadow:0 0 3px rgba(0,255,65,.35)}
+html[data-palette=matrix] a,html[data-palette=matrix] .quietlink{color:var(--signal-text)}
+html[data-palette=matrix] *{border-radius:0!important}
+html[data-palette=meshblue] a,html[data-palette=meshblue] .quietlink{color:var(--signal-text)}
 html[data-palette=cb][data-palette]{--paper:#f3f4f6;--panel:#ffffff;--ink:#14202b;--soft:#4a5560;--line:#c9d0d8;--signal:#00588f;--signal-ink:#ffffff;--signal-tint:#e1edf7;--amber:#8f4a00;--amber-tint:#fdecd9;--stop:#8a1f5b;--stop-tint:#f6e3ee;--bar:#00588f;--focus:#7a3e00;--amber-text:#7a3e00;--signal-text:#00497a;--field:#6b7580;--nav:#e4e8ee;--nav-ink:#14202b;--nav-active:#d0e1f0;--c-stop:#0072B2;--c-let:#B35900;--c-flood:#7E3F8F;--c-fu:#2288C8;--c-fa:#B0568A;--c-fd:#8F3A00;--c-fw:#5E6B00;--c-used:#7b8794}
 html[data-palette=cb] .lvl-range::-webkit-slider-runnable-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
 html[data-palette=cb] .lvl-range::-moz-range-track{background:linear-gradient(90deg,#0072B2,#6f8aa6 40%,#b3733a 70%,#8a1f5b)}
@@ -558,7 +615,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 .cmdbox{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.5rem 0 .25rem}
 .cmdbox code{flex:1 1 18rem;min-width:0;overflow-wrap:anywhere;padding:.4rem .55rem;border:1px solid var(--line);border-radius:6px;font-size:.85em}
 </style>
-<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme"),PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};if(t==="light"||t==="dark")d.dataset.theme=t;else if(PAL[t]){d.dataset.theme=PAL[t];d.dataset.palette=t;}if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
+<script>try{const d=document.documentElement,g=k=>localStorage.getItem(k);d.dataset.text=g("sgtext")||"normal";d.dataset.contrast=g("sgcontrast")||"standard";const t=g("sgtheme"),PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark",retro:"dark",redteam:"dark",amber:"dark",matrix:"dark",meshblue:"dark",ordnance:"light"};if(t==="light"||t==="dark")d.dataset.theme=t;else if(PAL[t]){d.dataset.theme=PAL[t];d.dataset.palette=t;}if(g("sgmotion")==="reduce")d.dataset.motion="reduce";}catch(e){}</script>
 </head>
 <body>
 <a class="skip" href="#main" id="skipLink">Skip to content</a>
@@ -567,17 +624,22 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="brand"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 14c1.1-1.2 2.4-1.8 4-1.8s2.9.6 4 1.8M7 11c1.7-1.9 3.7-2.8 6-2.8s4.3.9 6 2.8" fill="none" stroke="var(--signal)" stroke-width="1.8" stroke-linecap="round"/><circle cx="13" cy="16.6" r="1.4" fill="var(--signal)"/></svg><span>SpamGuard <small id="ver"></small></span></div>
   <div class="brand-fg"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 22 5.5v7c0 5.6-3.9 9.9-9 11.5C7.9 22.4 4 18.1 4 12.5v-7Z" fill="none" stroke="var(--c-flood)" stroke-width="2"/><path d="M8 11.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0M8 15.5c1.7-1.3 3.3-1.3 5 0s3.3 1.3 5 0" fill="none" stroke="var(--c-flood)" stroke-width="1.8" stroke-linecap="round"/></svg><span>FloodGuard <small id="fgVer"></small></span><span class="tag plain" id="fgBrandTag"></span></div>
   <a href="#/overview" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/></svg><span>Overview</span><b class="badge" id="nb-overview"></b></a>
+
   <div class="grp"><button class="grp-h" aria-expanded="true">Protection</button><div class="grp-b">
-    <a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/channels" data-nav="channels"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14M10 4 8 20M16 4l-2 16"/></svg><span>Channels</span><b class="badge" id="nb-channels"></b></a><a href="#/floodguard" data-nav="floodguard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0M3 15c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0"/></svg><span>FloodGuard</span><b class="badge" id="nb-floodguard"></b></a></div></div>
-  <div class="grp"><button class="grp-h" aria-expanded="true">Monitoring</button><div class="grp-b">
-    <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a href="#/campaigns" data-nav="campaigns" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span>Campaigns</span><b class="badge" id="nb-campaigns"></b></a><a href="#/activity" data-nav="activity" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Activity</span><b class="badge" id="nb-activity"></b></a></div></div>
+    <a href="#/messages" data-nav="messages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Messages</span><b class="badge" id="nb-messages"></b></a><a href="#/blocks" data-nav="blocks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5zM8 12l8 0"/></svg><span>Blocks</span><b class="badge" id="nb-blocks"></b></a><a href="#/floodguard" data-nav="floodguard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0M3 15c1.5-1.3 3-1.3 4.5 0s3 1.3 4.5 0 3-1.3 4.5 0 3 1.3 4.5 0"/></svg><span>FloodGuard</span><b class="badge" id="nb-floodguard"></b></a></div></div>
+
+  <div class="grp"><button class="grp-h" aria-expanded="true">Insight</button><div class="grp-b">
+    <a href="#/people" data-nav="people"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5M16 5.2a3 3 0 0 1 0 5.6M18 14.3c1.8.7 3 2.300 3 4.700"/></svg><span>People</span><b class="badge" id="nb-people"></b></a><a href="#/sources" data-nav="sources"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/></svg><span>Spam sources</span><b class="badge" id="nb-sources"></b></a><a class="adv-nav" href="#/activity" data-nav="activity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18"/></svg><span>Logs</span><b class="badge" id="nb-activity"></b></a></div></div>
+
   <div class="grp"><button class="grp-h" aria-expanded="true">System</button><div class="grp-b">
-    <a href="#/settings" data-nav="settings" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/people" data-nav="people"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5M16 5.2a3 3 0 0 1 0 5.6M18 14.3c1.8.7 3 2.300 3 4.700"/></svg><span>People</span><b class="badge" id="nb-people"></b></a><a href="#/evidence" data-nav="evidence" class="adv-nav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5"/></svg><span>Evidence log</span><b class="badge" id="nb-evidence"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/updates" data-nav="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Updates</span><b class="badge" id="nb-updates"></b></a><a href="#/display" data-nav="display"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16zM13.5 6.5l4 4M7 3v3M3 7h3M19 14v3M17 16h3"/></svg><span>Display</span><b class="badge" id="nb-display"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
+    <a href="#/channels" data-nav="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/></svg><span>Settings</span><b class="badge" id="nb-settings"></b></a><a href="#/health" data-nav="health"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg><span>Health</span><b class="badge" id="nb-health"></b></a><a href="#/help" data-nav="help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7v.5M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20"/></svg><span>Help</span><b class="badge" id="nb-help"></b></a></div></div>
+
   <label class="switch side-adv"><input type="checkbox" id="advToggle"> Advanced</label>
 </nav>
 <main id="main" tabindex="-1">
 <div class="topbar"><button id="menuBtn" aria-label="Open menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span><span class="adv-pill">Advanced</span></div>
 <div class="wrap">
+<nav id="subTabs" class="subtabs" aria-label="In this section" hidden></nav>
 <div id="banners"></div>
 <p id="connNote" class="explain" role="status" hidden style="margin:8px 16px"></p>
 <div class="page" data-page="overview">
@@ -589,38 +651,44 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 <div id="fgCallout"></div>
 <div class="callout" id="chHint" hidden><div><b>SpamGuard is only reading the Public channel.</b> Spam on other channels isn't caught until you add them. <a href="#/channels">Add channels</a></div></div>
 <div class="controls">
-  <section>
-    <h2>Mode</h2>
+  <section id="lvlSec">
+    <h2 class="mode-h">Mode</h2>
     <div class="seg mode" role="group" aria-label="Mode" id="modeSeg">
       <button data-v="monitor">Monitor</button><button data-v="protect">Protect</button><button data-v="pause">Pause</button>
     </div>
     <p class="explain" id="modeExplain"></p>
     <div class="callout" id="modeConfirm" role="group" aria-labelledby="modeConfirmTxt" hidden><span id="modeConfirmTxt"></span>
       <div class="acts"><button type="button" class="go" id="modeConfirmStay">Stay in Protect</button><button type="button" class="quiet" id="modeConfirmGo"></button></div></div>
-  </section>
-  <section id="lvlSec">
+    <hr class="soft">
     <div class="lvl-head"><h2><label for="lvl">Protection level</label></h2>
       <span class="lvl-now"><span class="lvl-dot" id="lvlDot" aria-hidden="true"></span><b id="lvlName">Balanced</b> <span class="explain" id="lvlNum">50 of 100</span></span></div>
     <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
     <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
-    <details id="autoBox" open><summary id="autoSum">Auto</summary>
-      <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
-      <p class="explain" id="lvlAutoNote"></p></details>
     <div class="lvl-pending" id="lvlPending" hidden><span id="lvlPendTxt"></span><button class="go" id="lvlApply" type="button">Apply</button><button class="quiet" id="lvlCancel" type="button">Cancel</button></div>
+    <p class="explain" id="lvlAutoLine" hidden></p>
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level means and would have done</summary><p class="explain" id="sensExplain"></p><div id="lvlDetail"></div></details>
   </section>
-  <section id="sfSec" hidden>
-    <h2>Let it look after itself</h2>
+  <section id="careSec">
+    <h2>Looks after itself</h2>
+  <div id="sfSec" class="care-part" hidden>
+    <h3>Let it look after itself</h3>
     <p class="explain" id="sfNote"></p>
     <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><button type="button" class="go" id="sfOn">Look after itself</button>
       <button type="button" class="quiet" id="sfNo">Not now</button></p>
-  </section>
-  <section id="autoUpdSec">
-    <h2>Automatic updates</h2>
+  </div>
+    <div class="care-part" id="autoPart"><details id="autoBox" open><summary id="autoSum">Auto</summary>
+      <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
+      <p class="explain" id="lvlAutoNote"></p></details></div>
+  <div id="autoUpdSec" class="care-part">
+    <h3>Automatic updates</h3>
     <p class="explain" id="autoUpdNote"></p>
     <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><label class="switch"><input type="checkbox" id="autoUpd"> Install new versions automatically</label>
       <button type="button" class="quiet" id="autoUpdNo">Not now</button></p>
+  </div>
+  <div id="advSec" class="care-part" hidden>
+    <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
+  </div>
   </section>
   <section id="trustRevSec" hidden>
     <h2>Check the names you trusted</h2>
@@ -628,9 +696,6 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <p class="explain">Now it trusts a name on that channel only. Trust again the names below that you know. People SpamGuard knows still get through meanwhile.</p>
     <ul class="trust-rev" id="trustRevList"></ul>
     <p><button type="button" class="quiet" id="trustRevAll">I've checked: drop the rest</button></p>
-  </section>
-  <section id="advSec" hidden>
-    <details id="advBox"><summary id="advSum">Settings advisor</summary><div id="advBody"></div></details>
   </section>
 </div>
 <section id="kpiSec">
@@ -651,29 +716,12 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="legend" id="leg24"></div>
   <div class="chart" id="chart24" role="img"></div>
 </section>
-<div class="two">
 <section>
   <h2>Last 7 days</h2>
   <div class="legend" id="leg7"></div>
   <div class="chart short" id="chart7" role="img"></div>
-</section>
-<section>
-  <h2>When the spam comes</h2>
-  <p class="lead">Spam by time of day, last 7 days.</p>
-  <div class="chart short" id="chartHour" role="img"></div>
-</section>
-</div>
-<section id="busyOvSec" hidden>
-  <h2>How busy the radio was, last 24 hours</h2>
-  <p class="lead">The busiest five minutes of each hour: how much of the time the radio was receiving or sending. <span id="busyOvLead"></span></p>
-  <div class="legend" id="busyOvLeg"></div>
-  <div class="chart short" id="chartBusyOv" role="img"></div>
-</section>
-<section id="airSec" hidden>
-  <h2>Airtime, last 7 days</h2>
-  <p class="lead">Minutes a day this repeater's radio spent on traffic, and the airtime it would also have spent passing on the spam and flood packets that were stopped.</p>
-  <div class="legend"><span><i class="sw sw-u"></i>Airtime used</span><span><i class="sw sw-c"></i>Saved by stopping spam</span><span><i class="sw sw-f"></i>Saved by FloodGuard</span></div>
-  <div class="chart short" id="chartAir" role="img"></div>
+  <details id="hourBox" class="more"><summary>When the spam comes: by time of day</summary>
+  <div class="chart short" id="chartHour" role="img"></div></details>
 </section>
 <section id="signedSec" hidden>
   <h2>Signed messages</h2>
@@ -710,18 +758,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="foldbar" id="blocksFold"></div>
   <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain" style="margin-left:10px">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
 </section>
-<section id="mostHeldSec">
-  <h2>Most held, last 7 days</h2>
-  <p class="lead">Names with the most copies held, and how much they send. Names that took over each other's repeats are shown together.</p>
-  <div class="scroll"><table id="mostHeld"></table></div>
-</section>
 <section id="lockSec">
   <div class="health-head"><h2>Emergency: lockdown</h2><span id="lPill"></span></div>
   <p class="explain" id="lLine"></p>
   <div class="inline-form" id="lBtns"></div>
 </section>
-<section class="adv">
-  <h2>Block something yourself</h2>
+<section class="adv"><details id="addBlockBox"><summary class="as-button">Add a block yourself</summary>
+  <h2 class="sr-only">Block something yourself</h2>
   <p class="lead">A repeater's code is its 2, 4 or 6 characters in routes (27 in 27&gt;B1&gt;7E). Text blocks match exactly, need at least 12 characters, last up to a week and never stop people SpamGuard knows.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
@@ -743,13 +786,17 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <select id="textTtl" aria-label="How long to block the text"></select>
     <button class="go" id="textBtn">Block text</button>
   </div>
-
+</details>
 </section><section class="adv">
   <details id="neverBox"><summary><b>Never blocked</b> <span class="explain" id="neverCount"></span></summary>
   <h3 style="font-size:0.90625rem;margin:10px 0 0">Text never blocked</h3>
   <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
   <div class="chips" id="trustTexts"></div>
   <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:10px 0 0">Repeaters never blocked automatically</h3>
+  <p class="explain">For example your own repeater or a neighbour's. Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
+  <div class="chips" id="trustHops"></div>
+  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:10px 0 0">Not re-blocked</h3>
   <p class="explain">Blocks you removed by hand. SpamGuard won't put these back for 24 hours.</p>
   <div class="chips" id="suppressed"></div>
@@ -799,17 +846,16 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="scroll"><table id="hops"></table></div>
   <p class="more" id="learnt"></p>
 </section>
-<section class="adv">
-  <h2>Repeaters never blocked automatically</h2>
-  <p class="lead">For example your own repeater or a neighbour's. Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
-  <div class="chips" id="trustHops"></div>
-  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
-</section>
 </div>
 <div class="page" data-page="campaigns"><section>
   <h2>Spam campaigns</h2>
   <p class="lead">Groups of near-identical messages sent under different names. SpamGuard groups them even when words are added, capitals change or look-alike letters are swapped in.</p>
   <div class="scroll"><table id="campaigns"></table></div>
+</section>
+<section id="linksSec">
+  <h2>How they link up</h2>
+  <p class="lead">Campaigns that look like the same sender at work, and why. For your information only: nothing is held or blocked from here.</p>
+  <div id="linksBody"></div>
 </section></div>
 <div class="page" data-page="activity"><section>
   <h2>Activity</h2>
@@ -818,25 +864,28 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 </section></div>
 <div class="page" data-page="floodguard">
 <section class="fgcard" id="fgCard"></section>
-<section>
+<section id="fgStopSec">
   <h2>What FloodGuard stopped, last 24 hours</h2>
-  <p class="lead">Per hour, by the limit that stopped each packet. Packets over a limit that were still passed on are shown too.</p>
+  <p class="explain" id="fgStopNone" hidden>Nothing stopped or over a limit in the last 24 hours.</p>
+  <div id="fgStopWrap"><p class="lead">Per hour, by the limit that stopped each packet. Packets over a limit that were still passed on are shown too.</p>
   <div class="legend" id="floodLegend"></div>
-  <div class="chart" id="chartFlood" role="img"></div>
+  <div class="chart" id="chartFlood" role="img"></div></div>
+</section>
+<section id="airWeekSec" hidden>
+  <h2>Airtime, last 7 days</h2>
+  <p class="lead">Minutes a day this repeater's radio spent on traffic, and the airtime it would also have spent passing on the spam and flood packets that were stopped.</p>
+  <div class="legend"><span><i class="sw sw-u"></i>Airtime used</span><span><i class="sw sw-c"></i>Saved by stopping spam</span><span><i class="sw sw-f"></i>Saved by FloodGuard</span></div>
+  <div class="chart short" id="chartAir" role="img"></div>
 </section>
 <section id="airKindSec">
   <h2>What the airtime went on, last hour</h2>
   <p class="lead">Every packet heard, by kind, and the repeaters most of it came in through. Contents are encrypted, so this is counts only.</p>
   <div id="airBody"><p class="empty">Nothing heard yet.</p></div>
 </section>
-<section id="ohAdvSec" hidden>
-  <h2>openHop's own advert limit</h2>
-  <div id="ohAdvBody"></div>
-</section>
 <section id="floodSrcSec">
   <h2>Where floods come into the mesh</h2>
   <p class="lead">The first repeater on the route of each flood packet FloodGuard stopped, last 7 days. A repeater near the top may be worth a word with its owner.</p>
-  <div class="scroll"><table id="floodSrc"></table></div>
+  <p class="explain" id="floodSrcNone" hidden>FloodGuard hasn't stopped any flood packets in the last 7 days.</p><div class="scroll"><table id="floodSrc"></table></div>
 </section>
 <section id="busySec">
   <h2>How busy the radio was</h2>
@@ -853,43 +902,48 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 <p class="explain norm-only" id="fgSetHint">FloodGuard sets its own limits from this repeater's traffic. To see or change them, switch on Advanced at the bottom of the menu.</p>
 <section id="fgSetSec" class="adv-block">
   <h2>FloodGuard settings</h2>
-  <p class="lead">Settings marked automatic are learnt from this repeater's own traffic and checked once a day. Change one and it stays as you set it; each lists its side-effects.</p>
+  <p class="lead">Settings marked automatic are learnt from this repeater's own traffic and checked once a day. Change one and it stays as you set it.</p>
+  <details id="fgSetBox"><summary>Show FloodGuard's settings</summary>
   <div id="fgSettings"></div>
   <div class="inline-form"><button class="quiet" type="button" data-p="/fg_relearn" data-b="{}" data-confirm="Put every FloodGuard setting back to FloodGuard's own values and learn this repeater's traffic again from scratch? Values you set yourself are cleared, and learning takes three days." onclick="act(this)">Reset to FloodGuard's values and learn again</button><span class="explain" style="margin-left:10px">Clears the values you set and learns this repeater's traffic from scratch.</span></div>
   <div class="savebar"><button class="go saveSet">Save settings</button><button class="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
+  </details>
+<div id="ohAdvSec" class="care-part" hidden>
+  <h3>openHop's own advert limit</h3>
+  <div id="ohAdvBody"></div>
+</div>
 </section>
 <section class="howto">
-  <h2>How FloodGuard works</h2>
   <p class="explain"><span id="fgPageVer"></span> <a href="https://github.com/flackrat/openhop-spamguard/blob/main/CHANGELOG.md" target="_blank" rel="noopener" class="quietlink">What's changed</a></p>
-  <p>Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes until a message arrives dozens of times. Nothing in them can be blocked by name or text, and routes can be faked. What a sender can't fake is how busy this repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.</p>
-  <p>It starts by learning for three days how busy this radio normally gets and how far packets normally travel, counting only, then sets its own limits from that and checks them once a day; anything you set yourself is kept. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, tightening two hops at a time while the radio stays busy, never below the floor. It lifts by itself once the radio has been quiet for a while and notes each step in Activity. In Monitor it only counts.</p>
-  <p>It never looks at who sent a packet or what it says. Channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so ordinary messaging keeps working during a flood. Each repeater protects its own airtime, so a flood is held to the area it is swamping.</p>
+  <p class="explain">How FloodGuard decides is explained on the <a href="#/help" onclick="setTimeout(()=>{const h=document.getElementById('helpFG');if(h)h.scrollIntoView()},50)">Help</a> page.</p>
 </section>
 </div>
-<div class="page" data-page="settings"><section id="profSec">
-  <h2>Settings profiles</h2>
-  <p class="lead">A saved set of detection settings you can restore or share as a file. It never includes channels, keys, exceptions, the mode or the evidence log.</p>
-  <p class="explain" id="profState"></p>
-  <ul class="rows" id="profList"></ul>
-  <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
-  <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
-</section>
-<section id="decSec">
-  <h2>Your own blocks and exceptions</h2>
-  <p class="lead">Keep two SpamGuards in step: export the blocks, mutes and exceptions you added here, then import the file on the other one. Importing only adds. Channel keys and anything SpamGuard learnt itself are left out.</p>
-  <div class="inline-form"><button id="decExport">Export my blocks and exceptions</button><label class="quiet" for="decFile">Import from another SpamGuard</label><input type="file" id="decFile" accept=".json,application/json"></div>
-</section>
-<section id="settingsSec">
+<div class="page" data-page="settings"><section id="settingsSec">
   <h2>Detection settings</h2>
-  <div class="inline-form"><label for="lvlExact">Protection level, 0 to 100</label><input id="lvlExact" type="number" min="0" max="100" step="1" inputmode="numeric" style="width:6em"><button type="button" id="lvlExactSet">Set</button><span class="explain" id="lvlExactName"></span></div>
+  <p class="explain"><b>Protection level:</b> <span id="lvlExactName"></span> <a href="#/overview">Change it on the Overview</a>.</p>
   <p class="lead">The protection level sets the starred values. Changing one overrides it. Try changes in Monitor first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
   <div id="settings"></div>
   <div class="savebar"><button class="go saveSet" id="saveSet">Save settings</button><button class="cancelSet" id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
   <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset settings to defaults</button> <span class="explain">Detection settings only; blocks, exceptions and the evidence log stay.</span></p>
 </section>
-<section>
-  <h2>Start again from scratch</h2>
+<section id="adminSec">
+  <h2>Backup and reset</h2>
+  <details id="profBox"><summary><b>Settings profiles</b></summary>
+
+  <p class="lead">A saved set of detection settings you can restore or share as a file. It never includes channels, keys, exceptions, the mode or the evidence log.</p>
+  <p class="explain" id="profState"></p>
+  <ul class="rows" id="profList"></ul>
+  <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
+  <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
+  </details>
+  <details id="decBox"><summary><b>Copy your blocks and exceptions to another SpamGuard</b></summary>
+
+  <p class="lead">Keep two SpamGuards in step: export the blocks, mutes and exceptions you added here, then import the file on the other one. Importing only adds. Channel keys and anything SpamGuard learnt itself are left out.</p>
+  <div class="inline-form"><button id="decExport">Export my blocks and exceptions</button><label class="quiet" for="decFile">Import from another SpamGuard</label><input type="file" id="decFile" accept=".json,application/json"></div>
+  </details>
+  <details id="startBox"><summary><b>Start again from scratch</b></summary>
+
   <p class="lead">Back to a fresh install: every block removed, settings and the level reset, and trusted names, repeaters, texts, routes and known people cleared. Regulars are then relearnt from the last day.</p>
   <p class="explain">Kept: the mode, your channels, the evidence log setting and wardriving. FloodGuard relearns for three days. The page starts from now; the evidence log keeps everything, and your own openHop rules are never touched.</p>
   <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
@@ -897,9 +951,9 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <span><strong>Are you sure?</strong> This can't be undone. Type <b>RESET</b> below to confirm.</span>
     <div class="inline-form"><input id="resetWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="resetGo" disabled>Yes, start again</button><button class="quiet" id="resetNo">Cancel</button></div>
   </div>
-</section>
-<section>
-  <h2>Clear spam history</h2>
+  </details>
+  <details id="histDet"><summary><b>Clear spam history</b></summary>
+
   <p class="lead">Empties the charts, the spam map and table, and the "Possibly genuine" list. Blocks, settings, known people and the evidence log stay, and protection carries on.</p>
   <p style="margin:10px 0 0"><button class="danger" id="histBtn">Clear spam history</button></p>
   <div id="histBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
@@ -934,7 +988,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h3 style="font-size:0.90625rem;margin:14px 0 0">Trust a name yourself</h3>
   <p class="explain">A trusted name is always let through. Names can be copied, so campaigns are still blocked, and a trusted name turning up somewhere new is logged.</p>
   <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Trust</button></div>
-</section></div>
+</section><section id="mostHeldSec">
+  <h2>Most held, last 7 days</h2>
+  <p class="lead">Names with the most copies held, and how much they send. Names that took over each other's repeats are shown together.</p>
+  <div class="scroll"><table id="mostHeld"></table></div>
+  </details>
+</section>
+</div>
 <div class="page" data-page="evidence"><section id="evSec">
   <h2>Evidence log</h2>
   <p class="lead">A daily record of every channel message SpamGuard reads, what it did and your labels. Download it to review, or to replay against other settings.</p>
@@ -969,8 +1029,8 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="opt"><h3 id="optTextH">Text size</h3>
     <div class="seg" role="group" aria-labelledby="optTextH" data-opt="text"><button data-v="normal">Normal</button><button data-v="large">Large</button><button data-v="larger">Larger</button></div></div>
   <div class="opt"><h3 id="optThemeH">Colours</h3>
-    <div class="seg seg-grid" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button></div>
-    <p class="explain">The last four are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black. Colour is never the only signal.</p></div>
+    <div class="seg seg-grid" role="group" aria-labelledby="optThemeH" data-opt="theme"><button data-v="device">Same as device</button><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="cb">Colour-blind safe</button><button data-v="aaa">Highest contrast</button><button data-v="glare">Low glare</button><button data-v="yellow">Yellow on black</button><button data-v="meshblue">Mesh blue</button><button data-v="retro">Retro 80s</button><button data-v="redteam">Red team</button><button data-v="matrix">Matrix</button><button data-v="amber">Amber terminal</button><button data-v="ordnance">Map</button></div>
+    <p class="explain">The rest are full colour sets: colour-blind safe (no green or red), highest contrast (AAA), low glare and yellow on black, then six styles just for fun. Colour is never the only signal.</p></div>
   <div class="opt"><h3 id="optContrastH">Contrast</h3>
     <p class="explain">High contrast darkens grey text and borders, outlines each panel, underlines every link and thickens the keyboard focus outline.</p>
     <div class="seg" role="group" aria-labelledby="optContrastH" data-opt="contrast"><button data-v="standard">Standard</button><button data-v="high">High</button></div></div>
@@ -1004,6 +1064,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h3>Starting again</h3>
   <p>During a big flood of made-up names through many repeaters at once, SpamGuard can start a 15-minute lockdown by itself: only people it knows get through, then it stops on its own. Newcomers are held for those minutes too; you can turn this off in Settings.</p>
   <p><strong>Start again from scratch</strong> (Advanced, Settings) clears every block, setting and exception, and the page then shows only what happens after the reset. Nothing recorded is thrown away: the evidence log keeps everything.</p>
+</section>
+<section class="howto" id="helpFG">
+  <h2>How FloodGuard works</h2>
+  
+  <p>Some floods aren't channel messages: encrypted packets with a new identity on almost every one, resent with long, padded routes until a message arrives dozens of times. Nothing in them can be blocked by name or text, and routes can be faked. What a sender can't fake is how busy this repeater's radio is, so FloodGuard measures that from every packet openHop hears and sends.</p>
+  <p>It starts by learning for three days how busy this radio normally gets and how far packets normally travel, counting only, then sets its own limits from that and checks them once a day; anything you set yourself is kept. When flood traffic keeps the radio busier than its level for a minute, FloodGuard stops passing on flood packets that have already come further than the routes it normally hears, tightening two hops at a time while the radio stays busy, never below the floor. It lifts by itself once the radio has been quiet for a while and notes each step in Activity. In Monitor it only counts.</p>
+  <p>It never looks at who sent a packet or what it says. Channel messages from people SpamGuard knows always get through, and direct (routed) messages, replies and acknowledgements are never touched, so ordinary messaging keeps working during a flood. Each repeater protects its own airtime, so a flood is held to the area it is swamping.</p>
 </section></div>
 <p class="foot" id="foot"><button type="button" class="linklike" id="footRules" aria-haspopup="dialog">Rules in openHop</button><span id="footRest"></span></p>
 <dialog id="rulesDlg" aria-labelledby="rulesTitle"><h2 id="rulesTitle" style="margin-top:0;font-size:1.0625rem">SpamGuard's rules in openHop</h2>
@@ -1011,6 +1078,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 <div class="inline-form"><button class="quiet" type="button" id="rulesCopy">Copy as text</button><button class="quiet" type="button" id="rulesClose">Close</button></div></dialog>
 <p class="foot legal">SpamGuard <span id="footVer"></span> · <a id="repoLink" href="https://github.com/flackrat/openhop-spamguard" target="_blank" rel="noopener noreferrer">github.com/flackrat/openhop-spamguard</a> · AGPL-3.0 licence<br>
 Provided "as is", without warranty of any kind. You decide what your repeater forwards, and you are responsible for using it within your local radio and data-protection rules. An independent project, not affiliated with or endorsed by openHop or MeshCore.</p>
+
 </div>
 </main>
 </div>
@@ -1059,10 +1127,15 @@ function renderHeldSummary(d){
   $("#heldTabMonth").textContent="This month"; $("#heldTabPrev").textContent="Last month";
   document.querySelectorAll("#heldSumTabs button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===HSP)));
   const t=hs[HSP], n=x=>(x||0).toLocaleString(), top=Math.max(1,t.campaigns,t.flood,t.routes,t.other);
-  $("#heldSumGrid").innerHTML=`<div><b>${n(t.held)}</b><span>Messages held</span></div><div><b>${n(t.released)}</b><span>Released by you</span></div>`
-    +`<div><b>${t.share_released==null?"none held":t.share_released+"%"}</b><span>Share released</span></div><div><b>${n(t.expired)}</b><span>Blocks ran out</span></div>`;
-  $("#heldSumRows").innerHTML=[["Spam campaigns",t.campaigns],["Flood control",t.flood],["Route blocks",t.routes],["Other",t.other]]
-    .map(([l,v])=>`<li><span class="l">${l}</span><span class="bar" aria-hidden="true"><i style="width:${Math.round(100*v/top)}%"></i></span><span class="v">${n(v)}</span></li>`).join("");
+  if(!t.held){ $("#heldSumGrid").innerHTML=`<p class="explain">Nothing held in this period.</p>`; $("#heldSumRows").innerHTML=""; }
+  else {
+    const parts=[["k0","Spam campaigns",t.campaigns],["k1","Flood control",t.flood],["k2","Route blocks",t.routes],["k5","Other",t.other]].filter(x=>x[2]>0), tot=parts.reduce((a,x)=>a+x[2],0)||1;
+    const sl=parts.map(([c,name,v])=>({c,name,share:Math.round(100*v/tot)}));
+    $("#heldSumGrid").innerHTML=`<div class="dwrap">${airDonut(sl,n(t.held),"held","Why messages were held: "+parts.map(x=>`${x[1]} ${n(x[2])}`).join(", "))}
+      <div class="dleg">${parts.map(([c,name,v])=>`<a class="row" href="#/messages?f=stopped"><i class="sw sw-${c}" aria-hidden="true"></i><span class="nm">${name}</span><b>${n(v)}</b><span aria-hidden="true" class="chev">›</span></a>`).join("")}
+      <p class="explain" style="margin:6px 8px 0">${n(t.released)} released by you${t.share_released==null?"":` (${t.share_released}%)`}, ${n(t.expired)} block${t.expired===1?"":"s"} ran out.</p></div></div>`;
+    $("#heldSumRows").innerHTML="";
+  }
   $("#heldSumNote").textContent="A low share released means few mistakes you noticed. Messages you never looked at are not counted as right or wrong."
     +(t.seeded_days?" Days before this update have totals only, so the split may add up to less.":"")
     +(HSP!=="week"?` Covers ${t.days} day${t.days===1?"":"s"} of ${hs.labels[HSP]}.`:"");
@@ -1098,18 +1171,18 @@ function renderTop(d){
     :`<div class="banner warn"><b>openHop needs a one-line fix before blocks are fully reliable.</b> Its rule checker has a known bug that can occasionally let blocked spam through. <a href="#/health">See Health</a> to apply it.</div>`;
   else if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix==null&&d.metrics.rulecheck_where!=="normal") b+=`<div class="banner"><b>SpamGuard couldn't check openHop for a known bug.</b> If blocked spam still appears on the mesh, this may be why. <a href="#/health">See Health</a>.</div>`;
   if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
-  if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
+  if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info ov-only"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
   // Nothing is held outside Protect. Said on every page until it is switched back (not something to dismiss for good).
   if(d.paused||d.mode!=="protect") b+=`<div class="banner warn act" id="modeWarn" role="status"><div><b>${d.paused?"SpamGuard is paused":"Monitor mode"}: nothing is being held.</b> ${d.paused?"All blocks are lifted.":"Spam is spotted and shown, but still passed on."}</div>${btn("Switch to Protect","/settings",{paused:false,mode:"protect"},"go")}</div>`;
   // No page password: anyone on the network can change settings. Said once a month, until it is set.
   if(d.password_set===false && Date.now()-Number(store.get("sgDismissPw")||0)>30*86400000)
-    b+=`<div class="banner info dismissable" id="pwHint"><div><b>Anyone on your network can change SpamGuard's settings.</b> A page password stops that. <a href="https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md" target="_blank" rel="noopener">How to set one</a></div><button type="button" class="quiet" onclick="store.set('sgDismissPw',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
+    b+=`<div class="banner info dismissable ov-only" id="pwHint"><div><b>Anyone on your network can change SpamGuard's settings.</b> A page password stops that. <a href="https://github.com/flackrat/openhop-spamguard/blob/main/docs/openhop-plugin.md" target="_blank" rel="noopener">How to set one</a></div><button type="button" class="quiet" onclick="store.set('sgDismissPw',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
   const hid=Number(store.get("sgDismissUnread")||0);
   if(d.summary.unreadable>0 && d.summary.unreadable>=d.summary.channel_messages*0.5 && d.summary.channel_messages>10 && Date.now()-hid>30*86400000)
-    b+=`<div class="banner info dismissable"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
+    b+=`<div class="banner info dismissable ov-only"><div><b>Most channel messages are on channels SpamGuard can't read.</b>Add them on the <a href="#/channels">Channels</a> page.</div><button type="button" class="quiet" onclick="store.set('sgDismissUnread',String(Date.now()));this.closest('.banner').remove()" aria-label="Dismiss this notice for 30 days">Dismiss</button></div>`;
   // Said once, on this browser, if it has been turned off, and gone for good when dismissed or opened.
   if(d.settings&&d.settings.text_sense===false&&!store.get("sgDismissSense"))
-    b+=`<div class="banner info dismissable" id="senseHint"><div><b>Learning from your spam marks is off.</b>It notices a name sending reworded versions of spam you marked, and can be set to record-only. Nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('reworded')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
+    b+=`<div class="banner info dismissable ov-only" id="senseHint"><div><b>Learning from your spam marks is off.</b>It notices a name sending reworded versions of spam you marked, and can be set to record-only. Nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('reworded')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
   const m=d.paused?"pause":d.mode;
@@ -1199,7 +1272,10 @@ function renderLevel(d){
   const pend=$("#lvlPending"); pend.hidden=lvlDrag==null;
   const A=L.auto||{}, ab=$("#lvlAuto"); if(document.activeElement!==ab) ab.checked=!!A.on;
   $("#lvlAutoNote").textContent=A.on?`Auto is on. It tightens quickly, loosens slowly and never goes above ${A.max}.`+(A.waiting?` Right now: ${A.waiting}.`:"")+(A.last?` Last moved ${ago(A.last)}.`:""):"Off. The Suggested marker shows where SpamGuard would put it.";
-  const box=$("#autoBox"), sumTxt=A.on?`Auto is on${A.last?`, last moved ${ago(A.last)}`:""}. Change`:"Auto is off. Turn it on";
+  const sf=(d.set_forget||{});
+  $("#autoPart").hidden=!!sf.offer||!!A.on;   // "Look after itself" covers it: its own switch only when that was turned down and Auto is off
+  $("#lvlAutoLine").hidden=!A.on; if(A.on) $("#lvlAutoLine").textContent=`Moves by itself (Auto)${A.last?`, last moved ${ago(A.last)}`:""}. It never goes above ${A.max}.`;
+  const box=$("#autoBox"), sumTxt=A.on?`Protection level moves itself${A.last?`, last moved ${ago(A.last)}`:""}. Change`:"Protection level: Auto is off. Turn it on";
   $("#autoSum").textContent=sumTxt;
   { // Chosen once, it tucks away; while it is off it stays open, as a choice not yet made. The state is kept in this browser.
     const wantOpen=!A.on||store.get("sgAutoOpen")==="1";
@@ -1214,7 +1290,7 @@ function renderLevel(d){
   $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(esc).join(", ")}${own.length>3?" and more":""}. <a href="#/settings" onclick="return openSettings(${esc(JSON.stringify(own[0]))})">See ${own.length===1?"it":"them"} in Settings</a></p>`
     +(lvlDrag==null&&((L.own||[]).some(o=>!o.file))?`<p class="explain">${L.auto&&L.auto.on?"Auto level can't change these while they are yours. ":""}<button type="button" class="quiet" id="lvlOwnClear" data-confirm="Clear your own values for the settings this level sets, so the level's values are used? Settings the level doesn't set are kept.">Use the level's values instead</button></p>`:""):"";
   const ex=$("#lvlExact"); if(ex && document.activeElement!==ex) ex.value=L.value;
-  const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)}. You can also slide it on the Overview.`;
+  const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)} (${L.value} of 100).`;
   const key=JSON.stringify([p,pv,L.mine,d.settings&&d.settings.evidence_log]); if(key===lvlKey) return; lvlKey=key;
   $("#lvlDetail").innerHTML=lvlDetail(d,p,pv);
 }
@@ -1256,10 +1332,7 @@ function lvlSend(v){
   if(own.length) replace=confirm(`You have set ${own.length===1?"one value":own.length+" values"} this level controls yourself (${own.join(", ")}).\n\nOK: use this level's values instead of yours.\nCancel: keep yours and change the level for everything else.`);
   lvlDrag=null; post("/settings",replace?{level:v,replace_own:true}:{level:v});
 }
-$("#lvlExactSet").addEventListener("click",()=>{ const v=Number($("#lvlExact").value);
-  if(!Number.isInteger(v)||v<0||v>100){ toast("The protection level is a whole number from 0 to 100",true); return; }
-  if(S&&S.level&&v===S.level.value){ toast("It's already "+v); return; } lvlSend(v); });
-$("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactSet").click(); });
+
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
@@ -1321,6 +1394,8 @@ function renderHealth(d){
 }
 
 /* ---------- blocks ---------- */
+const BLKOPEN=new Set();   // which blocks have their Change panel open, kept across refreshes
+document.addEventListener("toggle",e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains("blk-change")){ if(t.open) BLKOPEN.add(t.dataset.k); else BLKOPEN.delete(t.dataset.k); } },true);
 function renderBlocks(d){
   const adv=document.body.classList.contains("advanced");
   const sug=d.route_suggestions||[], tsug=d.type_suggestions||[];
@@ -1372,7 +1447,8 @@ function renderBlocks(d){
       (d.channels.includes(b.channel)||b.channel==="*"?[]:[b.channel]).concat(d.channels).map(c=>`<option value="${esc(c)}" ${c===b.channel?"selected":""}>On ${esc(c)}</option>`).join("")}<option value="*" ${b.channel==="*"?"selected":""}>On every channel</option></select>`:"";
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
       <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.${adv&&b.rules&&b.rules.length?` <span class="rulenum">openHop rule ${b.rules.length>3?b.rules.slice(0,3).join(", ")+"…":b.rules.join(", ")}</span>`:""}</div></div>
-      <div class="acts">${chSel}${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
+      <div class="acts">${btn("Remove","/unblock",{key:b.key},"danger")}</div>${(()=>{ const keep=b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet");
+        return chSel||keep||extra?`<details class="blk-change" data-k="${esc(b.key)}"${BLKOPEN.has(b.key)?" open":""}><summary>Change</summary><div class="blk-panel">${chSel||keep?`<div class="inline-form">${chSel}${keep}</div>`:""}${extra}</div></details>`:""; })()}</li>`;
   };
   const items=list.map(item);
   const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":fg.acting?"<span class='tag stop'>blocking</span>":fg.learning?"<span class='tag would'>counting while learning</span>":"<span class='tag would'>watching only</span>";
@@ -1521,6 +1597,7 @@ function renderAdvanced(d){
       <td class="num" data-label="Messages">${h.messages}</td><td class="num" data-label="Names">${h.senders}</td><td class="num" data-label="Made-up names">${h.random}</td><td class="num" data-label="New names">${h.new}</td><td class="num" data-label="Campaign names">${h.campaign}</td><td class="num" data-label="Caught">${h.caught}</td>
       <td class="act-cell">${h.hop==="DIRECT"?"":(h.blocked?"":btn("Block","/block_hop",{hop:h.hop},"quiet"))+(h.allowed?btn("Allow blocking","/unallow_hop",{hop:h.hop},"quiet"):btn("Never block","/allow_hop",{hop:h.hop},"quiet"))}</td></tr>`).join("")
      || `<tr><td colspan="8" class="empty">No messages in the last few minutes.</td></tr>`);
+  renderLinks(d);
   $("#campaigns").innerHTML=`<tr><th>Example</th><th class="num">Names</th><th class="num">Messages</th><th class="num">Versions</th><th>Entered via</th><th></th></tr>`+
     (d.campaigns.map(c=>`<tr><td class="msg-text lead-cell">${esc(c.example)}</td><td class="num" data-label="Names">${c.senders}</td><td class="num" data-label="Messages">${c.count}</td><td class="num" data-label="Versions">${c.variants}</td>
       <td class="route" data-label="Entered via">${esc(Object.entries(c.hops).map(([k,v])=>k+" ("+v+")").join(", "))}</td><td class="act-cell">${btn("Block text","/mark_spam",{text:c.example},"quiet")}</td></tr>`).join("")
@@ -1606,7 +1683,7 @@ function settingRow(d,m){
   const changed=d.overridden.includes(m.key);
   const fga=FG_AUTO.includes(m.key)?(changed?` <span class="tag plain">yours</span> ${btn("Back to automatic","/fg_auto",{key:m.key},"quiet")}`:` <span class="tag ok">automatic</span>`):"";
   return `<div class="setting ${changed?"changed":""}" ${m.type==="list"?'style="grid-template-columns:1fr"':""}><div><label for="${id}">${esc(m.label)}${m.preset?" *":""}</label>${fga}
-    <p class="help">${esc(m.help)}</p><p class="risk"><b>Watch out:</b> ${esc(m.risk)}</p>
+    <p class="help">${esc(m.help)}</p><details class="risk"><summary>Side-effects</summary>${esc(m.risk)}</details>
     ${m.unit==="s"?`<p class="def">Currently ${esc(fmtDefault(m,v))}</p>`:""}</div><div class="ctl">${ctl}</div></div>`;
 }
 function watchSettings(box,d){
@@ -1916,12 +1993,13 @@ function renderLockdown(d){
 }
 function renderAdvisor(d){
   const a=d.advisor, sec=$("#advSec"); if(!a||!sec) return;
-  sec.hidden=false;
-  const n=a.families.filter(f=>f.suggestion).length;
+  const fams=a.families.filter(f=>f.key!=="level");   // the level has its own Suggested marker and Auto on the slider
+  const n=fams.filter(f=>f.suggestion).length;
+  sec.hidden=n===0;   // only when it has something to suggest
   $("#advSum").textContent=n?`Settings advisor: ${n} suggestion${n===1?"":"s"}`:(a.steady?"Settings advisor: nothing to suggest":"Settings advisor: still gathering");
   const open=$("#advBox").open;
-  $("#advBody").innerHTML=`<p class="explain">${a.steady?"Your traffic has settled, so suggestions are based on "+a.days+" days and "+fmtN(a.messages)+" messages.":"It waits until it has seen at least 3 days and 200 messages, and your busy times have stopped moving. So far: "+a.days+" days, "+fmtN(a.messages)+" messages."} It only suggests. Nothing changes unless you press a button.</p>
-    <ul class="rows">${a.families.map(f=>`<li><b>${esc(f.label)}</b> <span class="explain">${esc(f.status)}</span>
+  $("#advBody").innerHTML=`<p class="explain">${a.steady?"Your traffic has settled, so suggestions are based on "+a.days+" days and "+fmtN(a.messages)+" messages.":"It waits until it has seen at least 3 days and 200 messages, and your busy times have stopped moving. So far: "+a.days+" days, "+fmtN(a.messages)+" messages."} It only suggests. Nothing changes unless you press a button. The protection level has its own suggestion, on the slider.</p>
+    <ul class="rows">${fams.map(f=>`<li><b>${esc(f.label)}</b> <span class="explain">${esc(f.status)}</span>
       ${f.suggestion?`<div class="banner"><b>${esc(f.suggestion.text)}</b> ${esc(f.suggestion.why)}${f.suggestion.set?`<div>${btn("Use this",'/settings',f.suggestion.set,"go")}</div>`:""}</div>`:""}</li>`).join("")}</ul>`;
   $("#advBox").open=open;
 }
@@ -1931,7 +2009,8 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d);
+  { const care=$("#careSec"); if(care) care.hidden=[...care.querySelectorAll(":scope>.care-part")].every(x=>x.hidden); } renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
@@ -1943,22 +2022,40 @@ function render(d, editing){
   $("#footRules").textContent=`${d.summary.rules_written} rule${d.summary.rules_written===1?"":"s"} in openHop`;
   $("#footRest").textContent=`, last checked ${ago(d.health.last_poll)}`+(editing?" (some sections wait while you edit)":"");
 }
+/* On a phone each table row becomes a card; label each cell with its column heading so the numbers keep their meaning. */
+function labelTables(root){ (root||document).querySelectorAll("table").forEach(t=>{ const hr=t.querySelector("tr"); if(!hr||!hr.querySelector("th")) return;
+  const heads=[...hr.children].map(c=>c.tagName==="TH"?c.textContent.trim():"");
+  t.querySelectorAll("tr").forEach(r=>{ if(r===hr) return; let i=0; [...r.children].forEach(c=>{ const span=+(c.getAttribute("colspan")||1);
+    if(c.tagName==="TD"&&!c.hasAttribute("data-label")&&heads[i]&&!c.classList.contains("lead-cell")&&!c.classList.contains("act-cell")&&r.children.length>1) c.setAttribute("data-label",heads[i]); i+=span; }); }); }); }
+let _lblRaf=0; new MutationObserver(()=>{ if(_lblRaf) return; _lblRaf=requestAnimationFrame(()=>{ _lblRaf=0; labelTables(); }); }).observe(document.body,{childList:true,subtree:true});
 /* ---------- menu and pages ---------- */
 const isDark=()=>{ const t=document.documentElement.dataset.theme; return t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches); };
 const reduceMotion=()=>document.documentElement.dataset.motion==="reduce"||matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TITLES={overview:"Overview",blocks:"Blocks",held:"Possibly genuine",channels:"Channels",floodguard:"FloodGuard",messages:"Messages",sources:"Spam sources",
   campaigns:"Campaigns",activity:"Activity",settings:"Settings",people:"People",evidence:"Evidence log",health:"Health",updates:"Updates",help:"Help",display:"Display and accessibility"};
 const ADV_PAGES=["campaigns","activity","settings","evidence"];
+document.addEventListener("toggle",e=>{ if(e.target&&e.target.id==="hourBox"&&e.target.open&&S) renderOverview(S); },true);
 let PAGE="overview";
+// Pages that live together under one menu entry, shown as tabs at the top of each.
+const GROUPS={blocks:["blocks","campaigns"],settings:["channels","display","settings"],health:["health","updates"],activity:["activity","evidence"]};
+const TABNAME={blocks:"Blocks",campaigns:"Campaigns",channels:"Channels",display:"Display",settings:"Detection",health:"Health",updates:"Updates",activity:"Activity",evidence:"Evidence log"};
+const PARENT={}; Object.entries(GROUPS).forEach(([g,ps])=>ps.forEach(x=>PARENT[x]=g));
+function renderSubTabs(p){ const el=$("#subTabs"), g=PARENT[p]; if(!el) return;
+  const adv=document.body.classList.contains("advanced"), ps=g?GROUPS[g].filter(x=>adv||!ADV_PAGES.includes(x)):[];
+  el.hidden=ps.length<2;
+  el.innerHTML=ps.map(x=>`<a href="#/${x}"${x===p?' aria-current="page"':""}>${TABNAME[x]}${x==="updates"?'<b class="badge" id="nb-updates"></b>':""}</a>`).join("");
+  if(S&&S.summary) renderNav(S); }
 function route(keepMenu){
   let p=(location.hash.match(/^#\/([a-z]+)/)||[])[1]||"overview";
   if(p==="lockdown") p="blocks";   // lockdown now lives on the Blocks page
   if(p==="exceptions"){ location.replace("#/people"); return; }   // trusted and known names now live on People
   if(p==="held"){ location.replace("#/messages?f=review"); return; }   // held messages are now a filter in Messages
   if(!TITLES[p]||(ADV_PAGES.includes(p)&&!document.body.classList.contains("advanced"))) p="overview";
-  const changed=p!==PAGE; PAGE=p;
+  const changed=p!==PAGE; PAGE=p; document.body.dataset.page=p;
   document.querySelectorAll(".page").forEach(el=>el.classList.toggle("on",el.dataset.page===p));
-  document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===p));
+  const par=PARENT[p]||p;
+  document.querySelectorAll("[data-nav]").forEach(a=>a.classList.toggle("active",a.dataset.nav===par));
+  renderSubTabs(p);
   $("#topTitle").textContent=TITLES[p]; setTitle();
   if(keepMenu!==true) document.body.classList.remove("menu-open");
   if(changed) window.scrollTo(0,0);
@@ -1989,8 +2086,9 @@ function renderNav(d){
 
   badge("messages",d.to_review||"","warn");
   badge("blocks",d.lockdown?"Lockdown":(d.summary.active_blocks||""),d.lockdown?"warn":"plain");
-  const st=(d.service||{}).state; badge("health",st==="bad"?"!":st==="warn"?"!":"",st==="bad"?"bad":"warn");
-  const u=d.update||{}; badge("updates",u.available?"New":"","ok");
+  const st=(d.service||{}).state, u=d.update||{};
+  if(st==="bad"||st==="warn") badge("health","!",st==="bad"?"bad":"warn"); else badge("health",u.available?"New":"","ok");   // Updates sits under Health
+  badge("updates",u.available?"New":"","ok");
 }
 
 /* ---------- lists that show 10 and fold out ---------- */
@@ -2116,39 +2214,113 @@ function renderFloodNav(d){
   c.innerHTML=flood+noise;
 }
 const AIR_KIND={"channel messages":"k0","adverts":"k1","requests":"k2","anonymous requests":"k3","group data":"k4"};   // one colour per kind everywhere
-function renderAirBreakdown(fg){
+let AIRV=null, AIRFG=null;   // which drill-down is open on FloodGuard's airtime section: null, {k:"kind"} or {e:"way in"}
+const AIRVAR={k0:"var(--c-flood)",k1:"var(--c-fu)",k2:"var(--c-fa)",k3:"var(--c-stop)",k4:"var(--c-let)",k5:"var(--c-used)"};
+function airGo(v){ AIRV=v; if(AIRFG) renderAirBreakdown(AIRFG,true); const s=$("#airKindSec"); if(s){ s.scrollIntoView({block:"start",behavior:reduceMotion()?"auto":"smooth"}); const f=s.querySelector("[data-airfocus]"); if(f) f.focus({preventScroll:true}); } }
+function airDonut(slices,mid,sub,aria){ let a=0; const g=slices.map(x=>{ const s0=a; a+=x.share; return `${AIRVAR[x.c]} ${s0}% ${a}%`; }).join(",");
+  return `<div class="donut" role="img" aria-label="${esc(aria)}" style="background:conic-gradient(${g}${a<100?`,var(--line) ${a}% 100%`:""})"><div><b>${esc(mid)}</b><span>${esc(sub)}</span></div></div>`; }
+function airLegend(slices){ return `<div class="dleg">${slices.map(x=>x.go?`<button type="button" onclick='airGo(${JSON.stringify(x.go)})'><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span aria-hidden="true" class="chev">›</span></button>`:`<div class="row"><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span class="chev"></span></div>`).join("")}</div>`; }
+function airBars(rows,cls,mono){ return `<div class="hbars">${rows.map((r,i)=>`<button type="button" class="hbar" onclick='airGo(${JSON.stringify(r.go)})'><span class="${mono?"route":""}">${esc(r.name)}</span><span class="tr" aria-hidden="true"><i class="sw-${cls||r.c}" style="width:${Math.max(2,Math.round(100*r.share/(rows[0].share||1)))}%"></i></span><b>${r.share}%</b></button>`).join("")}</div>`; }
+function renderAirBreakdown(fg,force){
+  AIRFG=fg;
   const b=fg.breakdown, el=$("#airBody"); if(!el) return;
+  if(!force&&el.contains(document.activeElement)&&document.activeElement!==document.body) return;   // don't pull focus out from under a keyboard user
   if(!b||!b.packets){ el.innerHTML=`<p class="empty">Nothing heard in the last hour.</p>`; return; }
   const sec=x=>x>=60?`${(x/60).toFixed(1)} min`:`${x} s`, cd=x=>x==="direct"?"heard directly":`<span class="route">${esc(x)}</span>`;
-  const cap=k=>k[0].toUpperCase()+k.slice(1), top=b.kinds.filter(k=>AIR_KIND[k.kind]), rest=b.kinds.filter(k=>!AIR_KIND[k.kind]);
-  const slices=top.map(k=>({c:AIR_KIND[k.kind],name:cap(k.kind),share:k.share})).concat(rest.length?[{c:"k5",name:"Other",share:rest.reduce((a,k)=>a+k.share,0)}]:[]).filter(x=>x.share>0);
-  let h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""}</p>
-  <div class="sharebar" role="img" aria-label="Share of the last hour's airtime: ${esc(slices.map(x=>`${x.name} ${x.share}%`).join(", "))}">${slices.map(x=>`<i class="sw-${x.c}" style="flex:${x.share}" title="${esc(x.name)} ${x.share}%"></i>`).join("")}</div>
-  <div class="legend">${slices.map(x=>`<span><i class="sw sw-${x.c}"></i>${esc(x.name)} ${x.share}%</span>`).join("")}</div>
-  <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>
-  ${b.kinds.map(k=>`<tr><td>${esc(k.kind[0].toUpperCase()+k.kind.slice(1))}</td><td class="num">${fmtN(k.packets)}</td><td class="num">${sec(k.airtime_s)}</td><td class="num">${k.share}%</td></tr>`).join("")}</table></div></details>
-  ${b.radios&&b.radios.length?`<h3 class="sub">By radio</h3><p class="explain">openHop says which of this repeater's radios heard each packet.</p><div class="scroll"><table><caption class="sr-only">Airtime by receiving radio</caption><tr><th scope="col">Radio</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Busy</th></tr>${b.radios.map(r=>`<tr><td>${esc(r.radio)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${sec(r.airtime_s)}</td><td class="num">${r.busy}%</td></tr>`).join("")}</table></div>`:""}
-  <h3 class="sub">Came in through</h3><div class="scroll"><table><caption class="sr-only">Airtime by the repeater it came in through</caption><tr><th scope="col">First repeater</th><th scope="col">Mostly</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Share</th></tr>
-  ${b.entry.map(r=>`<tr><td>${cd(r.hop)}</td><td>${esc(r.main)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${r.share}%</td></tr>`).join("")}</table></div>`;
-  if(b.clockwork&&b.clockwork.length) h+=`<h3 class="sub">Sent like clockwork</h3><ul class="rows">${b.clockwork.map(r=>`<li><span class="what">${esc(r.kind[0].toUpperCase()+r.kind.slice(1))} from ${r.anon?"key":"code"} <span class="route">${esc(r.from)}</span>${r.to_me?" to this repeater":r.to?` to <span class="route">${esc(r.to)}</span>`:""}</span><span class="why">every ${r.every} s, ${fmtN(r.packets)} times, via ${cd(r.entry)}. Often an app polling for telemetry.</span></li>`).join("")}</ul><p class="explain">The codes are one byte of each device's key, so several devices can share one: a tag, not an identity. What a request asks for is encrypted, so telemetry, status and other requests look the same.</p>`;
-  if(b.hours&&b.hours.length>1) h+=`<h3 class="sub">By kind, last 24 hours</h3><p class="explain">Seconds of airtime each hour.</p><div class="legend" id="airKindLegend"></div><div class="chart" id="chartAirKind" role="img"></div>`;
-  if(b.anon&&b.anon.length) h+=`<h3 class="sub">Anonymous requests by sender key</h3><p class="explain">These carry the start of the sender's key in the clear, so one device asking a lot shows up here.</p><div class="scroll"><table><caption class="sr-only">Anonymous requests by sender key</caption><tr><th scope="col">Key starts</th><th scope="col">Asking</th><th scope="col">Via</th><th scope="col" class="num">Packets</th></tr>
-    ${b.anon.map(a=>`<tr><td><span class="route">${esc(a.key)}</span></td><td>${a.to_me?"this repeater":`<span class="route">${esc(a.to)}</span>`}</td><td>${cd(a.entry)}</td><td class="num">${fmtN(a.packets)}</td></tr>`).join("")}</table></div>`;
-  if(b.holds&&b.holds.length) h+=`<h3 class="sub">Congestion holds${fg.source_holds==="watch"?" (watch only)":""}</h3><ul class="rows">${b.holds.map(x=>`<li><span class="what"><span class="route">${esc(x.hop)}</span> ${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}${x.times>1?`, ${x.times} times today`:""}</span></li>`).join("")}</ul>`;
+  const cap=k=>k[0].toUpperCase()+k.slice(1);
+  const ecls=["k0","k1","k2","k3","k4"], ent=b.entry.slice(0,5).map((r,i)=>({...r,c:ecls[i]}));
+  const kc=k=>AIR_KIND[k]||"k5";
+  const back=`<nav class="crumb" aria-label="Where you are"><button type="button" class="quietlink" onclick="airGo(null)">‹ All airtime</button></nav>`;
+  const cwRow=r=>`<li><span class="what">${esc(cap(r.kind))} from ${r.anon?"key":"code"} <span class="route">${esc(r.from)}</span>${r.to_me?" to this repeater":r.to?` to <span class="route">${esc(r.to)}</span>`:""}</span><span class="why">every ${r.every} s, ${fmtN(r.packets)} times, via ${cd(r.entry)}. Often an app polling for telemetry.</span></li>`;
+  const cwNote=`<p class="explain">The codes are one byte of each device's key, so several devices can share one: a tag, not an identity. What a request asks for is encrypted, so telemetry, status and other requests look the same.</p>`;
+  let h="";
+  const k=AIRV&&AIRV.k!=null?b.kinds.find(x=>x.kind===AIRV.k):null, en=AIRV&&AIRV.e!=null?b.entry.find(x=>x.hop===AIRV.e):null;
+  if(k){
+    const cw=(b.clockwork||[]).filter(r=>r.kind===k.kind);
+    h=`${back}
+    <h3 class="sub" tabindex="-1" data-airfocus>${esc(cap(k.kind))}</h3><p class="explain">${k.share}% of the last hour's airtime: ${fmtN(k.packets)} packets, ${sec(k.airtime_s)}.</p>
+    <div class="drill2"><div><h4>Came in through</h4>${airBars((k.via||[]).map(v=>({name:v.name==="direct"?"heard directly":v.name,share:v.share,go:{e:v.name}})),kc(k.kind),true)}</div>
+    <div><h4>Each hour, last 24</h4><div class="chart" id="chartAirOne" role="img"></div></div></div>
+    ${cw.length?`<h4>Sent like clockwork</h4><ul class="rows">${cw.map(cwRow).join("")}</ul>${cwNote}`:""}
+    ${k.ptype===7&&b.anon&&b.anon.length?`<h4>By sender key</h4><p class="explain">These carry the start of the sender's key in the clear, so one device asking a lot shows up here.</p><div class="scroll"><table><caption class="sr-only">Anonymous requests by sender key</caption><tr><th scope="col">Key starts</th><th scope="col">Asking</th><th scope="col">Via</th><th scope="col" class="num">Packets</th></tr>
+      ${b.anon.map(a=>`<tr><td><span class="route">${esc(a.key)}</span></td><td>${a.to_me?"this repeater":`<span class="route">${esc(a.to)}</span>`}</td><td>${cd(a.entry)}</td><td class="num">${fmtN(a.packets)}</td></tr>`).join("")}</table></div>`:""}`;
+  } else if(en){
+    const cw=(b.clockwork||[]).filter(r=>r.entry===en.hop.slice(0,2)||r.entry===en.hop), hl=(b.holds||[]).filter(x=>x.hop===en.hop);
+    h=`${back}
+    <h3 class="sub" tabindex="-1" data-airfocus>Through ${cd(en.hop)}</h3><p class="explain">${en.share}% of the last hour's airtime: ${fmtN(en.packets)} packets, mostly ${esc(en.main)}.</p>
+    <h4>What it carried</h4>${airBars((en.mix||[]).map(m=>({name:cap(m.name),share:m.share,c:kc(m.name),go:{k:m.name}})))}
+    ${cw.length?`<h4>Sent like clockwork</h4><ul class="rows">${cw.map(cwRow).join("")}</ul>${cwNote}`:""}
+    ${hl.length?`<h4>Congestion holds</h4><ul class="rows">${hl.map(x=>`<li><span class="what">${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}</span></li>`).join("")}</ul>`:""}`;
+  } else {
+    AIRV=null;
+    const top=b.kinds.filter(x=>AIR_KIND[x.kind]), rest=b.kinds.filter(x=>!AIR_KIND[x.kind]);
+    const ks=top.map(x=>({c:AIR_KIND[x.kind],name:cap(x.kind),share:x.share,go:{k:x.kind}})).concat(rest.length?[{c:"k5",name:"Other kinds",share:rest.reduce((a,x)=>a+x.share,0),go:null}]:[]).filter(x=>x.share>0);
+    const es=ent.map(r=>({c:r.c,name:r.hop==="direct"?"heard directly":r.hop,html:`${r.hop==="direct"?"heard directly":`<span class="route">${esc(r.hop)}</span>`} <span class="explain">${esc(r.main)}</span>`,share:r.share,go:{e:r.hop}}));
+    const er=100-es.reduce((a,x)=>a+x.share,0); if(er>0&&b.entry.length>5) es.push({c:"k5",name:"Others",share:er,go:null});
+    const worth=[];
+    const an=(b.anon||[])[0], antot=(b.kinds.find(x=>x.ptype===7)||{}).packets||0;
+    if(an&&antot&&an.packets>=0.25*antot) worth.push({go:{k:"anonymous requests"},t:`<b>One device sent ${Math.round(100*an.packets/antot)}% of the anonymous requests</b> (key <span class="route">${esc(an.key)}</span>), via ${cd(an.entry)}.`});
+    (b.clockwork||[]).slice(0,2).forEach(r=>worth.push({go:{k:r.kind},t:`<b>${r.anon?"Key":"Code"} <span class="route">${esc(r.from)}</span> sends ${esc(r.kind)} every ${r.every} s</b>${r.to_me?" to this repeater":""}, often an app reading telemetry.`}));
+    h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""} Tap a kind or a repeater for the detail.</p>
+    <div class="drill2">
+      <div><h4>By kind of packet</h4><div class="dwrap">${airDonut(ks,sec(b.airtime_s).replace(" min","").replace(" s",""),b.airtime_s>=60?"minutes":"seconds","Airtime by kind: "+ks.map(x=>`${x.name} ${x.share}%`).join(", "))}${airLegend(ks)}</div>
+        <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>
+        ${b.kinds.map(x=>`<tr><td>${esc(cap(x.kind))}</td><td class="num">${fmtN(x.packets)}</td><td class="num">${sec(x.airtime_s)}</td><td class="num">${x.share}%</td></tr>`).join("")}</table></div></details></div>
+      <div><h4>By the repeater it came in through</h4><div class="dwrap">${airDonut(es,String(b.entry.length),b.entry.length===1?"way in":"ways in","Airtime by the repeater it came in through: "+es.map(x=>`${x.name} ${x.share}%`).join(", "))}${airLegend(es)}</div>
+        <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by the repeater it came in through</caption><tr><th scope="col">First repeater</th><th scope="col">Mostly</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Share</th></tr>
+        ${b.entry.map(r=>`<tr><td>${cd(r.hop)}</td><td>${esc(r.main)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${r.share}%</td></tr>`).join("")}</table></div></details></div>
+    </div>
+    ${worth.length?`<h4>Worth a look</h4><div class="worth">${worth.map(w=>`<button type="button" onclick='airGo(${JSON.stringify(w.go)})'><span>${w.t}</span><span aria-hidden="true" class="chev">›</span></button>`).join("")}</div>`:""}
+    ${b.radios&&b.radios.length?`<h4>By radio</h4><p class="explain">openHop says which of this repeater's radios heard each packet.</p><div class="scroll"><table><caption class="sr-only">Airtime by receiving radio</caption><tr><th scope="col">Radio</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Busy</th></tr>${b.radios.map(r=>`<tr><td>${esc(r.radio)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${sec(r.airtime_s)}</td><td class="num">${r.busy}%</td></tr>`).join("")}</table></div>`:""}
+    ${b.hours&&b.hours.length>1?`<h4>By kind, last 24 hours</h4><p class="explain">Seconds of airtime each hour.</p><div class="legend" id="airKindLegend"></div><div class="chart" id="chartAirKind" role="img"></div>`:""}
+    ${b.holds&&b.holds.length?`<h4>Congestion holds${fg.source_holds==="watch"?" (watch only)":""}</h4><ul class="rows">${b.holds.map(x=>`<li><span class="what"><span class="route">${esc(x.hop)}</span> ${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}${x.times>1?`, ${x.times} times today`:""}</span></li>`).join("")}</ul>`:""}`;
+  }
   el.innerHTML=h;
-  const ch=$("#chartAirKind"); if(!ch||PAGE!=="floodguard") return;
-  const tot={}; b.hours.forEach(x=>Object.entries(x.kinds).forEach(([k,v])=>tot[k]=(tot[k]||0)+v[1]));
-  const names=Object.keys(tot).sort((a,c)=>tot[c]-tot[a]), main=names.filter(n=>AIR_KIND[n]), others=names.filter(n=>!AIR_KIND[n]), other=others.length>0;
-  const segs=main.map(k=>[AIR_KIND[k],cap(k)]).concat(other?[["k5","Other"]]:[]);
-  $("#airKindLegend").innerHTML=segs.map(x=>`<span><i class="sw sw-${x[0]}"></i>${esc(x[1])}</span>`).join("");
-  const by={}; b.hours.forEach(x=>by[x.hour]=x.kinds);
+  if(PAGE!=="floodguard") return;
   const now=Math.floor(Date.now()/3600000)*3600, hhm=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  const rows=[]; for(let t=now-23*3600;t<=now;t+=3600){ const k=by[t]||{}, r={label:hhm(t),full:hhm(t)};
-    main.forEach(n=>r[AIR_KIND[n]]=Math.round(((k[n]||[0,0])[1])/1000));
-    if(other) r.k5=Math.round(others.reduce((a,n)=>a+((k[n]||[0,0])[1]),0)/1000);
+  const by={}; (b.hours||[]).forEach(x=>by[x.hour]=x.kinds);
+  const one=$("#chartAirOne");
+  if(one&&k){ const c=kc(k.kind), rows=[];
+    for(let t=now-23*3600;t<=now;t+=3600){ const v=Math.round((((by[t]||{})[k.kind])||[0,0])[1]/1000); rows.push({label:hhm(t),full:hhm(t),[c]:v,tip:`${hhm(t)}: ${v} s`}); }
+    columns(one,rows,{every:6,col:"Hour",unit:"",segs:[c],cols:[[c,cap(k.kind)," s"]]});
+    one.setAttribute("aria-label",`Seconds of airtime on ${k.kind}, each hour of the last 24 hours. The numbers are in the table below.`); }
+  const ch=$("#chartAirKind"); if(!ch) return;
+  const tot={}; b.hours.forEach(x=>Object.entries(x.kinds).forEach(([kk,v])=>tot[kk]=(tot[kk]||0)+v[1]));
+  const names=Object.keys(tot).sort((a,c)=>tot[c]-tot[a]), main=names.filter(nn=>AIR_KIND[nn]), others=names.filter(nn=>!AIR_KIND[nn]), other=others.length>0;
+  const segs=main.map(kk=>[AIR_KIND[kk],cap(kk)]).concat(other?[["k5","Other"]]:[]);
+  $("#airKindLegend").innerHTML=segs.map(x=>`<span><i class="sw sw-${x[0]}"></i>${esc(x[1])}</span>`).join("");
+  const rows=[]; for(let t=now-23*3600;t<=now;t+=3600){ const kk=by[t]||{}, r={label:hhm(t),full:hhm(t)};
+    main.forEach(nn=>r[AIR_KIND[nn]]=Math.round(((kk[nn]||[0,0])[1])/1000));
+    if(other) r.k5=Math.round(others.reduce((a,nn)=>a+((kk[nn]||[0,0])[1]),0)/1000);
     r.tip=`${hhm(t)}: `+segs.map(x=>`${x[1].toLowerCase()} ${r[x[0]]} s`).join(", "); rows.push(r); }
   columns(ch,rows,{every:6,col:"Hour",unit:"",segs:segs.map(x=>x[0]),cols:segs.map(x=>[x[0],x[1]," s"])});
   ch.setAttribute("aria-label","Seconds of airtime by kind of packet, each hour of the last 24 hours. The numbers are in the table below.");
+}
+function renderLinks(d){
+  const el=$("#linksBody"); if(!el) return; const gs=d.campaign_links||[];
+  if(!gs.length){ el.innerHTML=`<p class="explain">No campaigns look linked right now.</p>`; return; }
+  el.innerHTML=gs.map(g=>`<article class="linkgrp">
+    <div class="lg-head"><h3>${g.campaigns.length} campaigns, ${fmtN(g.name_count)} name${g.name_count===1?"":"s"}</h3>${g.strong?"<span class='tag stop'>strongly linked</span>":"<span class='tag plain'>loosely linked</span>"}
+      <button type="button" class="quiet" onclick="post('/dismiss_link',{id:'${esc(g.id)}'})" aria-label="Set this group aside for a week">Set aside</button></div>
+    <ul class="lg-why">${g.reasons.map(r=>`<li><span class="tag ${r.strong?"stop":"plain"}">${r.strong?"strong":"weak"}</span> ${esc(r.text)}</li>`).join("")}</ul>
+    <details><summary>The campaigns, names and repeaters</summary>
+      <ul class="lg-list">${g.campaigns.map(c=>`<li>“${esc(c.example)}” <span class="explain">${fmtN(c.copies)} copies from ${fmtN(c.names)} name${c.names===1?"":"s"}</span></li>`).join("")}</ul>
+      <p class="explain">Names: ${g.names.map(esc).join(", ")}${g.name_count>g.names.length?`, and ${g.name_count-g.names.length} more`:""}.</p>
+      <p class="explain">Came in through: ${g.hops.map(h=>`<span class="route">${esc(h.hop)}</span> ${h.share}%`).join(", ")}.</p></details>
+  </article>`).join("");
+}
+function renderAirWeek(d){ const m=d.metrics; if(!m||PAGE!=="floodguard") return;
+  const day=t=>new Date(t*1000).toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"});
+  // airtime: what the radio used, and what it would also have spent on what was stopped
+  $("#airWeekSec").hidden=!m.radio_known;
+  if(m.radio_known){
+    const mn=v=>Math.round((v||0)/6000)/10;
+    columns($("#chartAir"),m.daily.map(r=>({u:mn(r.ar),c:mn(r.sa),f:mn(r.fs),label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:day(r.t),
+      tip:`${day(r.t)}: ${mn(r.ar)} min used, ${mn(r.sa)} min saved by stopping spam, ${mn(r.fs)} min saved by FloodGuard`})),
+      {every:1,col:"Day",unit:"",segs:["u","c","f"],cols:[["u","Airtime used (min)"],["c","Saved by stopping spam (min)"],["f","Saved by FloodGuard (min)"]]});
+    const t=k=>Math.round(m.daily.reduce((a,r)=>a+mn(r[k]),0)*10)/10;
+    $("#chartAir").setAttribute("aria-label",`Airtime per day, last 7 days: ${t("ar")} minutes used, ${t("sa")} minutes saved by stopping spam, ${t("fs")} minutes saved by FloodGuard. The numbers are in the table below.`);
+  }
 }
 function renderOhAdverts(fg){
   const a=fg.oh_adverts, el=$("#ohAdvBody"); if(!el) return;
@@ -2160,7 +2332,7 @@ function renderOhAdverts(fg){
 function renderFloodPage(d){
   const m=d.metrics; if(!m) return;
   const fg=m.floodguard||{}, hh=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  renderAirBreakdown(fg); renderOhAdverts(fg);
+  renderAirBreakdown(fg); renderOhAdverts(fg); renderAirWeek(d);
   const fixed=[fg.unscoped?`flood packets with no region stop after ${fg.unscoped} hops`:"",fg.advert?`adverts stop after ${fg.advert} hops`:""].filter(Boolean);
   const monitor=d.mode!=="protect"||d.paused;
   let h=`<div class="health-head"><h2>FloodGuard</h2>${fg.limit?(fg.acting?(fgLong(fg)?"<span class='tag plain'>holding back floods</span>":"<span class='tag would'>containing a flood</span>"):"<span class='tag would'>flood, only counting</span>"):!fg.enabled?"<span class='tag plain'>off</span>":fg.learning?"<span class='tag plain'>learning</span>":"<span class='tag ok'>on</span>"}</div>`;
@@ -2201,7 +2373,8 @@ function renderFloodPage(d){
   $("#floodSrc").innerHTML=`<tr><th>Repeater code</th><th>Likely repeater</th><th class="num">24 h</th><th class="num">7 days</th><th>Last stopped</th></tr>`+
     (fs.length?fs.map(s=>`<tr><td class="lead-cell"><span class="route">${esc(s.hop)}</span></td><td data-label="Likely repeater">${srcName(s)}</td>
       <td class="num" data-label="24 h">${fmtN(s.d1)}</td><td class="num" data-label="7 days">${fmtN(s.d7)}</td><td data-label="Last stopped">${ago(s.last+3599)}</td></tr>`).join("")
-    :`<tr><td colspan="5" class="empty">FloodGuard hasn't stopped any flood packets in the last 7 days.</td></tr>`);
+    :"");
+  $("#floodSrc").hidden=!fs.length; $("#floodSrcNone").hidden=!!fs.length;
   if(PAGE!=="floodguard") return;   // charts are drawn at their real width, so only while the page is showing
   // What stopped each packet. Hours counted before the breakdown only have a total, kept as "not broken down".
   const KINDS=[["fl","Flood packets that came too far while busy"],["fu","Unscoped floods that came too far"],["fa","Adverts that came too far"],
@@ -2209,6 +2382,7 @@ function renderFloodPage(d){
     ["x","Over a limit but let through (while learning, in Monitor, or before the limit started)"]];
   const kv=r=>({fl:r.fcl||0,fu:r.fcu||0,fa:r.fca||0,fo:Math.max(0,(r.fc||0)-(r.fcl||0)-(r.fcu||0)-(r.fca||0)),fd:r.ds||0,fw:r.ws||0,x:r.fx||0});
   let kinds=KINDS.filter(k=>m.hourly.some(r=>kv(r)[k[0]]>0));
+  $("#fgStopNone").hidden=kinds.length>0; $("#fgStopWrap").hidden=!kinds.length;
   if(!kinds.length) kinds=[KINDS[0]];
   $("#floodLegend").innerHTML=kinds.map(k=>`<span><i class="sw sw-${k[0]}"></i>${esc(k[1])}</span>`).join("");
   const fRows=m.hourly.map(r=>{ const v=kv(r), parts=kinds.filter(k=>v[k[0]]>0).map(k=>`${v[k[0]]} ${k[1].split(" (")[0].toLowerCase()}`);
@@ -2268,24 +2442,7 @@ function renderOverview(d){
     :`Spam per day${g.on}, last 7 days: ${g.c7} stopped, ${g.x7} let through.${fl} The numbers are in the table below.`);
   const peak=g.by_hour.reduce((b,v,i)=>v>g.by_hour[b]?i:b,0);
   $("#chartHour").setAttribute("aria-label",g.by_hour.some(v=>v)?`Spam by time of day${g.on}, last 7 days. Busiest hour ${String(peak).padStart(2,"0")}:00 with ${g.by_hour[peak]}. The numbers are in the table below.`:`Spam by time of day${g.on}: none in the last 7 days.`);
-  $("#topSources").innerHTML=srcRows(m.sources.slice(0,5),false);
-  // how busy the radio was, as a line next to the other graphs
-  const bel=$("#chartBusyOv");
-  $("#busyOvSec").hidden=!m.radio_known||!!chPick;
-  if(m.radio_known&&!chPick){
-    $("#busyOvLeg").innerHTML=`<span><i class="sw ln-sw"></i>Busiest five minutes of the hour</span>`+(fg.enabled?`<span><i class="sw lvl-sw"></i>Where FloodGuard steps in (${fg.level}%)</span>`:"");
-    if(!drawBusy(bel,m,fg,hh)) $("#busyOvSec").hidden=true;
-  }
-  // airtime: what the radio used, and what it would also have spent on what was stopped
-  $("#airSec").hidden=!m.radio_known||chPick;
-  if(m.radio_known&&!chPick){
-    const mn=v=>Math.round((v||0)/6000)/10;
-    columns($("#chartAir"),m.daily.map(r=>({u:mn(r.ar),c:mn(r.sa),f:mn(r.fs),label:new Date(r.t*1000).toLocaleDateString([],{weekday:"short"}),full:day(r.t),
-      tip:`${day(r.t)}: ${mn(r.ar)} min used, ${mn(r.sa)} min saved by stopping spam, ${mn(r.fs)} min saved by FloodGuard`})),
-      {every:1,col:"Day",unit:"",segs:["u","c","f"],cols:[["u","Airtime used (min)"],["c","Saved by stopping spam (min)"],["f","Saved by FloodGuard (min)"]]});
-    const t=k=>Math.round(m.daily.reduce((a,r)=>a+mn(r[k]),0)*10)/10;
-    $("#chartAir").setAttribute("aria-label",`Airtime per day, last 7 days: ${t("ar")} minutes used, ${t("sa")} minutes saved by stopping spam, ${t("fs")} minutes saved by FloodGuard. The numbers are in the table below.`);
-  }
+  $("#topSources").innerHTML=srcRows(m.sources.slice(0,3),false);
 }
 function srcName(s){
   const c=s.candidates||[], l=s.likely;
@@ -2535,7 +2692,7 @@ function optGet(k){ return store.get(OPT_KEYS[k])||OPT_DEF[k]; }
 function optApply(){
   const d=document.documentElement;
   d.dataset.text=optGet("text"); d.dataset.contrast=optGet("contrast");
-  const t=optGet("theme"), PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark"};
+  const t=optGet("theme"), PAL={cb:"light",aaa:"light",glare:"dark",yellow:"dark",retro:"dark",redteam:"dark",amber:"dark",matrix:"dark",meshblue:"dark",ordnance:"light"};
   if(PAL[t]){ d.dataset.theme=PAL[t]; d.dataset.palette=t; } else { delete d.dataset.palette; if(t==="device") delete d.dataset.theme; else d.dataset.theme=t; }
   if(optGet("motion")==="reduce") d.dataset.motion="reduce"; else delete d.dataset.motion;
   document.querySelectorAll("[data-opt]").forEach(g=>g.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===optGet(g.dataset.opt)))));

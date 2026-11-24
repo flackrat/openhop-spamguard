@@ -57,9 +57,10 @@ async def main():
         check(await pg.is_visible("#heldSumSec"), "the card shows on the Overview")
         txt=await pg.text_content("#heldSumGrid")
         check("498" in txt and "9" in txt and "1.8%" in txt and "31" in txt, f"the figures: {txt}")
-        rows=await pg.text_content("#heldSumRows")
-        check("Spam campaigns" in rows and "293" in rows and "Flood control" in rows and "86" in rows and "Route blocks" in rows and "Other" in rows, "split rows with numbers as text")
-        check(await pg.get_attribute("#heldSumRows .bar","aria-hidden")=="true", "the bars are for the eye, the numbers are the text")
+        rows=await pg.text_content("#heldSumGrid")   # 6.49: a doughnut with a legend of why, each with its number as text
+        check("Spam campaigns" in rows and "293" in rows and "Flood control" in rows and "86" in rows and "Route blocks" in rows, "the split, with numbers as text")
+        check(await pg.locator("#heldSumSec .donut").count()==1, "shown as a doughnut")
+        check(await pg.get_attribute("#heldSumSec .donut","aria-label") and "Spam campaigns 293" in await pg.get_attribute("#heldSumSec .donut","aria-label"), "the doughnut is described, and the numbers are the text")
         check("not counted as right or wrong" in (await pg.text_content("#heldSumNote")), "it says what the share does not mean")
         await pg.click("#heldTabMonth"); await pg.wait_for_timeout(300)
         check(await pg.get_attribute("#heldTabMonth","aria-pressed")=="true" and "Covers" in (await pg.text_content("#heldSumNote")), "the month view")

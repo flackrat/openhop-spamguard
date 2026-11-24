@@ -23,7 +23,7 @@ TEXT=[("ink","paper"),("ink","panel"),("soft","paper"),("soft","panel"),("signal
 NON=[("field","panel"),("focus","panel"),("focus","paper"),("bar","panel")]
 CH=["c-stop","c-let","c-flood","c-fu","c-fa","c-fd","c-fw","c-used"]
 sets={}
-for name in ("cb","aaa","glare","yellow"):
+for name in ("cb","aaa","glare","yellow","retro","redteam","amber","matrix","meshblue","ordnance"):
     m=re.search(r"html\[data-palette=%s\]\[data-palette\]\{([^}]*)\}"%name, css)
     check(bool(m), f"{name}: a palette is defined")
     if not m: continue
@@ -56,8 +56,8 @@ async def main():
         await pg.goto("http://127.0.0.1:18171/"); await pg.wait_for_timeout(1200)
         await pg.evaluate("location.hash='#/display'"); await pg.wait_for_timeout(400)
         labels=[(await x.text_content()) for x in await pg.query_selector_all("[data-opt=theme] button")]
-        check(len(labels)==7 and "Colour-blind safe" in labels and "Highest contrast" in labels, f"the choices: {labels}")
-        for name,theme,pal in (("cb","light","cb"),("aaa","light","aaa"),("glare","dark","glare"),("yellow","dark","yellow")):
+        check(len(labels)==13 and "Colour-blind safe" in labels and "Highest contrast" in labels, f"the choices: {labels}")
+        for name,theme,pal in (("cb","light","cb"),("aaa","light","aaa"),("glare","dark","glare"),("retro","dark","retro"),("redteam","dark","redteam"),("amber","dark","amber"),("matrix","dark","matrix"),("meshblue","dark","meshblue"),("ordnance","light","ordnance"),("yellow","dark","yellow")):
             await pg.click(f"[data-opt=theme] button[data-v={name}]"); await pg.wait_for_timeout(300)
             got=await pg.evaluate("[document.documentElement.dataset.theme, document.documentElement.dataset.palette, localStorage.getItem('sgtheme')]")
             check(got==[theme,pal,name], f"{name} applies and is saved: {got}")
@@ -69,7 +69,7 @@ async def main():
         check(await pg.evaluate("document.documentElement.dataset.palette")=="yellow", "kept after a reload, before the page draws")
         await pg.click("[data-opt=theme] button[data-v=light]"); await pg.wait_for_timeout(300)
         check(await pg.evaluate("document.documentElement.dataset.palette") is None and await pg.evaluate("document.documentElement.dataset.theme")=="light", "choosing Light puts the standard colours back")
-        # On a phone the seven colour choices wrap into a grid: every label whole, nothing off the edge
+        # On a phone the colour choices wrap into a grid: every label whole, nothing off the edge
         await pg.set_viewport_size({"width":360,"height":800}); await pg.wait_for_timeout(400)
         lay=await pg.evaluate("""()=>{const g=document.querySelector('[data-opt=theme]'),W=document.documentElement.clientWidth;
           return {fits:g.getBoundingClientRect().right<=W+1,

@@ -28,6 +28,7 @@ async def main():
         t=await pg.text_content("body")
         check("started on route 9D>4C" in t, "the route block is listed in plain words")
         await pg.evaluate("document.querySelectorAll('section.adv').forEach(s=>s.style.display='block')")
+        await pg.evaluate("document.getElementById('addBlockBox').open=true")
         await pg.fill("#routeIn","b1>2f"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1500)
         check("route:B1>2F" in g.blocks, "the Route form in Blocks adds one too")
         await pg.fill("#routeIn","b1"); await pg.click("#routeBtn"); await pg.wait_for_timeout(1200)

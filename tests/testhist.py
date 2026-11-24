@@ -12,7 +12,7 @@ async def main():
         await pg.goto("http://127.0.0.1:18171/#/settings"); await pg.reload(); await pg.wait_for_timeout(1500)
         print("box hidden at start:", await pg.is_hidden("#histBox"))
         pg.once("dialog", lambda d: asyncio.ensure_future(d.accept()))
-        await pg.click("#histBtn"); await pg.wait_for_timeout(300)
+        await pg.evaluate("document.getElementById('histDet').open=true"); await pg.click("#histBtn"); await pg.wait_for_timeout(300)
         await pg.fill("#histWord","res"); print("partial disabled:", await pg.is_disabled("#histGo"))
         await pg.fill("#histWord","RESET"); await pg.click("#histGo"); await pg.wait_for_timeout(1500)
         print("hist hours after:", len(g.hist), "blocks kept:", len(g.blocks)==blocks_before, "errors", e)

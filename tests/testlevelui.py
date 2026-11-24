@@ -49,7 +49,8 @@ async def main():
         check(asked and "yourself" in asked[0], "it asks before replacing them")
         check(g.cfg["level"]==60 and g.cfg["slow_repeat_max"]==5, "Cancel keeps your own value and still moves the level")
         # Auto: a switch under the slider; moving the slider yourself switches it off
-        await pg.evaluate("openSettings('')"); await pg.evaluate("location.hash='#/overview'"); await pg.wait_for_timeout(600)
+        g.apply_settings({"set_forget_prompt":False})
+        await pg.evaluate("openSettings('')"); await pg.evaluate("location.hash='#/overview'"); await pg.evaluate("load(true)"); await pg.wait_for_timeout(800)
         await pg.click("#lvlAuto"); await pg.wait_for_timeout(1500)
         check(g.cfg.get("level_auto") is True, "the Auto switch turns Auto on")
         await pg.evaluate("const e=document.querySelector('#lvl'); e.value=30; e.dispatchEvent(new Event('input'))")
@@ -58,9 +59,13 @@ async def main():
         check(g.cfg.get("level_auto") is False and g.cfg["level"]==30, "applying a level yourself switches Auto off")
         # an exact number on the Settings page, for those who want one
         await pg.evaluate("openSettings('')"); await pg.wait_for_timeout(600)
-        check(await pg.is_visible("#lvlExact"), "the Settings page has the level as a number, reached from the Overview")
-        await pg.fill("#lvlExact","37"); await pg.click("#lvlExactSet"); await pg.wait_for_timeout(1800)
-        check(g.cfg["level"]==37, f"typing an exact level sets it: {g.cfg['level']}")
+        t=await pg.text_content("#lvlExactName")
+        check("of 100" in t, f"the Settings page says the level, and links to the slider (6.49): {t}")
+        # an exact level by keyboard: the slider moves one at a time with the arrow keys
+        await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(800)
+        await pg.focus("#lvl"); start=int(await pg.input_value("#lvl"))
+        await pg.keyboard.press("ArrowRight"); await pg.wait_for_timeout(200)
+        check(int(await pg.input_value("#lvl"))==start+1, "the arrow keys move the slider by one")
         check(not errs, f"no page errors: {errs}")
         await b.close()
 asyncio.run(main())

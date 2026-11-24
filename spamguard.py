@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.48.0"
+VERSION = "6.49.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1411,6 +1411,48 @@ def bot_shaped(text: str) -> bool:
                for op, vals in PUBLIC_BOT_SHAPES)
 
 
+def attestation_ok(got: dict, digest: str, repo: str, workflow: str) -> bool:
+    """One of GitHub's attestations for a file is a build provenance naming its sha256, made by this repository's
+    release workflow, signed with the certificate it carries, and that certificate names the same workflow."""
+    try:
+        from Crypto.Hash import SHA256 as _H  # nosec B413 (pycryptodome, maintained)
+        from Crypto.PublicKey import ECC as _ECC  # nosec B413
+        from Crypto.Signature import DSS as _DSS  # nosec B413
+    except ImportError:
+        return False
+    who = f"https://github.com/{repo}/{workflow}@".encode()
+    for a in (got or {}).get("attestations") or []:
+        try:
+            b = a["bundle"]
+            env = b["dsseEnvelope"]
+            payload = base64.b64decode(env["payload"])
+            st = json.loads(payload)
+            if st.get("predicateType") != "https://slsa.dev/provenance/v1":
+                continue
+            if not any((x.get("digest") or {}).get("sha256") == digest for x in st.get("subject") or []):
+                continue
+            wf = st["predicate"]["buildDefinition"]["externalParameters"]["workflow"]
+            if wf.get("repository") != f"https://github.com/{repo}" or wf.get("path") != workflow:
+                continue
+            vm = b["verificationMaterial"]
+            der = base64.b64decode((vm.get("certificate") or {}).get("rawBytes")
+                                   or vm["x509CertificateChain"]["certificates"][0]["rawBytes"])
+            if who not in der:
+                continue
+            ptype = env["payloadType"].encode()
+            pae = b"DSSEv1 %d %s %d %s" % (len(ptype), ptype, len(payload), payload)
+            key = _ECC.import_key(der)
+            for sg in env.get("signatures") or []:
+                try:
+                    _DSS.new(key, "fips-186-3", encoding="der").verify(_H.new(pae), base64.b64decode(sg["sig"]))
+                    return True
+                except ValueError:
+                    pass
+        except (KeyError, ValueError, TypeError, IndexError):
+            continue
+    return False
+
+
 def shared_template(a: str, b: str) -> Optional[str]:
     """Two messages that are one fixed text with a short part that changes (a welcome bot greeting each new name,
     say): the fixed text around the changing part, else None."""
@@ -2042,6 +2084,7 @@ class SpamGuard:
         self.sentence_quiet: dict[str, float] = {}  # a sentence hold let go early for catching nothing -> when
         # Names that carried on another name's all-day repeat count: name -> {"after": [earlier names], "ts": when}
         self.name_links: dict[str, dict] = {}
+        self.links_dismissed: dict[str, float] = {}   # campaign link groups you set aside, and when
         # Per name, per day (local midnight): [messages heard, copies held], for "Most held, last 7 days"
         self.held_names: dict[str, dict] = {}
         # Where repeat spammers are heard from: name -> first hops of the route -> day -> messages. Only kept
@@ -2556,6 +2599,9 @@ class SpamGuard:
                         and float(x[2]) > now - self.DEV_DAYS * 86400]
                 if rows:
                     self.dev_names[str(k)] = rows[-self.DEV_NAMES_MAX:]
+        for k, v in (st.get("links_dismissed") or {}).items():
+            if isinstance(v, (int, float)) and re.fullmatch(r"[0-9a-f]{10}", str(k)):
+                self.links_dismissed[str(k)] = float(v)
         for k, v in (st.get("name_links") or {}).items():
             if isinstance(v, dict) and isinstance(v.get("after"), list) and float(v.get("ts") or 0) > now - 8 * 86400:
                 self.name_links[str(k)] = {"after": [str(x) for x in v["after"]][:10], "ts": float(v["ts"])}
@@ -2701,6 +2747,7 @@ class SpamGuard:
                     "senders": {k: [round(v["first"], 1), v["count"], round(float(v.get("last") or v["first"]), 1)]
                                 for k, v in list(self.sender_history.items())[-3000:]},
                     "name_links": self.name_links,
+                    "links_dismissed": {k: v for k, v in self.links_dismissed.items() if v > time.time() - 7 * 86400},
                     "signer_bind": dict(list(self.signer_bind.items())[-500:]),
                     "signed_stats": self.signed_stats,
                     "held_names": dict(list(self.held_names.items())[-3000:]),
@@ -7770,7 +7817,7 @@ class SpamGuard:
         e = b["e"].setdefault(base, [0, 0.0, hop, {}])
         e[0] += 1
         e[1] += ms
-        e[3][ptype] = e[3].get(ptype, 0) + 1
+        e[3][ptype] = e[3].get(ptype, 0) + max(ms, 0.001)   # airtime by kind through this way in
         if len(hop) > len(e[2]):
             e[2] = hop
         if radio:
@@ -7821,12 +7868,16 @@ class SpamGuard:
         radios: dict = {}
         me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
         to_me = sum(b["tm"] for b in mins)
+        kind_via: dict = {}   # kind -> way in -> airtime
         for b in mins:
             for pt, (n, ms) in b["k"].items():
                 k = kinds.setdefault(pt, [0, 0.0])
                 k[0] += n
                 k[1] += ms
             for base, (n, ms, hop, pk) in b["e"].items():
+                for pt, v in pk.items():
+                    kv = kind_via.setdefault(pt, {})
+                    kv[base] = kv.get(base, 0.0) + v
                 en = entry.setdefault(base, {"packets": 0, "ms": 0.0, "kinds": collections.Counter(), "hop": hop})
                 en["packets"] += n
                 en["ms"] += ms
@@ -7856,11 +7907,13 @@ class SpamGuard:
         clock.sort(key=lambda r: -r["packets"])
         return {"minutes": secs // 60, "airtime_s": round(total / 1000, 1), "packets": sum(b["n"] for b in rows), "me": me or None,
                 "kinds": sorted(({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "ptype": pt, "packets": v[0],
-                                  "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0}
+                                  "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0,
+                                  "via": self._shares({(entry[bs]["hop"] if bs in entry else bs) or "direct": x for bs, x in (kind_via.get(pt) or {}).items()})}
                                  for pt, v in kinds.items()), key=lambda r: -r["airtime_s"]),
                 "entry": [{"hop": v["hop"] if v["hop"] else "direct", "packets": v["packets"], "airtime_s": round(v["ms"] / 1000, 1),
                            "share": round(100 * v["ms"] / total) if total else 0,
-                           "main": PTYPE_LABEL.get(v["kinds"].most_common(1)[0][0], "?")}
+                           "main": PTYPE_LABEL.get(v["kinds"].most_common(1)[0][0], "?"),
+                           "mix": self._shares({PTYPE_LABEL.get(pt, f"type {pt}"): x for pt, x in v["kinds"].items()})}
                           for _b, v in sorted(entry.items(), key=lambda kv: -kv[1]["ms"])[:6]],
                 "anon": [{"key": k, "packets": v["packets"], "to": v["to"].most_common(1)[0][0],
                           "to_me": bool(me) and v["to"].most_common(1)[0][0] == me, "entry": v["entry"].most_common(1)[0][0]}
@@ -7872,6 +7925,91 @@ class SpamGuard:
                 "hours": [{"hour": int(k), "kinds": {PTYPE_LABEL.get(int(pt), f"type {pt}"): v for pt, v in (self.hist[k].get("kt") or {}).items()}}
                           for k in sorted(self.hist) if int(k) >= now - 86400 and self.hist[k].get("kt")],
                 "holds": self.source_holds_view(now)}
+
+    @staticmethod
+    def _shares(d: dict, top: int = 6) -> list:
+        """{name: amount} as the biggest few, each with its percentage of the whole."""
+        tot = sum(d.values()) or 1
+        return [{"name": k, "share": round(100 * v / tot)} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:top]]
+
+    def campaign_links(self, camps: dict) -> list:
+        """How spam campaigns link up, for reading only: nothing here ever holds or blocks anything. Two campaigns
+        are linked when they share names (strong if two or more), when one name took over another's repeats or two
+        names came from one device (strong), or when most of their copies came in through the same repeater (weak).
+        Each group says why, and can be set aside for a week."""
+        cs = [(cid, cc) for cid, cc in camps.items() if cc.get("senders")][:40]
+        if not cs:
+            return []
+        dev_of: dict = {}
+        cut = time.time() - self.DEV_DAYS * 86400
+        for key, rows in self.dev_names.items():
+            for n, _f, last in rows:
+                if last >= cut:
+                    dev_of.setdefault(n, set()).add(key)
+        took = {(a, b) for a, v in self.name_links.items() for b in v.get("after", [])}
+        parent = list(range(len(cs)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+        why: dict = {}
+
+        def link(i, j, text, strong):
+            ri, rj = find(i), find(j)
+            if ri != rj:
+                parent[ri] = rj
+            why.setdefault((min(i, j), max(i, j)), []).append((text, strong))
+        top = [(cc["hops"].most_common(1)[0] if cc.get("hops") else (None, 0)) for _c, cc in cs]
+        for i in range(len(cs)):
+            si = cs[i][1]["senders"]
+            for j in range(i + 1, len(cs)):
+                sj = cs[j][1]["senders"]
+                both = si & sj
+                if both:
+                    link(i, j, f"{len(both)} name{'s' if len(both) != 1 else ''} sent both", len(both) >= 2)
+                pairs = [(a, b) for a in si for b in sj if (a, b) in took or (b, a) in took]
+                if pairs:
+                    link(i, j, f"'{pairs[0][0][:24]}' and '{pairs[0][1][:24]}' took over each other's repeats", True)
+                dev = [(a, b) for a in si - both for b in sj - both if dev_of.get(a, set()) & dev_of.get(b, set())]
+                if dev:
+                    link(i, j, f"'{dev[0][0][:24]}' and '{dev[0][1][:24]}' came from the same device", True)
+                hi, hj = top[i], top[j]
+                if hi[0] and hi[0] == hj[0] and hi[1] * 2 >= len(cs[i][1]["events"]) and hj[1] * 2 >= len(cs[j][1]["events"]):
+                    link(i, j, f"most copies of both came in through {hi[0]}", False)
+        groups: dict = {}
+        for i in range(len(cs)):
+            groups.setdefault(find(i), []).append(i)
+        out = []
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            reasons = [r for (a, b), rs in why.items() if a in members and b in members for r in rs]
+            texts = sorted(cs[i][1]["events"][-1].text[:60] for i in members)
+            gid = hashlib.sha1("|".join(texts).encode(), usedforsecurity=False).hexdigest()[:10]
+            if self.links_dismissed.get(gid, 0) > time.time() - 7 * 86400:
+                continue
+            names = collections.Counter()
+            hops = collections.Counter()
+            for i in members:
+                for e in cs[i][1]["events"]:
+                    names[e.sender] += 1
+                hops.update(cs[i][1]["hops"])
+            seen = set()
+            rs = []
+            for t, st in sorted(reasons, key=lambda r: not r[1]):
+                if t not in seen:
+                    seen.add(t)
+                    rs.append({"text": t, "strong": st})
+            tot = sum(hops.values()) or 1
+            out.append({"id": gid, "strong": any(r["strong"] for r in rs), "reasons": rs[:6],
+                        "campaigns": [{"example": cs[i][1]["events"][-1].text[:80], "copies": len(cs[i][1]["events"]),
+                                       "names": len(cs[i][1]["senders"])} for i in members][:8],
+                        "names": [n for n, _c in names.most_common(8)], "name_count": len(names),
+                        "hops": [{"hop": h, "share": round(100 * c / tot)} for h, c in hops.most_common(4)]})
+        out.sort(key=lambda g: (not g["strong"], -g["name_count"]))
+        return out[:8]
 
     SOURCE_HOLD_SHARE = 0.35    # one repeater's share of all airtime, for one kind, before it counts as over its budget
     SOURCE_HOLD_PACKETS = 20
@@ -11100,6 +11238,31 @@ class SpamGuard:
         if hashlib.sha256(data).hexdigest() != want[name]:
             raise ValueError(f"The download of {name} doesn't match the release's checksum, so it wasn't installed")
 
+    RELEASE_WORKFLOW = ".github/workflows/release.yml"
+
+    def _check_build_attestation(self, name: str, data: bytes) -> None:
+        """Before installing, ask GitHub for the build attestation of this exact file and check it: a provenance
+        record naming the file's checksum, made by this project's release workflow, whose signature matches the
+        certificate it carries. A file someone uploaded by hand, or changed, has none and isn't installed. This
+        isn't full offline Sigstore verification (that needs libraries too heavy for a small Pi); the record
+        comes from GitHub over a checked connection."""
+        digest = hashlib.sha256(data).hexdigest()
+        repo = self._repo()
+        url = f"https://api.github.com/repos/{repo}/attestations/sha256:{digest}"
+        req = urllib.request.Request(url, headers={"User-Agent": "SpamGuard-updater", "Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                got = json.loads(r.read(4_000_000).decode("utf-8", "replace"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise ValueError(f"GitHub has no build record for {name}, so it wasn't installed") from None
+            raise ValueError(f"Couldn't check the build record with GitHub (HTTP {e.code}); it is tried again later") from None
+        except Exception as e:
+            raise ValueError(f"Couldn't check the build record with GitHub ({e}); it is tried again later") from None
+        if attestation_ok(got, digest, repo, self.RELEASE_WORKFLOW):
+            return
+        raise ValueError(f"The build record for {name} didn't check out, so it wasn't installed")
+
     def start_plugin_update(self, want: str, force: bool = False, auto: bool = False) -> dict:
         """As an openHop plugin: fetch the new version's plugin file, hand it to openHop, and ask openHop to
         restart SpamGuard on it. Settings and everything learnt stay in the plugin's data folder."""
@@ -11128,6 +11291,9 @@ class SpamGuard:
                     wheel = bytes(buf)
                 if not self.cfg.get("plugin_wheel_url"):
                     self._check_release_file(want, name, wheel)
+                    if self.cfg.get("plugin_verify_build", True):
+                        self._update_step("Checking GitHub's build record for this version...", pct=33)
+                        self._check_build_attestation(name, wheel)
                 if not force and self.cfg.get("plugin_preflight", True):
                     self._update_step("Checking the update can install on this machine...", pct=34)
                     why = self.plugin_preflight(wheel)
@@ -11373,6 +11539,7 @@ class SpamGuard:
                              "confidence": self.code_confidence(k) if k != "DIRECT" else None})
             hops.sort(key=lambda x: (-x["caught"] - x["random"] * 3, -x["messages"]))
             direct = next((h for h in hops if h["hop"] == "DIRECT" and h["signals"]), None)
+            campaign_links = self.campaign_links(a["campaigns"])
             campaigns = []
             for _cid, cc in sorted(a["campaigns"].items(), key=lambda kv: -len(kv[1]["senders"])):
                 campaigns.append({"senders": len(cc["senders"]), "count": len(cc["events"]),
@@ -11475,7 +11642,7 @@ class SpamGuard:
                                        "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,
                                        "ttl": int(c.get("route_surge_ttl", 7200))}
                                       for k, v in sorted(self.route_suggest.items(), key=lambda kv: -kv[1]["names"])],
-                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "recent": recent,
+                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "campaign_links": campaign_links, "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "own": self.own_summary(),
@@ -12247,6 +12414,13 @@ class SpamGuard:
                 self.note("Cleared all automatic blocks")
                 msg = ("Automatic blocks cleared. SpamGuard won't re-create those for 24 hours "
                        "(Blocks > Never blocked > Not re-blocked > Clear undoes that). New spam can still make new ones.")
+            elif op == "dismiss_link":
+                gid = str(body.get("id") or "")
+                if not re.fullmatch(r"[0-9a-f]{10}", gid):
+                    raise ValueError("Unknown link group.")
+                self.links_dismissed[gid] = time.time()
+                self._save_state(force=True)
+                msg = "Set aside for a week."
             elif op == "oh_advert_limit":
                 on = bool(body.get("on"))
                 r = self._api("POST", "/api/update_advert_rate_limit_config", {"rate_limit_enabled": on}, timeout=20)
@@ -12348,7 +12522,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
