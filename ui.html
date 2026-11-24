@@ -498,6 +498,26 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;back
 .skip{position:absolute;left:-9999px;top:8px;z-index:60;background:var(--panel);color:var(--ink);border:2px solid var(--focus);border-radius:6px;padding:10px 14px}
 .skip:focus{left:12px}
 h3.sub{font-size:.95rem;margin:16px 0 6px}
+.donut{width:176px;height:176px;border-radius:50%;display:grid;place-items:center;flex:none}
+.donut>div{width:104px;height:104px;border-radius:50%;background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2}
+.donut b{font-size:1.375rem}.donut span{font-size:.75rem;color:var(--soft)}
+.dwrap{display:flex;flex-wrap:wrap;align-items:center;gap:20px;margin:8px 0}
+.dleg{flex:1 1 200px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.dleg button,.worth button{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 8px;background:none;border:0;border-radius:6px;color:var(--ink);text-align:left;cursor:pointer;width:100%}
+.dleg button:hover,.worth button:hover,.hbar:hover{background:var(--signal-tint)}
+.dleg .nm{flex:1;min-width:0}.chev{color:var(--soft)}
+.dleg .sw{flex:none}.dleg .row{display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 8px}
+.drill2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:24px}
+.worth{display:flex;flex-direction:column;gap:8px}
+.worth button{border:1px solid var(--line);background:var(--paper)}
+.worth button>span:first-child{flex:1}
+.hbars{display:flex;flex-direction:column;gap:2px}
+.hbar{display:grid;grid-template-columns:minmax(70px,170px) minmax(0,1fr) 48px;align-items:center;gap:10px;width:100%;min-height:40px;padding:2px 6px;background:none;border:0;border-radius:6px;color:var(--ink);text-align:left;cursor:pointer}
+.hbar .tr{height:14px;background:var(--line);border-radius:4px;overflow:hidden}.hbar .tr i{display:block;height:100%;border-radius:4px}
+.hbar b{text-align:right}
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.875rem;color:var(--soft)}.crumb .quietlink{min-height:44px}
+#airKindSec h4{margin:18px 0 6px;font-size:.9375rem}
+
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 main:focus{outline:none}
 .page h2[tabindex="-1"]:focus{outline:none}
@@ -1941,11 +1961,12 @@ function renderLockdown(d){
 function renderAdvisor(d){
   const a=d.advisor, sec=$("#advSec"); if(!a||!sec) return;
   sec.hidden=false;
-  const n=a.families.filter(f=>f.suggestion).length;
+  const fams=a.families.filter(f=>f.key!=="level");   // the level has its own Suggested marker and Auto on the slider
+  const n=fams.filter(f=>f.suggestion).length;
   $("#advSum").textContent=n?`Settings advisor: ${n} suggestion${n===1?"":"s"}`:(a.steady?"Settings advisor: nothing to suggest":"Settings advisor: still gathering");
   const open=$("#advBox").open;
-  $("#advBody").innerHTML=`<p class="explain">${a.steady?"Your traffic has settled, so suggestions are based on "+a.days+" days and "+fmtN(a.messages)+" messages.":"It waits until it has seen at least 3 days and 200 messages, and your busy times have stopped moving. So far: "+a.days+" days, "+fmtN(a.messages)+" messages."} It only suggests. Nothing changes unless you press a button.</p>
-    <ul class="rows">${a.families.map(f=>`<li><b>${esc(f.label)}</b> <span class="explain">${esc(f.status)}</span>
+  $("#advBody").innerHTML=`<p class="explain">${a.steady?"Your traffic has settled, so suggestions are based on "+a.days+" days and "+fmtN(a.messages)+" messages.":"It waits until it has seen at least 3 days and 200 messages, and your busy times have stopped moving. So far: "+a.days+" days, "+fmtN(a.messages)+" messages."} It only suggests. Nothing changes unless you press a button. The protection level has its own suggestion, on the slider.</p>
+    <ul class="rows">${fams.map(f=>`<li><b>${esc(f.label)}</b> <span class="explain">${esc(f.status)}</span>
       ${f.suggestion?`<div class="banner"><b>${esc(f.suggestion.text)}</b> ${esc(f.suggestion.why)}${f.suggestion.set?`<div>${btn("Use this",'/settings',f.suggestion.set,"go")}</div>`:""}</div>`:""}</li>`).join("")}</ul>`;
   $("#advBox").open=open;
 }
@@ -2140,36 +2161,84 @@ function renderFloodNav(d){
   c.innerHTML=flood+noise;
 }
 const AIR_KIND={"channel messages":"k0","adverts":"k1","requests":"k2","anonymous requests":"k3","group data":"k4"};   // one colour per kind everywhere
-function renderAirBreakdown(fg){
+let AIRV=null, AIRFG=null;   // which drill-down is open on FloodGuard's airtime section: null, {k:"kind"} or {e:"way in"}
+const AIRVAR={k0:"var(--c-flood)",k1:"var(--c-fu)",k2:"var(--c-fa)",k3:"var(--c-stop)",k4:"var(--c-let)",k5:"var(--c-used)"};
+function airGo(v){ AIRV=v; if(AIRFG) renderAirBreakdown(AIRFG,true); const s=$("#airKindSec"); if(s){ s.scrollIntoView({block:"start",behavior:reduceMotion()?"auto":"smooth"}); const f=s.querySelector("[data-airfocus]"); if(f) f.focus({preventScroll:true}); } }
+function airDonut(slices,mid,sub,aria){ let a=0; const g=slices.map(x=>{ const s0=a; a+=x.share; return `${AIRVAR[x.c]} ${s0}% ${a}%`; }).join(",");
+  return `<div class="donut" role="img" aria-label="${esc(aria)}" style="background:conic-gradient(${g}${a<100?`,var(--line) ${a}% 100%`:""})"><div><b>${esc(mid)}</b><span>${esc(sub)}</span></div></div>`; }
+function airLegend(slices){ return `<div class="dleg">${slices.map(x=>x.go?`<button type="button" onclick='airGo(${JSON.stringify(x.go)})'><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span aria-hidden="true" class="chev">›</span></button>`:`<div class="row"><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span class="chev"></span></div>`).join("")}</div>`; }
+function airBars(rows,cls,mono){ return `<div class="hbars">${rows.map((r,i)=>`<button type="button" class="hbar" onclick='airGo(${JSON.stringify(r.go)})'><span class="${mono?"route":""}">${esc(r.name)}</span><span class="tr" aria-hidden="true"><i class="sw-${cls||r.c}" style="width:${Math.max(2,Math.round(100*r.share/(rows[0].share||1)))}%"></i></span><b>${r.share}%</b></button>`).join("")}</div>`; }
+function renderAirBreakdown(fg,force){
+  AIRFG=fg;
   const b=fg.breakdown, el=$("#airBody"); if(!el) return;
+  if(!force&&el.contains(document.activeElement)&&document.activeElement!==document.body) return;   // don't pull focus out from under a keyboard user
   if(!b||!b.packets){ el.innerHTML=`<p class="empty">Nothing heard in the last hour.</p>`; return; }
   const sec=x=>x>=60?`${(x/60).toFixed(1)} min`:`${x} s`, cd=x=>x==="direct"?"heard directly":`<span class="route">${esc(x)}</span>`;
-  const cap=k=>k[0].toUpperCase()+k.slice(1), top=b.kinds.filter(k=>AIR_KIND[k.kind]), rest=b.kinds.filter(k=>!AIR_KIND[k.kind]);
-  const slices=top.map(k=>({c:AIR_KIND[k.kind],name:cap(k.kind),share:k.share})).concat(rest.length?[{c:"k5",name:"Other",share:rest.reduce((a,k)=>a+k.share,0)}]:[]).filter(x=>x.share>0);
-  let h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""}</p>
-  <div class="sharebar" role="img" aria-label="Share of the last hour's airtime: ${esc(slices.map(x=>`${x.name} ${x.share}%`).join(", "))}">${slices.map(x=>`<i class="sw-${x.c}" style="flex:${x.share}" title="${esc(x.name)} ${x.share}%"></i>`).join("")}</div>
-  <div class="legend">${slices.map(x=>`<span><i class="sw sw-${x.c}"></i>${esc(x.name)} ${x.share}%</span>`).join("")}</div>
-  <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>
-  ${b.kinds.map(k=>`<tr><td>${esc(k.kind[0].toUpperCase()+k.kind.slice(1))}</td><td class="num">${fmtN(k.packets)}</td><td class="num">${sec(k.airtime_s)}</td><td class="num">${k.share}%</td></tr>`).join("")}</table></div></details>
-  ${b.radios&&b.radios.length?`<h3 class="sub">By radio</h3><p class="explain">openHop says which of this repeater's radios heard each packet.</p><div class="scroll"><table><caption class="sr-only">Airtime by receiving radio</caption><tr><th scope="col">Radio</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Busy</th></tr>${b.radios.map(r=>`<tr><td>${esc(r.radio)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${sec(r.airtime_s)}</td><td class="num">${r.busy}%</td></tr>`).join("")}</table></div>`:""}
-  <h3 class="sub">Came in through</h3><div class="scroll"><table><caption class="sr-only">Airtime by the repeater it came in through</caption><tr><th scope="col">First repeater</th><th scope="col">Mostly</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Share</th></tr>
-  ${b.entry.map(r=>`<tr><td>${cd(r.hop)}</td><td>${esc(r.main)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${r.share}%</td></tr>`).join("")}</table></div>`;
-  if(b.clockwork&&b.clockwork.length) h+=`<h3 class="sub">Sent like clockwork</h3><ul class="rows">${b.clockwork.map(r=>`<li><span class="what">${esc(r.kind[0].toUpperCase()+r.kind.slice(1))} from ${r.anon?"key":"code"} <span class="route">${esc(r.from)}</span>${r.to_me?" to this repeater":r.to?` to <span class="route">${esc(r.to)}</span>`:""}</span><span class="why">every ${r.every} s, ${fmtN(r.packets)} times, via ${cd(r.entry)}. Often an app polling for telemetry.</span></li>`).join("")}</ul><p class="explain">The codes are one byte of each device's key, so several devices can share one: a tag, not an identity. What a request asks for is encrypted, so telemetry, status and other requests look the same.</p>`;
-  if(b.hours&&b.hours.length>1) h+=`<h3 class="sub">By kind, last 24 hours</h3><p class="explain">Seconds of airtime each hour.</p><div class="legend" id="airKindLegend"></div><div class="chart" id="chartAirKind" role="img"></div>`;
-  if(b.anon&&b.anon.length) h+=`<h3 class="sub">Anonymous requests by sender key</h3><p class="explain">These carry the start of the sender's key in the clear, so one device asking a lot shows up here.</p><div class="scroll"><table><caption class="sr-only">Anonymous requests by sender key</caption><tr><th scope="col">Key starts</th><th scope="col">Asking</th><th scope="col">Via</th><th scope="col" class="num">Packets</th></tr>
-    ${b.anon.map(a=>`<tr><td><span class="route">${esc(a.key)}</span></td><td>${a.to_me?"this repeater":`<span class="route">${esc(a.to)}</span>`}</td><td>${cd(a.entry)}</td><td class="num">${fmtN(a.packets)}</td></tr>`).join("")}</table></div>`;
-  if(b.holds&&b.holds.length) h+=`<h3 class="sub">Congestion holds${fg.source_holds==="watch"?" (watch only)":""}</h3><ul class="rows">${b.holds.map(x=>`<li><span class="what"><span class="route">${esc(x.hop)}</span> ${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}${x.times>1?`, ${x.times} times today`:""}</span></li>`).join("")}</ul>`;
+  const cap=k=>k[0].toUpperCase()+k.slice(1);
+  const ecls=["k0","k1","k2","k3","k4"], ent=b.entry.slice(0,5).map((r,i)=>({...r,c:ecls[i]}));
+  const kc=k=>AIR_KIND[k]||"k5";
+  const back=`<nav class="crumb" aria-label="Where you are"><button type="button" class="quietlink" onclick="airGo(null)">‹ All airtime</button></nav>`;
+  const cwRow=r=>`<li><span class="what">${esc(cap(r.kind))} from ${r.anon?"key":"code"} <span class="route">${esc(r.from)}</span>${r.to_me?" to this repeater":r.to?` to <span class="route">${esc(r.to)}</span>`:""}</span><span class="why">every ${r.every} s, ${fmtN(r.packets)} times, via ${cd(r.entry)}. Often an app polling for telemetry.</span></li>`;
+  const cwNote=`<p class="explain">The codes are one byte of each device's key, so several devices can share one: a tag, not an identity. What a request asks for is encrypted, so telemetry, status and other requests look the same.</p>`;
+  let h="";
+  const k=AIRV&&AIRV.k!=null?b.kinds.find(x=>x.kind===AIRV.k):null, en=AIRV&&AIRV.e!=null?b.entry.find(x=>x.hop===AIRV.e):null;
+  if(k){
+    const cw=(b.clockwork||[]).filter(r=>r.kind===k.kind);
+    h=`${back}
+    <h3 class="sub" tabindex="-1" data-airfocus>${esc(cap(k.kind))}</h3><p class="explain">${k.share}% of the last hour's airtime: ${fmtN(k.packets)} packets, ${sec(k.airtime_s)}.</p>
+    <div class="drill2"><div><h4>Came in through</h4>${airBars((k.via||[]).map(v=>({name:v.name==="direct"?"heard directly":v.name,share:v.share,go:{e:v.name}})),kc(k.kind),true)}</div>
+    <div><h4>Each hour, last 24</h4><div class="chart" id="chartAirOne" role="img"></div></div></div>
+    ${cw.length?`<h4>Sent like clockwork</h4><ul class="rows">${cw.map(cwRow).join("")}</ul>${cwNote}`:""}
+    ${k.ptype===7&&b.anon&&b.anon.length?`<h4>By sender key</h4><p class="explain">These carry the start of the sender's key in the clear, so one device asking a lot shows up here.</p><div class="scroll"><table><caption class="sr-only">Anonymous requests by sender key</caption><tr><th scope="col">Key starts</th><th scope="col">Asking</th><th scope="col">Via</th><th scope="col" class="num">Packets</th></tr>
+      ${b.anon.map(a=>`<tr><td><span class="route">${esc(a.key)}</span></td><td>${a.to_me?"this repeater":`<span class="route">${esc(a.to)}</span>`}</td><td>${cd(a.entry)}</td><td class="num">${fmtN(a.packets)}</td></tr>`).join("")}</table></div>`:""}`;
+  } else if(en){
+    const cw=(b.clockwork||[]).filter(r=>r.entry===en.hop.slice(0,2)||r.entry===en.hop), hl=(b.holds||[]).filter(x=>x.hop===en.hop);
+    h=`${back}
+    <h3 class="sub" tabindex="-1" data-airfocus>Through ${cd(en.hop)}</h3><p class="explain">${en.share}% of the last hour's airtime: ${fmtN(en.packets)} packets, mostly ${esc(en.main)}.</p>
+    <h4>What it carried</h4>${airBars((en.mix||[]).map(m=>({name:cap(m.name),share:m.share,c:kc(m.name),go:{k:m.name}})))}
+    ${cw.length?`<h4>Sent like clockwork</h4><ul class="rows">${cw.map(cwRow).join("")}</ul>${cwNote}`:""}
+    ${hl.length?`<h4>Congestion holds</h4><ul class="rows">${hl.map(x=>`<li><span class="what">${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}</span></li>`).join("")}</ul>`:""}`;
+  } else {
+    AIRV=null;
+    const top=b.kinds.filter(x=>AIR_KIND[x.kind]), rest=b.kinds.filter(x=>!AIR_KIND[x.kind]);
+    const ks=top.map(x=>({c:AIR_KIND[x.kind],name:cap(x.kind),share:x.share,go:{k:x.kind}})).concat(rest.length?[{c:"k5",name:"Other kinds",share:rest.reduce((a,x)=>a+x.share,0),go:null}]:[]).filter(x=>x.share>0);
+    const es=ent.map(r=>({c:r.c,name:r.hop==="direct"?"heard directly":r.hop,html:`${r.hop==="direct"?"heard directly":`<span class="route">${esc(r.hop)}</span>`} <span class="explain">${esc(r.main)}</span>`,share:r.share,go:{e:r.hop}}));
+    const er=100-es.reduce((a,x)=>a+x.share,0); if(er>0&&b.entry.length>5) es.push({c:"k5",name:"Others",share:er,go:null});
+    const worth=[];
+    const an=(b.anon||[])[0], antot=(b.kinds.find(x=>x.ptype===7)||{}).packets||0;
+    if(an&&antot&&an.packets>=0.25*antot) worth.push({go:{k:"anonymous requests"},t:`<b>One device sent ${Math.round(100*an.packets/antot)}% of the anonymous requests</b> (key <span class="route">${esc(an.key)}</span>), via ${cd(an.entry)}.`});
+    (b.clockwork||[]).slice(0,2).forEach(r=>worth.push({go:{k:r.kind},t:`<b>${r.anon?"Key":"Code"} <span class="route">${esc(r.from)}</span> sends ${esc(r.kind)} every ${r.every} s</b>${r.to_me?" to this repeater":""}, often an app reading telemetry.`}));
+    h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""} Tap a kind or a repeater for the detail.</p>
+    <div class="drill2">
+      <div><h4>By kind of packet</h4><div class="dwrap">${airDonut(ks,sec(b.airtime_s).replace(" min","").replace(" s",""),b.airtime_s>=60?"minutes":"seconds","Airtime by kind: "+ks.map(x=>`${x.name} ${x.share}%`).join(", "))}${airLegend(ks)}</div>
+        <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>
+        ${b.kinds.map(x=>`<tr><td>${esc(cap(x.kind))}</td><td class="num">${fmtN(x.packets)}</td><td class="num">${sec(x.airtime_s)}</td><td class="num">${x.share}%</td></tr>`).join("")}</table></div></details></div>
+      <div><h4>By the repeater it came in through</h4><div class="dwrap">${airDonut(es,String(b.entry.length),b.entry.length===1?"way in":"ways in","Airtime by the repeater it came in through: "+es.map(x=>`${x.name} ${x.share}%`).join(", "))}${airLegend(es)}</div>
+        <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by the repeater it came in through</caption><tr><th scope="col">First repeater</th><th scope="col">Mostly</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Share</th></tr>
+        ${b.entry.map(r=>`<tr><td>${cd(r.hop)}</td><td>${esc(r.main)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${r.share}%</td></tr>`).join("")}</table></div></details></div>
+    </div>
+    ${worth.length?`<h4>Worth a look</h4><div class="worth">${worth.map(w=>`<button type="button" onclick='airGo(${JSON.stringify(w.go)})'><span>${w.t}</span><span aria-hidden="true" class="chev">›</span></button>`).join("")}</div>`:""}
+    ${b.radios&&b.radios.length?`<h4>By radio</h4><p class="explain">openHop says which of this repeater's radios heard each packet.</p><div class="scroll"><table><caption class="sr-only">Airtime by receiving radio</caption><tr><th scope="col">Radio</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Busy</th></tr>${b.radios.map(r=>`<tr><td>${esc(r.radio)}</td><td class="num">${fmtN(r.packets)}</td><td class="num">${sec(r.airtime_s)}</td><td class="num">${r.busy}%</td></tr>`).join("")}</table></div>`:""}
+    ${b.hours&&b.hours.length>1?`<h4>By kind, last 24 hours</h4><p class="explain">Seconds of airtime each hour.</p><div class="legend" id="airKindLegend"></div><div class="chart" id="chartAirKind" role="img"></div>`:""}
+    ${b.holds&&b.holds.length?`<h4>Congestion holds${fg.source_holds==="watch"?" (watch only)":""}</h4><ul class="rows">${b.holds.map(x=>`<li><span class="what"><span class="route">${esc(x.hop)}</span> ${esc(x.label)}${x.active?"<span class='tag would'>held now</span>":x.watch?"<span class='tag plain'>would hold</span>":""}</span><span class="why">${x.share}% of the airtime while the radio was ${x.busy}% busy, last ${ago(x.last)}${x.times>1?`, ${x.times} times today`:""}</span></li>`).join("")}</ul>`:""}`;
+  }
   el.innerHTML=h;
-  const ch=$("#chartAirKind"); if(!ch||PAGE!=="floodguard") return;
-  const tot={}; b.hours.forEach(x=>Object.entries(x.kinds).forEach(([k,v])=>tot[k]=(tot[k]||0)+v[1]));
-  const names=Object.keys(tot).sort((a,c)=>tot[c]-tot[a]), main=names.filter(n=>AIR_KIND[n]), others=names.filter(n=>!AIR_KIND[n]), other=others.length>0;
-  const segs=main.map(k=>[AIR_KIND[k],cap(k)]).concat(other?[["k5","Other"]]:[]);
-  $("#airKindLegend").innerHTML=segs.map(x=>`<span><i class="sw sw-${x[0]}"></i>${esc(x[1])}</span>`).join("");
-  const by={}; b.hours.forEach(x=>by[x.hour]=x.kinds);
+  if(PAGE!=="floodguard") return;
   const now=Math.floor(Date.now()/3600000)*3600, hhm=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  const rows=[]; for(let t=now-23*3600;t<=now;t+=3600){ const k=by[t]||{}, r={label:hhm(t),full:hhm(t)};
-    main.forEach(n=>r[AIR_KIND[n]]=Math.round(((k[n]||[0,0])[1])/1000));
-    if(other) r.k5=Math.round(others.reduce((a,n)=>a+((k[n]||[0,0])[1]),0)/1000);
+  const by={}; (b.hours||[]).forEach(x=>by[x.hour]=x.kinds);
+  const one=$("#chartAirOne");
+  if(one&&k){ const c=kc(k.kind), rows=[];
+    for(let t=now-23*3600;t<=now;t+=3600){ const v=Math.round((((by[t]||{})[k.kind])||[0,0])[1]/1000); rows.push({label:hhm(t),full:hhm(t),[c]:v,tip:`${hhm(t)}: ${v} s`}); }
+    columns(one,rows,{every:6,col:"Hour",unit:"",segs:[c],cols:[[c,cap(k.kind)," s"]]});
+    one.setAttribute("aria-label",`Seconds of airtime on ${k.kind}, each hour of the last 24 hours. The numbers are in the table below.`); }
+  const ch=$("#chartAirKind"); if(!ch) return;
+  const tot={}; b.hours.forEach(x=>Object.entries(x.kinds).forEach(([kk,v])=>tot[kk]=(tot[kk]||0)+v[1]));
+  const names=Object.keys(tot).sort((a,c)=>tot[c]-tot[a]), main=names.filter(nn=>AIR_KIND[nn]), others=names.filter(nn=>!AIR_KIND[nn]), other=others.length>0;
+  const segs=main.map(kk=>[AIR_KIND[kk],cap(kk)]).concat(other?[["k5","Other"]]:[]);
+  $("#airKindLegend").innerHTML=segs.map(x=>`<span><i class="sw sw-${x[0]}"></i>${esc(x[1])}</span>`).join("");
+  const rows=[]; for(let t=now-23*3600;t<=now;t+=3600){ const kk=by[t]||{}, r={label:hhm(t),full:hhm(t)};
+    main.forEach(nn=>r[AIR_KIND[nn]]=Math.round(((kk[nn]||[0,0])[1])/1000));
+    if(other) r.k5=Math.round(others.reduce((a,nn)=>a+((kk[nn]||[0,0])[1]),0)/1000);
     r.tip=`${hhm(t)}: `+segs.map(x=>`${x[1].toLowerCase()} ${r[x[0]]} s`).join(", "); rows.push(r); }
   columns(ch,rows,{every:6,col:"Hour",unit:"",segs:segs.map(x=>x[0]),cols:segs.map(x=>[x[0],x[1]," s"])});
   ch.setAttribute("aria-label","Seconds of airtime by kind of packet, each hour of the last 24 hours. The numbers are in the table below.");

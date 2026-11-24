@@ -7770,7 +7770,7 @@ class SpamGuard:
         e = b["e"].setdefault(base, [0, 0.0, hop, {}])
         e[0] += 1
         e[1] += ms
-        e[3][ptype] = e[3].get(ptype, 0) + 1
+        e[3][ptype] = e[3].get(ptype, 0) + max(ms, 0.001)   # airtime by kind through this way in
         if len(hop) > len(e[2]):
             e[2] = hop
         if radio:
@@ -7821,12 +7821,16 @@ class SpamGuard:
         radios: dict = {}
         me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
         to_me = sum(b["tm"] for b in mins)
+        kind_via: dict = {}   # kind -> way in -> airtime
         for b in mins:
             for pt, (n, ms) in b["k"].items():
                 k = kinds.setdefault(pt, [0, 0.0])
                 k[0] += n
                 k[1] += ms
             for base, (n, ms, hop, pk) in b["e"].items():
+                for pt, v in pk.items():
+                    kv = kind_via.setdefault(pt, {})
+                    kv[base] = kv.get(base, 0.0) + v
                 en = entry.setdefault(base, {"packets": 0, "ms": 0.0, "kinds": collections.Counter(), "hop": hop})
                 en["packets"] += n
                 en["ms"] += ms
@@ -7856,11 +7860,13 @@ class SpamGuard:
         clock.sort(key=lambda r: -r["packets"])
         return {"minutes": secs // 60, "airtime_s": round(total / 1000, 1), "packets": sum(b["n"] for b in rows), "me": me or None,
                 "kinds": sorted(({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "ptype": pt, "packets": v[0],
-                                  "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0}
+                                  "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0,
+                                  "via": self._shares({(entry[bs]["hop"] if bs in entry else bs) or "direct": x for bs, x in (kind_via.get(pt) or {}).items()})}
                                  for pt, v in kinds.items()), key=lambda r: -r["airtime_s"]),
                 "entry": [{"hop": v["hop"] if v["hop"] else "direct", "packets": v["packets"], "airtime_s": round(v["ms"] / 1000, 1),
                            "share": round(100 * v["ms"] / total) if total else 0,
-                           "main": PTYPE_LABEL.get(v["kinds"].most_common(1)[0][0], "?")}
+                           "main": PTYPE_LABEL.get(v["kinds"].most_common(1)[0][0], "?"),
+                           "mix": self._shares({PTYPE_LABEL.get(pt, f"type {pt}"): x for pt, x in v["kinds"].items()})}
                           for _b, v in sorted(entry.items(), key=lambda kv: -kv[1]["ms"])[:6]],
                 "anon": [{"key": k, "packets": v["packets"], "to": v["to"].most_common(1)[0][0],
                           "to_me": bool(me) and v["to"].most_common(1)[0][0] == me, "entry": v["entry"].most_common(1)[0][0]}
@@ -7872,6 +7878,12 @@ class SpamGuard:
                 "hours": [{"hour": int(k), "kinds": {PTYPE_LABEL.get(int(pt), f"type {pt}"): v for pt, v in (self.hist[k].get("kt") or {}).items()}}
                           for k in sorted(self.hist) if int(k) >= now - 86400 and self.hist[k].get("kt")],
                 "holds": self.source_holds_view(now)}
+
+    @staticmethod
+    def _shares(d: dict, top: int = 6) -> list:
+        """{name: amount} as the biggest few, each with its percentage of the whole."""
+        tot = sum(d.values()) or 1
+        return [{"name": k, "share": round(100 * v / tot)} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:top]]
 
     SOURCE_HOLD_SHARE = 0.35    # one repeater's share of all airtime, for one kind, before it counts as over its budget
     SOURCE_HOLD_PACKETS = 20
