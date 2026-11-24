@@ -1415,9 +1415,9 @@ def attestation_ok(got: dict, digest: str, repo: str, workflow: str) -> bool:
     """One of GitHub's attestations for a file is a build provenance naming its sha256, made by this repository's
     release workflow, signed with the certificate it carries, and that certificate names the same workflow."""
     try:
-        from Crypto.Hash import SHA256 as _H
-        from Crypto.PublicKey import ECC as _ECC
-        from Crypto.Signature import DSS as _DSS
+        from Crypto.Hash import SHA256 as _H  # nosec B413 (pycryptodome, maintained)
+        from Crypto.PublicKey import ECC as _ECC  # nosec B413
+        from Crypto.Signature import DSS as _DSS  # nosec B413
     except ImportError:
         return False
     who = f"https://github.com/{repo}/{workflow}@".encode()
