@@ -139,7 +139,7 @@ g.update_action=lambda op,body: called.append((op,body)) or {"ok":True}
 g.update_info={"latest":newer,"published":time.time()-600}; g._maybe_auto_update()
 check(not called,"a version just out is left a while first")
 g.update_info={"latest":newer,"published":time.time()-3*3600}; g._maybe_auto_update()
-check(called==[("install_update",{"version":newer})],"then installed, with nobody pressing anything")
+check(called==[("install_update",{"version":newer,"auto":True})],"then installed, with nobody pressing anything")
 g._maybe_auto_update(); check(len(called)==1,"once")
 
 # --- people: regulars are learnt and settle with nobody marking anything

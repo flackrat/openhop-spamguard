@@ -575,6 +575,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 <div class="topbar"><button id="menuBtn" aria-label="Open menu" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><span class="t" id="topTitle">SpamGuard</span><span class="adv-pill">Advanced</span></div>
 <div class="wrap">
 <div id="banners"></div>
+<p id="connNote" class="explain" role="status" hidden style="margin:8px 16px"></p>
 <div class="page" data-page="overview">
 <div class="hero" id="hero"><h1>Loading…</h1></div>
 <div id="updCallout"></div>
@@ -1079,7 +1080,10 @@ function renderTop(d){
   let b="";
   if(d.service&&d.service.state==="bad") b+=`<div class="banner bad"><b>SpamGuard needs attention.</b>${esc(d.service.problems[0])}</div>`;
   // Blocks are only as good as openHop's enforcement of them: say so while protecting without the rule-check fix.
-  if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix===false) b+=`<div class="banner warn"><b>openHop needs a one-line fix before blocks are fully reliable.</b> Its rule checker has a known bug that can occasionally let blocked spam through. <a href="#/health">See Health</a> to apply it.</div>`;
+  if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix===false) b+=d.metrics.rulecheck_where==="container"
+    ?`<div class="banner warn"><b>Blocks are less reliable here until openHop fixes a known bug.</b> openHop runs in a container, so SpamGuard can't apply its one-line fix. <a href="#/health">See Health</a>.</div>`
+    :`<div class="banner warn"><b>openHop needs a one-line fix before blocks are fully reliable.</b> Its rule checker has a known bug that can occasionally let blocked spam through. <a href="#/health">See Health</a> to apply it.</div>`;
+  else if(d.mode==="protect"&&!d.paused&&d.metrics&&d.metrics.rulecheck_fix==null&&d.metrics.rulecheck_where!=="normal") b+=`<div class="banner"><b>SpamGuard couldn't check openHop for a known bug.</b> If blocked spam still appears on the mesh, this may be why. <a href="#/health">See Health</a>.</div>`;
   if(d.direct_spam) b+=`<div class="banner warn"><b>The spammer may be within direct range of your repeater.</b>Spam is arriving with no repeaters on its route (${esc(d.direct_spam.signals.join(", "))}). Repeater blocks can't help here, so only text blocks and duplicate suppression will stop it.</div>`;
   if(d.health.ok && d.summary.channel_messages===0) b+=`<div class="banner info"><b>No channel messages heard yet.</b>Once your repeater hears Public channel traffic it will appear below.</div>`;
   // Nothing is held outside Protect. Said on every page until it is switched back (not something to dismiss for good).
@@ -1741,7 +1745,7 @@ function qRender(){
   const rows=d.rows;
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
     <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b>${copyTag(r.copy)}<span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
-      <span class="q-txt">${esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
+      <span class="q-txt">${r.reaction?`<span class="explain">Reacted ${esc(r.reaction.emoji)} to ${esc(r.reaction.to)}</span>`:esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
     <span class="q-line" style="justify-content:flex-end">${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
     :`<li><p class="empty">${Q.q||fl?"Nothing matches.":Q.status==="review"?"Nothing is waiting for your answer.":"Nothing here for the last "+(d.days===1?"24 hours":"7 days")+"."}</p></li>`;
   $("#qMore").innerHTML=d.rows.length>=Q.limit?`<button type="button" class="quiet" id="qMoreBtn">Show more</button>`:"";
@@ -1778,6 +1782,7 @@ function qDetail(){
   box.innerHTML=`<div class="q-line" style="justify-content:space-between"><span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span><span class="explain">${qWhen(r.ts)}${r.channel?", "+esc(r.channel):""}</span></div>
     <h3 style="margin:10px 0 0;font-size:1rem">${esc(r.sender)}</h3>
     <div class="msg-text">${esc(r.text)}</div>
+    ${r.reaction?`<p class="explain">An emoji reaction (${esc(r.reaction.emoji)}) to a message from ${esc(r.reaction.to)} heard here, so it isn't counted as a repeat.</p>`:""}
     ${r.label?`<p class="q-labline"><span class="tag ${r.label==="spam"?"stop":"plain"}">${r.label==="spam"?"Spam":"Not spam"}</span> ${esc(qLab(r))}${r.label_at?" "+esc(qLabWhen(r.label_at)):""}. </p>`:""}
     <dl><dt>Why</dt><dd>${esc(r.why)}</dd>
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
@@ -1853,7 +1858,7 @@ function renderUpdate(d){
   let uc="";
   if(running) uc=`<div class="callout info"><span><strong>Updating SpamGuard…</strong> ${esc(st.message||"It restarts for a minute; this page reconnects by itself.")}</span>${upProg(st)}</div>`;
   else if(u.available&&u.managed_update) uc=`<div class="callout info"><span><strong>Version ${esc(u.latest)} is out.</strong> You have ${esc(u.current)}. ${esc(u.managed_update)}</span><a href="#/updates" class="quietlink">What's new</a></div>`;
-  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. ${u.auto_update?"It installs by itself soon, or press Update now.":"Nothing changes until you press Update."}</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
+  else if(u.available) uc=`<div class="callout info"><span><strong>Update ready to install: version ${esc(u.latest)}.</strong> You have ${esc(u.current)}. ${u.auto_update?"It installs by itself soon, or press Update now.":"Nothing changes until you press Update."}${st.state==="failed"&&st.ts&&Date.now()/1000-st.ts<86400?` The last try didn't finish: ${esc(st.message||"no reason given")}`:""}</span><span class="cbtns"><a href="#/updates" class="quietlink">What's new</a><button class="go" data-confirm="Install SpamGuard ${esc(u.latest)} now? SpamGuard restarts for a minute; your settings and blocks are kept, and the current version is put back automatically if the new one doesn't start." onclick="post('/install_update',{version:'${esc(u.latest)}'})">Update now</button></span></div>`;
   else if(st.state==="failed" && st.ts && Date.now()/1000-st.ts<86400) uc=`<div class="callout"><span><strong>The last update didn't finish.</strong> ${esc(st.message||"")}</span><a href="#/updates" class="quietlink">Details</a></div>`;
   if(st.state==="failed" && st.can_force && !running && u.available && !u.managed_update)
     btns+=`<button class="quiet" data-confirm="Install SpamGuard ${esc(u.latest)} anyway? openHop may have to compile a library, which can take a long time on a small Pi, and if it is cut short SpamGuard is left uninstalled until you add it again from the Plugins page." onclick="post('/install_update',{version:'${esc(u.latest)}',force:true})">Update anyway</button>`;
@@ -1991,7 +1996,7 @@ const fmtN=n=>(n||0).toLocaleString();
 function fmtAir(ms){ const s=(ms||0)/1000; if(s<90) return s.toFixed(s<10?1:0)+" s"; if(s<5400) return (s/60).toFixed(s<600?1:0)+" min"; return (s/3600).toFixed(1)+" h"; }
 function renderLeaks(m){
   const l=(m&&m.d1&&m.d1.l)||0;
-  $("#leakCallout").innerHTML=l?`<div class="callout"><span><strong>openHop passed on ${l} spam message${l===1?"":"s"} in the last 24 hours that SpamGuard had a block for.</strong> ${m.rulecheck_fix===false?"This is a known openHop bug; SpamGuard includes a one-line fix. Run <code>sudo bash /opt/openhop_spamguard/tune-openhop.sh</code> on the Pi.":"Check the Health page for details."}</span><a href="#/health" class="quietlink">Health</a></div>`:"";
+  $("#leakCallout").innerHTML=l?`<div class="callout"><span><strong>openHop passed on ${l} spam message${l===1?"":"s"} in the last 24 hours that SpamGuard had a block for.</strong> ${m.rulecheck_fix===false?(m.rulecheck_where==="container"?"This is a known openHop bug that can't be fixed from inside its container; it stops once openHop releases a fix.":"This is a known openHop bug; SpamGuard includes a one-line fix on the Health page."):"Check the Health page for details."}</span><a href="#/health" class="quietlink">Health</a></div>`:"";
 }
 /* channel picker: the Overview graphs for all channels together, or one channel SpamGuard reads */
 let chPick=(()=>{ try{ return localStorage.getItem("sgch")||""; }catch(e){ return ""; } })();
@@ -2439,15 +2444,26 @@ function renderSources(d){
   }).catch(()=>{ $("#mapBox").style.display="none"; $("#mapNote").textContent="The map needs internet. The table below has the same information."; });
 }
 
+// One refresh at a time, given up after 20 s; paused while the page is hidden. On a weak signal the last screen
+// stays up with a small note, and "Not responding" only shows after several misses in a row.
 async function load(force){
+  if(load.inflight&&!force) return;
+  if(!force&&document.hidden) return;
   const editing=!force && busy();
-  try{ const r=await fetch("/status",{cache:"no-store",headers:{"X-API-Key":store.get("sgkey")||""}});
-    if(r.status===401){ if(!load.asked){ load.asked=true; const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(k){ store.set("sgkey",k); load.asked=false; return load(true); } }
+  const ctl=new AbortController(), timer=setTimeout(()=>ctl.abort(),20000);
+  load.inflight=true;
+  try{ const r=await fetch("/status",{cache:"no-store",headers:{"X-API-Key":store.get("sgkey")||""},signal:ctl.signal});
+    if(r.status===401){ if(!load.asked){ load.asked=true; const k=prompt("Enter the SpamGuard password (listen_api_key in the config file)"); if(k){ store.set("sgkey",k); load.asked=false; load.inflight=false; return load(true); } }
       $("#hero").innerHTML="<h1>This SpamGuard has a password.</h1><p>Reload the page to enter it.</p>"; return; }
-    const d=await r.json(); S=d; render(d, editing); }
-  catch(e){ $("#hero").innerHTML="<h1>Can't reach SpamGuard.</h1><p>The service may be restarting (this page retries every few seconds). If this stays, check it on the Pi with: sudo systemctl status openhop-spamguard</p>";
-    $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; }
+    if(!r.ok) throw new Error("status "+r.status);
+    const d=await r.json(); S=d; load.misses=0; $("#connNote").hidden=true; render(d, editing); }
+  catch(e){ load.misses=(load.misses||0)+1;
+    if(S&&load.misses<4){ const n=$("#connNote"); n.hidden=false; n.textContent="Connection slow, retrying. What you see may be a few seconds old."; }
+    else { $("#hero").innerHTML="<h1>Can't reach SpamGuard.</h1><p>The service may be restarting, or the connection is weak (this page keeps retrying). If this stays, check it on the Pi with: sudo systemctl status openhop-spamguard</p>";
+      $("#hPill").innerHTML="<span class='tag stop'>Not responding</span>"; } }
+  finally{ clearTimeout(timer); load.inflight=false; }
 }
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) load(); });
 document.addEventListener("change",ev=>{ if(ev.target.tagName==="SELECT") ev.target.blur(); });
 /* ---------- display and accessibility options (saved per browser) ---------- */
 const OPT_KEYS={text:"sgtext",theme:"sgtheme",contrast:"sgcontrast",motion:"sgmotion"};

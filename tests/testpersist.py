@@ -167,7 +167,7 @@ called=[]
 g9.update_info={"latest":newer,"published":now-3*3600}; g9.auto_update_tried={}
 g9.update_action=lambda op,body: called.append((op,body)) or {"ok":True}
 g9._maybe_auto_update()
-check(called==[("install_update",{"version":newer})],"when due it asks for that version, once")
+check(called==[("install_update",{"version":newer,"auto":True})],"when due it asks for that version, once, as an automatic install")
 check(g9.auto_update_tried.get("version")==newer,"and remembers it tried")
 g9._maybe_auto_update(); check(len(called)==1,"not twice")
 sg.IN_PLUGIN=sg.IN_PLUGIN_SAVE

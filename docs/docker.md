@@ -51,7 +51,7 @@ Most settings are changed on SpamGuard's own page, and those choices are kept in
 | `SPAMGUARD_LEVEL` | Protection level from 0 (gentle) to 100 (tough) at first start; 50 is balanced |
 | `SPAMGUARD_SENSITIVITY` | The older choice: `relaxed`, `balanced` or `strict` (0, 50 or 100) |
 | `SPAMGUARD_CHANNELS` | Extra hashtag channels to protect, comma-separated, e.g. `#chat,#test` |
-| `SPAMGUARD_PASSWORD` | Ask for a password before anything is changed on the page. Without one, only devices on your own network get an answer. Rootless Docker can make every visitor look local, so set one if the port is reachable from outside |
+| `SPAMGUARD_PASSWORD` | Ask for a password before anything is changed on the page. Without one, only devices on your own network get an answer, and every one of them is trusted. Rootless Docker can make every visitor look local, so set one if the port is reachable from outside |
 | `TZ` | Your time zone, e.g. `Europe/Amsterdam` |
 
 You can also put a `config.yaml` (the same file the normal install uses) in the data folder; settings in it take priority over the environment, apart from the token.
