@@ -49,7 +49,8 @@ async def main():
         check(asked and "yourself" in asked[0], "it asks before replacing them")
         check(g.cfg["level"]==60 and g.cfg["slow_repeat_max"]==5, "Cancel keeps your own value and still moves the level")
         # Auto: a switch under the slider; moving the slider yourself switches it off
-        await pg.evaluate("openSettings('')"); await pg.evaluate("location.hash='#/overview'"); await pg.wait_for_timeout(600)
+        g.apply_settings({"set_forget_prompt":False})
+        await pg.evaluate("openSettings('')"); await pg.evaluate("location.hash='#/overview'"); await pg.evaluate("load(true)"); await pg.wait_for_timeout(800)
         await pg.click("#lvlAuto"); await pg.wait_for_timeout(1500)
         check(g.cfg.get("level_auto") is True, "the Auto switch turns Auto on")
         await pg.evaluate("const e=document.querySelector('#lvl'); e.value=30; e.dispatchEvent(new Event('input'))")

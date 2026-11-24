@@ -665,6 +665,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <div class="lvl-track"><input id="lvl" class="lvl-range" type="range" min="0" max="100" step="1" value="50"><span class="lvl-pin" id="lvlPin" aria-hidden="true" hidden>Suggested</span></div>
     <div class="lvl-scale" aria-hidden="true"><span>Gentle</span><span>Easy-going</span><span>Balanced</span><span>Firm</span><span>Tough</span></div>
     <div class="lvl-pending" id="lvlPending" hidden><span id="lvlPendTxt"></span><button class="go" id="lvlApply" type="button">Apply</button><button class="quiet" id="lvlCancel" type="button">Cancel</button></div>
+    <p class="explain" id="lvlAutoLine" hidden></p>
     <div id="lvlOwn"></div>
     <details id="lvlMore"><summary>What this level means and would have done</summary><p class="explain" id="sensExplain"></p><div id="lvlDetail"></div></details>
   </section>
@@ -676,7 +677,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <p style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center"><button type="button" class="go" id="sfOn">Look after itself</button>
       <button type="button" class="quiet" id="sfNo">Not now</button></p>
   </div>
-    <div class="care-part"><details id="autoBox" open><summary id="autoSum">Auto</summary>
+    <div class="care-part" id="autoPart"><details id="autoBox" open><summary id="autoSum">Auto</summary>
       <div class="lvl-auto"><label><input type="checkbox" id="lvlAuto"> Auto: let SpamGuard move this by itself</label></div>
       <p class="explain" id="lvlAutoNote"></p></details></div>
   <div id="autoUpdSec" class="care-part">
@@ -1271,6 +1272,9 @@ function renderLevel(d){
   const pend=$("#lvlPending"); pend.hidden=lvlDrag==null;
   const A=L.auto||{}, ab=$("#lvlAuto"); if(document.activeElement!==ab) ab.checked=!!A.on;
   $("#lvlAutoNote").textContent=A.on?`Auto is on. It tightens quickly, loosens slowly and never goes above ${A.max}.`+(A.waiting?` Right now: ${A.waiting}.`:"")+(A.last?` Last moved ${ago(A.last)}.`:""):"Off. The Suggested marker shows where SpamGuard would put it.";
+  const sf=(d.set_forget||{});
+  $("#autoPart").hidden=!!sf.offer||!!A.on;   // "Look after itself" covers it: its own switch only when that was turned down and Auto is off
+  $("#lvlAutoLine").hidden=!A.on; if(A.on) $("#lvlAutoLine").textContent=`Moves by itself (Auto)${A.last?`, last moved ${ago(A.last)}`:""}. It never goes above ${A.max}.`;
   const box=$("#autoBox"), sumTxt=A.on?`Protection level moves itself${A.last?`, last moved ${ago(A.last)}`:""}. Change`:"Protection level: Auto is off. Turn it on";
   $("#autoSum").textContent=sumTxt;
   { // Chosen once, it tucks away; while it is off it stays open, as a choice not yet made. The state is kept in this browser.
@@ -2005,7 +2009,8 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d); renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d);
+  { const care=$("#careSec"); if(care) care.hidden=[...care.querySelectorAll(":scope>.care-part")].every(x=>x.hidden); } renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
