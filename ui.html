@@ -502,6 +502,10 @@ body:not([data-page=overview]) .ov-only{display:none}
 .subtabs{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--line);margin:0 0 14px}
 .subtabs a{padding:10px 14px;min-height:44px;display:inline-flex;align-items:center;gap:6px;color:var(--soft);text-decoration:none;border-bottom:3px solid transparent;margin-bottom:-1px;font-weight:600}
 .subtabs a:hover{color:var(--ink)}.subtabs a[aria-current=page]{color:var(--ink);border-bottom-color:var(--signal)}
+.blk-change{grid-column:1/-1;margin-top:4px}.blk-change>summary{display:inline-flex;align-items:center;min-height:36px;padding:2px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:.875rem}
+.blk-panel{padding:8px 0 2px;display:flex;flex-direction:column;gap:8px}
+summary.as-button{display:inline-flex;align-items:center;min-height:44px;padding:4px 16px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-weight:600}
+#adminSec details{border-top:1px solid var(--line);padding:6px 0}#adminSec summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
 h3.sub{font-size:.95rem;margin:16px 0 6px}
 .mode-h{font-size:1rem;margin:0 0 8px}hr.soft{border:0;border-top:1px solid var(--line);margin:14px 0}
 #careSec .care-part+.care-part{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}#careSec h3{font-size:.95rem;margin:0 0 6px}
@@ -751,18 +755,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="foldbar" id="blocksFold"></div>
   <div class="inline-form adv"><button class="quiet" type="button" id="ruleCopy">Copy rule summary</button><span class="explain" style="margin-left:10px">SpamGuard's rules in openHop, in order, with their numbers, to paste into a message or notes.</span></div>
 </section>
-<section id="mostHeldSec">
-  <h2>Most held, last 7 days</h2>
-  <p class="lead">Names with the most copies held, and how much they send. Names that took over each other's repeats are shown together.</p>
-  <div class="scroll"><table id="mostHeld"></table></div>
-</section>
 <section id="lockSec">
   <div class="health-head"><h2>Emergency: lockdown</h2><span id="lPill"></span></div>
   <p class="explain" id="lLine"></p>
   <div class="inline-form" id="lBtns"></div>
 </section>
-<section class="adv">
-  <h2>Block something yourself</h2>
+<section class="adv"><details id="addBlockBox"><summary class="as-button">Add a block yourself</summary>
+  <h2 class="sr-only">Block something yourself</h2>
   <p class="lead">A repeater's code is its 2, 4 or 6 characters in routes (27 in 27&gt;B1&gt;7E). Text blocks match exactly, need at least 12 characters, last up to a week and never stop people SpamGuard knows.</p>
   <div class="inline-form">
     <label for="hopIn">Repeater</label><input id="hopIn" size="7" placeholder="27" autocomplete="off">
@@ -784,13 +783,17 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <select id="textTtl" aria-label="How long to block the text"></select>
     <button class="go" id="textBtn">Block text</button>
   </div>
-
+</details>
 </section><section class="adv">
   <details id="neverBox"><summary><b>Never blocked</b> <span class="explain" id="neverCount"></span></summary>
   <h3 style="font-size:0.90625rem;margin:10px 0 0">Text never blocked</h3>
   <p class="explain">Messages containing any of these (capitals ignored) are never treated as copies or campaigns. Use for bots, net check-ins or regular announcements.</p>
   <div class="chips" id="trustTexts"></div>
   <div class="inline-form"><input id="trustTextIn" aria-label="Text never to block" size="30" placeholder="e.g. Weekly net check-in"><button id="trustTextBtn">Add</button></div>
+  <h3 style="font-size:0.90625rem;margin:10px 0 0">Repeaters never blocked automatically</h3>
+  <p class="explain">For example your own repeater or a neighbour's. Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
+  <div class="chips" id="trustHops"></div>
+  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
   <h3 style="font-size:0.90625rem;margin:10px 0 0">Not re-blocked</h3>
   <p class="explain">Blocks you removed by hand. SpamGuard won't put these back for 24 hours.</p>
   <div class="chips" id="suppressed"></div>
@@ -839,12 +842,6 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="lead">By first repeater, last few minutes. “Never block” stops automatic blocks on that repeater, for example your neighbours.</p>
   <div class="scroll"><table id="hops"></table></div>
   <p class="more" id="learnt"></p>
-</section>
-<section class="adv">
-  <h2>Repeaters never blocked automatically</h2>
-  <p class="lead">For example your own repeater or a neighbour's. Covers longer codes too, so 27 also covers 27AB. You can still block these by hand.</p>
-  <div class="chips" id="trustHops"></div>
-  <div class="inline-form"><input id="trustHopIn" aria-label="Repeater code never to block" size="7" placeholder="27"><button id="trustHopBtn">Add</button></div>
 </section>
 </div>
 <div class="page" data-page="campaigns"><section>
@@ -913,30 +910,32 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="explain">How FloodGuard decides is explained on the <a href="#/help" onclick="setTimeout(()=>{const h=document.getElementById('helpFG');if(h)h.scrollIntoView()},50)">Help</a> page.</p>
 </section>
 </div>
-<div class="page" data-page="settings"><section id="profSec">
-  <h2>Settings profiles</h2>
-  <p class="lead">A saved set of detection settings you can restore or share as a file. It never includes channels, keys, exceptions, the mode or the evidence log.</p>
-  <p class="explain" id="profState"></p>
-  <ul class="rows" id="profList"></ul>
-  <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
-  <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
-</section>
-<section id="decSec">
-  <h2>Your own blocks and exceptions</h2>
-  <p class="lead">Keep two SpamGuards in step: export the blocks, mutes and exceptions you added here, then import the file on the other one. Importing only adds. Channel keys and anything SpamGuard learnt itself are left out.</p>
-  <div class="inline-form"><button id="decExport">Export my blocks and exceptions</button><label class="quiet" for="decFile">Import from another SpamGuard</label><input type="file" id="decFile" accept=".json,application/json"></div>
-</section>
-<section id="settingsSec">
+<div class="page" data-page="settings"><section id="settingsSec">
   <h2>Detection settings</h2>
-  <div class="inline-form"><label for="lvlExact">Protection level, 0 to 100</label><input id="lvlExact" type="number" min="0" max="100" step="1" inputmode="numeric" style="width:6em"><button type="button" id="lvlExactSet">Set</button><span class="explain" id="lvlExactName"></span></div>
+  <p class="explain"><b>Protection level:</b> <span id="lvlExactName"></span> <a href="#/overview">Change it on the Overview</a>.</p>
   <p class="lead">The protection level sets the starred values. Changing one overrides it. Try changes in Monitor first.</p>
   <div class="inline-form"><input id="setFind" type="search" aria-label="Search settings" placeholder="Search settings" autocomplete="off"><span class="explain" id="setCount"></span></div>
   <div id="settings"></div>
   <div class="savebar"><button class="go saveSet" id="saveSet">Save settings</button><button class="cancelSet" id="cancelSet">Discard changes</button><span class="explain">You have unsaved changes.</span></div>
   <p style="margin:14px 0 0"><button class="quiet danger" id="resetSet">Reset settings to defaults</button> <span class="explain">Detection settings only; blocks, exceptions and the evidence log stay.</span></p>
 </section>
-<section>
-  <h2>Start again from scratch</h2>
+<section id="adminSec">
+  <h2>Backup and reset</h2>
+  <details id="profBox"><summary><b>Settings profiles</b></summary>
+
+  <p class="lead">A saved set of detection settings you can restore or share as a file. It never includes channels, keys, exceptions, the mode or the evidence log.</p>
+  <p class="explain" id="profState"></p>
+  <ul class="rows" id="profList"></ul>
+  <div class="inline-form"><input id="profName" aria-label="Profile name" maxlength="40" placeholder="e.g. Busy evenings"><button id="profSave">Save current settings as a profile</button></div>
+  <div class="inline-form"><label class="quiet" for="profFile">Import a profile file</label><input type="file" id="profFile" accept=".json,application/json"></div>
+  </details>
+  <details id="decBox"><summary><b>Copy your blocks and exceptions to another SpamGuard</b></summary>
+
+  <p class="lead">Keep two SpamGuards in step: export the blocks, mutes and exceptions you added here, then import the file on the other one. Importing only adds. Channel keys and anything SpamGuard learnt itself are left out.</p>
+  <div class="inline-form"><button id="decExport">Export my blocks and exceptions</button><label class="quiet" for="decFile">Import from another SpamGuard</label><input type="file" id="decFile" accept=".json,application/json"></div>
+  </details>
+  <details id="startBox"><summary><b>Start again from scratch</b></summary>
+
   <p class="lead">Back to a fresh install: every block removed, settings and the level reset, and trusted names, repeaters, texts, routes and known people cleared. Regulars are then relearnt from the last day.</p>
   <p class="explain">Kept: the mode, your channels, the evidence log setting and wardriving. FloodGuard relearns for three days. The page starts from now; the evidence log keeps everything, and your own openHop rules are never touched.</p>
   <p style="margin:10px 0 0"><button class="danger" id="resetAll">Start again from scratch</button></p>
@@ -944,9 +943,9 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <span><strong>Are you sure?</strong> This can't be undone. Type <b>RESET</b> below to confirm.</span>
     <div class="inline-form"><input id="resetWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="resetGo" disabled>Yes, start again</button><button class="quiet" id="resetNo">Cancel</button></div>
   </div>
-</section>
-<section>
-  <h2>Clear spam history</h2>
+  </details>
+  <details id="histDet"><summary><b>Clear spam history</b></summary>
+
   <p class="lead">Empties the charts, the spam map and table, and the "Possibly genuine" list. Blocks, settings, known people and the evidence log stay, and protection carries on.</p>
   <p style="margin:10px 0 0"><button class="danger" id="histBtn">Clear spam history</button></p>
   <div id="histBox" class="callout" hidden style="flex-direction:column;align-items:stretch;margin:12px 0 0">
@@ -981,7 +980,13 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h3 style="font-size:0.90625rem;margin:14px 0 0">Trust a name yourself</h3>
   <p class="explain">A trusted name is always let through. Names can be copied, so campaigns are still blocked, and a trusted name turning up somewhere new is logged.</p>
   <div class="inline-form"><input id="trustIn" aria-label="Trusted sender name" placeholder="Sender name exactly as shown"><button id="trustBtn">Trust</button></div>
-</section></div>
+</section><section id="mostHeldSec">
+  <h2>Most held, last 7 days</h2>
+  <p class="lead">Names with the most copies held, and how much they send. Names that took over each other's repeats are shown together.</p>
+  <div class="scroll"><table id="mostHeld"></table></div>
+  </details>
+</section>
+</div>
 <div class="page" data-page="evidence"><section id="evSec">
   <h2>Evidence log</h2>
   <p class="lead">A daily record of every channel message SpamGuard reads, what it did and your labels. Download it to review, or to replay against other settings.</p>
@@ -1274,7 +1279,7 @@ function renderLevel(d){
   $("#lvlOwn").innerHTML=own.length?`<p class="explain"><span class="tag would">your own setting${own.length===1?"":"s"}</span> ${own.length===1?"One value this level sets has":own.length+" values this level sets have"} been changed by you, and yours ${own.length===1?"is":"are"} used instead: ${own.slice(0,3).map(esc).join(", ")}${own.length>3?" and more":""}. <a href="#/settings" onclick="return openSettings(${esc(JSON.stringify(own[0]))})">See ${own.length===1?"it":"them"} in Settings</a></p>`
     +(lvlDrag==null&&((L.own||[]).some(o=>!o.file))?`<p class="explain">${L.auto&&L.auto.on?"Auto level can't change these while they are yours. ":""}<button type="button" class="quiet" id="lvlOwnClear" data-confirm="Clear your own values for the settings this level sets, so the level's values are used? Settings the level doesn't set are kept.">Use the level's values instead</button></p>`:""):"";
   const ex=$("#lvlExact"); if(ex && document.activeElement!==ex) ex.value=L.value;
-  const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)}. You can also slide it on the Overview.`;
+  const exn=$("#lvlExactName"); if(exn) exn.textContent=`${lvlName(L.value)} (${L.value} of 100).`;
   const key=JSON.stringify([p,pv,L.mine,d.settings&&d.settings.evidence_log]); if(key===lvlKey) return; lvlKey=key;
   $("#lvlDetail").innerHTML=lvlDetail(d,p,pv);
 }
@@ -1316,10 +1321,7 @@ function lvlSend(v){
   if(own.length) replace=confirm(`You have set ${own.length===1?"one value":own.length+" values"} this level controls yourself (${own.join(", ")}).\n\nOK: use this level's values instead of yours.\nCancel: keep yours and change the level for everything else.`);
   lvlDrag=null; post("/settings",replace?{level:v,replace_own:true}:{level:v});
 }
-$("#lvlExactSet").addEventListener("click",()=>{ const v=Number($("#lvlExact").value);
-  if(!Number.isInteger(v)||v<0||v>100){ toast("The protection level is a whole number from 0 to 100",true); return; }
-  if(S&&S.level&&v===S.level.value){ toast("It's already "+v); return; } lvlSend(v); });
-$("#lvlExact").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#lvlExactSet").click(); });
+
 $("#lvl").addEventListener("input",e=>{ lvlDrag=+e.target.value; if(S) renderLevel(S); });
 /* Moving the slider only previews. A touch while scrolling a phone must never change the setting, so it is applied by the button. */
 $("#lvlAuto").addEventListener("change",e=>{ post("/settings",{level_auto:e.target.checked}); });
@@ -1381,6 +1383,8 @@ function renderHealth(d){
 }
 
 /* ---------- blocks ---------- */
+const BLKOPEN=new Set();   // which blocks have their Change panel open, kept across refreshes
+document.addEventListener("toggle",e=>{ const t=e.target; if(t&&t.classList&&t.classList.contains("blk-change")){ if(t.open) BLKOPEN.add(t.dataset.k); else BLKOPEN.delete(t.dataset.k); } },true);
 function renderBlocks(d){
   const adv=document.body.classList.contains("advanced");
   const sug=d.route_suggestions||[], tsug=d.type_suggestions||[];
@@ -1432,7 +1436,8 @@ function renderBlocks(d){
       (d.channels.includes(b.channel)||b.channel==="*"?[]:[b.channel]).concat(d.channels).map(c=>`<option value="${esc(c)}" ${c===b.channel?"selected":""}>On ${esc(c)}</option>`).join("")}<option value="*" ${b.channel==="*"?"selected":""}>On every channel</option></select>`:"";
     return `<li><div><div class="what">${title}${except}${eff(b)}${kindTag(b)}</div>
       <div class="why">${esc(b.reason)}. Caught ${b.hits} message${b.hits===1?"":"s"}${b.last_hit?", last "+ago(b.last_hit):""}. ${left(b.expires_in,b.permanent)}${routes?". "+routes:""}.${adv&&b.rules&&b.rules.length?` <span class="rulenum">openHop rule ${b.rules.length>3?b.rules.slice(0,3).join(", ")+"…":b.rules.join(", ")}</span>`:""}</div></div>
-      <div class="acts">${chSel}${b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet")}${btn("Remove","/unblock",{key:b.key},"danger")}</div>${extra}</li>`;
+      <div class="acts">${btn("Remove","/unblock",{key:b.key},"danger")}</div>${(()=>{ const keep=b.permanent||b.kind==="text"||b.kind==="words"||(b.kind==="hop"&&b.mode==="contains")?"":btn("Keep until I remove it","/extend",{key:b.key,permanent:true},"quiet");
+        return chSel||keep||extra?`<details class="blk-change" data-k="${esc(b.key)}"${BLKOPEN.has(b.key)?" open":""}><summary>Change</summary><div class="blk-panel">${chSel||keep?`<div class="inline-form">${chSel}${keep}</div>`:""}${extra}</div></details>`:""; })()}</li>`;
   };
   const items=list.map(item);
   const fg=(d.metrics||{}).floodguard||{}, fgEff=d.paused?"<span class='tag plain'>paused</span>":fg.acting?"<span class='tag stop'>blocking</span>":fg.learning?"<span class='tag would'>counting while learning</span>":"<span class='tag would'>watching only</span>";

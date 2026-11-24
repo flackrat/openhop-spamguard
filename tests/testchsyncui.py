@@ -21,6 +21,7 @@ async def main():
             opts=await sel.evaluate("s=>[...s.options].map(o=>o.value)")
             check(sorted(opts[:-1])==["#trailchat","Public"] and opts[-1]=="*","choices: "+str(opts))
             if vp["width"]==1280:
+                await sel.evaluate("s=>s.closest('details').open=true"); await pg.wait_for_timeout(200)
                 await sel.select_option("*"); await pg.wait_for_timeout(800)
                 mute=[x for x in g.blocks.values() if x["kind"]=="burst" and x["value"]=="Zed Quill"]
                 check(len(mute)==1 and mute[0]["channel"]=="*","choosing every channel moves the mute")
@@ -29,6 +30,7 @@ async def main():
                 await pg.evaluate("localStorage.setItem('sgadv','1')"); await pg.goto(URL+"#/settings"); await pg.reload(); await pg.wait_for_timeout(1200)
                 tc=await pg.eval_on_selector_all("#textChan option","os=>os.map(o=>o.value)")
                 check("*" in tc,"adding a text block offers every channel")
+                await pg.evaluate("document.getElementById('decBox').open=true")
                 async with pg.expect_download() as dl:
                     await pg.click("#decExport")
                 d=json.load(open(await (await dl.value).path()))
