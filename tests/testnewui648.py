@@ -91,10 +91,10 @@ async def main():
                 check(len(heads)==1+len(leg),f"{tag}: a table column per legend entry: {heads} {leg}")
                 check("By radio" in t and "radio-2" in t,f"{tag}: two radios shown")
                 check("would hold" in t,f"{tag}: the watch-only congestion hold shown")
-                check(not await pg.is_hidden("#ohAdvSec") and "stopped 41" in await pg.inner_text("#ohAdvSec"),f"{tag}: openHop's advert limit shown")
+                check(await pg.get_attribute("#ohAdvSec","hidden") is None and "stopped 41" in await pg.text_content("#ohAdvSec") and await pg.locator("#fgSetSec #ohAdvSec").count()==1,f"{tag}: openHop's advert limit, with FloodGuard's settings")
                 await scan("FloodGuard")
                 if SHOTS: await pg.locator("#airKindSec").screenshot(path=f"{SHOTS}/floodguard-airtime-{tag}.png")
-                if SHOTS: await pg.locator("#ohAdvSec").screenshot(path=f"{SHOTS}/floodguard-advertlimit-{tag}.png")
+                if SHOTS and await pg.is_visible("#ohAdvSec"): await pg.locator("#ohAdvSec").screenshot(path=f"{SHOTS}/floodguard-advertlimit-{tag}.png")
                 # People
                 await pg.goto("http://127.0.0.1:18193/#/people"); await pg.wait_for_timeout(1500)
                 await pg.click("#pplMoreChips summary"); await pg.wait_for_timeout(200)

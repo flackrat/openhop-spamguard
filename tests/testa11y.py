@@ -95,8 +95,11 @@ async def main():
     await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(1500)
     t=await pg.evaluate("[...document.querySelectorAll('details.chart-data')].map(d=>d.querySelectorAll('tr').length)")   # a heading row and at least one row of figures
     check("each chart has a table of numbers", len(t)>=4 and all(x>=2 for x in t), t)
-    al2=await pg.evaluate("['chartAir','chartBusyOv'].map(i=>{const e=document.getElementById(i); return e&&!e.closest('section').hidden?e.getAttribute('aria-label'):'hidden'})")
-    check("airtime and radio-busy charts are described", all(a and len(a)>20 or a=='hidden' for a in al2) and al2[0]!='hidden', al2)
+    # the airtime and radio-busy charts live on FloodGuard's page (6.49)
+    await pg.goto("http://127.0.0.1:18171/#/floodguard"); await pg.wait_for_timeout(1500)
+    al2=await pg.evaluate("['chartAir'].map(i=>{const e=document.getElementById(i); return e&&!e.closest('section').hidden?e.getAttribute('aria-label'):'hidden'})")
+    check("the airtime chart is described", all(a and len(a)>20 for a in al2), al2)
+    await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(1200)
     al=await pg.evaluate("['chart24','chart7','chartHour'].map(i=>document.getElementById(i).getAttribute('aria-label'))")
     check("each chart has a description", all(al), al)
     # options

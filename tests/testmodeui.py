@@ -54,7 +54,7 @@ async def main():
         await pg.click("#lvlAuto"); await pg.wait_for_timeout(1800)
         check(g.cfg.get("level_auto") is True, "ticking it turns Auto on")
         check(not await pg.evaluate("document.querySelector('#autoBox').open"), "once on, it folds away")
-        check("Auto is on" in (await pg.text_content("#autoSum")), "leaving one line saying so")
+        check("moves itself" in (await pg.text_content("#autoSum")), "leaving one line saying so")
         check(not await pg.is_visible("#lvlAutoNote"), "the long note is out of the way")
         await pg.click("#autoSum"); await pg.wait_for_timeout(300)
         await pg.evaluate("load(true)"); await pg.wait_for_timeout(600)
