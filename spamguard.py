@@ -2042,7 +2042,10 @@ class SpamGuard:
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
-        self.air_kinds: collections.deque = collections.deque(maxlen=40000)   # (ts, type, entry, ms, from, to, anon key)
+        # Airtime by kind, per minute (added up as packets arrive, so the page never walks every packet), and the
+        # times of requests and anonymous requests for spotting clockwork polling.
+        self.kind_min: collections.OrderedDict = collections.OrderedDict()
+        self.req_times: collections.deque = collections.deque(maxlen=5000)   # (ts, type, from, to, way in): the latest requests are enough to see polling
         self._kind_seen: collections.OrderedDict = collections.OrderedDict()
         self.source_watch: dict = {}     # congestion holds it would make (watch only) or made, for the FloodGuard page
         self.type_events: collections.deque = collections.deque(maxlen=60000)   # (ts, type, first repeater, packet id)
@@ -7693,9 +7696,50 @@ class SpamGuard:
             dst, akey = pl[:1].hex().upper(), pl[1:5].hex().upper()
         ms = self.airtime_ms(length) if length > 0 else 0.0
         radio = str(p.get("rx_radio_id") or "")[:24]
-        self.air_kinds.append((ts, ptype, path[0].upper() if path else "", ms, src, dst, akey, radio))
-        while self.air_kinds and self.air_kinds[0][0] < time.time() - 3600:
-            self.air_kinds.popleft()
+        hop = path[0].upper() if path else ""
+        base = hop[:2] or "direct"
+        mk = int(ts // 60 * 60)
+        b = self.kind_min.get(mk)
+        if b is None:
+            b = self.kind_min[mk] = {"n": 0, "ms": 0.0, "k": {}, "e": {}, "a": {}, "r": {}, "pb": {}, "tm": 0}
+            if len(self.kind_min) > 1 and next(reversed(self.kind_min)) != mk:   # out of order: keep minutes sorted
+                self.kind_min = collections.OrderedDict(sorted(self.kind_min.items()))
+            cut = time.time() - 3660
+            while self.kind_min and next(iter(self.kind_min)) < cut:
+                self.kind_min.popitem(last=False)
+            b = self.kind_min.get(mk) or b
+        b["n"] += 1
+        b["ms"] += ms
+        k = b["k"].setdefault(ptype, [0, 0.0])
+        k[0] += 1
+        k[1] += ms
+        e = b["e"].setdefault(base, [0, 0.0, hop, {}])
+        e[0] += 1
+        e[1] += ms
+        e[3][ptype] = e[3].get(ptype, 0) + 1
+        if len(hop) > len(e[2]):
+            e[2] = hop
+        if radio:
+            r = b["r"].setdefault(radio, [0, 0.0])
+            r[0] += 1
+            r[1] += ms
+        if ptype in self.SOURCE_HOLD_KINDS and hop:
+            pb = b["pb"].setdefault((ptype, hop[:2]), [0, 0.0, hop])
+            pb[0] += 1
+            pb[1] += ms
+            if len(hop) > len(pb[2]):
+                pb[2] = hop
+        if akey:
+            a = b["a"].setdefault(akey, [0, {}, {}])
+            a[0] += 1
+            a[1][dst] = a[1].get(dst, 0) + 1
+            a[2][base] = a[2].get(base, 0) + 1
+        if ptype in (0, 7):
+            me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
+            if me and dst == me:
+                b["tm"] += 1
+            if akey or src:
+                self.req_times.append((ts, ptype, akey or src, dst, base))
 
     @staticmethod
     def _every(times: list) -> Optional[int]:
@@ -7715,39 +7759,40 @@ class SpamGuard:
         anonymous requests by sender key, requests sent to this repeater, and anything sent like clockwork."""
         now = now or time.time()
         cut = now - secs
-        rows = [r for r in self.air_kinds if cut <= r[0] <= now]
-        total = sum(r[3] for r in rows) or 0.0
+        mins = [b for m, b in self.kind_min.items() if cut - 60 < m <= now]
+        total = sum(b["ms"] for b in mins)
         kinds: dict = {}
         entry: dict = {}
         anon: dict = {}
-        polls: dict = {}
-        me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
-        to_me = 0
         radios: dict = {}
-        for ts, pt, hop, ms, src, dst, akey, radio in rows:
-            if radio:
+        me = str((getattr(self, "me", None) or {}).get("hash") or "")[:2].upper()
+        to_me = sum(b["tm"] for b in mins)
+        for b in mins:
+            for pt, (n, ms) in b["k"].items():
+                k = kinds.setdefault(pt, [0, 0.0])
+                k[0] += n
+                k[1] += ms
+            for base, (n, ms, hop, pk) in b["e"].items():
+                en = entry.setdefault(base, {"packets": 0, "ms": 0.0, "kinds": collections.Counter(), "hop": hop})
+                en["packets"] += n
+                en["ms"] += ms
+                en["kinds"].update(pk)
+                if len(hop) > len(en["hop"]):
+                    en["hop"] = hop
+            for key, (n, to, via) in b["a"].items():
+                a = anon.setdefault(key, {"packets": 0, "to": collections.Counter(), "entry": collections.Counter()})
+                a["packets"] += n
+                a["to"].update(to)
+                a["entry"].update(via)
+            for radio, (n, ms) in b["r"].items():
                 rr = radios.setdefault(radio, [0, 0.0])
-                rr[0] += 1
+                rr[0] += n
                 rr[1] += ms
-            k = kinds.setdefault(pt, [0, 0.0])
-            k[0] += 1
-            k[1] += ms
-            base = hop[:2] or "direct"
-            en = entry.setdefault(base, {"packets": 0, "ms": 0.0, "kinds": collections.Counter(), "hop": hop})
-            en["packets"] += 1
-            en["ms"] += ms
-            en["kinds"][pt] += 1
-            if len(hop) > len(en["hop"]):
-                en["hop"] = hop
-            if akey:
-                a = anon.setdefault(akey, {"packets": 0, "to": collections.Counter(), "entry": collections.Counter()})
-                a["packets"] += 1
-                a["to"][dst] += 1
-                a["entry"][base] += 1
-            if pt in (0, 7) and me and dst == me:
-                to_me += 1
-            if pt in (0, 7) and (akey or src):
-                polls.setdefault((pt, akey or src, dst, base), []).append(ts)
+        polls: dict = {}
+        for ts, pt, who, dst, base in self.req_times:
+            if cut <= ts <= now:
+                polls.setdefault((pt, who, dst, base), []).append(ts)
+        rows = mins
         clock = []
         for (pt, who, dst, base), times in polls.items():
             ev = self._every(sorted(times))
@@ -7755,7 +7800,7 @@ class SpamGuard:
                 clock.append({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "from": who, "anon": pt == 7, "to": dst,
                               "to_me": bool(me) and dst == me, "entry": base, "every": ev, "packets": len(times)})
         clock.sort(key=lambda r: -r["packets"])
-        return {"minutes": secs // 60, "airtime_s": round(total / 1000, 1), "packets": len(rows), "me": me or None,
+        return {"minutes": secs // 60, "airtime_s": round(total / 1000, 1), "packets": sum(b["n"] for b in rows), "me": me or None,
                 "kinds": sorted(({"kind": PTYPE_LABEL.get(pt, f"type {pt}"), "ptype": pt, "packets": v[0],
                                   "airtime_s": round(v[1] / 1000, 1), "share": round(100 * v[1] / total) if total else 0}
                                  for pt, v in kinds.items()), key=lambda r: -r["airtime_s"]),
@@ -7789,12 +7834,12 @@ class SpamGuard:
         cut = now - self.FG_WINDOW
         tot = 0.0
         per: dict = {}
-        for ts, pt, hop, ms, _s, _d, _a, _r in self.air_kinds:
-            if cut <= ts <= now:
-                tot += ms
-                if pt in self.SOURCE_HOLD_KINDS and hop:
-                    v = per.setdefault((pt, hop[:2]), [0, 0.0, hop])
-                    v[0] += 1
+        for m, b in self.kind_min.items():
+            if cut - 60 < m <= now:
+                tot += b["ms"]
+                for key, (n, ms, hop) in b["pb"].items():
+                    v = per.setdefault(key, [0, 0.0, hop])
+                    v[0] += n
                     v[1] += ms
                     if len(hop) > len(v[2]):
                         v[2] = hop
