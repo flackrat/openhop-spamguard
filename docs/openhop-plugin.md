@@ -35,7 +35,8 @@ The repeater stays protected the whole time, and the page carries on at the same
 | `level` | Protection level from 0 (gentle) to 100 (tough) at first start; 50 is balanced. The older `sensitivity` (`relaxed`, `balanced`, `strict`) still works |
 | `listen_port` | The port for SpamGuard's own page (default 8091) |
 | `hashtag_channels` | Extra hashtag channels to protect, e.g. `["#chat", "#test"]` |
-| `listen_api_key` | A password for SpamGuard's page. Leave empty for none; anyone on your network can then change settings there, and devices outside your network get no answer at all. Set one before reaching the page from outside, and always if a proxy or tunnel on the Pi passes visitors through |
+| `listen_api_key` | A password for SpamGuard's page. Leave empty for none; anyone on your network can then change settings there, and devices outside your network get no answer at all. Without a password SpamGuard trusts the whole network, not particular people, so anyone who can join your Wi-Fi counts. Set one before reaching the page from outside, and always if a proxy or tunnel on the Pi passes visitors through |
+| `trusted_networks` | Extra networks to treat as local when there is no password, e.g. `["100.64.0.0/10"]` for Tailscale. Home networks and the Pi itself are always local |
 
 openHop saves these settings as a whole, so restart the plugin after changing them. Everything else is changed on SpamGuard's own page.
 
@@ -44,6 +45,8 @@ openHop also lists SpamGuard under its web frontends (System > Web Options), bec
 ## openHop in Docker or on Unraid
 
 The plugin runs inside openHop's container, so SpamGuard's page on port 8091 is only reachable once that port is published on openHop's container. In openHop's compose file add `- "8091:8091"` under `ports:` and recreate the container. On Unraid, add a port mapping for 8091 to the openHop app.
+
+Plugins and their data live in openHop's data folder, so keep that folder on a volume (openHop's own compose file does this). If it isn't, recreating the container removes SpamGuard and everything it has learnt, and you add it again from the Plugins page.
 
 If you'd rather not change openHop's container, run SpamGuard in its own container instead: see [docker.md](docker.md).
 

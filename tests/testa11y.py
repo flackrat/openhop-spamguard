@@ -93,8 +93,8 @@ async def main():
     dots=await pg.evaluate("[...document.querySelectorAll('#mapBox path')].filter(e=>e.getAttribute('fill')==='#fff').length")
     check("blocked circles get a white centre", dots>=1, dots)
     await pg.goto("http://127.0.0.1:18171/#/overview"); await pg.wait_for_timeout(1500)
-    t=await pg.evaluate("[...document.querySelectorAll('details.chart-data')].map(d=>d.querySelectorAll('tr').length)")
-    check("each chart has a table of numbers", len(t)>=4 and all(x>2 for x in t), t)
+    t=await pg.evaluate("[...document.querySelectorAll('details.chart-data')].map(d=>d.querySelectorAll('tr').length)")   # a heading row and at least one row of figures
+    check("each chart has a table of numbers", len(t)>=4 and all(x>=2 for x in t), t)
     al2=await pg.evaluate("['chartAir','chartBusyOv'].map(i=>{const e=document.getElementById(i); return e&&!e.closest('section').hidden?e.getAttribute('aria-label'):'hidden'})")
     check("airtime and radio-busy charts are described", all(a and len(a)>20 or a=='hidden' for a in al2) and al2[0]!='hidden', al2)
     al=await pg.evaluate("['chart24','chart7','chartHour'].map(i=>document.getElementById(i).getAttribute('aria-label'))")

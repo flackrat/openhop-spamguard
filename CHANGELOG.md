@@ -15,6 +15,19 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.48.0
+
+- **New experiment: stop machine messages** on Public or on every channel. Off by default; they are still counted on the Overview.
+- **New experiment: congestion holds.** While the radio is congested, one repeater flooding in one kind of packet can have that kind held for a few minutes. Off by default, with a watch-only mode.
+- **FloodGuard shows what the airtime went on:** each kind of packet, the repeaters it came in through, steady polling, anonymous requests and, where openHop reports it, each radio. Also openHop's own advert limit, which can be switched on there.
+- **People shows device names:** other names a device has used, and names used by more than one device.
+- Emoji reactions from some companion apps are no longer mistaken for repeats.
+- Spots more kinds of bot on Public.
+- Automatic updates retry and say why one didn't finish. The page copes better with a weak signal.
+- Safer by default: an explicit list of home networks (with a setting for extra ones such as Tailscale), tighter checks on plugin handover, and a rule that could match everything is never sent to openHop.
+- The Health page warns when openHop's rule-check fix can't be checked, and shows a few more readings.
+- The Overview's line about machine messages is shorter.
+
 ## v6.47.1
 
 - **The web page is safer by default:** without a page password it only answers devices on your own network.

@@ -57,7 +57,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Interference watch**, with a record of each episode.
 
 **Help with settings**
-- **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps (tightening quickly, loosening slowly, never above a ceiling you can set, and stopping the moment you drag the slider yourself). Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
+- **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps, never above a ceiling you can set. Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
 - **Bots kept off Public and repeat sends stopped**, on by default, both with a switch in Settings.
 - **Learns from your spam marks:** reworded copies from one name are held.
 - **Experimental features**, hidden until you ask for them, each off by default.
@@ -153,7 +153,7 @@ How well does it work, and what does it get wrong? See the [test results](docs/p
 A repeater is shared: anything it refuses to pass on disappears for everyone downstream, and they can't see why. So SpamGuard judges **behaviour, never opinions or people**.
 
 - **SpamGuard blocks:** the same text sent under several names, made-up or disguised names, floods of repeats (including one name posting the same message again and again), and repeaters injecting spam campaigns.
-- **FloodGuard looks only at how packets travel:** flood or direct, how many hops they've come, and how busy the radio is. Never at who sent them or what they say, and only while a flood is actually swamping the airtime.
+- **FloodGuard looks only at how packets travel:** flood or direct, how far they've come, their kind and way in, and how busy the radio is. Never at who sent them or what they say, and only while a flood is actually swamping the airtime.
 - **SpamGuard doesn't block** what someone says, or a named person for their views. Even the repeat guard only holds back *further copies of the repeated message*, for an hour; anything new that person says still goes out.
 - **Blocking a particular person is your app's job, not the repeater's.** There's deliberately no "block this person" button. MeshCore apps and sites let each user block or hide a sender, repeater or channel for themselves. Blocking there only changes what *you* see, and the mesh still carries the message, so it's the right place for "I don't want to read this person". SpamGuard deals with behaviour that harms everyone's channel, at the repeater, so it never travels further.
 - **There is no under-18 mode**, because a repeater can't tell anyone's age and a language filter wouldn't catch the real risks. [Protecting young people on MeshCore](docs/protecting-young-people.md) explains what works better, including a private channel for a youth group.

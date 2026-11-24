@@ -10,6 +10,29 @@ import os
 import sys
 
 
+HANDOVER_MAX = 64 * 1024 * 1024   # far more than any real state file
+
+
+def handover_url_ok(src) -> bool:
+    """The one-time handover link must point at the previous SpamGuard on this machine or a home network:
+    http or https, a local or private address, and the /handover path. Anything else is ignored."""
+    import ipaddress
+    import urllib.parse
+    try:
+        u = urllib.parse.urlsplit(str(src))
+        if u.scheme not in ("http", "https") or u.path.rstrip("/") != "/handover" or u.username or u.password:
+            return False
+        host = (u.hostname or "").strip()
+        if host == "localhost":
+            return True
+        ip = ipaddress.ip_address(host)
+        if ip.version == 6 and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        return ip.is_loopback or ip.is_link_local or ip.is_private and not ip.is_reserved
+    except ValueError:
+        return False
+
+
 def take_over(data: str, config: str) -> None:
     """When SpamGuard is being moved here from a normal install (or Docker), the settings include a
     one-time link to that copy. Fetch everything it has learnt before starting, then forget the link."""
@@ -23,10 +46,17 @@ def take_over(data: str, config: str) -> None:
         return
     import time
     import urllib.request
-    for _ in range(20):
+    if not handover_url_ok(src):
+        print("SpamGuard: ignored a handover link that isn't the previous SpamGuard on this machine or network",
+              flush=True)
+        src = None
+    for _ in range(20 if src else 0):
         try:
             with urllib.request.urlopen(src, timeout=20) as r:
-                state = json.loads(r.read().decode())
+                raw = r.read(HANDOVER_MAX + 1)
+                if len(raw) > HANDOVER_MAX:
+                    raise ValueError("the previous SpamGuard's data is larger than expected")
+                state = json.loads(raw.decode())
             if isinstance(state, dict) and "blocks" in state:
                 for name, body in (("state.json", state), ("imported.json", {"from": src.split("/handover")[0],
                                                                               "at": time.time()})):

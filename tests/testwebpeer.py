@@ -11,10 +11,16 @@ def check(c,msg):
     else: fail+=1; print("FAIL",msg)
 
 P=sg.peer_is_local
-for a in ("127.0.0.1","::1","192.168.1.20","10.4.0.9","172.17.0.1","100.100.7.3","fd12:3456::1","fe80::2%eth0","169.254.10.1","::ffff:192.168.1.20"):
+for a in ("127.0.0.1","::1","192.168.1.20","10.4.0.9","172.17.0.1","fd12:3456::1","fe80::2%eth0","169.254.10.1","::ffff:192.168.1.20"):
     check(P(a),"local or private: "+a)
 for a in ("1.2.3.4","5.6.7.8","8.8.8.8","2001:4860::8888","::ffff:8.8.4.4","100.63.255.1","0.0.0.0","","not an address",None):
     check(not P(a),"on the open internet, or nonsense: %r"%(a,))
+# shared and reserved ranges are not trusted unless listed (internet providers share 100.64.0.0/10 between customers)
+for a in ("100.100.7.3","100.64.0.1","192.0.0.8","198.18.0.5","240.0.0.1","203.0.113.7","2001:db8::1"):
+    check(not P(a),"not trusted by default: "+a)
+nets=sg.parse_networks(["100.64.0.0/10","nonsense","fd7a:115c:a1e0::/48"])
+check(len(nets)==2,"bad entries in the list are ignored")
+check(P("100.100.7.3",nets) and P("fd7a:115c:a1e0::5",nets) and not P("100.128.0.1",nets),"a listed network is trusted, and only that one")
 
 m=mock(); g=guard(m, floodguard=False)
 FAKE=["1.2.3.4"]
@@ -44,7 +50,15 @@ st,_=req("GET","/status",headers={"Host":"192.168.1.20:8091"}); check(st==200,"t
 st,_=req("POST","/settings",json.dumps({}),{**J,"Host":"192.168.1.20"}); check(st==200,"and can still make changes")
 st,_=req("GET","/status",headers={"Host":"spamguard.attacker.example"}); check(st==403,"the Host check against other sites still works")
 FAKE[0]="100.101.2.3"
-st,_=req("GET","/status",headers={"Host":"pi"}); check(st==200,"a VPN address such as Tailscale's is local")
+st,d=req("GET","/status",headers={"Host":"pi"}); check(st==403 and b"trusted_networks" in d,"a Tailscale address is refused until listed, and told how")
+try:
+    g.apply_settings({"trusted_networks":"100.64.0.0/10"})
+except ValueError as ex: check(False,str(ex))
+st,_=req("GET","/status",headers={"Host":"pi"}); check(st==200,"once listed, it gets the page")
+for bad in ("0.0.0.0/0","1.0.0.0/4","not a net"):
+    try: g.apply_settings({"trusted_networks":bad}); check(False,"refused: "+bad)
+    except ValueError: check(True,"")
+g.apply_settings({"trusted_networks":[]})
 # with a password, the internet gets in with it, and only with it
 g.settings["listen_api_key"]="q-made-up-key"; g.rebuild_cfg()
 FAKE[0]="1.2.3.4"
