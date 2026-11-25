@@ -1909,12 +1909,20 @@ $("#qList").addEventListener("click",e=>{ const t=e.target.closest("[data-qt]");
   Q.last=i; });
 $("#qList").addEventListener("click",e=>{ const b=e.target.closest("[data-qg]"); if(!b) return; const gid=+b.dataset.qg;
   (Q.data.rows||[]).forEach((r,i)=>{ if(r.group===gid){ Q.ticks[i]=true; const x=document.querySelector(`#qList [data-qt="${i}"]`); if(x) x.checked=true; } }); qBulk(); });
-$("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; qBulk(); });
+$("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; Q.armed=null; qBulk(); });
 
 $("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) return; (Q.data.rows||[]).forEach((r,i)=>{ Q.ticks[i]=e.target.checked; }); document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=e.target.checked); qBulk(); });
 $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-qb]"); if(!b||!Q.data) return; const v=b.dataset.qb;
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
-  if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
+  if(v==="clear"){ Q.ticks={}; Q.armed=null; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
+  // One answer for several names: say what it covers and ask for a second press, so a group isn't answered by mistake
+  const names=new Set(sel.map(r=>r.sender)), msgs=sel.reduce((a,r)=>a+(r.copies||1),0), kinds=new Set(sel.map(r=>r.status));
+  const key=v+"|"+sel.map(r=>r.packet).join(",");
+  if(names.size>1&&Q.armed!==key){ Q.armed=key;
+    const n=$("#qBulkWarn")||Object.assign(document.createElement("p"),{id:"qBulkWarn",className:"explain"}); n.setAttribute("role","status");
+    n.textContent=`This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check the list, then press ${b.textContent.trim()} again to confirm.`;
+    $("#qBulk").appendChild(n); return; }
+  Q.armed=null;
   sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
   const send=(r,extra)=>fetch("/verdict",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
     body:JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},extra||{}))}).then(x=>x.json()).catch(()=>({}));

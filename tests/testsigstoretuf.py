@@ -30,15 +30,15 @@ def root(v,rk,expires=FUT,ts=TS):
             "roles":{"root":{"keyids":[k[1] for k in rk],"threshold":3},"timestamp":{"keyids":[ts[1]],"threshold":1},
                      "snapshot":{"keyids":[SN[1]],"threshold":1},"targets":{"keyids":[k[1] for k in TG],"threshold":2}}}
 TRUSTED=json.dumps({"certificateAuthorities":[],"tlogs":[]}).encode()
-def repo(ts_v=7,sn_v=5,tg_v=3,ts_exp=FUT,ts_key=None,tg_keys=None,trusted=TRUSTED,tg_tamper=False,sn_hash=False,roots=None):
-    tgs={"_type":"targets","version":tg_v,"expires":FUT,"targets":{"trusted_root.json":{"length":len(TRUSTED),"hashes":{"sha256":hashlib.sha256(TRUSTED).hexdigest()}}}}
+def repo(ts_spec="1.0",ts_v=7,sn_v=5,tg_v=3,ts_exp=FUT,ts_key=None,tg_keys=None,trusted=TRUSTED,tg_tamper=False,sn_hash=False,roots=None):
+    tgs={"_type":"targets","spec_version":"1.0","version":tg_v,"expires":FUT,"targets":{"trusted_root.json":{"length":len(TRUSTED),"hashes":{"sha256":hashlib.sha256(TRUSTED).hexdigest()}}}}
     tg=sign(tgs,tg_keys or TG[:2])
     if tg_tamper: tg["signed"]["targets"]["trusted_root.json"]["length"]+=0; tg["signed"]["expires"]="2031-01-01T00:00:00Z"
     tgraw=json.dumps(tg).encode()
-    sn=sign({"_type":"snapshot","version":sn_v,"expires":FUT,"meta":{"targets.json":{"version":tg_v}}},[SN]); snraw=json.dumps(sn).encode()
+    sn=sign({"_type":"snapshot","spec_version":"1.0","version":sn_v,"expires":FUT,"meta":{"targets.json":{"version":tg_v}}},[SN]); snraw=json.dumps(sn).encode()
     smeta={"version":sn_v}
     if sn_hash: smeta.update(length=len(snraw),hashes={"sha256":"0"*64})
-    ts=sign({"_type":"timestamp","version":ts_v,"expires":ts_exp,"meta":{"snapshot.json":smeta}},[ts_key or TS])
+    ts=sign({"_type":"timestamp","spec_version":ts_spec,"version":ts_v,"expires":ts_exp,"meta":{"snapshot.json":smeta}},[ts_key or TS])
     files={"timestamp.json":json.dumps(ts).encode(),f"{sn_v}.snapshot.json":snraw,f"{tg_v}.targets.json":tgraw,
            f"targets/{hashlib.sha256(TRUSTED).hexdigest()}.trusted_root.json":trusted}
     files.update(roots or {})
@@ -71,6 +71,7 @@ check(isinstance(F(repo(tg_tamper=True)),str),"a targets file changed after sign
 check(isinstance(F(repo(sn_hash=True)),str),"a snapshot that doesn't match its listed checksum is refused")
 check(isinstance(F(repo(trusted=TRUSTED+b" ")),str),"a key list that doesn't match its signed checksum is refused")
 check(isinstance(F(repo(ts_exp=PAST)),str),"an expired timestamp is refused")
+r=F(repo(ts_spec="2.0")); check(isinstance(r,str) and "format" in r,"a file in a TUF format this version doesn't know is refused")
 # rollback
 r=F(repo(ts_v=7),seen={"timestamp":9,"snapshot":5,"targets":3}); check(isinstance(r,str) and "older" in r,"an older timestamp than seen before is refused")
 r=F(repo(sn_v=4,ts_v=10),seen={"timestamp":9,"snapshot":5,"targets":3}); check(isinstance(r,str),"an older snapshot than seen before is refused")

@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.51.0"
+VERSION = "6.52.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1647,6 +1647,8 @@ def tuf_signed(md: dict, root: dict, role: str) -> bool:
 def _tuf_fresh(signed: dict, kind: str, now: float):
     if signed.get("_type") != kind:
         raise ValueError(f"Sigstore's {kind} file is the wrong kind")
+    if str(signed.get("spec_version") or "").split(".")[0] != "1":   # the TUF format this checker follows
+        raise ValueError(f"Sigstore's {kind} file uses a format this version doesn't know")
     if (_iso_ts(signed.get("expires")) or 0) <= now:
         raise ValueError(f"Sigstore's {kind} file has expired")
 
@@ -2282,8 +2284,8 @@ def name_shape(name: str) -> str:
 
 
 def state_candidates(path: str) -> list:
-    """Where saved state can be, newest family first: the compressed file SpamGuard writes from 6.51 (and its last
-    good copy), then the plain one older versions wrote. The plain file is left alone once a compressed one exists,
+    """Where saved state can be, newest first: the compressed file SpamGuard writes from 6.51, its last good copy,
+    and the plain file (and copy) older versions wrote. The plain file is left alone once a compressed one exists,
     so if an update is ever rolled back the older version still finds its data; whichever was saved last wins."""
     gz, plain = path + ".gz", path
     def mt(p):
@@ -2291,9 +2293,10 @@ def state_candidates(path: str) -> list:
             return os.path.getmtime(p)
         except OSError:
             return -1.0
-    fams = [(gz, gz + ".bak"), (plain, plain + ".bak")]
-    fams.sort(key=lambda f: -mt(f[0]))
-    return [p for f in fams for p in f]
+    # each file by its own date, so a newer last-good copy beats an older file of the other kind (a power cut
+    # between moving the compressed file to .bak and writing the new one leaves only the .bak)
+    order = [gz, gz + ".bak", plain, plain + ".bak"]
+    return sorted(order, key=lambda p: (-mt(p), order.index(p)))
 
 
 def read_state_file(p: str) -> dict:
@@ -5286,7 +5289,9 @@ class SpamGuard:
         lab_of = lambda m: (self.labels.get(str(m.get("packet") or ""))   # noqa: E731
                             or self.labels.get(f"{m.get('sender')}|{m.get('text') or ''}"))
         same = lambda m: (m.get("channel"), normalise(str(m.get("text") or ""))[:120])   # noqa: E731
-        answered = {same(m) for m in raw if m.get("text") and lab_of(m)}
+        # a spam answer covers copies from any name; any other answer (not spam, spoofed) only that name's copies
+        answered = {same(m) for m in raw if m.get("text") and lab_of(m) == "spam"}
+        answered_by = {(same(m), m.get("sender")) for m in raw if m.get("text") and lab_of(m) and lab_of(m) != "spam"}
         # ...and so do reworded copies of a message you said was spam (a campaign that changes a little each time)
         th = max(0.5, self.cfg["similarity"] / 100.0)
         spam_like = list({normalise(str(m["text"])): shingles(normalise(str(m["text"]))) for m in raw
@@ -5319,8 +5324,8 @@ class SpamGuard:
                 continue
             # Once you have answered a message it is listed under Answered only, so nothing is shown to you twice
             # SpamGuard matching it to one of your answers is kept apart from your own answers
-            like = same(m) not in answered and st in ("held", "letthrough") and bool(spam_like) and like_spam(m)
-            done = same(m) in answered
+            done = same(m) in answered or (same(m), m.get("sender")) in answered_by or bool(lab_of(m))
+            like = not done and st in ("held", "letthrough") and bool(spam_like) and like_spam(m)
             # To review: held messages (someone genuine may be caught), and of those that went out only the
             # garbled ones and links. Messages already sent can't be called back, and most of the rest turn out to
             # be ordinary chat, so they wait under Missed spam unless you ask to review them too

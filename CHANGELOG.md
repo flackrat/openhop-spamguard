@@ -15,6 +15,13 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.52.0
+
+- **Safer recovery after a power cut.** If power is lost in the middle of a save, SpamGuard now starts from the newest copy of its data, whichever kind it is.
+- **Not spam covers one name only.** Marking one person's message Not spam no longer clears the same text from other names out of To review. A Spam answer still covers every copy.
+- **Answering several names at once asks first,** saying how many messages and names it covers.
+- Sigstore's key list is also checked for the TUF format version.
+
 ## v6.51.0
 
 - **Much less writing to the SD card.** Saved data is compressed (about a sixth of the size), routine saves happen every 15 minutes rather than 5, and urgent saves during a spam storm at most every 30 seconds. Changes you make are still saved at once. The file older versions used is left in place, so rolling back still works.
