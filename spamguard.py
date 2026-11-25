@@ -2312,6 +2312,9 @@ class SpamGuard:
         self.tx_fails: collections.deque[float] = collections.deque(maxlen=50)
         self.tx_ok_at: Optional[float] = None
         self.tx_oks: collections.deque[float] = collections.deque(maxlen=200)
+        # each send: (when, extra tries before the channel was clear, found it busy, flood packet), from openHop's
+        # listen-before-talk fields. Shown only, never acted on.
+        self.lbt: collections.deque[tuple] = collections.deque(maxlen=5000)
         self._power: tuple[float, Optional[dict]] = (0.0, None)   # (when checked, result of vcgencmd)
         # Bytes per hop openHop is sending (its path.hash.mode: 1, 2 or 3), from the newest routed packets
         self.hash_size = 1
@@ -3342,6 +3345,12 @@ class SpamGuard:
         elif sent:
             self.tx_ok_at = max(self.tx_ok_at or 0.0, ts)
             self.tx_oks.append(ts)
+        if (sent or self.tx_fails and self.tx_fails[-1] == ts) and "lbt_attempts" in p:
+            try:
+                self.lbt.append((ts, max(0, int(p.get("lbt_attempts") or 0)), bool(p.get("lbt_channel_busy")),
+                                 int(p.get("route", -1)) in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD)))
+            except (TypeError, ValueError):
+                pass
         local = "rssi" in p and not p.get("rssi") and not p.get("snr") and not p.get("rx_radio_id")
         on_air = ms if local else ms * (2 if sent else 1)
         flood = route in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD)
@@ -8207,7 +8216,7 @@ class SpamGuard:
                             "busy": round(100 * v[1] / (secs * 1000), 1)} for k, v in sorted(radios.items())] if len(radios) > 1 else [],
                 "hours": [{"hour": int(k), "kinds": {PTYPE_LABEL.get(int(pt), f"type {pt}"): v for pt, v in (self.hist[k].get("kt") or {}).items()}}
                           for k in sorted(self.hist) if int(k) >= now - 86400 and self.hist[k].get("kt")],
-                "holds": self.source_holds_view(now)}
+                "holds": self.source_holds_view(now), "lbt": self.lbt_view(now, secs)}
 
     @staticmethod
     def _shares(d: dict, top: int = 6) -> list:
@@ -10931,6 +10940,18 @@ class SpamGuard:
             pause = min(pause * 2, 600)
 
     # ---- health ----
+    def lbt_view(self, now: float, secs: int = 3600) -> Optional[dict]:
+        """How often this repeater had to wait for a clear channel before sending, from openHop's listen-before-talk
+        readings. None unless a send has waited in the last day (listen-before-talk off, or nothing to show).
+        A crowded channel or nearby interference shows here; on its own it proves nothing about floods."""
+        if not any(t > now - 86400 and (n or busy) for t, n, busy, _f in self.lbt):
+            return None
+        rows = [r for r in self.lbt if r[0] > now - secs]
+        waited = [r for r in rows if r[1] or r[2]]
+        return {"sends": len(rows), "waited": len(waited), "share": round(100 * len(waited) / len(rows)) if rows else 0,
+                "most_tries": max((r[1] for r in rows), default=0) + 1 if rows else 0,
+                "flood_waited": sum(1 for r in waited if r[3])}
+
     def send_counts(self, now: float) -> tuple[int, int]:
         """(failed, sent) transmits in the last 15 minutes, as openHop reported them."""
         return (sum(1 for t in self.tx_fails if t > now - 900),

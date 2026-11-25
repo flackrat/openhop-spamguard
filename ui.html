@@ -2220,6 +2220,11 @@ function airDonut(slices,mid,sub,aria){ let a=0; const g=slices.map(x=>{ const s
   return `<div class="donut" role="img" aria-label="${esc(aria)}" style="background:conic-gradient(${g}${a<100?`,var(--line) ${a}% 100%`:""})"><div><b>${esc(mid)}</b><span>${esc(sub)}</span></div></div>`; }
 function airLegend(slices){ return `<div class="dleg">${slices.map(x=>x.go?`<button type="button" onclick='airGo(${JSON.stringify(x.go)})'><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span aria-hidden="true" class="chev">›</span></button>`:`<div class="row"><i class="sw sw-${x.c}" aria-hidden="true"></i><span class="nm">${x.html||esc(x.name)}</span><b>${x.share}%</b><span class="chev"></span></div>`).join("")}</div>`; }
 function airBars(rows,cls,mono){ return `<div class="hbars">${rows.map((r,i)=>`<button type="button" class="hbar" onclick='airGo(${JSON.stringify(r.go)})'><span class="${mono?"route":""}">${esc(r.name)}</span><span class="tr" aria-hidden="true"><i class="sw-${cls||r.c}" style="width:${Math.max(2,Math.round(100*r.share/(rows[0].share||1)))}%"></i></span><b>${r.share}%</b></button>`).join("")}</div>`; }
+// openHop's listen-before-talk readings: how often a send had to wait for a clear channel. Shown only.
+function lbtLine(b){ const l=b&&b.lbt; if(!l||!l.sends) return "";
+  const heard=Math.round(100*(b.airtime_s||0)/3600);
+  const why=l.share<20?"That is normal.":heard<15?`The traffic SpamGuard can hear used only ${heard}% of the hour, so something it can't read, such as interference or another network on the frequency, is the likelier cause.`:"The channel was busy with traffic this repeater hears.";
+  return `<p class="explain" id="lbtLine"><b>Waiting for a clear channel:</b> ${fmtN(l.waited)} of ${fmtN(l.sends)} sends this hour (${l.share}%) found the channel busy and waited${l.most_tries>1?`, up to ${l.most_tries} tries`:""}. ${why} FloodGuard doesn't act on this.</p>`; }
 function renderAirBreakdown(fg,force){
   AIRFG=fg;
   const b=fg.breakdown, el=$("#airBody"); if(!el) return;
@@ -2260,7 +2265,7 @@ function renderAirBreakdown(fg,force){
     const an=(b.anon||[])[0], antot=(b.kinds.find(x=>x.ptype===7)||{}).packets||0;
     if(an&&antot&&an.packets>=0.25*antot) worth.push({go:{k:"anonymous requests"},t:`<b>One device sent ${Math.round(100*an.packets/antot)}% of the anonymous requests</b> (key <span class="route">${esc(an.key)}</span>), via ${cd(an.entry)}.`});
     (b.clockwork||[]).slice(0,2).forEach(r=>worth.push({go:{k:r.kind},t:`<b>${r.anon?"Key":"Code"} <span class="route">${esc(r.from)}</span> sends ${esc(r.kind)} every ${r.every} s</b>${r.to_me?" to this repeater":""}, often an app reading telemetry.`}));
-    h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""} Tap a kind or a repeater for the detail.</p>
+    h=`<p class="explain">${fmtN(b.packets)} packets, ${sec(b.airtime_s)} of airtime.${b.me?` ${fmtN(b.to_me)} request${b.to_me===1?"":"s"} addressed to this repeater's code.`:""} Tap a kind or a repeater for the detail.</p>${lbtLine(b)}
     <div class="drill2">
       <div><h4>By kind of packet</h4><div class="dwrap">${airDonut(ks,sec(b.airtime_s).replace(" min","").replace(" s",""),b.airtime_s>=60?"minutes":"seconds","Airtime by kind: "+ks.map(x=>`${x.name} ${x.share}%`).join(", "))}${airLegend(ks)}</div>
         <details class="chart-data"><summary>Show the numbers</summary><div class="scroll"><table><caption class="sr-only">Airtime by kind of packet</caption><tr><th scope="col">Kind</th><th scope="col" class="num">Packets</th><th scope="col" class="num">Airtime</th><th scope="col" class="num">Share</th></tr>

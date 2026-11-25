@@ -20,6 +20,7 @@ The detail is below, newest first. In short:
 - **Update checks, done properly.** The build record for each update is now checked the way Sigstore's own tools do: certificate from Sigstore's authority, issued to exactly this project's release workflow, and recorded in Sigstore's public log while it was valid. If Sigstore changes its keys, its published list is used instead.
 - **Campaign links** group only on strong evidence. A weaker sign, such as a shared repeater, now shows separately as "possibly related". Groups can be hidden for 7 days, with an undo.
 - **Runs better unattended.** A failed save is kept and tried again, and Health says so. Health also shows a start from the backup copy, and background jobs that keep failing. The page says when SpamGuard is still starting rather than waiting.
+- **FloodGuard** shows how often the repeater had to wait for a clear channel before sending (openHop's listen-before-talk), with a hint at the likely cause. Shown only; nothing acts on it.
 - **Display:** the protection slider follows each colour style from cool to warm, clearer chart colours in Amber and Matrix, two smaller text sizes, and more room around the graph channel picker.
 
 ## v6.49.0
