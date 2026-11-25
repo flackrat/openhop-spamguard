@@ -113,14 +113,14 @@ import json
 m=mock(); g=guard(m, floodguard=False)
 g._save_state(force=True)
 st=os.path.join(TMP, f"state_{PORT[0]}.json")
-d=json.load(open(st)); n=time.time()
+d=read_state(st); n=time.time()
 d["stem_memory"]={"04>F0":"x","59>77":-5,"AA>BB":float("nan"),"CC>DD":1e300,"EE>FF":True,"nonsense":n,"04>":n,"11>22":n+10*86400,"A"*500:n,"33>44":n-60}
-json.dump(d,open(st,"w"))
+write_state(st,d)
 g4=sg.SpamGuard({"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
                  "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False})
 check(list(g4.stem_memory)==["33>44"],"only well-formed, recent entries load (got %s)"%list(g4.stem_memory))
 for bad in ("text",[1,2],5,None):
-    d["stem_memory"]=bad; json.dump(d,open(st,"w"))
+    d["stem_memory"]=bad; write_state(st,d)
     g5=sg.SpamGuard({"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
                      "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False})
     check(g5.stem_memory=={},"wrong type %r loads as empty"%(bad,))

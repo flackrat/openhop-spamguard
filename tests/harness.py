@@ -70,7 +70,8 @@ class Mock:
 PORT=[18100]
 def guard(m, **over):
     st=os.path.join(TMP, f"state_{PORT[0]}.json")
-    if os.path.exists(st): os.remove(st)
+    for x in (st, st+".bak", st+".gz", st+".gz.bak"):
+        if os.path.exists(x): os.remove(x)
     # Most tests were written when one message made a name "known"; they test other things, so keep that.
     cfg={"openhop_url":f"http://127.0.0.1:{m.srv.server_address[1]}","api_key":"t","mode":"protect","state_file":st,
          "known_min_msgs":1,"known_min_minutes":0,"vary_limits":False,
@@ -95,3 +96,18 @@ def rname(n=8, lower=False):
 RESULTS=[]
 def check(name, cond, detail=""):
     RESULTS.append((name,bool(cond))); print(("PASS " if cond else "FAIL ")+name+(("  -- "+str(detail)) if detail and not cond else ""))
+
+
+def read_state(path):
+    """The saved state, whichever form SpamGuard wrote it in (compressed from 6.51)."""
+    for p in sg.state_candidates(path):
+        if os.path.exists(p):
+            return sg.read_state_file(p)
+    raise FileNotFoundError(path)
+
+
+def write_state(path, st):
+    """Put a state file where SpamGuard will read it first (compressed, as 6.51 writes it)."""
+    import gzip as _gz
+    with open(path + ".gz", "wb") as f:
+        f.write(_gz.compress(json.dumps(st).encode()))

@@ -12,7 +12,7 @@ m=mock(); g=guard(m)
 g.known["Steady Sue"]=[time.time()-9*86400,time.time(),40]
 g._save_state(force=True)
 g.known["Steady Sue"][2]=41; g._save_state(force=True)
-p=g.file_cfg["state_file"]
+p=g.file_cfg["state_file"]+".gz"
 check(os.path.exists(p) and os.path.exists(p+".bak"), "each save keeps the previous copy")
 for damage in (b"", b'{"blocks": {"x": ', b"\x00\x00\x00"):
     open(p,"wb").write(damage)

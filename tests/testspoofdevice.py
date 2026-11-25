@@ -58,8 +58,8 @@ check(not any(b.get("source")=="spoof" for b in g3.blocks.values()),"off: nothin
 # clock history saved, bad values rejected
 g._save_state(force=True)
 path=g.file_cfg.get("state_file", sg.DEFAULT_CONFIG["state_file"])
-st=json.load(open(path)); check(st.get("clocks",{}).get("annhill"),"saved")
-st["clocks"]={"annhill":[[int(time.time()),3],["x",1],[int(time.time())+999999,1],[True,1]]}; json.dump(st,open(path,"w"))
+st=read_state(path); check(st.get("clocks",{}).get("annhill"),"saved")
+st["clocks"]={"annhill":[[int(time.time()),3],["x",1],[int(time.time())+999999,1],[True,1]]}; write_state(path,st)
 g.clocks.clear(); g._load_state()
 check(g.clocks.get("annhill")==[[st["clocks"]["annhill"][0][0],3]],"bad clock records rejected")
 

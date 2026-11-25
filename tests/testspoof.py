@@ -111,8 +111,8 @@ g._save_state(force=True)
 g4=sg.SpamGuard(dict(g.file_cfg))
 check("55>66" in g4.route_log and g4.last_full.get("Ann Hill"),"route history and last routes survive a restart")
 # Damaged state is skipped, not fatal
-st=json.load(open(g.file_cfg["state_file"])); st["route_log"]={"x":"bad","y":{"last":"z","spam":{"a":"b"}}}; st["last_full"]={"n":[1,2,3]}
-json.dump(st,open(g.file_cfg["state_file"],"w"))
+st=read_state(g.file_cfg["state_file"]); st["route_log"]={"x":"bad","y":{"last":"z","spam":{"a":"b"}}}; st["last_full"]={"n":[1,2,3]}
+write_state(g.file_cfg["state_file"],st)
 sg.SpamGuard(dict(g.file_cfg)); check(True,"bad route state does not stop SpamGuard starting")
 ui=open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"..","ui.html")).read()
 check('"spoofed"' in ui and "Route check" in ui and "This route" in ui,"the page has the answer button and the route lines")

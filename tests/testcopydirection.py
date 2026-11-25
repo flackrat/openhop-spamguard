@@ -179,11 +179,11 @@ g.allow_senders.add("Lucky Prize"); check(g.warmth("Lucky Prize","trusted")["sco
 # saved and reloaded; bad records rejected
 g._save_state(force=True)
 path=g.file_cfg.get("state_file", sg.DEFAULT_CONFIG["state_file"])
-st=json.load(open(path)); check(st.get("dirs",{}).get("moorwalker",{}).get("n",0)>=g.DIR_MIN,"saved")
+st=read_state(path); check(st.get("dirs",{}).get("moorwalker",{}).get("n",0)>=g.DIR_MIN,"saved")
 st["dirs"]["junk"]={"h":{"AA":"x","BB":True,"CC":2},"n":9,"last":1e20,"bad":["ZZ","5d",3],"copies":[[1,"x","red",[]],"bad"],"pend":{"x":["a",1]}}
 st["dirs"]["empty"]={"h":{"CC":2},"n":"9"}
 st["dirs"]["notadict"]=[1,2]
-json.dump(st,open(path,"w")); g.dirs.clear(); g._load_state()
+write_state(path,st); g.dirs.clear(); g._load_state()
 check(g.dirs.get("moorwalker",{}).get("n",0)>=g.DIR_MIN,"reloaded")
 j=g.dirs.get("junk")
 check(j and j["h"]=={"CC":2} and j["n"]==9 and j["last"]==0 and j["bad"]==["5D"] and j["copies"]==[] and j["pend"]=={"x":[1]},"bad values rejected")

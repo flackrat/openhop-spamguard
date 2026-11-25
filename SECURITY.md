@@ -43,9 +43,12 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    the same checksums and, from 6.49.0, against GitHub's build record for the exact file. From 6.50.0 that
    record is checked the way Sigstore's own tools do: the signing certificate must come from Sigstore's
    certificate authority, be issued through GitHub's sign-in to exactly this repository's release workflow, and
-   have been valid when Sigstore's public log recorded the signing. Sigstore's keys are built in; if Sigstore
-   changes them, the updater reads Sigstore's published list (checked against its listed checksum) instead.
-   Certificate transparency receipts aren't checked.
+   have been valid when Sigstore's public log recorded the signing. Sigstore's keys are built in. If Sigstore
+   changes them, the updater reads Sigstore's published list from its own update repository, checked the way
+   The Update Framework (TUF) requires from 6.51.0: each root change signed by enough of the old and new key
+   holders, every file signed by the keys the root names, nothing expired or older than seen before, and the list
+   matching its signed checksums. Certificate transparency receipts aren't checked, and neither is Sigstore's
+   newest kind of log (an update recorded only there would be refused, not installed).
 5. **Outside contact** is limited to GitHub (only when checking for or installing an update, plus Sigstore's
    key list on the rare occasion Sigstore changes its keys) and, if you turn
    it on, the public MeshCore map. Nothing about your repeater is ever sent. The one usage figure is a count:

@@ -53,7 +53,7 @@ check(any(n.startswith("spamguard:") for n in names) and "my own rule" in names,
 s=json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=5).read())
 check(s["update"]["plugin"] is True and not s["update"]["managed_update"] and s["update"]["installer_ready"], "plugin offers its own Update button")
 data = storage.paths_for(man.id).data_dir
-check((data/"state.json").is_file(), "what it learns is kept in the plugin's data folder")
+check((data/"state.json.gz").is_file(), "what it learns is kept in the plugin's data folder")
 check(json.loads((data/"runtime.json").read_text()).get("web_page_port")==port, "status note for openHop's dashboard")
 t0=time.time(); rt.stop(man.id); took=time.time()-t0
 check(took < 5, f"stops promptly when openHop asks ({took:.1f}s)")

@@ -100,21 +100,7 @@ check(not A(record(D),trust=sg.sigstore_trust({})),"made with keys not built in,
 check(A(record(D),trust=sg.sigstore_trust({}),more=lambda: asked.append(1) or TRUST) and asked,"made with keys not built in: Sigstore's published list is read and accepted")
 check(not A(record(D,signer=ec.generate_private_key(ec.SECP384R1()),signer_name=name("anyone")),more=lambda: TRUST),"a self-made authority still fails after reading the list")
 check(not A(record(D),trust=sg.sigstore_trust({}),more=lambda: None),"Sigstore unreachable: fails")
-# the published list is checked against Sigstore's own checksum
-root=json.dumps(TRUST_ROOT).encode(); h=hashlib.sha256(root).hexdigest()
-FUT="2099-01-01T00:00:00Z"
-META={"timestamp.json":{"signed":{"expires":FUT,"meta":{"snapshot.json":{"version":5}}}},"5.snapshot.json":{"signed":{"meta":{"targets.json":{"version":3}}}},
-      "3.targets.json":{"signed":{"targets":{"trusted_root.json":{"hashes":{"sha256":h}}}}}}
-def get(u,body=root):
-    p=u.split("sigstore.dev/",1)[1]
-    if p.startswith("targets/"): check(p==f"targets/{h}.trusted_root.json","the list is fetched by its checksum"); return body
-    return json.dumps(META[p]).encode()
-check(sg.fetch_sigstore_root(get)["logs"].keys()==TRUST["logs"].keys(),"Sigstore's published list is read")
-try: sg.fetch_sigstore_root(lambda u: get(u,root+b" ")); check(False,"a changed list is refused")
-except ValueError: check(True,"a changed list is refused")
-META["timestamp.json"]["signed"]["expires"]="2020-01-01T00:00:00Z"
-try: sg.fetch_sigstore_root(get); check(False,"an expired list is refused")
-except ValueError: check(True,"an expired list is refused")
+# reading Sigstore's published list itself is tested in testsigstoretuf
 # the real public record of SpamGuard 6.49.0 passes with the keys built in, and with nothing changed in it
 real=json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),"attest-6.49.0.json")))
 check(sg.attestation_ok(real,real["digest"],real["repo"],WF),"the real 6.49.0 record passes with Sigstore's built-in keys")

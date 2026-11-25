@@ -89,11 +89,21 @@ k="AB"*32
 for _ in range(3): g.learn_advert({"payload":advert("Ann Hill",k),"original_path":"07,3B","timestamp":time.time()})
 ad=[r for r in rec if r.get("type")=="advert"]
 check(len(ad)==1 and ad[0]["name"]=="Ann Hill" and ad[0]["key"]=="ABABABAB" and ad[0]["hops"]==2,"companion advert logged once")
+
+# a restart reads the week's adverts again: the ones the last run wrote aren't written twice, a newer one is
+g._save_state(force=True)
+gR=sg.SpamGuard(dict(g.file_cfg)); recR=[]; gR.ev=lambda r: recR.append(r)
+t_old=g.adv_ev_mark
+check(t_old>0 and abs(gR._adv_prev_mark-t_old)<0.01,"the newest logged advert is remembered across a restart")
+gR.learn_advert({"payload":advert("Ann Hill",k),"original_path":"07,3B","timestamp":t_old-5})
+check(not [r for r in recR if r.get("type")=="advert"],"an advert the last run already logged isn't logged again")
+gR.learn_advert({"payload":advert("Ann Hill",k),"original_path":"07,3B","timestamp":t_old+5})
+check(len([r for r in recR if r.get("type")=="advert"])==1,"one heard after that is logged")
 # the hop history is saved and loaded, rejecting bad values
 g._save_state(force=True)
 path=g.file_cfg.get("state_file", sg.DEFAULT_CONFIG["state_file"])
-st=json.load(open(path)); check(st.get("near",{}).get("annhill")==g.near["annhill"],"saved")
-st["near"]={"annhill":[1,2,"x",99,-1,True,3]}; json.dump(st,open(path,"w"))
+st=read_state(path); check(st.get("near",{}).get("annhill")==g.near["annhill"],"saved")
+st["near"]={"annhill":[1,2,"x",99,-1,True,3]}; write_state(path,st)
 g.near.clear(); g.fam_names.clear(); g._load_state()
 check(g.near.get("annhill")==[1,2,3],"bad hop counts rejected on load")
 

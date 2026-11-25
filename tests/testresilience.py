@@ -37,7 +37,7 @@ after = (m.decide(rname(), "FREE PRIZE claim now https://spam.example/x2", ["6A"
 check(before == after == ("drop", "allow"), f"the written rules still hold spam and let the regular through: {before} {after}")
 
 # a state file damaged mid-write: the last good copy is used, and a leftover temp file is ignored
-st = g.file_cfg["state_file"]
+st = g.file_cfg["state_file"] + ".gz"
 g._save_state(force=True); g._save_state(force=True)       # now there is a .bak
 with open(st, "w") as f: f.write('{"blocks": {"x": ')       # cut off mid-write
 with open(st + ".tmp", "w") as f: f.write("garbage")

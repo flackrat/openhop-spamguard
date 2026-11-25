@@ -29,4 +29,9 @@ g2.fg_observe({"timestamp":now,"length":40,"route":1,"type":5,"transmitted":True
 check(g2.lbt_view(now) is None,"an older openHop without these fields: nothing shown, no error")
 g2.fg_observe({"timestamp":now+1,"length":40,"route":1,"type":5,"transmitted":True,"lbt_attempts":"x","lbt_channel_busy":True})
 check(True,"a bad value doesn't break anything")
+# a packet that wasn't sent, sharing its time with a failed send, isn't counted as a send
+g3=guard(mock()); g3.radio=g.radio; t3=now-100
+g3.fg_observe({"timestamp":t3,"length":40,"route":1,"type":5,"transmitted":False,"drop_reason":"TX failed","original_path":[],"lbt_attempts":4,"lbt_channel_busy":True})
+g3.fg_observe({"timestamp":t3,"length":40,"route":1,"type":5,"transmitted":False,"drop_reason":"Duplicate","original_path":[],"lbt_attempts":0,"lbt_channel_busy":False})
+check(len(g3.lbt)==1 and g3.lbt[0][1]==4,"only the failed send is counted, not the packet sharing its time: %s"%list(g3.lbt))
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)
