@@ -40,10 +40,14 @@ It helps to know what SpamGuard is allowed to touch, both for checking it and fo
    and refuses to install if it doesn't match or is missing (and checks the checksum file's Sigstore signature too
    if `cosign` is installed). The page only installs newer versions; going back a version is done on the Pi
    itself. You can also check releases by hand (below), or use the plugin, whose updates are checked against
-   the same checksums and, from 6.49.0, against GitHub's build record for the exact file (made by this
-   repository's release workflow, its signature checked). This isn't full offline Sigstore verification, which
-   needs libraries too heavy for a small Pi.
-5. **Outside contact** is limited to GitHub (only when checking for or installing an update) and, if you turn
+   the same checksums and, from 6.49.0, against GitHub's build record for the exact file. From 6.50.0 that
+   record is checked the way Sigstore's own tools do: the signing certificate must come from Sigstore's
+   certificate authority, be issued through GitHub's sign-in to exactly this repository's release workflow, and
+   have been valid when Sigstore's public log recorded the signing. Sigstore's keys are built in; if Sigstore
+   changes them, the updater reads Sigstore's published list (checked against its listed checksum) instead.
+   Certificate transparency receipts aren't checked.
+5. **Outside contact** is limited to GitHub (only when checking for or installing an update, plus Sigstore's
+   key list on the rare occasion Sigstore changes its keys) and, if you turn
    it on, the public MeshCore map. Nothing about your repeater is ever sent. The one usage figure is a count:
    once a day SpamGuard downloads a small release file, which GitHub counts, so the developer can see roughly
    how many repeaters run it. The request carries no identifier, the Updates page says it happens, and it has

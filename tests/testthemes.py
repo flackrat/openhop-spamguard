@@ -47,6 +47,26 @@ def hue(h):
     import colorsys
     h=h.lstrip('#'); r,g_,b_=[int(h[i:i+2],16)/255 for i in (0,2,4)]; return colorsys.rgb_to_hsv(r,g_,b_)[0]*360
 check(not any(60<hue(cb[k])<170 for k in ("signal","signal-text","bar","c-stop")), "colour-blind safe: no green for good")
+# the protection slider runs cool (gentle) to warm (tough) in each scheme's own colours, all visible on its panels
+import colorsys
+def hsv(h):
+    h=h.lstrip('#'); return colorsys.rgb_to_hsv(*[int(h[i:i+2],16)/255 for i in (0,2,4)])
+warm=lambda h: (hsv(h)[0]*360<=40 or hsv(h)[0]*360>=300) and hsv(h)[1]>0.35
+root_heat={k.lstrip("-"):x for k,x in re.findall(r"(--heat\d):(#[0-9a-fA-F]{6})", re.search(r":root\{(--heat0[^}]*)\}", css).group(1))}
+check(len(root_heat)==5,"the default scheme has a slider scale")
+scales={"default":root_heat}; scales.update({n:v for n,v in sets.items()})
+heat_sets=[]
+for name,v in scales.items():
+    hs=[v.get(f"heat{i}") for i in range(5)]
+    check(all(hs),f"{name}: the slider has its own five-step scale")
+    if not all(hs): continue
+    heat_sets.append(tuple(hs))
+    check(warm(hs[4]) and not warm(hs[0]),f"{name}: the slider ends warm and starts cool ({hs[0]} to {hs[4]})")
+    panel=v.get("panel","#ffffff")
+    bad=[(h,round(cr(h,panel),2)) for h in hs if cr(h,panel)<3]
+    check(not bad,f"{name}: every step of the slider reaches 3:1 on its panel {bad}")
+check(len(set(heat_sets))==len(heat_sets),"each scheme's slider scale is its own")
+check("#1d8a8c,#5fa36a 25%" not in css,"no scheme is stuck with one fixed slider")
 
 async def main():
     async with async_playwright() as p:
