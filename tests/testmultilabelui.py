@@ -36,6 +36,8 @@ async def main():
             n=await pg.eval_on_selector_all("#qList [data-qt]:checked","x=>x.length")
             check(n==0, f"{scheme}: the select-all box unticks everything when all were ticked (got {n})")
             await pg.click("[data-qall]"); await pg.wait_for_timeout(200)
+            await pg.click("[data-qb='spam']"); await pg.wait_for_timeout(400)
+            check(await pg.locator("#qBulkWarn").count()==1, f"{scheme}: several names: it asks for a second press first")
             await pg.click("[data-qb='spam']"); await pg.wait_for_timeout(600)
             check(len(sent)==5 and all(s.get("verdict")=="spam" for s in sent), f"{scheme}: five answers sent together (got {len(sent)})")
             check(not errs, f"{scheme}: no page errors "+str(errs))

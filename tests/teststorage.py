@@ -38,4 +38,13 @@ g._last_save=time.time()-31; g.poll_once()
 check(not g._important,"and is saved once 30 seconds have passed")
 g._last_save=time.time()-1; t2=g._last_save; g.action("dismiss_link",{"id":"0123456789"})
 check(g._last_save>t2,"a change you make on the page is saved at once")
+# a power cut between moving the compressed file to its backup and writing the new one: the backup is newest
+import shutil
+g._save_state(force=True)
+st_now=read_state(base); json.dump(dict(st_now,allow_hops=["5Q"]),open(base,"w")); os.utime(base,(time.time()-3600,time.time()-3600))
+os.replace(base+".gz",base+".gz.bak")
+g4=sg.SpamGuard(dict(g.file_cfg))
+check("5Q" not in g4.allow_hops,"after a power cut mid-save, the newer compressed backup wins over the older plain file")
+check(sg.state_candidates(base)[0]==base+".gz.bak","the newest file is tried first, whatever its kind")
+
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

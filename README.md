@@ -138,18 +138,19 @@ How well does it work, and what does it get wrong? See the [test results](docs/p
 | Let a genuine person through | Open **Messages** (or tap **To review** on the Overview), open their message and press **Not spam** |
 | See what SpamGuard stopped, and why | Click **Spam stopped** on the Overview, or open **Messages** |
 | Answer several messages at once | In **Messages**, tick them (shift-click ticks a range, or use **Select all**), then **Spam** or **Not spam** |
-| Get a suggestion for your settings | Open **Settings advisor** on the Overview |
+| Get settings suggestions | **Settings advisor** on the Overview |
 | Make it gentler or tougher | Slide the **Protection level** on the Overview; open "What this level would have done" to see the effect on your own traffic |
 | Stop something it missed | In **Messages**, open it and press **Spam** |
 | Someone is using a real person's name | In **Messages**, open the message and press **Spoofed** |
 | See who SpamGuard knows, trust or doubt someone | Open **People**: search, filter, then **Trust**, **Put on watch** or **Forget** |
-| Read a channel without blocking on it | **Channels**: switch off **Block spam here** for that channel |
+| Read a channel without blocking on it | **Channels**: choose **Count only** (or **Bot-safe**) |
+| Check you're protected | **Protection right now** on the Overview |
+| See who changed a setting | **Health**: **Settings changes** |
 | Copy your decisions to another SpamGuard | Advanced > Settings: **Export** on one, **Import** on the other |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
 | Pause all blocking | Press **Pause** on the Overview |
-| Start over with a clean slate | Advanced > Settings > **Start again from scratch** |
-| Clear the charts and spam map | Advanced > Settings > **Clear spam history** |
+| Start over, or clear the charts | Advanced > Settings: **Start again from scratch** or **Clear spam history** |
 | Update | Press **Update** when the page says a new version is out |
 | Remove it | Plugin: press **Pause**, wait a minute, then uninstall it in openHop (System > Plugins). Older install: `sudo bash /opt/openhop_spamguard/uninstall.sh` |
 

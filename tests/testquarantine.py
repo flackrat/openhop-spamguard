@@ -110,5 +110,17 @@ check(g9.to_review()==n and g9._review_count_failed,"a failed count keeps the la
 g9.quarantine=real; g9._review_count=(0,n); g9.to_review()
 check(not g9._review_count_failed,"and clears once it works")
 
+# a Not spam answer covers that name only; a spam answer covers copies from any name
+g8=guard(mock())
+RAW8=[row("Quarry Gil","Morning from the ridge, all clear",caught_by="b2",caught_kind="hop",caught_source="burst",ago=90),
+      row("Quarry Hal","Morning from the ridge, all clear",caught_by="b2",caught_kind="hop",caught_source="burst",ago=80)]
+g8._q_rows=lambda d:(RAW8,"memory")
+check(g8.quarantine({"status":"review"})["counts"]["review"]==2,"two names, the same held text: both to review")
+g8.labels={"Quarry GilMorning from the ridge, all clear":"not_spam"}
+q=g8.quarantine({"status":"review"})
+check(q["counts"]["review"]==1 and q["rows"][0]["sender"]=="Quarry Hal","Not spam for one name leaves the other name's copy to review")
+g8.labels={"Quarry GilMorning from the ridge, all clear":"spam"}
+check(g8.quarantine({"status":"review"})["counts"]["review"]==0,"Spam for one covers the copies from every name")
+
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

@@ -112,6 +112,12 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .q-line{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .q-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .q-grp{font-size:.8125rem;min-height:32px;padding:0 10px}
+.rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr) 84px;align-items:center;gap:4px 12px}
+@media (max-width:600px){.rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr)}.rows li.ch-row .ch-spark{grid-column:2}}
+.ch-rank{color:var(--soft);font-variant-numeric:tabular-nums;text-align:right;align-self:start;padding-top:2px}
+.ch-main{flex:1;min-width:0}.ch-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.ch-bar{height:8px;border-radius:4px;background:var(--line);margin:6px 0 4px;overflow:hidden}.ch-bar i{display:block;height:100%;border-radius:4px;background:var(--heat2)}
+.ch-spark{color:var(--soft)}.ch-prot{min-height:32px;padding:0 10px;font-size:.8125rem;margin-left:auto}
 .q-badge{font-size:0.75rem;font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .q-stopped{background:var(--signal-tint);color:var(--signal-text)}
 .q-held{background:var(--amber-tint);color:var(--amber-text)}
@@ -285,6 +291,20 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
 .health-head h2{margin:0}
+.prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:8px 0 0}
+.prot-parts dt{font-size:0.78125rem;color:var(--soft)}
+.prot-parts dd{margin:2px 0 0;font-weight:600}
+.prot-parts .st-bad{color:var(--stop)}
+.prot-parts .st-warn{color:var(--amber-text)}
+.prot-parts .st-ok{color:var(--signal-text)}
+.prot-parts .st-info,.prot-parts .st-off,.prot-parts .st-none{font-weight:500}
+.prot-parts .when{display:block;font-weight:400;font-size:0.78125rem;color:var(--soft)}
+.fresh{list-style:none;margin:8px 0 0;padding:0}
+.fresh li{display:flex;gap:10px;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
+.fresh li.late{color:var(--amber-text)}
+.hist{list-style:none;margin:8px 0 0;padding:0}
+.hist li{display:flex;flex-wrap:wrap;gap:4px 10px;padding:5px 0;border-bottom:1px solid var(--line)}
+.hist .what{font-weight:600}
 .hlist{margin:8px 0 0;padding-left:18px}
 .hlist li{margin:3px 0}
 .hlist li.bad{color:var(--stop)}
@@ -402,7 +422,7 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
   .page[data-page=overview].on{display:flex;flex-direction:column}
   .page[data-page=overview] > *{order:3}
   .page[data-page=overview] > .hero,.page[data-page=overview] > [id$=Callout],.page[data-page=overview] > #chHint{order:0}
-  .page[data-page=overview] > #kpiSec{order:1}
+  .page[data-page=overview] > #protSec,.page[data-page=overview] > #kpiSec{order:1}
   .page[data-page=overview] > .controls{order:2;grid-template-columns:minmax(0,1fr);gap:10px}
   .page[data-page=overview] .controls #lvlSec{order:-1}
   .page[data-page=overview] > section,.page[data-page=overview] .controls section{padding:12px 14px}
@@ -695,6 +715,11 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <p><button type="button" class="quiet" id="trustRevAll">I've checked: drop the rest</button></p>
   </section>
 </div>
+<section id="protSec" hidden>
+  <div class="health-head"><h2>Protection right now</h2><span id="protPill"></span></div>
+  <p class="explain" id="protWhy" hidden></p>
+  <dl class="prot-parts" id="protParts"></dl>
+</section>
 <section id="kpiSec">
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
   <dl class="kpis" id="kpis"></dl>
@@ -958,11 +983,19 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <div class="inline-form"><input id="histWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="histGo" disabled>Yes, clear it</button><button class="quiet" id="histNo">Cancel</button></div>
   </div>
 </section></div>
-<div class="page" data-page="channels"><section>
+<div class="page" data-page="channels"><section id="chHeardSec" hidden>
+  <h2>Busiest channels on the mesh</h2>
+  <p class="explain">Every channel this repeater hears in the last 30 days. Found channels are only counted, never logged or blocked, until you protect them. Bot and test channels get bot-safe protection.</p>
+  <div class="inline-form ch-ctl"><label for="chTop">Show</label><select id="chTop"><option value="5">top 5</option><option value="10">top 10</option><option value="20">top 20</option><option value="50">top 50</option><option value="all">all</option></select>
+    <label for="chSort">Sort by</label><select id="chSort"><option value="d7">Busiest this week</option><option value="d30">Busiest over 30 days</option><option value="names">Most names</option><option value="last">Heard most recently</option><option value="name">Name</option></select>
+    <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
+    <span class="explain" id="chTopNote"></span></div>
+  <ul class="rows ch-heard" id="chHeard"></ul>
+</section><section>
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
-  <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Switch off "Block spam here" to only read and count a channel. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
+  <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Bot-safe suits bot, weather and test channels; Count only blocks nothing. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
   <ul class="rows" id="channels"></ul>
   <p style="margin:10px 0 0" id="crossRow" hidden><label class="switch"><input type="checkbox" id="crossCh"> Spam blocked on one channel is blocked on all of them</label> <span class="tag would">experimental</span><br><span class="explain">Off: SpamGuard's own holds stay on the channel where the spam was seen. On: they follow it to every channel. A different person using the same name on another channel would be held too.</span></p>
   <div id="chChoiceBox" hidden>
@@ -1010,6 +1043,14 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <ul class="hlist" id="hIssues"></ul>
   <dl class="stats" id="hStats"></dl>
   <dl class="stats adv" id="hStatsAdv"></dl>
+  <h3>When each part last worked</h3>
+  <ul class="fresh" id="hFresh"></ul>
+</section>
+<section id="histSec">
+  <h2>Settings changes</h2>
+  <p class="explain">The latest changes, by you on this page or by SpamGuard itself. Kept on the Pi only.</p>
+  <ul class="hist" id="histList"></ul>
+  <p><button type="button" class="quiet" id="histMore" hidden>Show all</button></p>
 </section></div>
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
@@ -1355,8 +1396,32 @@ function copyCmd(el){
 function fallbackCopy(t,done){ const a=document.createElement("textarea"); a.value=t; a.setAttribute("readonly",""); a.style.position="fixed"; a.style.opacity="0";
   document.body.appendChild(a); a.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} a.remove();
   if(ok) done(); else toast("Couldn't copy here: select the command and copy it by hand",true); }
+function renderProtection(d){
+  const p=d.protection, sec=$("#protSec"); sec.hidden=!p; if(!p) return;
+  const pill={ok:"<span class='tag ok'>✓ Protected</span>",watch:"<span class='tag would'>Watching only</span>",
+    partly:"<span class='tag would'>! Check</span>",bad:"<span class='tag stop'>✕ Not protected</span>"}[p.state]||"";
+  $("#protPill").innerHTML=pill;
+  const w=$("#protWhy"); const line=p.state==="ok"?"":p.line+(p.why?". "+p.why+".":"."); w.hidden=!line; w.textContent=line;
+  const mark={ok:"",warn:"! ",bad:"✕ ",off:"",none:""};
+  $("#protParts").innerHTML=p.parts.map(x=>`<div><dt>${esc(x.label)}</dt><dd class="st-${esc(x.state)}">${mark[x.state]||""}${esc(x.text||"")}${x.ts?`<span class="when">${esc(ago(x.ts))}</span>`:""}</dd></div>`).join("");
+}
+let HIST_ALL=false;
+function renderHistory(d){
+  const rows=d.settings_history||[], list=$("#histList"), more=$("#histMore");
+  if(!rows.length){ list.innerHTML=`<li class="explain">No changes recorded yet.</li>`; more.hidden=true; return; }
+  const shown=HIST_ALL?rows:rows.slice(0,10);
+  list.innerHTML=shown.map(r=>`<li><span class="explain">${esc(new Date(r.ts*1000).toLocaleString([], {dateStyle:"medium",timeStyle:"short"}))}</span>
+    <span class="what">${esc(r.label)}</span><span>${r.old!=null?esc(r.old)+" → ":""}${esc(r.new)}</span><span class="explain">${esc(r.by)}</span></li>`).join("");
+  more.hidden=rows.length<=10; more.textContent=HIST_ALL?"Show fewer":`Show all ${rows.length}`;
+}
+$("#histMore").addEventListener("click",()=>{ HIST_ALL=!HIST_ALL; if(typeof S!=="undefined"&&S) renderHistory(S); });
+function renderFresh(h){
+  const rows=h.fresh||[];
+  $("#hFresh").innerHTML=rows.map(f=>`<li class="${f.state==="late"?"late":""}"><span>${esc(f.label)}</span><span>${f.state==="none"?"not yet":(f.state==="late"?"! ":"")+esc(ago(f.ts))}</span></li>`).join("");
+}
 function renderHealth(d){
   const h=d.service||{}; const now=Date.now()/1000;
+  renderFresh(h);
   const pill={ok:"<span class='tag ok'>Healthy</span>",warn:"<span class='tag would'>Needs a look</span>",bad:"<span class='tag stop'>Problem</span>"}[h.state]||"";
   $("#hPill").innerHTML=pill;
   $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
@@ -1498,16 +1563,38 @@ function renderMostHeld(d){
 function renderRecent(d){ /* message lists now live only in Messages */ }
 
 /* ---------- advanced tables ---------- */
+// Channels heard: a bar for this week's messages, a 14-day sparkline, and what SpamGuard does there
+function chSpark(v){ const m=Math.max(1,...v), w=84, h=22, st=w/(v.length-1);
+  const pts=v.map((x,i)=>`${(i*st).toFixed(1)},${(h-2-(x/m)*(h-4)).toFixed(1)}`).join(" ");
+  return `<svg class="ch-spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`; }
+function renderChHeard(d){
+  const sec=$("#chHeardSec"); if(!sec) return; const all=d.channels_heard||[];
+  sec.hidden=!all.length; if(!all.length) return;
+  const pick=store.get("sgChTop")||"10", sort=store.get("sgChSort")||"d7", kind=store.get("sgChKind")||"all";
+  $("#chTop").value=pick; $("#chSort").value=sort; $("#chKind").value=kind;
+  const want=all.filter(r=>kind==="all"||(kind==="bots"?!!r.bots:r.kind===kind));
+  const by={d7:(a,b)=>b.d7-a.d7||b.d30-a.d30,d30:(a,b)=>b.d30-a.d30||b.d7-a.d7,names:(a,b)=>b.names_day-a.names_day||b.d7-a.d7,
+    last:(a,b)=>b.last-a.last,name:(a,b)=>a.name.localeCompare(b.name)}[sort]||((a,b)=>b.d7-a.d7);
+  want.sort(by);
+  const n=pick==="all"?want.length:Math.min(want.length,+pick||10), rows=want.slice(0,n), top=Math.max(1,...all.map(r=>r.d7));
+  $("#chTopNote").textContent=want.length?`Showing ${n} of ${want.length}${kind==="all"?"":" ("+all.length+" in all)"}`:"None of these";
+  const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
+  $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
+    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
+      <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${Math.max(2,Math.round(100*r.d7/top))}%"></i></div>
+      <span class="explain">${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+}
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
   const many=d.channels.length+choices.length>15, hit=c=>!q||c.toLowerCase().includes(q);
   $("#chFindRow").hidden=!many;
   const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
   $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
-  const watch=d.watch_channels||[];
-  $("#channels").innerHTML=chShown.map(c=>{ const on=!watch.includes(c);
-    return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${on?"Spam is blocked here":"Read and counted only: nothing is blocked here"}</div></div>
-      <div class="acts"><label class="switch"><input type="checkbox" data-chb="${esc(c)}" ${on?"checked":""}> Block spam here</label>${c==="Public"?"":btn("Remove","/remove_channel",{name:c},"quiet danger")}</div></li>`; }).join("")
+  const watch=d.watch_channels||[], safe=d.botsafe_channels||[];
+  const WHY={full:"Spam is blocked here",botsafe:"Bot-safe: links, junk and copied names are blocked; bots are left alone",watch:"Read and counted only: nothing is blocked here"};
+  $("#channels").innerHTML=chShown.map(c=>{ const m=watch.includes(c)?"watch":safe.includes(c)?"botsafe":"full";
+    return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${WHY[m]}</div></div>
+      <div class="acts"><label class="explain" for="chm-${esc(c)}">Protection</label><select id="chm-${esc(c)}" data-chb="${esc(c)}"><option value="full" ${m==="full"?"selected":""}>Block spam</option><option value="botsafe" ${m==="botsafe"?"selected":""}>Bot-safe</option><option value="watch" ${m==="watch"?"selected":""}>Count only</option></select>${c==="Public"?"":btn("Remove","/remove_channel",{name:c},"quiet danger")}</div></li>`; }).join("")
     +(d.channels.length>chShown.length&&!q?`<li><span class="explain">and ${d.channels.length-chShown.length} more (search, or Show all)</span></li>`:"");
   $("#crossRow").hidden=d.channels.length<2; if(document.activeElement!==$("#crossCh")) $("#crossCh").checked=!!d.cross_channel_blocks;
   $("#chChoiceBox").hidden=!choices.length;
@@ -1661,7 +1748,7 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
-$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,on:t.checked}); });
+$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,mode:t.value}).then(()=>{ if(S) renderChannels(S); }); });
 $("#crossCh").onchange=e=>{ if(e.target.checked&&!confirm("Let SpamGuard's own holds follow spam to every channel? A different person using the same name on another channel would be held too.")){ e.target.checked=false; return; } post("/settings",{cross_channel_blocks:e.target.checked}); };
 $("#decExport").onclick=async()=>{
   const r=await fetch("/decisions_export",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:"{}"});
@@ -1779,6 +1866,10 @@ $("#rulesClose").addEventListener("click",()=>{ const d=$("#rulesDlg"); if(d.clo
 $("#rulesCopy").addEventListener("click",()=>$("#ruleCopy").click());
 var chAll=false;
 $("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderChannels(S); });
+$("#chTop").addEventListener("change",e=>{ store.set("sgChTop",e.target.value); if(S) renderChHeard(S); });
+$("#chSort").addEventListener("change",e=>{ store.set("sgChSort",e.target.value); if(S) renderChHeard(S); });
+$("#chKind").addEventListener("change",e=>{ store.set("sgChKind",e.target.value); if(S) renderChHeard(S); });
+$("#chHeard").addEventListener("click",e=>{ const b=e.target.closest("[data-chprotect]"); if(b) post("/add_channel",{name:b.dataset.chprotect,key:""}); });
 $("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });
 $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});
 
@@ -1909,12 +2000,20 @@ $("#qList").addEventListener("click",e=>{ const t=e.target.closest("[data-qt]");
   Q.last=i; });
 $("#qList").addEventListener("click",e=>{ const b=e.target.closest("[data-qg]"); if(!b) return; const gid=+b.dataset.qg;
   (Q.data.rows||[]).forEach((r,i)=>{ if(r.group===gid){ Q.ticks[i]=true; const x=document.querySelector(`#qList [data-qt="${i}"]`); if(x) x.checked=true; } }); qBulk(); });
-$("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; qBulk(); });
+$("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; Q.armed=null; qBulk(); });
 
 $("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) return; (Q.data.rows||[]).forEach((r,i)=>{ Q.ticks[i]=e.target.checked; }); document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=e.target.checked); qBulk(); });
 $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-qb]"); if(!b||!Q.data) return; const v=b.dataset.qb;
   const sel=Object.keys(Q.ticks).filter(k=>Q.ticks[k]).map(k=>Q.data.rows[+k]).filter(Boolean);
-  if(v==="clear"){ Q.ticks={}; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
+  if(v==="clear"){ Q.ticks={}; Q.armed=null; document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=false); qBulk(); return; }
+  // One answer for several names: say what it covers and ask for a second press, so a group isn't answered by mistake
+  const names=new Set(sel.map(r=>r.sender)), msgs=sel.reduce((a,r)=>a+(r.copies||1),0), kinds=new Set(sel.map(r=>r.status));
+  const key=v+"|"+sel.map(r=>r.packet).join(",");
+  if(names.size>1&&Q.armed!==key){ Q.armed=key;
+    const n=$("#qBulkWarn")||Object.assign(document.createElement("p"),{id:"qBulkWarn",className:"explain"}); n.setAttribute("role","status");
+    n.textContent=`This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check the list, then press ${b.textContent.trim()} again to confirm.`;
+    $("#qBulk").appendChild(n); return; }
+  Q.armed=null;
   sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
   const send=(r,extra)=>fetch("/verdict",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
     body:JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},extra||{}))}).then(x=>x.json()).catch(()=>({}));
@@ -2013,13 +2112,13 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderProtection(d); renderHistory(d); renderAdvisor(d);
   { const care=$("#careSec"); if(care) care.hidden=[...care.querySelectorAll(":scope>.care-part")].every(x=>x.hidden); } renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
   renderKnown(d);
-  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
+  if(!editing){ renderBlocks(d); renderChannels(d); renderChHeard(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
