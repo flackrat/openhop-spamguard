@@ -291,6 +291,20 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
 .health-head h2{margin:0}
+.prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:8px 0 0}
+.prot-parts dt{font-size:0.78125rem;color:var(--soft)}
+.prot-parts dd{margin:2px 0 0;font-weight:600}
+.prot-parts .st-bad{color:var(--stop)}
+.prot-parts .st-warn{color:var(--amber-text)}
+.prot-parts .st-ok{color:var(--signal-text)}
+.prot-parts .st-info,.prot-parts .st-off,.prot-parts .st-none{font-weight:500}
+.prot-parts .when{display:block;font-weight:400;font-size:0.78125rem;color:var(--soft)}
+.fresh{list-style:none;margin:8px 0 0;padding:0}
+.fresh li{display:flex;gap:10px;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
+.fresh li.late{color:var(--amber-text)}
+.hist{list-style:none;margin:8px 0 0;padding:0}
+.hist li{display:flex;flex-wrap:wrap;gap:4px 10px;padding:5px 0;border-bottom:1px solid var(--line)}
+.hist .what{font-weight:600}
 .hlist{margin:8px 0 0;padding-left:18px}
 .hlist li{margin:3px 0}
 .hlist li.bad{color:var(--stop)}
@@ -408,7 +422,7 @@ body.advanced .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
   .page[data-page=overview].on{display:flex;flex-direction:column}
   .page[data-page=overview] > *{order:3}
   .page[data-page=overview] > .hero,.page[data-page=overview] > [id$=Callout],.page[data-page=overview] > #chHint{order:0}
-  .page[data-page=overview] > #kpiSec{order:1}
+  .page[data-page=overview] > #protSec,.page[data-page=overview] > #kpiSec{order:1}
   .page[data-page=overview] > .controls{order:2;grid-template-columns:minmax(0,1fr);gap:10px}
   .page[data-page=overview] .controls #lvlSec{order:-1}
   .page[data-page=overview] > section,.page[data-page=overview] .controls section{padding:12px 14px}
@@ -701,6 +715,11 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <p><button type="button" class="quiet" id="trustRevAll">I've checked: drop the rest</button></p>
   </section>
 </div>
+<section id="protSec" hidden>
+  <div class="health-head"><h2>Protection right now</h2><span id="protPill"></span></div>
+  <p class="explain" id="protWhy" hidden></p>
+  <dl class="prot-parts" id="protParts"></dl>
+</section>
 <section id="kpiSec">
   <div class="health-head"><h2>Spam at a glance</h2><span class="explain" id="kpiSince"></span></div>
   <dl class="kpis" id="kpis"></dl>
@@ -1024,6 +1043,14 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <ul class="hlist" id="hIssues"></ul>
   <dl class="stats" id="hStats"></dl>
   <dl class="stats adv" id="hStatsAdv"></dl>
+  <h3>When each part last worked</h3>
+  <ul class="fresh" id="hFresh"></ul>
+</section>
+<section id="histSec">
+  <h2>Settings changes</h2>
+  <p class="explain">The latest changes, by you on this page or by SpamGuard itself. Kept on the Pi only.</p>
+  <ul class="hist" id="histList"></ul>
+  <p><button type="button" class="quiet" id="histMore" hidden>Show all</button></p>
 </section></div>
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
@@ -1369,8 +1396,32 @@ function copyCmd(el){
 function fallbackCopy(t,done){ const a=document.createElement("textarea"); a.value=t; a.setAttribute("readonly",""); a.style.position="fixed"; a.style.opacity="0";
   document.body.appendChild(a); a.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} a.remove();
   if(ok) done(); else toast("Couldn't copy here: select the command and copy it by hand",true); }
+function renderProtection(d){
+  const p=d.protection, sec=$("#protSec"); sec.hidden=!p; if(!p) return;
+  const pill={ok:"<span class='tag ok'>✓ Protected</span>",watch:"<span class='tag would'>Watching only</span>",
+    partly:"<span class='tag would'>! Check</span>",bad:"<span class='tag stop'>✕ Not protected</span>"}[p.state]||"";
+  $("#protPill").innerHTML=pill;
+  const w=$("#protWhy"); const line=p.state==="ok"?"":p.line+(p.why?". "+p.why+".":"."); w.hidden=!line; w.textContent=line;
+  const mark={ok:"",warn:"! ",bad:"✕ ",off:"",none:""};
+  $("#protParts").innerHTML=p.parts.map(x=>`<div><dt>${esc(x.label)}</dt><dd class="st-${esc(x.state)}">${mark[x.state]||""}${esc(x.text||"")}${x.ts?`<span class="when">${esc(ago(x.ts))}</span>`:""}</dd></div>`).join("");
+}
+let HIST_ALL=false;
+function renderHistory(d){
+  const rows=d.settings_history||[], list=$("#histList"), more=$("#histMore");
+  if(!rows.length){ list.innerHTML=`<li class="explain">No changes recorded yet.</li>`; more.hidden=true; return; }
+  const shown=HIST_ALL?rows:rows.slice(0,10);
+  list.innerHTML=shown.map(r=>`<li><span class="explain">${esc(new Date(r.ts*1000).toLocaleString([], {dateStyle:"medium",timeStyle:"short"}))}</span>
+    <span class="what">${esc(r.label)}</span><span>${r.old!=null?esc(r.old)+" → ":""}${esc(r.new)}</span><span class="explain">${esc(r.by)}</span></li>`).join("");
+  more.hidden=rows.length<=10; more.textContent=HIST_ALL?"Show fewer":`Show all ${rows.length}`;
+}
+$("#histMore").addEventListener("click",()=>{ HIST_ALL=!HIST_ALL; if(typeof S!=="undefined"&&S) renderHistory(S); });
+function renderFresh(h){
+  const rows=h.fresh||[];
+  $("#hFresh").innerHTML=rows.map(f=>`<li class="${f.state==="late"?"late":""}"><span>${esc(f.label)}</span><span>${f.state==="none"?"not yet":(f.state==="late"?"! ":"")+esc(ago(f.ts))}</span></li>`).join("");
+}
 function renderHealth(d){
   const h=d.service||{}; const now=Date.now()/1000;
+  renderFresh(h);
   const pill={ok:"<span class='tag ok'>Healthy</span>",warn:"<span class='tag would'>Needs a look</span>",bad:"<span class='tag stop'>Problem</span>"}[h.state]||"";
   $("#hPill").innerHTML=pill;
   $("#hLine").textContent=`SpamGuard has been running for ${dur(h.uptime)} and last checked for messages ${h.last_check?ago(h.last_check):"not yet"}.`
@@ -2061,7 +2112,7 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderAdvisor(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderProtection(d); renderHistory(d); renderAdvisor(d);
   { const care=$("#careSec"); if(care) care.hidden=[...care.querySelectorAll(":scope>.care-part")].every(x=>x.hidden); } renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);

@@ -895,6 +895,18 @@ BOT_TRIP_SOURCES = frozenset({"repeat", "slowrepeat", "sense", "dedupe", "campai
 BOT_CHANNEL_RE = re.compile(r"bot|test|ping|weather|news|alert|wardriv|radar|aprs|telemetry|sensor|beacon|(?<![a-z])wx(?![a-z])", re.I)
 HASHTAG_RE = re.compile(r"(?<![\w#])#[a-z0-9][a-z0-9_-]{1,30}(?![\w-])", re.I)
 CHANNEL_KEEP_DAYS = 30
+SETTINGS_HISTORY_MAX = 200   # setting changes kept on the Pi, newest first
+_HIST_WHO = threading.local()   # who is changing settings on this thread (the page, auto level...)
+
+
+def _hist_who() -> Optional[str]:
+    return getattr(_HIST_WHO, "by", None)
+
+
+def _set_hist_who(by: Optional[str]) -> Optional[str]:
+    prev = _hist_who()
+    _HIST_WHO.by = by
+    return prev
 
 
 def hashtag_secret(name: str) -> str:
@@ -2639,6 +2651,9 @@ class SpamGuard:
         self.botsafe_channels: set[str] = set()   # channels where only spam bots don't trip is blocked
         self.openhop_channels: dict[str, str] = {}
         self.settings: dict[str, Any] = {}  # changes made on the web page
+        self.settings_history: collections.deque[dict] = collections.deque(maxlen=SETTINGS_HISTORY_MAX)
+        self._hist_last: Optional[dict] = None   # the values last recorded, to spot what changed
+        self.neighbours_ok: Optional[float] = None   # when openHop's neighbour list was last read
         self.next_rule_id = RULE_ID_BASE
         self.activity: collections.deque[dict] = collections.deque(maxlen=300)
         self.catches: collections.deque[float] = collections.deque(maxlen=50000)
@@ -2843,6 +2858,100 @@ class SpamGuard:
             self.evidence = None
         self._chan_by_hash = None   # the channels read may have changed: work out the names to try again
         self._chh_cache = None
+        self._history_note()
+
+    def _hist_view(self) -> dict:
+        """The values the settings history follows: mode, pause, level, and every setting chosen by hand."""
+        v = {"mode": self.cfg.get("mode"), "paused": bool(self.cfg.get("paused")), "level": self.cfg.get("level")}
+        for k in sorted(self.settings):
+            if k in META_BY_KEY:
+                v[k] = self.settings[k]
+        return v
+
+    def _hist_value(self, k: str, v: Any) -> str:
+        if k == "mode":
+            return {"monitor": "Monitor only", "protect": "Protect"}.get(v, str(v))
+        if k == "paused":
+            return "paused" if v else "running"
+        if k == "level" and isinstance(v, int):
+            return f"{v} ({level_name(v)})"
+        m = META_BY_KEY.get(k) or {}
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        if isinstance(v, (list, tuple, set)):
+            return f"{len(v)} entr{'y' if len(v) == 1 else 'ies'}"
+        if m.get("type") == "choice":
+            return next((str(lab) for val, lab, *_ in m.get("choices") or [] if val == v), str(v))
+        return str(v)[:60]
+
+    def _history_note(self):
+        """Record what changed since the last look: page changes, automatic ones and settings put back to default."""
+        try:
+            now_v = self._hist_view()
+        except Exception:
+            return
+        old = self._hist_last
+        self._hist_last = now_v
+        if old is None or old == now_v:
+            return
+        by = _hist_who() or "SpamGuard"
+        ts = time.time()
+        for k in sorted(set(old) | set(now_v)):
+            if old.get(k) == now_v.get(k):
+                continue
+            label = {"mode": "Mode", "paused": "Pause", "level": "Protection level"}.get(k) \
+                or (META_BY_KEY.get(k) or {}).get("label") or k
+            back = k not in now_v
+            new = self.cfg.get(k) if back else now_v[k]
+            self.settings_history.appendleft({
+                "ts": round(ts), "key": k, "label": str(label),
+                "old": None if k not in old else self._hist_value(k, old[k]),
+                "new": self._hist_value(k, new) + (" (default)" if back else ""), "by": by})
+
+    def _find_event(self, body: dict) -> Optional[Event]:
+        pk = str(body.get("packet") or "")
+        sender, text = body.get("sender"), body.get("text")
+        for e in reversed(self.events):
+            if (pk and e.packet == pk) or (not pk and e.sender == sender and e.text == text):
+                return e
+        return None
+
+    def why_through(self, body: dict) -> Optional[str]:
+        """For spam you mark that wasn't stopped: a short, general reason it got through and what would change it.
+        None when it was stopped, or the message is too old to say."""
+        e = self._find_event(body)
+        if e is None:
+            return None
+        c = self.cfg
+        if c.get("paused"):
+            return "It got through because SpamGuard was paused."
+        if e.matched and c["mode"] != "protect":
+            return "SpamGuard spotted it, but it was on Monitor only, so nothing was stopped. Protect stops these."
+        if e.matched:
+            return None
+        ch = e.channel or "Public"
+        if ch in self.watch_channels:
+            return f"It got through because {ch} is set to Count only. Choose Block spam for that channel to stop spam there."
+        if e.sender in self.allow_senders or ch in (self.trust_on.get(e.sender) or {}):
+            return "It got through because that name is trusted" + (" on this channel" if e.sender not in self.allow_senders
+                                                                   else "") + "."
+        if e.known_then or (e.known_then is None and self.is_known(e.sender)):
+            return ("It got through because that name was one SpamGuard knew, and it doesn't stop what known names say "
+                    "the first time.")
+        if e.exempt:
+            return ("It got through because something you let through covers it: an allowed phrase, a trusted key or "
+                    "this repeater's own messages.")
+        earlier = sum(1 for x in self.events if x.ts < e.ts and x.sender == e.sender)
+        same = sum(1 for x in self.events if x.ts < e.ts and x.norm == e.norm)
+        if not earlier and not same:
+            return ("It got through because it was the first sighting: a new name, and nothing like it had been seen "
+                    "yet.")
+        if same and ch in self.botsafe_channels:
+            return (f"It got through because {ch} is bot-safe, so repeated messages aren't stopped there. Choose Block "
+                    "spam for that channel if it has no bots.")
+        if same:
+            return "It got through because it hadn't been repeated enough yet to look like spam."
+        return "It got through because nothing about it matched what SpamGuard stops yet."
 
     def _label_ref(self, body: dict) -> dict:
         """When and on which channel the marked message was heard, so a label in the evidence log can be matched to
@@ -2983,6 +3092,9 @@ class SpamGuard:
         self.extra_channels = dict(st.get("extra_channels", {}))
         self.watch_channels = {str(c) for c in st.get("watch_channels") or [] if isinstance(c, str)}
         self.botsafe_channels = {str(c) for c in st.get("botsafe_channels") or [] if isinstance(c, str)}
+        self.settings_history = collections.deque(
+            [h for h in st.get("settings_history") or [] if isinstance(h, dict) and isinstance(h.get("ts"), (int, float))
+             and isinstance(h.get("label"), str)][:SETTINGS_HISTORY_MAX], maxlen=SETTINGS_HISTORY_MAX)
         settings = {}
         for k, v in (st.get("settings") or {}).items():
             k = LEGACY_KEYS.get(k, k)
@@ -3266,6 +3378,7 @@ class SpamGuard:
                     "extra_channels": self.extra_channels,
                     "watch_channels": sorted(getattr(self, "watch_channels", ())),
                     "botsafe_channels": sorted(getattr(self, "botsafe_channels", ())),
+                    "settings_history": list(getattr(self, "settings_history", ())),
                     "settings": self.settings,
                     "file_seen": {k: self.file_cfg.get(k, "(not in the file)") for k in self.settings},
                     "next_rule_id": self.next_rule_id,
@@ -6266,6 +6379,7 @@ class SpamGuard:
                 if h and r.get("active"):
                     out[h] = {"rssi": r.get("ewma_rssi"), "snr": r.get("ewma_snr"), "n": int(r.get("sample_count") or 0)}
             self.neighbours = out
+            self.neighbours_ok = now
         except Exception as e:
             log.debug("openHop neighbour links not available: %s", e)
 
@@ -10473,6 +10587,7 @@ class SpamGuard:
         user_rules = [r for r in existing if not self.is_our_rule(r)]
         ours_now = [r for r in existing if self.is_our_rule(r)]
         self.rules_seen = len(ours_now)
+        self.rules_checked = time.time()
         main, tail = self.build_rule_sets()
         ours_new = main + tail
         # Outside Protect SpamGuard's rules only record (log_only), and openHop stops at the first rule that
@@ -10748,7 +10863,11 @@ class SpamGuard:
         with self.lock:
             hours = round((time.time() - s["since"]) / 3600)
             self.settings["mode"] = "protect"
-            self.rebuild_cfg()
+            prev = _set_hist_who("Switched by itself after watching")
+            try:
+                self.rebuild_cfg()
+            finally:
+                _set_hist_who(prev)
             self.note(f"Switched to Protect after {hours} hours of watching: it would have stopped "
                       f"{s['spam']} spam message{'' if s['spam'] == 1 else 's'}, none marked genuine.")
             self.snapshot_settings("switched to Protect by itself")
@@ -10831,7 +10950,11 @@ class SpamGuard:
             self.settings["level"] = new
             self.settings.pop("sensitivity", None)
             al["last"], al["waiting"] = now, None
-            self.rebuild_cfg()
+            prev = _set_hist_who("Auto level")
+            try:
+                self.rebuild_cfg()
+            finally:
+                _set_hist_who(prev)
             self.note(f"Auto level moved the protection level from {cur} ({level_name(cur)}) to {new} ({level_name(new)}): {why}. "
                       "Drag the slider yourself to take over.")
             self._important = True
@@ -11721,7 +11844,71 @@ class SpamGuard:
                 "jobs_failing": sorted(k for k, f in (getattr(self, "task_fails", None) or {}).items() if f["n"] >= 5),
                 "released_week": sum(1 for k, v in self.labels.items() if v == "not_spam" and float(self.label_at.get(k) or 0) > now - 7 * 86400),
                 "can_apply_fix": install_kind() == "normal"
-                and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"), **sysr}
+                and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"),
+                "fresh": self.freshness(now), **sysr}
+
+    def freshness(self, now: Optional[float] = None) -> list[dict]:
+        """When each part last did its job, oldest worry first on the page: packets, checks, neighbours, radio,
+        rules, saves. 'due' is how long each may go quiet before it's worth a look."""
+        now = now or time.time()
+        c = self.cfg
+        nf_last = max((ts for ts, _v in list(self.nf)[-20:]), default=None) if self.nf else None
+        parts = [("packets", "Packets heard from openHop", getattr(self, "heard_at", None), c.get("quiet_warn_minutes", 20) * 60),
+                 ("check", "SpamGuard's own check", self.loop_beat, max(30, c["poll_seconds"] * 3 + 20)),
+                 ("neighbours", "Neighbour list", getattr(self, "neighbours_ok", None), 1800),
+                 ("radio", "Radio noise reading", nf_last if c.get("interference_watch", True) else None, 900),
+                 ("rules", "Rules checked in openHop", getattr(self, "rules_checked", None), 300),
+                 ("sync", "Rules last written", self.last_sync, None),
+                 ("save", "Data saved to the SD card", self._last_save or None, self.SAVE_EVERY * 2 + 120)]
+        out = []
+        for key, label, ts, due in parts:
+            age = None if ts is None else max(0, round(now - ts))
+            state = "none" if ts is None else ("late" if due and age > due else "ok")
+            out.append({"part": key, "label": label, "ts": ts, "age_s": age, "state": state})
+        return out
+
+    def protection(self, svc: Optional[dict] = None) -> dict:
+        """Am I protected right now? One line for the Overview, with the parts that decide it."""
+        now = time.time()
+        c = self.cfg
+        svc = svc or self.health()
+        fg = self.fg_status()
+        stale = max(30, c["poll_seconds"] * 3 + 20)
+        checking = self.loop_beat is not None and now - self.loop_beat <= stale
+        oh_ok = bool(svc.get("openhop_ok")) and not (self.openhop_down_since and now - self.openhop_down_since > 120)
+        rules_ok = None if self.rules_expected is None or self.rules_seen is None else self.rules_seen == self.rules_expected
+        parts = [
+            {"part": "mode", "label": "Mode",
+             "state": "bad" if c.get("paused") else ("ok" if c["mode"] == "protect" else "warn"),
+             "text": "Paused" if c.get("paused") else ("Protect" if c["mode"] == "protect" else "Monitor only, nothing is stopped")},
+            {"part": "openhop", "label": "openHop",
+             "state": "bad" if not oh_ok or getattr(self, "engine_off", False) else "ok",
+             "text": ("Rule engine switched off" if getattr(self, "engine_off", False) else
+                      "Connected" if oh_ok else "Not answering")},
+            {"part": "check", "label": "Checking", "state": "ok" if checking else "bad", "ts": self.loop_beat,
+             "text": "Running" if checking else "Stopped"},
+            {"part": "rules", "label": "Rules in openHop", "ts": getattr(self, "rules_checked", None),
+             "state": ("none" if rules_ok and not self.rules_seen else "ok") if rules_ok else ("warn" if rules_ok is False else "none"),
+             "text": (("None in place" if not self.rules_seen else f"{self.rules_seen} confirmed") if rules_ok else
+                      "Being put back" if rules_ok is False else "Not checked yet")},
+            {"part": "sync", "label": "Last written", "ts": self.last_sync, "state": "ok" if self.last_sync else "none",
+             "text": "" if self.last_sync else "Not yet"},
+            {"part": "floodguard", "label": "FloodGuard",
+             "state": ("off" if not fg["enabled"] else "info" if fg["learning"] else "ok" if fg["acting"] else "info"),
+             "text": ("Off" if not fg["enabled"] else "Learning, counting only" if fg["learning"] else
+                      "Acting on floods" if fg["acting"] else "Counting only")},
+        ]
+        if any(p["state"] == "bad" for p in parts if p["part"] in ("openhop", "check")) or c.get("paused") \
+                or getattr(self, "engine_off", False):
+            state, line = "bad", "Not protected right now"
+        elif c["mode"] != "protect":
+            state, line = "watch", "Watching only: spam is marked but not stopped"
+        elif rules_ok is False:
+            state, line = "partly", "Protected, with something to look at"
+        else:
+            state, line = "ok", "Protected"
+        why = next((p["label"] + ": " + p["text"] for p in parts if p["state"] == "bad"), None)
+        return {"state": state, "line": line, "why": why, "parts": parts}
 
     def _evidence_mb(self) -> Optional[float]:
         if self.evidence is None:
@@ -12412,6 +12599,7 @@ class SpamGuard:
                     by_hour[23 - age] += 1
             last_catch = max(shown) if shown else None
             settings = {m["key"]: c.get(m["key"]) for m in SETTINGS_META}
+            svc = self.health()
             return {
                 "version": VERSION, "floodguard_version": FLOODGUARD_VERSION,
                 "mode": c["mode"], "paused": bool(c.get("paused")), "sensitivity": c["sensitivity"],
@@ -12420,7 +12608,9 @@ class SpamGuard:
                           "names": LEVEL_NAMES, "own": self.own_level_values(), "mine": self.my_level_values(),
                           "preview": self.preview_summary(), "auto": self.auto_level_status()},
                 "advisor": self.advisor(),
-                "service": self.health(),
+                "service": svc,
+                "protection": self.protection(svc),
+                "settings_history": list(self.settings_history)[:100],
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
                 "summary": {"caught_24h": caught_24h, "last_catch": last_catch, "by_hour": by_hour,
@@ -12578,7 +12768,14 @@ class SpamGuard:
         if p["values"]:
             self.apply_settings(dict(p["values"]))
 
-    def apply_settings(self, body: dict) -> dict:
+    def apply_settings(self, body: dict, by: str = "You, on the page") -> dict:
+        prev = _set_hist_who(_hist_who() or by)
+        try:
+            return self._apply_settings(body)
+        finally:
+            _set_hist_who(prev)
+
+    def _apply_settings(self, body: dict) -> dict:
         with self.lock:
             if body.get("reset"):
                 self.settings = {k: v for k, v in self.settings.items() if k in EXTRA_TUNABLES or k in KEEP_ON_RESET}
@@ -12891,6 +13088,7 @@ class SpamGuard:
                 key = str(body.get("packet") or "") or f"{sender}|{text}"
                 if not key.strip("|"):
                     raise ValueError("Which message?")
+                why = self.why_through(body) if lab == "spam" else None
                 self.ev({"type": "label", "label": lab, "sender": sender, "text": text,
                          "path": body.get("path"), "packet": body.get("packet"), "by": "label", **self._label_ref(body)})
                 self.labels.pop(key, None)
@@ -12918,7 +13116,7 @@ class SpamGuard:
                             "7 days; the real person still gets through.",
                     "known": f". '{sender}' no longer counts as a known person, so the usual checks apply to them again.",
                     "untrusted": f". '{sender}' is no longer trusted on a channel, so the usual checks apply to them again.",
-                }.get(acted, "") + (
+                }.get(acted, "") + (f". {why.rstrip('.')}" if why else "") + (
                     ". Labels are kept in the evidence log, for checking SpamGuard's accuracy later."
                     if self.evidence is not None else ". Turn on the evidence log to keep labels.")
             elif op == "spoofed":
@@ -13708,7 +13906,11 @@ def make_handler(guard: SpamGuard):
                 if path == "decisions_import":
                     return self._send(200, guard.import_decisions(body.get("decisions")))
                 if path in ACTIONS:
-                    return self._send(200, guard.action(path, body))
+                    prev = _set_hist_who("You, on the page")
+                    try:
+                        return self._send(200, guard.action(path, body))
+                    finally:
+                        _set_hist_who(prev)
                 return self._send(404, {"error": "not found"})
             except urllib.error.HTTPError as e:
                 return self._send(502, {"error": f"Saved, but openHop returned HTTP {e.code} when applying rules"})
