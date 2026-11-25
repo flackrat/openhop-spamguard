@@ -115,6 +115,9 @@ def load_marks(path) -> list:
     return out
 
 
+BOTSAFE: set = set()
+
+
 def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_start: bool = False, marks=None, adverts=None):
     """quiet_step: when no message arrives, step the clock this far at a time instead of one poll (quicker).
     known_at_start: begin knowing the people the Pi already knew when the log starts, as it did."""
@@ -129,6 +132,7 @@ def run(msgs, overrides: dict, channels: dict, quiet_step: float = 0, known_at_s
     # never the real state file or evidence log, whatever the settings say
     cfg = {"mode": "protect", "vary_limits": False, **overrides, "state_file": state, "evidence_log": False}
     g = sg.SpamGuard(cfg)
+    g.botsafe_channels |= BOTSAFE   # channels replayed with bot-safe protection
     g._save_state = lambda *a, **k: None  # a replay keeps nothing, and saving was half its running time
     if known_at_start and msgs:
         first: dict = {}
@@ -268,6 +272,7 @@ def main():
     ap.add_argument("--sensitivity", choices=sorted(sg.PRESETS), help="replay one sensitivity only")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a setting")
     ap.add_argument("--hashtag", action="append", default=[], help="extra #channel to decrypt")
+    ap.add_argument("--botsafe", action="append", default=[], help="replay this channel with bot-safe protection")
     ap.add_argument("--details", action="store_true", help="list missed, wrongly blocked and unlabelled catches")
     ap.add_argument("--levels", help="protection levels to replay instead of the three presets, e.g. 0,50,80,100")
     ap.add_argument("--json", action="store_true", help="with --levels: print the results as JSON")
@@ -275,6 +280,7 @@ def main():
     ap.add_argument("--base", metavar="FILE", help="a JSON file of settings to start from")
     ap.add_argument("--only-channels", metavar="NAMES", help="only these channels, comma-separated (e.g. Public,#chat)")
     a = ap.parse_args()
+    BOTSAFE.update(a.botsafe)
     logging.disable(logging.WARNING)  # keep the report readable
 
     msgs, labels, marks = [], {}, []

@@ -13,8 +13,8 @@ def sync(g): g.last_sync=0; g.sync_pending=True; g._urgent_sync=True; g.poll_onc
 NEWS=sg.hashtag_secret("#widgetnews")
 m=mock(); g=guard(m, floodguard=False, known_min_msgs=3, known_min_minutes=60)
 g.apply_settings({"mode":"protect"}); g.action("add_channel",{"name":"#widgetnews"})
-check("#widgetnews" in g.watch_channels,"a news channel is added as read and count only")
-g.action("channel_blocking",{"name":"#widgetnews","on":True,"confirm":True}); sync(g)   # you said yes, block spam there
+check("#widgetnews" in g.botsafe_channels,"a news channel gets bot-safe protection")
+g.action("channel_blocking",{"name":"#widgetnews","mode":"full","confirm":True}); sync(g)   # you said yes, full blocking there
 check("#widgetnews" in g.cfg["channels"],"a second channel is read")
 # a hold that stops unknown names everywhere (a lockdown), so trust is what lets someone through
 g._add_block("lockdown","lockdown",None,"made up","manual",ttl=3600); sync(g)

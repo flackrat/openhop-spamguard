@@ -257,7 +257,7 @@ SETTINGS_META: list[dict] = [
      "choices": [["ask", "Ask before blocking there (recommended)"], ["never", "Never block there"], ["off", "Treat them like any other channel"]],
      "risk": "Blocking on a bot, weather, news or test channel can stop the bots and services people rely on.",
      "label": "Bot and test channels",
-     "help": "Channels whose name suggests bots, tests, weather or news, or where a few names send most of the messages. They're added as read and count only, and blocking there asks first, or is never allowed."},
+     "help": "Channels whose name suggests bots, tests, weather or news, or where a few names send most of the messages. They get bot-safe protection (links, junk and copied names blocked; bots left alone). Full blocking there asks first, or is never allowed."},
     {"key": "channel_discovery", "group": "Privacy", "type": "bool",
      "risk": "Off: only the channels SpamGuard reads are counted.",
      "label": "Find and rank busy channels",
@@ -886,6 +886,11 @@ def channel_hash_byte(secret_hex: str) -> int:
 CHANNEL_STARTERS = ("#test", "#testing", "#ping", "#bot", "#wardriving", "#mc-radar", "#hamradio", "#weather", "#chat",
                     "#emergency", "#help", "#local", "#uk", "#london", "#scotland", "#wales", "#yorkshire", "#northwest",
                     "#northeast", "#midlands", "#southwest", "#southeast", "#eastanglia", "#lincolnshire", "#essex", "#kent")
+# Blocks that bots and test pings set off just by working (repeating themselves, the same reply from several bots,
+# many messages from one name, bursts of new names). On bot-safe channels these aren't made or applied; the rest
+# (links, junk, copied and spoofed names, replays, routes, floods and your own blocks) still are.
+BOT_TRIP_SOURCES = frozenset({"repeat", "slowrepeat", "sense", "dedupe", "campaign", "budget", "hop", "pubbot", "template",
+                              "machine", "burst"})
 # Channels mostly used by bots, test pings and automatic services: blocking spam there can stop the service itself
 BOT_CHANNEL_RE = re.compile(r"bot|test|ping|weather|news|alert|wardriv|radar|aprs|telemetry|sensor|beacon|(?<![a-z])wx(?![a-z])", re.I)
 HASHTAG_RE = re.compile(r"(?<![\w#])#[a-z0-9][a-z0-9_-]{1,30}(?![\w-])", re.I)
@@ -2631,6 +2636,7 @@ class SpamGuard:
         self.verdict_done: dict[str, dict] = {}   # what your last answers did, so they can be taken back (not saved)
         self.extra_channels: dict[str, str] = {}
         self.watch_channels: set[str] = set()   # channels you read without blocking anything on them
+        self.botsafe_channels: set[str] = set()   # channels where only spam bots don't trip is blocked
         self.openhop_channels: dict[str, str] = {}
         self.settings: dict[str, Any] = {}  # changes made on the web page
         self.next_rule_id = RULE_ID_BASE
@@ -2976,6 +2982,7 @@ class SpamGuard:
         self.engine_on_seen = bool(st.get("engine_on_seen"))
         self.extra_channels = dict(st.get("extra_channels", {}))
         self.watch_channels = {str(c) for c in st.get("watch_channels") or [] if isinstance(c, str)}
+        self.botsafe_channels = {str(c) for c in st.get("botsafe_channels") or [] if isinstance(c, str)}
         settings = {}
         for k, v in (st.get("settings") or {}).items():
             k = LEGACY_KEYS.get(k, k)
@@ -3258,6 +3265,7 @@ class SpamGuard:
                     "engine_on_seen": bool(getattr(self, "engine_on_seen", False)),
                     "extra_channels": self.extra_channels,
                     "watch_channels": sorted(getattr(self, "watch_channels", ())),
+                    "botsafe_channels": sorted(getattr(self, "botsafe_channels", ())),
                     "settings": self.settings,
                     "file_seen": {k: self.file_cfg.get(k, "(not in the file)") for k in self.settings},
                     "next_rule_id": self.next_rule_id,
@@ -6562,6 +6570,8 @@ class SpamGuard:
             return False   # not a channel message: nothing SpamGuard reads is matched by it
         if e.channel in self.watch_channels:
             return False   # a channel you chose to read without blocking
+        if e.channel in self.botsafe_channels and b.get("source") in BOT_TRIP_SOURCES:
+            return False   # bot-safe channel: only spam bots don't set off
         if b.get("source") == "junk" and not (b.get("only_channel") and e.channel != b["only_channel"]) \
                 and any(w in e.text for w in b["value"]) and not (self.settled(e.sender) and not e.unverified):
             return True   # keyboard junk in the text: only long-standing known names get past it
@@ -8749,6 +8759,8 @@ class SpamGuard:
             nonlocal changed
             if self.suppressed.get(key, 0) > now:
                 return False
+            if source in BOT_TRIP_SOURCES and (channel or "Public") in self.botsafe_channels:
+                return False   # bot-safe channel: bots set this off just by working
             if self._add_block(key, kind, value, reason, source, channel, ttl, from_ts, sender=sender, full=full):
                 changed = True
                 return True
@@ -9795,15 +9807,35 @@ class SpamGuard:
             self.note(f"Rule limit ({cap}) reached - {left_out} of the newest automatic blocks were left out of openHop")
         self.stats["rules_left_out"] = left_out
         main = wd + self._not_own(self._build_main(max(0, cap - len(tail) - len(wd))))
-        return self._not_watched_only(main), self._not_watched_only(tail)
+        main, tail = self._not_watched_only(main), self._not_watched_only(tail)
+        return self._botsafe(main), self._botsafe(tail)
 
-    def _not_watched_only(self, rules: list[dict]) -> list[dict]:
-        """Channels you chose to read without blocking: no rule about channel messages applies on them."""
-        secrets = [self.cfg["channels"][c] for c in sorted(self.watch_channels) if c in self.cfg["channels"]]
+    def _botsafe(self, rules: list[dict]) -> list[dict]:
+        """Bot-safe channels: rules from blocks bots set off just by working don't apply there."""
+        secrets = [self.cfg["channels"][c] for c in sorted(self.botsafe_channels) if c in self.cfg["channels"]]
+        if not secrets:
+            return rules
+        ids = set()
+        for b in self.blocks.values():
+            if b.get("source") in BOT_TRIP_SOURCES or b.get("kind") in BOT_TRIP_SOURCES:
+                ids.add(b.get("id"))
+                ids.update((b.get("size_ids") or {}).values())
+        for k in ("pubbot", "machine", "template"):
+            ids.update(v for rk, v in self.rule_ids.items() if rk.startswith(k))
+        return self._not_watched_only(rules, secrets, only=ids)
+
+    def _not_watched_only(self, rules: list[dict], secrets: Optional[list] = None, only: Optional[set] = None) -> list[dict]:
+        """Channels you chose to read without blocking: no rule about channel messages applies on them. With
+        only, just those rules (by id), for bot-safe channels."""
+        if secrets is None:
+            secrets = [self.cfg["channels"][c] for c in sorted(self.watch_channels) if c in self.cfg["channels"]]
         if not secrets:
             return rules
         out = []
         for r in rules:
+            if only is not None and r.get("id") not in only:
+                out.append(r)
+                continue
             conds = (r.get("if") or {}).get("all")
             if (r.get("then") or {}).get("action") not in ("drop", "log_only") or not isinstance(conds, list) or not any(
                     c.get("field") == "payload_type" and c.get("value") == PAYLOAD_TYPE_GRP_TXT for c in conds):
@@ -10169,8 +10201,12 @@ class SpamGuard:
         or every channel SpamGuard reads when you chose all of them."""
         ch = b.get("channel") or "Public"
         if ch == ALL_CHANNELS or (self.cfg.get("cross_channel_blocks") and b.get("source") not in ("manual", "dedupe")):
-            return sorted(self.cfg["channels"])   # every channel: you chose it, or you let automatic blocks follow spam across channels
-        return [ch] if ch in self.cfg["channels"] or ch == "Public" else []
+            out = sorted(self.cfg["channels"])   # every channel: you chose it, or you let automatic blocks follow spam across channels
+        else:
+            out = [ch] if ch in self.cfg["channels"] or ch == "Public" else []
+        if b.get("source") in BOT_TRIP_SOURCES:
+            out = [c for c in out if c not in self.botsafe_channels]
+        return out
 
     def _channel_hash_cond(self, b: dict) -> dict | None:
         """The openHop condition for a block's channels, or None when none of them is read any more."""
@@ -11328,16 +11364,17 @@ class SpamGuard:
         return None
 
     def _bot_channel_watch(self, names: list) -> str:
-        """Channels just added that look like bot channels are read and counted only, unless the guard is off."""
+        """Channels just added that look like bot channels get bot-safe protection, unless the guard is off."""
         if self.cfg.get("bot_channel_guard", "ask") == "off":
             return ""
         bots = [n for n in names if self.bot_channel(n)]
         for n in bots:
-            self.watch_channels.add(n)
+            self.botsafe_channels.add(n)
+            self.watch_channels.discard(n)
         if not bots:
             return ""
-        return (f". {', '.join(bots[:3])}{' and others' if len(bots) > 3 else ''} looks like a bot or test channel, so "
-                "it is only read and counted: blocking there could stop the bots and services people use it for")
+        return (f". {', '.join(bots[:3])}{' and others' if len(bots) > 3 else ''} looks like a bot or test channel, so it "
+                "gets bot-safe protection: spam like links, junk and copied names is blocked, and bots are left alone")
 
     def _channels_heard_cached(self, now: float) -> list:
         got = getattr(self, "_chh_cache", None)
@@ -11364,7 +11401,8 @@ class SpamGuard:
                         "last": round(e["last"]), "spark": spark,
                         "shares": known.get(e["hash"]) if kind == "unnamed" else None,
                         "bots": self.bot_channel(name) if name else None,
-                        "watch": name in self.watch_channels if kind == "read" else None})
+                        "watch": name in self.watch_channels if kind == "read" else None,
+                        "botsafe": name in self.botsafe_channels if kind == "read" else None})
         out.sort(key=lambda r: (-r["d7"], -r["d30"], r["name"]))
         return out
 
@@ -12409,7 +12447,7 @@ class SpamGuard:
                 "presets": PRESETS,
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "site": str(self.cfg.get("site_label") or (self.me or {}).get("name") or "")[:40],
-                "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels),
+                "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels), "botsafe_channels": sorted(self.botsafe_channels),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),
                 "profiles": {"list": [dict(v, name=k) for k, v in sorted(self.profiles.items())],
@@ -13141,25 +13179,34 @@ class SpamGuard:
                 name = str(body.get("name") or "")
                 if name not in self.cfg["channels"]:
                     raise ValueError("SpamGuard doesn't read that channel")
-                why = self.bot_channel(name) if body.get("on") else None
+                mode = str(body.get("mode") or ("full" if body.get("on") else "watch"))
+                if mode not in ("full", "botsafe", "watch"):
+                    raise ValueError("Unknown channel setting")
+                why = self.bot_channel(name) if mode == "full" else None
                 guard = self.cfg.get("bot_channel_guard", "ask")
                 if why and guard == "never":
-                    raise ValueError(f"Blocking is off on {name}: {why}. To allow it, change 'Bot and test channels' "
-                                     "in Settings.")
+                    raise ValueError(f"Full blocking is off on {name}: {why}. Bot-safe protection is available; to allow "
+                                     "full blocking, change 'Bot and test channels' in Settings.")
                 if why and guard == "ask" and not body.get("confirm"):
-                    return {"ok": False, "confirm": f"{name} looks like a bot or test channel: {why}. Blocking spam "
-                                                    f"there can also stop the bots and services people use it for. "
-                                                    f"Block spam on {name} anyway?"}
+                    return {"ok": False, "confirm": f"{name} looks like a bot or test channel: {why}. Full blocking "
+                                                    f"there can also stop the bots and services people use it for; "
+                                                    f"bot-safe protection still stops links, junk and copied names. "
+                                                    f"Use full blocking on {name} anyway?"}
                 self._chh_cache = None
-                if body.get("on"):
-                    self.watch_channels.discard(name)
-                    msg = f"Spam is blocked on {name} again"
-                else:
+                self.watch_channels.discard(name)
+                self.botsafe_channels.discard(name)
+                if mode == "watch":
                     self.watch_channels.add(name)
                     msg = f"SpamGuard now only reads and counts {name}: nothing is blocked there"
+                elif mode == "botsafe":
+                    self.botsafe_channels.add(name)
+                    msg = f"Bot-safe protection on {name}: links, junk and copied names are blocked; bots are left alone"
+                else:
+                    msg = f"Spam is blocked on {name} again"
                 self.note(msg)
             elif op == "remove_channel":
                 self.watch_channels.discard(str(body.get("name", "")))
+                self.botsafe_channels.discard(str(body.get("name", "")))
                 self.extra_channels.pop(str(body.get("name", "")), None)
                 self.rebuild_cfg()
             elif op == "fg_start_now":

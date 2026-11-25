@@ -77,23 +77,46 @@ check(gb.bot_channel("#ridgeline") is None and gb.bot_channel("Public") is None,
 gb.chan_heard["n:#quarrynet"]={"name":"#quarrynet","hash":1,"first":now,"last":now,"days":{time.strftime("%Y-%m-%d"):[300,4,[]]}}
 check("bots" in (gb.bot_channel("#quarrynet") or ""),"a channel where a few names send most messages looks like bots")
 out=gb.action("add_channel",{"name":"#weather","key":""})
-check("#weather" in gb.watch_channels and "bot or test channel" in out.get("message",""),"added as read and count only, and says why: %s"%out.get("message"))
+check("#weather" in gb.botsafe_channels and "#weather" not in gb.watch_channels and "bot-safe" in out.get("message",""),"a bot channel gets bot-safe protection, and says why: %s"%out.get("message"))
 gb.action("add_channel",{"name":"#ridgeline","key":""})
-check("#ridgeline" not in gb.watch_channels,"an ordinary channel is protected as normal")
-r=gb.action("channel_blocking",{"name":"#weather","on":True})
-check(r.get("confirm") and "#weather" in gb.watch_channels,"switching blocking on there asks first, and changes nothing yet")
-gb.action("channel_blocking",{"name":"#weather","on":True,"confirm":True})
-check("#weather" not in gb.watch_channels,"once you confirm, it blocks there")
-gb.action("channel_blocking",{"name":"#weather","on":False})
+check("#ridgeline" not in gb.watch_channels and "#ridgeline" not in gb.botsafe_channels,"an ordinary channel is protected as normal")
+r=gb.action("channel_blocking",{"name":"#weather","mode":"full"})
+check(r.get("confirm") and "#weather" in gb.botsafe_channels,"full blocking there asks first, and changes nothing yet")
+gb.action("channel_blocking",{"name":"#weather","mode":"full","confirm":True})
+check("#weather" not in gb.botsafe_channels and "#weather" not in gb.watch_channels,"once you confirm, full blocking")
+gb.action("channel_blocking",{"name":"#weather","mode":"watch"})
+check("#weather" in gb.watch_channels,"count only is still a choice")
+r=gb.action("channel_blocking",{"name":"#weather","mode":"botsafe"})
+check(not r.get("confirm") and "#weather" in gb.botsafe_channels and "#weather" not in gb.watch_channels,"bot-safe never needs asking")
 gb.cfg["bot_channel_guard"]="never"
-try: gb.action("channel_blocking",{"name":"#weather","on":True}); check(False,"never: blocking refused")
+try: gb.action("channel_blocking",{"name":"#weather","mode":"full"}); check(False,"never: blocking refused")
 except ValueError as e: check("Bot and test channels" in str(e),"never: blocking there is refused, saying where to change it")
 gb.cfg["bot_channel_guard"]="off"
-r=gb.action("channel_blocking",{"name":"#weather","on":True})
-check(not r.get("confirm") and "#weather" not in gb.watch_channels,"off: treated like any channel")
+r=gb.action("channel_blocking",{"name":"#weather","mode":"full"})
+check(not r.get("confirm") and "#weather" not in gb.botsafe_channels,"off: treated like any channel")
 gb.cfg["bot_channel_guard"]="ask"
 pw=group_payload(sg.hashtag_secret("#weather"),"Quarry Wx","temp 9C")
 gb._chan_note(pw, sg.decrypt_group_text(pw,gb.cfg["channels"]), now)
 check([x for x in gb.channels_heard(now) if x["name"]=="#weather"][0]["bots"],"the ranking marks it as mostly bots")
+
+# bot-safe in action: bots repeating themselves aren't blocked there, spam with links still is
+from harness import mock as _mock
+m2=_mock(); g5=guard(m2); g5.apply_settings({"mode":"protect"})
+g5.action("add_channel",{"name":"#pingquarry","key":""})
+check("#pingquarry" in g5.botsafe_channels,"a ping channel is bot-safe")
+blocks_before=set(g5.blocks)
+want_res=[]
+g5._add_block("rep:x","text","pong from quarry bot","made-up","repeat","#pingquarry",3600,None)
+g5._add_block("lnk:x","links",["qspam.example"],"made-up","links","#pingquarry",3600,None)
+bs={k:b for k,b in g5.blocks.items() if k in ("rep:x","lnk:x")}
+check(g5._block_channels(bs["rep:x"])==[] ,"a repeat block on a bot-safe channel covers no channels")
+check(g5._block_channels(bs["lnk:x"])==["#pingquarry"],"a link block there still applies")
+# through openHop's real rule engine: the bot's repeated reply goes out, the link spam doesn't
+g5._add_block("rep:all","text","pong from quarry bot","made-up","repeat",sg.ALL_CHANNELS,3600,None)
+g5.last_sync=0; g5.sync_pending=True; g5.poll_once()
+PQ=sg.hashtag_secret("#pingquarry")
+check(m2.decide("Quarry Bot","pong from quarry bot",["4C"],key=PQ)!="drop","the bot's reply still goes out on the bot-safe channel, even under an every-channel repeat block")
+check(m2.decide("Quarry Ann","pong from quarry bot",["4C"])=="drop","the same repeat block still stops it on Public")
+check(m2.decide("QX7ZP9","deals at qspam.example now",["4C"],key=PQ)=="drop","link spam is still stopped on the bot-safe channel")
 
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

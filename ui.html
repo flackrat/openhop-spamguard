@@ -966,7 +966,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
 </section></div>
 <div class="page" data-page="channels"><section id="chHeardSec" hidden>
   <h2>Busiest channels on the mesh</h2>
-  <p class="explain">Every channel this repeater hears in the last 30 days. Found channels are only counted, never logged or blocked, until you protect them. Bot and test channels are protected as count only.</p>
+  <p class="explain">Every channel this repeater hears in the last 30 days. Found channels are only counted, never logged or blocked, until you protect them. Bot and test channels get bot-safe protection.</p>
   <div class="inline-form ch-ctl"><label for="chTop">Show</label><select id="chTop"><option value="5">top 5</option><option value="10">top 10</option><option value="20">top 20</option><option value="50">top 50</option><option value="all">all</option></select>
     <label for="chSort">Sort by</label><select id="chSort"><option value="d7">Busiest this week</option><option value="d30">Busiest over 30 days</option><option value="names">Most names</option><option value="last">Heard most recently</option><option value="name">Name</option></select>
     <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
@@ -976,7 +976,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
-  <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Switch off "Block spam here" to only read and count a channel. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
+  <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Bot-safe suits bot, weather and test channels; Count only blocks nothing. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
   <ul class="rows" id="channels"></ul>
   <p style="margin:10px 0 0" id="crossRow" hidden><label class="switch"><input type="checkbox" id="crossCh"> Spam blocked on one channel is blocked on all of them</label> <span class="tag would">experimental</span><br><span class="explain">Off: SpamGuard's own holds stay on the channel where the spam was seen. On: they follow it to every channel. A different person using the same name on another channel would be held too.</span></p>
   <div id="chChoiceBox" hidden>
@@ -1528,8 +1528,8 @@ function renderChHeard(d){
   const n=pick==="all"?want.length:Math.min(want.length,+pick||10), rows=want.slice(0,n), top=Math.max(1,...all.map(r=>r.d7));
   $("#chTopNote").textContent=want.length?`Showing ${n} of ${want.length}${kind==="all"?"":" ("+all.length+" in all)"}`:"None of these";
   const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
-  $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:TAG[r.kind];
-    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Read and count":"Protect"}</button>`:""}</div>
+  $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
+    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
       <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${Math.max(2,Math.round(100*r.d7/top))}%"></i></div>
       <span class="explain">${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
@@ -1539,10 +1539,11 @@ function renderChannels(d){
   $("#chFindRow").hidden=!many;
   const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
   $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
-  const watch=d.watch_channels||[];
-  $("#channels").innerHTML=chShown.map(c=>{ const on=!watch.includes(c);
-    return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${on?"Spam is blocked here":"Read and counted only: nothing is blocked here"}</div></div>
-      <div class="acts"><label class="switch"><input type="checkbox" data-chb="${esc(c)}" ${on?"checked":""}> Block spam here</label>${c==="Public"?"":btn("Remove","/remove_channel",{name:c},"quiet danger")}</div></li>`; }).join("")
+  const watch=d.watch_channels||[], safe=d.botsafe_channels||[];
+  const WHY={full:"Spam is blocked here",botsafe:"Bot-safe: links, junk and copied names are blocked; bots are left alone",watch:"Read and counted only: nothing is blocked here"};
+  $("#channels").innerHTML=chShown.map(c=>{ const m=watch.includes(c)?"watch":safe.includes(c)?"botsafe":"full";
+    return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${WHY[m]}</div></div>
+      <div class="acts"><label class="explain" for="chm-${esc(c)}">Protection</label><select id="chm-${esc(c)}" data-chb="${esc(c)}"><option value="full" ${m==="full"?"selected":""}>Block spam</option><option value="botsafe" ${m==="botsafe"?"selected":""}>Bot-safe</option><option value="watch" ${m==="watch"?"selected":""}>Count only</option></select>${c==="Public"?"":btn("Remove","/remove_channel",{name:c},"quiet danger")}</div></li>`; }).join("")
     +(d.channels.length>chShown.length&&!q?`<li><span class="explain">and ${d.channels.length-chShown.length} more (search, or Show all)</span></li>`:"");
   $("#crossRow").hidden=d.channels.length<2; if(document.activeElement!==$("#crossCh")) $("#crossCh").checked=!!d.cross_channel_blocks;
   $("#chChoiceBox").hidden=!choices.length;
@@ -1696,7 +1697,7 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
-$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,on:t.checked}).then(()=>{ if(S) renderChannels(S); }); });
+$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,mode:t.value}).then(()=>{ if(S) renderChannels(S); }); });
 $("#crossCh").onchange=e=>{ if(e.target.checked&&!confirm("Let SpamGuard's own holds follow spam to every channel? A different person using the same name on another channel would be held too.")){ e.target.checked=false; return; } post("/settings",{cross_channel_blocks:e.target.checked}); };
 $("#decExport").onclick=async()=>{
   const r=await fetch("/decisions_export",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:"{}"});

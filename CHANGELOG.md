@@ -22,7 +22,7 @@ The detail is below, newest first. In short:
 - **Answering several names at once asks first,** saying how many messages and names it covers.
 - Sigstore's key list is also checked for the TUF format version.
 - **Busiest channels on the mesh.** The Channels page ranks every channel this repeater hears by the last 7 days, with a 14-day trend. #hashtag channels are named when people mention them or when they're well known. Found channels are only counted; one tap protects them. Channels quiet for 30 days drop off. You choose how many to show, the sort order and which kind.
-- **Bot and test channels are guarded.** Channels like #weather, #test or #ping, or ones where a few names send most of the messages, are added as read and count only. Switching blocking on there asks first, or can be refused outright in Settings.
+- **Bot-safe protection for bot and test channels.** Each channel can block spam, be bot-safe, or count only. Bot-safe still stops links, junk, copied names and floods, but not the repeats and busy names that bots produce just by working. Channels like #weather, #test or #ping, or ones where a few names send most of the messages, get bot-safe by default. Full blocking there asks first, or can be refused outright in Settings.
 
 ## v6.51.0
 
