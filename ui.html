@@ -112,6 +112,12 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .q-line{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .q-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .q-grp{font-size:.8125rem;min-height:32px;padding:0 10px}
+.rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr) 84px;align-items:center;gap:4px 12px}
+@media (max-width:600px){.rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr)}.rows li.ch-row .ch-spark{grid-column:2}}
+.ch-rank{color:var(--soft);font-variant-numeric:tabular-nums;text-align:right;align-self:start;padding-top:2px}
+.ch-main{flex:1;min-width:0}.ch-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.ch-bar{height:8px;border-radius:4px;background:var(--line);margin:6px 0 4px;overflow:hidden}.ch-bar i{display:block;height:100%;border-radius:4px;background:var(--heat2)}
+.ch-spark{color:var(--soft)}.ch-prot{min-height:32px;padding:0 10px;font-size:.8125rem;margin-left:auto}
 .q-badge{font-size:0.75rem;font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .q-stopped{background:var(--signal-tint);color:var(--signal-text)}
 .q-held{background:var(--amber-tint);color:var(--amber-text)}
@@ -958,7 +964,15 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <div class="inline-form"><input id="histWord" size="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET to confirm"><button class="danger" id="histGo" disabled>Yes, clear it</button><button class="quiet" id="histNo">Cancel</button></div>
   </div>
 </section></div>
-<div class="page" data-page="channels"><section>
+<div class="page" data-page="channels"><section id="chHeardSec" hidden>
+  <h2>Busiest channels on the mesh</h2>
+  <p class="explain">Every channel this repeater hears in the last 30 days. Found channels are only counted, never logged or blocked, until you protect them. Bot and test channels are protected as count only.</p>
+  <div class="inline-form ch-ctl"><label for="chTop">Show</label><select id="chTop"><option value="5">top 5</option><option value="10">top 10</option><option value="20">top 20</option><option value="50">top 50</option><option value="all">all</option></select>
+    <label for="chSort">Sort by</label><select id="chSort"><option value="d7">Busiest this week</option><option value="d30">Busiest over 30 days</option><option value="names">Most names</option><option value="last">Heard most recently</option><option value="name">Name</option></select>
+    <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
+    <span class="explain" id="chTopNote"></span></div>
+  <ul class="rows ch-heard" id="chHeard"></ul>
+</section><section>
   <h2>Channels SpamGuard can read</h2>
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
@@ -1498,6 +1512,27 @@ function renderMostHeld(d){
 function renderRecent(d){ /* message lists now live only in Messages */ }
 
 /* ---------- advanced tables ---------- */
+// Channels heard: a bar for this week's messages, a 14-day sparkline, and what SpamGuard does there
+function chSpark(v){ const m=Math.max(1,...v), w=84, h=22, st=w/(v.length-1);
+  const pts=v.map((x,i)=>`${(i*st).toFixed(1)},${(h-2-(x/m)*(h-4)).toFixed(1)}`).join(" ");
+  return `<svg class="ch-spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`; }
+function renderChHeard(d){
+  const sec=$("#chHeardSec"); if(!sec) return; const all=d.channels_heard||[];
+  sec.hidden=!all.length; if(!all.length) return;
+  const pick=store.get("sgChTop")||"10", sort=store.get("sgChSort")||"d7", kind=store.get("sgChKind")||"all";
+  $("#chTop").value=pick; $("#chSort").value=sort; $("#chKind").value=kind;
+  const want=all.filter(r=>kind==="all"||(kind==="bots"?!!r.bots:r.kind===kind));
+  const by={d7:(a,b)=>b.d7-a.d7||b.d30-a.d30,d30:(a,b)=>b.d30-a.d30||b.d7-a.d7,names:(a,b)=>b.names_day-a.names_day||b.d7-a.d7,
+    last:(a,b)=>b.last-a.last,name:(a,b)=>a.name.localeCompare(b.name)}[sort]||((a,b)=>b.d7-a.d7);
+  want.sort(by);
+  const n=pick==="all"?want.length:Math.min(want.length,+pick||10), rows=want.slice(0,n), top=Math.max(1,...all.map(r=>r.d7));
+  $("#chTopNote").textContent=want.length?`Showing ${n} of ${want.length}${kind==="all"?"":" ("+all.length+" in all)"}`:"None of these";
+  const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
+  $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:TAG[r.kind];
+    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Read and count":"Protect"}</button>`:""}</div>
+      <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${Math.max(2,Math.round(100*r.d7/top))}%"></i></div>
+      <span class="explain">${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+}
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
   const many=d.channels.length+choices.length>15, hit=c=>!q||c.toLowerCase().includes(q);
@@ -1661,7 +1696,7 @@ function profExport(name){
 $("#profSave").onclick=()=>{ const n=$("#profName").value.trim(); if(!n){ toast("Give the profile a name",true); return; } post("/profile_save",{name:n}).then(()=>$("#profName").value=""); };
 $("#profFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return; if(f.size>65536){ toast("That file is too big for a profile",true); e.target.value=""; return; }
   f.text().then(t=>{ let p; try{ p=JSON.parse(t); }catch(err){ toast("That file isn't a SpamGuard profile",true); return; } post("/profile_import",{profile:p}); }).finally(()=>{ e.target.value=""; }); };
-$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,on:t.checked}); });
+$("#channels").addEventListener("change",e=>{ const t=e.target.closest("[data-chb]"); if(t) post("/channel_blocking",{name:t.dataset.chb,on:t.checked}).then(()=>{ if(S) renderChannels(S); }); });
 $("#crossCh").onchange=e=>{ if(e.target.checked&&!confirm("Let SpamGuard's own holds follow spam to every channel? A different person using the same name on another channel would be held too.")){ e.target.checked=false; return; } post("/settings",{cross_channel_blocks:e.target.checked}); };
 $("#decExport").onclick=async()=>{
   const r=await fetch("/decisions_export",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},body:"{}"});
@@ -1779,6 +1814,10 @@ $("#rulesClose").addEventListener("click",()=>{ const d=$("#rulesDlg"); if(d.clo
 $("#rulesCopy").addEventListener("click",()=>$("#ruleCopy").click());
 var chAll=false;
 $("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderChannels(S); });
+$("#chTop").addEventListener("change",e=>{ store.set("sgChTop",e.target.value); if(S) renderChHeard(S); });
+$("#chSort").addEventListener("change",e=>{ store.set("sgChSort",e.target.value); if(S) renderChHeard(S); });
+$("#chKind").addEventListener("change",e=>{ store.set("sgChKind",e.target.value); if(S) renderChHeard(S); });
+$("#chHeard").addEventListener("click",e=>{ const b=e.target.closest("[data-chprotect]"); if(b) post("/add_channel",{name:b.dataset.chprotect,key:""}); });
 $("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });
 $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});
 
@@ -2027,7 +2066,7 @@ function render(d, editing){
   renderMostHeld(d);
   renderSigned(d);
   renderKnown(d);
-  if(!editing){ renderBlocks(d); renderChannels(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
+  if(!editing){ renderBlocks(d); renderChannels(d); renderChHeard(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");
   if(d.floodguard_version){ $("#fgVer").textContent="v"+d.floodguard_version; $("#fgPageVer").textContent=`FloodGuard v${d.floodguard_version}, part of SpamGuard v${d.version}.`; }
   if(d.update && d.update.repo){ const r=$("#repoLink"); r.href="https://github.com/"+d.update.repo; r.textContent="github.com/"+d.update.repo; }
