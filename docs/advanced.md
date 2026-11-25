@@ -67,6 +67,8 @@ systemctl show openhop-spamguard -p NRestarts  # how many times systemd has rest
 ```
 `/health` returns HTTP 200 when healthy and 503 when something is wrong, so it can be watched by a monitoring tool such as Uptime Kuma.
 
+<a id="field-self-check"></a>**Field self-check.** `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). The script only ever reads the log with names scrambled, and never the lists of people in the status.
+
 </details>
 
 <details>

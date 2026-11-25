@@ -15,6 +15,8 @@ for i in range(6): m.add(rname(),"FREE PRIZE claim now at the usual place today"
 g=guard(m); g.poll_once(); g.last_sync=0; g.sync_pending=True; g.poll_once()
 for i in range(4): m.add(rname(),"FREE PRIZE claim now at the usual place today",["C4","9D","E1"])
 g.poll_once()
+check(g.quarantine({"status":"review"})["counts"]["review"]==0,"by default, spam that went out without a link waits under Missed spam, not To review")
+g.cfg["review_missed"]=True   # the rest of this test answers messages that went out
 q=g.quarantine({"status":"review"}); c=q["counts"]
 check(c["review"]==c["held"]+c["letthrough"] and c["review"]>0,"To review is what was held or missed: "+str(c))
 check(q["total"]==sum(c[k] for k in g.Q_STATUSES),"the total counts each message once")
@@ -64,13 +66,15 @@ m5=mock()
 for i in range(6): m5.add(rname(),"FREE PRIZE claim now at the usual place today ref "+rname(5),["C4","9D","E1"],ago=60-i)
 m5.add("Hilltop Hiker","Morning all, clear skies up here on the ridge",["A7","2F"],ago=30)
 g5=guard(m5); g5.poll_once(); g5.poll_once()
+g5.cfg["review_missed"]=True
 q5=g5.quarantine({"status":"review"}); n5=q5["counts"]["review"]
 if n5>=2:
     g5.give_verdict(body(q5["rows"][0],"spam"))
     q6=g5.quarantine({"status":"review"})
     check(q6["counts"]["review"]==0,f"the reworded copies leave To review too ({n5} -> {q6['counts']['review']})")
-    rv=g5.quarantine({"status":"reviewed","group":False})["rows"]
-    check(any(x["like"]=="spam" and not x["label"] for x in rv) and not any("Hilltop" in x["sender"] for x in rv),"they are listed as like one you answered; other messages are untouched")
+    rv=g5.quarantine({"status":"matched","group":False})["rows"]
+    check(any(x["like"]=="spam" and not x["label"] for x in rv) and not any("Hilltop" in x["sender"] for x in rv),"they are listed as matched to your answer, apart from your own answers; other messages are untouched")
+    check(not any(x["like"] and not x["label"] for x in g5.quarantine({"status":"reviewed","group":False})["rows"]),"and not under Answered")
 else:
     check(False,"expected several messages to review: "+str(q5["counts"]))
 print(f"{ok} passed, {fail} failed"); sys.exit(1 if fail else 0)

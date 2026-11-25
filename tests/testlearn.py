@@ -106,5 +106,5 @@ calls=m2.filtered_calls; g2.backfill_adverts(); time.sleep(1); check("backfill r
 # location retry: no stats at first -> retried within a minute, not 30
 g3=guard(mock()); g3.refresh_openhop_info(force=True)
 check("missing location retried soon", time.time()-g3.repeaters["ts"] > 1700, time.time()-g3.repeaters["ts"])
-g2._save_state(force=True); st=json.load(open(g2.cfg["state_file"])); check("advert routes not written to the SD card", "adv_routes" not in st)
+g2._save_state(force=True); st=read_state(g2.cfg["state_file"]); check("advert routes not written to the SD card", "adv_routes" not in st)
 print(f"{sum(1 for r in RESULTS if r[1])}/{len(RESULTS)} passed")

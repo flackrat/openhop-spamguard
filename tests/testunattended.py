@@ -10,7 +10,7 @@ def check(c,msg):
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
 g=guard(mock())
-path=g.cfg["state_file"]
+path=g.cfg["state_file"]+".gz"
 g._save_state(force=True); first=g._last_save
 check(os.path.exists(path),"a save works")
 # make saving fail: a folder where the temporary file should go
@@ -33,7 +33,7 @@ check(not g._important and g._last_save>0 and not g._save_failures,"once saving 
 check(not any("couldn't save" in w for w in g.health()["warnings"]),"warning gone")
 # starting from the backup copy
 open(path,"w").write("{damaged")
-g2=sg.SpamGuard(dict(g.file_cfg, state_file=path))
+g2=sg.SpamGuard(dict(g.file_cfg))
 check(getattr(g2,"_restored_from_backup",False),"a damaged file: carried on from the backup")
 check(any("last good copy" in w for w in g2.health()["warnings"]),"Health says it started from the backup")
 # background jobs that keep failing

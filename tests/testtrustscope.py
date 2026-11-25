@@ -81,7 +81,7 @@ check(p["standing"]=="learning" and p["progress"] and p["progress"]["need_msgs"]
 # saved and loaded
 g._save_state(force=True)
 g2=guard.__wrapped__(m) if hasattr(guard,"__wrapped__") else None
-st=json.load(open(g.cfg["state_file"])) if os.path.exists(g.cfg["state_file"]) else {}
+st=read_state(g.cfg["state_file"]) if os.path.exists(g.cfg["state_file"]+".gz") else {}
 check("trust_on" in st and "mark_counts" in st,"saved with the state")
 # "new place" warnings: at most every 12 hours per name
 g.action("allow_sender",{"sender":"Roamer"})

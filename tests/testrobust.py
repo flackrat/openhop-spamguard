@@ -51,10 +51,10 @@ check(sum(1 for e in g2.events if e.sender=="Max Dale")==2,"after openHop's cloc
 m3=mock(); g3=guard(m3)
 g3.known["Steady Sue"]=[time.time()-9*86400,time.time(),40]
 g3._save_state(force=True); g3._save_state(force=True)
-p=g3.file_cfg["state_file"]; good=json.load(open(p))
+p=g3.file_cfg["state_file"]; good=read_state(p)
 for name,mut in [("blocks as a list",{"blocks":["x"]}),("a history key that is text",{"hist":{"abc":1}}),
                  ("a rule id that is text",{"next_rule_id":"nine"})]:
-    st=dict(good); st.update(mut); json.dump(st,open(p,"w"))
+    st=dict(good); st.update(mut); write_state(p,st)
     try:
         g4=sg.SpamGuard(dict(g3.file_cfg)); started=True
     except Exception:
@@ -109,7 +109,7 @@ check(took<2 and st.get("busy") is True and st.get("mode")==first.get("mode"),f"
 check(not g9.status_now().get("busy"),"and the live picture returns when SpamGuard is free")
 # Both saved copies unreadable: SpamGuard starts afresh, but keeps them aside and says so
 m10=mock(); g10=guard(m10); g10._save_state(force=True); g10._save_state(force=True)
-p10=g10.file_cfg["state_file"]
+p10=g10.file_cfg["state_file"]+".gz"
 for f in (p10,p10+".bak"): open(f,"w").write("{not json")
 g11=sg.SpamGuard(dict(g10.file_cfg))
 import os

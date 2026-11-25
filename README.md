@@ -39,7 +39,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 **SpamGuard: channel spam**
 - **Campaigns:** the same text under made-up or rotating names, even disguised.
 - **Where spam enters:** blocked at that repeater, with regulars still let through.
-- **Copies and repeats:** copy-paste floods, one name repeating itself (quickly or all day), replays of old messages, and accidental double sends counted with the airtime they use.
+- **Copies and repeats:** copy-paste floods, one name repeating itself, replays of old messages, and accidental double sends.
 - **Ways round a filter:** made-up codes on the end, rotating mentions, the same link reworded, bursts, link campaigns across names, and copied names.
 - **Lockdown:** in a heavy attack, only known people get through for a while.
 - **Copied names:** answer **Spoofed** on a message that uses a real person's name; the copy is dealt with and the real person is left alone.
@@ -55,9 +55,10 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Hop limits** like MeshCore's `flood.max.unscoped` and `flood.max.advert`.
 - **Damaged copies** counted, and optionally not passed on.
 - **Interference watch**, with a record of each episode.
+- **Airtime at a glance:** charts of what used the airtime and where it came in; tap a slice for detail. Also shows how often your radio waited for a clear channel.
 
 **Help with settings**
-- **Settings advisor:** once it has seen a few settled days of your traffic, it suggests a protection level and which experiments are worth switching on, with the reason. It changes nothing by itself unless you switch on **Auto** under the slider, which then moves the level in small steps, never above a ceiling you can set. Moving the slider only previews a level; an **Apply** button saves it, so a stray touch on a phone can't change it.
+- **Settings advisor:** after a few settled days it suggests a protection level and which experiments to try, with reasons. It changes nothing unless you switch on **Auto**, which moves the level in small steps under a ceiling you set. Moving the slider only previews; **Apply** saves it.
 - **Bots kept off Public and repeat sends stopped**, on by default, both with a switch in Settings.
 - **Learns from your spam marks:** reworded copies from one name are held.
 - **Experimental features**, hidden until you ask for them, each off by default.
@@ -66,19 +67,23 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 **Principles**
 - **Spam, not opinions:** it stops how spam is sent, never what people say.
 - **Wardriving privacy** (optional), **settings profiles**, self-repair and one-press updates.
-- **Light on small Pis:** the page answers at once and saves in the background.
+- **Light on small Pis and SD cards:** the page answers at once, and saved data is compressed and written sparingly.
+- **Checked updates:** an update is only installed if Sigstore confirms it was built by this project's own release workflow.
+- **Your look:** eight colour styles, from Light to Red Team and Retro 80s, and text from smaller to larger, on the **Display** page.
 
 ![SpamGuard's Overview: mode, protection level and the spam numbers, each of which opens the matching messages (example data)](docs/screenshot-overview.png)
 
 ![Messages: every channel message in one quarantine list, with what SpamGuard did and why (example data)](docs/screenshot-messages.png)
 
-![People: everyone SpamGuard has heard, with a plain-words standing for each (example data)](docs/screenshot-people.png)
+![People: everyone SpamGuard has heard, with a standing for each on a bar from cool (looks genuine) to hot (probably spam) (example data)](docs/screenshot-people.png)
 
 ![The protection level slider, with what each level would have held on this repeater's own traffic (example data)](docs/screenshot-level.png)
 
 ![The Spam sources map: where spam entered the mesh, with a repeat spammer shown as one sender (example data)](docs/screenshot-sources.png)
 
-![FloodGuard's page while it contains a flood (example data)](docs/screenshot-floodguard.png)
+![FloodGuard's airtime charts: what used the last hour's airtime and which repeater it came in through (example data)](docs/screenshot-floodguard.png)
+
+![The eight colour styles, each with its own cool-to-warm protection slider](docs/screenshot-styles.png)
 
 _Example data: names and numbers are made up._
 
@@ -165,13 +170,13 @@ Every setting, the map, other ways to install, replaying an evidence log, health
 
 ## Accessibility
 
-The web page is built to WCAG 2.1 AA and works fully with a keyboard and screen readers. The **Display** page in the menu lets each person choose larger text, light or dark colours, high contrast and reduced motion; those choices are saved in their own browser. Every chart has a table of its numbers, and the spam map's circles can be reached with Tab and opened with Enter. If something doesn't work for you, please open an issue.
+The web page is built to WCAG 2.1 AA and works fully with a keyboard and screen readers. The **Display** page in the menu lets each person choose smaller or larger text, a colour style, high contrast and reduced motion; those choices are saved in their own browser. Every chart has a table of its numbers, and the spam map's circles can be reached with Tab and opened with Enter. If something doesn't work for you, please open an issue.
 
 ## For developers
 
 SpamGuard needs only two libraries, [pinned in `requirements.txt`](requirements.txt) with checksums: pycryptodome (to read channel messages) and PyYAML (to read its config file). The tools for tests and checks have their own locked lists in `requirements/`. To report a security problem privately, see [SECURITY.md](SECURITY.md); to suggest or send a change, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-`bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine (add `--slow` for the Pi-sized stress test). The suite includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. The whole suite, plus a lint, a privacy check and a dependency review, [runs automatically on GitHub](https://github.com/flackrat/openhop-spamguard/actions/workflows/tests.yml) for every pull request and every change to `main`, and `main` only accepts changes through a pull request whose tests have passed, so nothing reaches a release untested. `tools/fieldcheck.js` is a read-only self-check you can paste into the browser console with the SpamGuard page open: it summarises the last 12 hours from SpamGuard's own status and evidence log (whether it stayed up, whether any blocked spam was forwarded or any genuine message dropped, and what the spam map shows). The script only ever reads the log with names scrambled, and never the lists of people in the status.
+`bash tests/run_all.sh` runs the test suite against a fake openHop and openHop's real rule engine. The suite includes `tests/redteam.py`, a simulated four hours of chat and fourteen kinds of spam attack that fails if too much spam gets through or too many genuine messages are held; nothing in it talks to a real repeater, and all its data is made up. The whole suite, plus a lint, a privacy check and a dependency review, [runs automatically on GitHub](https://github.com/flackrat/openhop-spamguard/actions/workflows/tests.yml) for every pull request and every change to `main`, and `main` only accepts changes through a pull request whose tests have passed, so nothing reaches a release untested. A read-only field self-check is described in [the advanced guide](docs/advanced.md#field-self-check).
 
 ## Other openHop plugins
 

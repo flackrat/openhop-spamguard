@@ -67,6 +67,9 @@ for name,v in scales.items():
     check(not bad,f"{name}: every step of the slider reaches 3:1 on its panel {bad}")
 check(len(set(heat_sets))==len(heat_sets),"each scheme's slider scale is its own")
 check("#1d8a8c,#5fa36a 25%" not in css,"no scheme is stuck with one fixed slider")
+check(re.search(r"\.warm-track\{[^}]*var\(--heat0\)[^}]*var\(--heat4\)",css) is not None,"the People warmth bar uses the same cool-to-warm scale")
+check("html[data-palette] .donut,html[data-palette] .donut>div{border-radius:50%!important}" in css,"doughnut charts stay round in the square-cornered styles")
+check(".warm-green{color:var(--signal" not in css,"'Looks genuine' isn't drawn in the accent colour (red in some styles)")
 
 async def main():
     async with async_playwright() as p:

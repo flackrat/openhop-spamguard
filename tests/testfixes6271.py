@@ -41,10 +41,10 @@ check("Gone Quiet" not in g.sender_history,"a name not heard for 25 hours is for
 m.add("Hilltop Hiker","morning all",["4C"],ago=1); g.poll_once()
 check(g.sender_history["Hilltop Hiker"]["last"]>now-60,"hearing them again moves 'last' on")
 g._save_state(force=True)
-st=json.load(open(g.file_cfg.get("state_file")))
+st=read_state(g.file_cfg.get("state_file"))
 check(len(st["senders"]["Hilltop Hiker"])==3,"the state file keeps first, count and last")
 g2=sg.SpamGuard(dict(g.file_cfg)); check("Hilltop Hiker" in g2.sender_history and g2.sender_history["Hilltop Hiker"]["count"]>=40,"reloads with last")
-st["senders"]={"Old Format":[now-3600,3]}; json.dump(st,open(g.file_cfg.get("state_file"),"w"))
+st["senders"]={"Old Format":[now-3600,3]}; write_state(g.file_cfg.get("state_file"),st)
 g3=sg.SpamGuard(dict(g.file_cfg)); check("Old Format" in g3.sender_history,"an older state file without last still loads")
 
 # 3. Keyboard-noise names

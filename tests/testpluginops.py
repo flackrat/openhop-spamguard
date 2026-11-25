@@ -113,7 +113,7 @@ for _ in range(90):
     if h and h.process.pid!=pid0 and status(): up=True; break
     time.sleep(1)
 check(up,"SpamGuard restarted on the new version and its page is back")
-check((storage.paths_for(man.id).data_dir/"state.json").exists(),"what it had learnt is still there")
+check((storage.paths_for(man.id).data_dir/"state.json.gz").exists(),"what it had learnt is still there")
 rt.stop(man.id)
 # ---- no false "openHop service is inactive" when systemd has no such unit (openHop in Docker or elsewhere) ----
 real_sv=sg.systemd_value

@@ -25,7 +25,11 @@ with open(os.path.join(d,time.strftime("%Y-%m-%d",time.localtime(now-3*86400))+"
 m=mock(); g=guard(m, evidence_log=True, evidence_dir=d, listen_api_key="MADEUP-PAGE-KEY-0004")
 r=g.quarantine({})
 c=r["counts"]
-check({k:c[k] for k in g.Q_STATUSES}=={"stopped":4+2,"held":1,"letthrough":1+2,"genuine":1} and c["review"]==4 and c["reviewed"]==0, f"each message gets one status: {c}")
+check({k:c[k] for k in g.Q_STATUSES}=={"stopped":4+2,"held":1,"letthrough":1+2,"genuine":1} and c["review"]==1 and c["reviewed"]==0, f"each message gets one status: {c}")
+g.cfg["review_missed"]=True; g._q_cache={}
+check(g.quarantine({})["counts"]["review"]==4,"asked to, messages that went out are up for review too")
+g.cfg["review_missed"]=False
+check(g.quarantine({"status":"letthrough"})["counts"]["letthrough"]==3,"by default they are still listed under Missed spam")
 check(r["source"]=="evidence" and r["days"]==1, "the last 24 hours, from the evidence log")
 check(not any(x["sender"]=="Repeater Bot" for x in r["rows"]), "this repeater's own messages aren't listed")
 byt={x["text"][:12]:x for x in r["rows"]}
@@ -68,5 +72,43 @@ def post(h):
 check(post({"Content-Type":"application/json"})==401, "the list needs the access key")
 check(post({"Content-Type":"application/json","X-API-Key":"MADEUP-PAGE-KEY-0004"})==200, "and works with it")
 srv.shutdown()
+# --- 6.51: the review queue (made-up rows) ---
+g9=guard(mock())
+T=time.time()
+def row(sender,text,**k):
+    d={"ts":T-k.pop("ago",60),"packet":k.pop("packet",sender+text),"sender":sender,"text":text,"path":["A7"],"channel":"Public","random":False,"obfuscated":False,
+       "known":False,"campaign_senders":0,"caught_by":None,"caught_kind":None,"caught_source":None,"own":False,"machine":None}
+    d.update(k); return d
+RAW=[row("Quarry Ann","Good morning all from the valley road",campaign_senders=3,ago=300),row("Quarry Bob","good morning all from the valley",campaign_senders=3,ago=200),
+     row("Quarry Cy","Good morning all from the valley road, sunny here",campaign_senders=3,ago=100),
+     row("QXZRT9","\x16\x1b garbled",random=True,garbage=True,ago=50),
+     row("Quarry Dee","Free parts at qparts.example today only",campaign_senders=4,ago=40),
+     row("Quarry Eve","Free parts at qparts.example today only, be quick",campaign_senders=4,ago=30),
+     row("Quarry Fay","Selling spare radios at qradio.example",caught_by="b1",caught_kind=sorted(sg.PEOPLE_KINDS)[0],caught_source="burst",ago=20)]
+g9._q_rows=lambda d:(RAW,"memory")
+q=g9.quarantine({"status":"review","limit":100})
+check(q["counts"]["review"]==2,"To review: the held message and the garbled one, not greetings that went out: %s"%q["counts"])
+check(q["counts"]["letthrough"]>=5,"the rest are under Missed spam")
+RAW.append(row("Q7XZPL","Cheap parts https://qparts.example/deal",random=True,campaign_senders=5,ago=10)); g9._q_cache={}
+check(g9.quarantine({"status":"review","limit":100})["counts"]["review"]==3,"a link that went out from an unknown name stays in review")
+q=g9.quarantine({"status":"letthrough","limit":100})
+gm=[r for r in q["rows"] if "morning" in r["text"].lower()]
+check(len({r["group"] for r in gm})==1 and gm[0]["group_size"]==len(gm)==3,"similar greetings form one group: %s"%[(r["text"],r["group"]) for r in gm])
+idx=[i for i,r in enumerate(q["rows"]) if "morning" in r["text"].lower()]
+check(idx==list(range(idx[0],idx[0]+3)),"a group's messages sit together")
+check(q["groups"]<len(q["rows"]),"groups counted: %s groups, %s rows"%(q["groups"],len(q["rows"])))
+# a reworded copy of a message you said was spam is matched, kept apart from your own answers
+g9.labels={"Quarry DeeFree parts at qparts.example today only":"spam"}
+q=g9.quarantine({"status":"all","limit":100})
+check(q["counts"]["matched"]==1 and q["counts"]["reviewed"]==1,"SpamGuard's match isn't counted as your answer: %s"%q["counts"])
+check([r["sender"] for r in g9.quarantine({"status":"matched"})["rows"]]==["Quarry Eve"],"the matched one is listed on its own")
+# the count to review never shows a false zero
+g9.labels={}; g9._review_count=(0,0); n=g9.to_review()
+g9._review_count=(0,n); real=g9.quarantine
+g9.quarantine=lambda b: (_ for _ in ()).throw(RuntimeError("made-up failure"))
+check(g9.to_review()==n and g9._review_count_failed,"a failed count keeps the last number and says so")
+g9.quarantine=real; g9._review_count=(0,n); g9.to_review()
+check(not g9._review_count_failed,"and clears once it works")
+
 print(f"{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

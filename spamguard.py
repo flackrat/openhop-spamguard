@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.50.0"
+VERSION = "6.51.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -253,6 +253,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = more history for tuning, but more of people's messages kept on the Pi (about 1-3 MB per busy day).",
      "label": "Keep the evidence log for",
      "help": "Older days are deleted automatically."},
+    {"key": "review_missed", "group": "Evidence log", "type": "bool",
+     "risk": "On: more to answer, most of it ordinary chat. Off: those messages are still listed under Missed spam.",
+     "label": "Ask me about messages that looked like spam but went out",
+     "help": "Messages already sent on can't be called back, so answering them only teaches SpamGuard. Off by default: they stay under Missed spam for a glance, and To review keeps held messages plus any with a link or garbled text."},
     {"key": "level_preview", "group": "Evidence log", "type": "bool",
      "risk": "Uses a few minutes of the Pi's spare time each day.",
      "label": "Work out what each protection level would have held",
@@ -635,6 +639,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "wardrive_block": False,
     "drop_damaged": False,
     "evidence_log": False,
+    "review_missed": False,
     "evidence_days": 7,
     "level_preview": True,
     "evidence_dir": "/var/lib/openhop_spamguard/evidence",
@@ -1544,26 +1549,186 @@ def sigstore_trust(root: dict) -> dict:
     return {"cas": cas, "logs": logs}
 
 
-def fetch_sigstore_root(get=None) -> dict:
-    """Sigstore's published trusted root, read from its own update repository (not GitHub) and checked against the
-    checksum Sigstore lists for it. Used only when a build record was signed with keys SpamGuard doesn't carry."""
+# Sigstore's update repository root (version 16, from github.com/sigstore/root-signing; keys and roles only), the
+# starting point for reading its published keys safely: each newer root must be signed by enough of the previous
+# root's key holders and its own, and every other file by the keys this chain names (The Update Framework, TUF).
+SIGSTORE_TUF_ROOT = json.loads(
+    '{"_type":"root","consistent_snapshot":true,"expires":"2027-04-22T19:27:31Z","keys":{"0c87432c3bf09fd99189fdc32'
+    'fa5eaedf4e4a5fac7bab73fa04a2e0fc64af6f5":{"keyid_hash_algorithms":["sha256","sha512"],"keytype":"ecdsa","keyva'
+    'l":{"public":"-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWRiGr5+j+3J5SsH+Ztr5nE2H2wO7\\nBV'
+    '+nO3s93gLca18qTOzHY1oWyAGDykMSsGTUBSt9D+An0KfKsD2mfSM42Q==\\n-----END PUBLIC KEY-----\\n"},"scheme":"ecdsa-sha2-'
+    'nistp256"},"183e64f37670dc13ca0d28995a3053f3740954ddce44321a41e46534cf44e632":{"keytype":"ecdsa","keyval":{"pu'
+    'blic":"-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMxpPOJCIZ5otG4106fGJseEQi3V9\\npkMYQ4uyV'
+    '9Tj1M7WHXIyLG+jkfvuG0glQ1JZbRZZBV3gAR4sojdGHISeow==\\n-----END PUBLIC KEY-----\\n"},"scheme":"ecdsa-sha2-nistp25'
+    '6"},"22f4caec6d8e6f9555af66b3d4c3cb06a3bb23fdc7e39c916c61f462e6f52b06":{"keyid_hash_algorithms":["sha256","sha'
+    '512"],"keytype":"ecdsa","keyval":{"public":"-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEzB'
+    'zVOmHCPojMVLSI364WiiV8NPrD\\n6IgRxVliskz/v+y3JER5mcVGcONliDcWMC5J2lfHmjPNPhb4H7xm8LzfSA==\\n-----END PUBLIC KEY-'
+    '----\\n"},"scheme":"ecdsa-sha2-nistp256"},"61643838125b440b40db6942f5cb5a31c0dc04368316eb2aaa58b95904a58222":{"'
+    'keyid_hash_algorithms":["sha256","sha512"],"keytype":"ecdsa","keyval":{"public":"-----BEGIN PUBLIC KEY-----\\nM'
+    'FkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEinikSsAQmYkNeH5eYq/CnIzLaacO\\nxlSaawQDOwqKy/tCqxq5xxPSJc21K4WIhs9GyOkKfzueY'
+    '3GILzcMJZ4cWw==\\n-----END PUBLIC KEY-----\\n"},"scheme":"ecdsa-sha2-nistp256"},"a687e5bf4fab82b0ee58d46e05c9535'
+    '145a2c9afb458f43d42b45ca0fdce2a70":{"keyid_hash_algorithms":["sha256","sha512"],"keytype":"ecdsa","keyval":{"p'
+    'ublic":"-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0ghrh92Lw1Yr3idGV5WqCtMDB8Cx\\n+D8hdC4w'
+    '2ZLNIplVRoVGLskYa3gheMyOjiJ8kPi15aQ2//7P+oj7UvJPGw==\\n-----END PUBLIC KEY-----\\n"},"scheme":"ecdsa-sha2-nistp2'
+    '56"},"e71a54d543835ba86adad9460379c7641fb8726d164ea766801a1c522aba7ea2":{"keyid_hash_algorithms":["sha256","sh'
+    'a512"],"keytype":"ecdsa","keyval":{"public":"-----BEGIN PUBLIC KEY-----\\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEE'
+    'Xsz3SZXFb8jMV42j6pJlyjbjR8K\\nN3Bwocexq6LMIb5qsWKOQvLN16NUefLc4HswOoumRsVVaajSpQS6fobkRw==\\n-----END PUBLIC KEY'
+    '-----\\n"},"scheme":"ecdsa-sha2-nistp256"}},"roles":{"root":{"keyids":["e71a54d543835ba86adad9460379c7641fb8726'
+    'd164ea766801a1c522aba7ea2","22f4caec6d8e6f9555af66b3d4c3cb06a3bb23fdc7e39c916c61f462e6f52b06","61643838125b440'
+    'b40db6942f5cb5a31c0dc04368316eb2aaa58b95904a58222","a687e5bf4fab82b0ee58d46e05c9535145a2c9afb458f43d42b45ca0fd'
+    'ce2a70","183e64f37670dc13ca0d28995a3053f3740954ddce44321a41e46534cf44e632"],"threshold":3},"snapshot":{"keyids'
+    '":["0c87432c3bf09fd99189fdc32fa5eaedf4e4a5fac7bab73fa04a2e0fc64af6f5"],"threshold":1,"x-tuf-on-ci-expiry-perio'
+    'd":3650,"x-tuf-on-ci-signing-period":365},"targets":{"keyids":["e71a54d543835ba86adad9460379c7641fb8726d164ea7'
+    '66801a1c522aba7ea2","22f4caec6d8e6f9555af66b3d4c3cb06a3bb23fdc7e39c916c61f462e6f52b06","61643838125b440b40db69'
+    '42f5cb5a31c0dc04368316eb2aaa58b95904a58222","a687e5bf4fab82b0ee58d46e05c9535145a2c9afb458f43d42b45ca0fdce2a70"'
+    ',"183e64f37670dc13ca0d28995a3053f3740954ddce44321a41e46534cf44e632"],"threshold":3},"timestamp":{"keyids":["0c'
+    '87432c3bf09fd99189fdc32fa5eaedf4e4a5fac7bab73fa04a2e0fc64af6f5"],"threshold":1,"x-tuf-on-ci-expiry-period":7,"'
+    'x-tuf-on-ci-signing-period":6}},"spec_version":"1.0","version":16}')
+
+
+def canonical_json(o) -> bytes:
+    """JSON as TUF signs it (OLPC canonical form): sorted keys, no spaces, only quote and backslash escaped."""
+    def enc(x):
+        if isinstance(x, bool):
+            return "true" if x else "false"
+        if x is None:
+            return "null"
+        if isinstance(x, int):
+            return str(x)
+        if isinstance(x, str):
+            return '"' + x.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        if isinstance(x, (list, tuple)):
+            return "[" + ",".join(enc(i) for i in x) + "]"
+        if isinstance(x, dict):
+            return "{" + ",".join(enc(str(k)) + ":" + enc(v) for k, v in sorted(x.items())) + "}"
+        raise ValueError("not canonical JSON")
+    return enc(o).encode("utf-8")
+
+
+def _tuf_key_ok(key: dict, data: bytes, sig_hex: str) -> bool:
+    """One TUF signature: ECDSA P-256 with SHA-256, the key given as PEM or (in Sigstore's oldest roots) a hex point."""
+    try:
+        from Crypto.Hash import SHA256 as _H  # nosec B413 (pycryptodome, maintained)
+        from Crypto.PublicKey import ECC as _ECC  # nosec B413
+        from Crypto.Signature import DSS as _DSS  # nosec B413
+        if key.get("scheme") != "ecdsa-sha2-nistp256":
+            return False
+        pub = str((key.get("keyval") or {}).get("public") or "")
+        if pub.startswith("-----BEGIN"):
+            k = _ECC.import_key(pub)
+        else:
+            b = bytes.fromhex(pub)
+            if len(b) != 65 or b[0] != 4:
+                return False
+            k = _ECC.construct(curve="P-256", point_x=int.from_bytes(b[1:33], "big"), point_y=int.from_bytes(b[33:], "big"))
+        if k.pointQ.size_in_bits() != 256 or str(k.curve).lower().startswith("ed"):
+            return False
+        _DSS.new(k, "fips-186-3", encoding="der").verify(_H.new(data), bytes.fromhex(sig_hex))
+        return True
+    except (ImportError, ValueError, TypeError, KeyError, IndexError):
+        return False
+
+
+def tuf_signed(md: dict, root: dict, role: str) -> bool:
+    """md carries signatures from at least the threshold of distinct keys the root names for role."""
+    r = (root.get("roles") or {}).get(role) or {}
+    ids, need = set(r.get("keyids") or []), int(r.get("threshold") or 0)
+    if need < 1:
+        return False
+    data, good = canonical_json(md["signed"]), set()
+    for s in md.get("signatures") or []:
+        kid = s.get("keyid")
+        if kid in ids and kid not in good and kid in (root.get("keys") or {}) and \
+                _tuf_key_ok(root["keys"][kid], data, str(s.get("sig") or "")):
+            good.add(kid)
+    return len(good) >= need
+
+
+def _tuf_fresh(signed: dict, kind: str, now: float):
+    if signed.get("_type") != kind:
+        raise ValueError(f"Sigstore's {kind} file is the wrong kind")
+    if (_iso_ts(signed.get("expires")) or 0) <= now:
+        raise ValueError(f"Sigstore's {kind} file has expired")
+
+
+def _tuf_hash_ok(raw: bytes, meta: dict) -> bool:
+    if meta.get("length") is not None and len(raw) != int(meta["length"]):
+        return False
+    for alg, want in (meta.get("hashes") or {}).items():
+        if alg in ("sha256", "sha512") and hashlib.new(alg, raw).hexdigest() != str(want).lower():
+            return False
+    return True
+
+
+def fetch_sigstore_root(get=None, seen: Optional[dict] = None, now: Optional[float] = None) -> tuple:
+    """Sigstore's published trusted root, read from its own update repository (not GitHub) the way TUF requires:
+    newer roots each signed by enough of the previous root's key holders and their own, then the timestamp,
+    snapshot and targets files signed by the keys the root names, none expired or older than one seen before, and
+    the trusted root file matching the size and checksums the signed targets file lists. Used only when a build
+    record was signed with keys SpamGuard doesn't carry. get(url) gives bytes, or None when there is no such file.
+    seen: what was trusted last time (a newer root and version numbers). Returns (keys, what to remember)."""
     def _get(url):
         req = urllib.request.Request(url, headers={"User-Agent": f"openhop-spamguard/{VERSION}"})
-        with urllib.request.urlopen(req, timeout=15) as r:  # nosec B310 (fixed https address)
-            return r.read(2 * 1024 * 1024)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:  # nosec B310 (fixed https address)
+                return r.read(2 * 1024 * 1024)
+        except urllib.error.HTTPError as e:
+            if e.code in (403, 404):
+                return None
+            raise
     get = get or _get
-    ts = json.loads(get(SIGSTORE_TUF + "/timestamp.json"))["signed"]
-    if (_iso_ts(ts.get("expires")) or 0) < time.time():
-        raise ValueError("Sigstore's published list has expired")
-    sn = json.loads(get(f"{SIGSTORE_TUF}/{int(ts['meta']['snapshot.json']['version'])}.snapshot.json"))["signed"]
-    tg = json.loads(get(f"{SIGSTORE_TUF}/{int(sn['meta']['targets.json']['version'])}.targets.json"))["signed"]
-    want = str(tg["targets"]["trusted_root.json"]["hashes"]["sha256"])
+    now = now if now is not None else time.time()
+    seen = dict(seen or {})
+    root = seen["root"] if isinstance(seen.get("root"), dict) and \
+        int(seen["root"].get("version") or 0) > SIGSTORE_TUF_ROOT["version"] else SIGSTORE_TUF_ROOT
+    for _ in range(64):   # Sigstore changes its root a few times a year
+        n = int(root["version"]) + 1
+        raw = get(f"{SIGSTORE_TUF}/{n}.root.json")
+        if raw is None:
+            break
+        new = json.loads(raw)
+        ns = new.get("signed") or {}
+        if ns.get("_type") != "root" or ns.get("version") != n:
+            raise ValueError("Sigstore's next root has the wrong version")
+        if not (tuf_signed(new, root, "root") and tuf_signed(new, ns, "root")):
+            raise ValueError("Sigstore's next root isn't signed by enough of its key holders")
+        root = ns
+    _tuf_fresh(root, "root", now)
+    ts = json.loads(get(f"{SIGSTORE_TUF}/timestamp.json") or b"null")
+    if not ts or not tuf_signed(ts, root, "timestamp"):
+        raise ValueError("Sigstore's timestamp file isn't signed by its key")
+    tss = ts["signed"]
+    _tuf_fresh(tss, "timestamp", now)
+    smeta = tss["meta"]["snapshot.json"]
+    if int(tss["version"]) < int(seen.get("timestamp") or 0) or int(smeta["version"]) < int(seen.get("snapshot") or 0):
+        raise ValueError("Sigstore's timestamp file is older than one seen before")
+    raw = get(f"{SIGSTORE_TUF}/{int(smeta['version'])}.snapshot.json")
+    if raw is None or not _tuf_hash_ok(raw, smeta):
+        raise ValueError("Sigstore's snapshot file is missing or doesn't match")
+    sn = json.loads(raw)
+    if not tuf_signed(sn, root, "snapshot") or sn["signed"].get("version") != smeta["version"]:
+        raise ValueError("Sigstore's snapshot file isn't signed by its key")
+    _tuf_fresh(sn["signed"], "snapshot", now)
+    tmeta = sn["signed"]["meta"]["targets.json"]
+    if int(tmeta["version"]) < int(seen.get("targets") or 0):
+        raise ValueError("Sigstore's targets file is older than one seen before")
+    raw = get(f"{SIGSTORE_TUF}/{int(tmeta['version'])}.targets.json")
+    if raw is None or not _tuf_hash_ok(raw, tmeta):
+        raise ValueError("Sigstore's targets file is missing or doesn't match")
+    tg = json.loads(raw)
+    if not tuf_signed(tg, root, "targets") or tg["signed"].get("version") != tmeta["version"]:
+        raise ValueError("Sigstore's targets file isn't signed by enough of its key holders")
+    _tuf_fresh(tg["signed"], "targets", now)
+    meta = tg["signed"]["targets"]["trusted_root.json"]
+    want = str((meta.get("hashes") or {}).get("sha256") or "")
     if not re.fullmatch(r"[0-9a-f]{64}", want):
         raise ValueError("Sigstore's list has no checksum")
     raw = get(f"{SIGSTORE_TUF}/targets/{want}.trusted_root.json")
-    if hashlib.sha256(raw).hexdigest() != want:
+    if raw is None or not _tuf_hash_ok(raw, meta):
         raise ValueError("Sigstore's list didn't match its checksum")
-    return sigstore_trust(json.loads(raw))
+    keep = {"root": root if root is not SIGSTORE_TUF_ROOT else None, "timestamp": int(tss["version"]),
+            "snapshot": int(smeta["version"]), "targets": int(tmeta["version"])}
+    return sigstore_trust(json.loads(raw)), keep
 
 
 def _merkle_ok(idx: int, size: int, leaf: bytes, path: list, root: bytes) -> bool:
@@ -2116,6 +2281,33 @@ def name_shape(name: str) -> str:
     return "".join(out)
 
 
+def state_candidates(path: str) -> list:
+    """Where saved state can be, newest family first: the compressed file SpamGuard writes from 6.51 (and its last
+    good copy), then the plain one older versions wrote. The plain file is left alone once a compressed one exists,
+    so if an update is ever rolled back the older version still finds its data; whichever was saved last wins."""
+    gz, plain = path + ".gz", path
+    def mt(p):
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return -1.0
+    fams = [(gz, gz + ".bak"), (plain, plain + ".bak")]
+    fams.sort(key=lambda f: -mt(f[0]))
+    return [p for f in fams for p in f]
+
+
+def read_state_file(p: str) -> dict:
+    """A saved state file, compressed or not."""
+    with open(p, "rb") as f:
+        raw = f.read()
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    st = json.loads(raw.decode("utf-8"))
+    if not isinstance(st, dict):
+        raise ValueError("not a state file")
+    return st
+
+
 class EvidenceLog:
     """One JSON line per channel message (plus your labels, block changes and settings), written to a
     file per day. Writes are batched to spare the SD card; old days are deleted automatically."""
@@ -2370,6 +2562,11 @@ class SpamGuard:
         self.clocks: dict[str, list] = {}    # name family -> [time heard, how far its device clock was out]
         self.dirs: dict[str, dict] = {}      # name family -> the hops nearest the sender it is heard by, and copies seen
         self._adv_logged: dict[str, float] = {}
+        # the newest advert written to the evidence log, saved; adverts read again at start (the week's backfill)
+        # that the last run already wrote are not written twice
+        self.sigstore_seen: dict = {}   # Sigstore's newest verified root and file versions, when its list was read
+        self.adv_ev_mark = 0.0
+        self._adv_prev_mark = 0.0
         self.label_at: dict[str, float] = {}   # when you labelled each message, shown with it on the page
         self.blocks: dict[str, dict] = {}
         self.suppressed: dict[str, float] = {}
@@ -2689,12 +2886,9 @@ class SpamGuard:
         fresh = {k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
                  for k, v in self.__dict__.items()}
         failed, loaded = [], False
-        for i, p in enumerate((path, path + ".bak")):
+        for p in state_candidates(path):
             try:
-                with open(p) as f:
-                    st = json.load(f)
-                if not isinstance(st, dict):
-                    raise ValueError("not a state file")
+                st = read_state_file(p)
                 self._apply_state(st)
             except FileNotFoundError:
                 continue
@@ -2705,7 +2899,7 @@ class SpamGuard:
                 self.__dict__.update({k: (copy.copy(v) if isinstance(v, (dict, list, set, collections.deque)) else v)
                                       for k, v in fresh.items()})
                 continue
-            if i:
+            if failed:
                 log.warning("The state file was damaged; carried on from the last good copy")
                 self._restored_from_backup = True
             loaded = True
@@ -2773,6 +2967,14 @@ class SpamGuard:
         self.routes = {k: v for k, v in (st.get("routes") or {}).items() if isinstance(v, list) and len(v) == 4}
         self.relays = dict(st.get("relays") or {})
         self.logged_packets = collections.OrderedDict((p, None) for p in (st.get("logged_packets") or [])[-3000:])
+        try:
+            self.adv_ev_mark = self._adv_prev_mark = min(float(st.get("adv_ev_mark") or 0), now + 60)
+        except (TypeError, ValueError):
+            pass
+        ss = st.get("sigstore_seen")
+        if isinstance(ss, dict) and all(isinstance(ss.get(k, 0), int) for k in ("timestamp", "snapshot", "targets")) \
+                and (ss.get("root") is None or isinstance(ss.get("root"), dict)):
+            self.sigstore_seen = ss
         self.counted_packets = collections.OrderedDict((p, None) for p in (st.get("counted_packets") or [])[-3000:])
         self.known = {k: v for k, v in (st.get("known_senders") or {}).items() if isinstance(v, list) and len(v) == 3}
         self.rule_ids = {k: int(v) for k, v in (st.get("rule_ids") or {}).items()}
@@ -2942,25 +3144,31 @@ class SpamGuard:
             if "id" not in b:
                 b["id"] = self._new_id()
 
+    SAVE_EVERY = 900          # routine saves: slow learning lost in a power cut is learnt again from openHop
+    SAVE_URGENT_GAP = 30      # important changes noticed by the checking loop: at most one save this often
+
     def _save_state(self, force=False, final=False):
-        """Written straight away for important changes, otherwise at most every 5 minutes, to spare
+        """Written straight away for important changes, otherwise at most every 15 minutes, compressed, to spare
         the SD card. Short-lived duplicate rules don't count: losing them in a power cut is harmless.
         A clean stop (restart, update) always saves."""
         now = time.time()
-        if not force and now - self._last_save < 300:
+        if not force and now - self._last_save < self.SAVE_EVERY:
             return
         if not final and now - getattr(self, "_save_failed_at", 0) < 30:
             return   # failed a moment ago (card full or read-only?): try again shortly rather than on every check
-        path = self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
+        path = (self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])) + ".gz"
         important = self._important
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
             if os.path.lexists(tmp):
                 os.remove(tmp)
+            raw = json.dumps(self.state_dict(), separators=(",", ":")).encode("utf-8")
+            data = gzip.compress(raw, compresslevel=6, mtime=0)   # about a sixth of the size: far less written
+            self.state_bytes = (len(raw), len(data))
             # readable by SpamGuard only: it holds private channel keys and recent messages
-            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
-                json.dump(self.state_dict(), f, separators=(",", ":"))   # compact: less to write each time
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+                f.write(data)
                 f.flush()
                 os.fsync(f.fileno())   # on the card before it replaces the old copy (at most every few minutes)
             if os.path.exists(path):
@@ -3010,7 +3218,8 @@ class SpamGuard:
                     "catches": [t for t in self.catches if t > now - 86400],
                     "routes": self.routes,
                     "relays": self.relays,
-                    "logged_packets": list(self.logged_packets),
+                    "logged_packets": list(self.logged_packets), "adv_ev_mark": round(self.adv_ev_mark, 2),
+                    **({"sigstore_seen": self.sigstore_seen} if self.sigstore_seen else {}),
                     "counted_packets": list(self.counted_packets),
                     "known_senders": self.known,
                     "held": list(self.held),
@@ -3340,12 +3549,13 @@ class SpamGuard:
         self._air_mark = max(self._air_mark, ts)
         ms = self.airtime_ms(length) if length > 0 else 0.0
         sent = bool(p.get("transmitted"))
-        if "tx failed" in str(p.get("drop_reason") or "").lower():
+        tx_failed = "tx failed" in str(p.get("drop_reason") or "").lower()
+        if tx_failed:
             self.tx_fails.append(ts)       # openHop tried to send and the radio didn't
         elif sent:
             self.tx_ok_at = max(self.tx_ok_at or 0.0, ts)
             self.tx_oks.append(ts)
-        if (sent or self.tx_fails and self.tx_fails[-1] == ts) and "lbt_attempts" in p:
+        if (sent or tx_failed) and "lbt_attempts" in p:   # this packet's own outcome, not a neighbour's
             try:
                 self.lbt.append((ts, max(0, int(p.get("lbt_attempts") or 0)), bool(p.get("lbt_channel_busy")),
                                  int(p.get("route", -1)) in (ROUTE_TRANSPORT_FLOOD, ROUTE_FLOOD)))
@@ -4409,7 +4619,12 @@ class SpamGuard:
             return
         if adv and adv["type"] == 1 and adv["name"]:
             self.note_device_name(bytes.fromhex(p.get("payload") or ""), adv, float(p.get("timestamp") or time.time()))
-        if adv and adv["type"] == 1 and adv["name"] and self.cfg.get("spoof_watch"):
+        try:
+            pts = float(p.get("timestamp") or time.time())
+        except (TypeError, ValueError):
+            pts = time.time()
+        fresh = pts > self._adv_prev_mark   # not already written by the last run
+        if adv and adv["type"] == 1 and adv["name"] and self.cfg.get("spoof_watch") and fresh:
             # A companion's advert (signed by its own key in standard MeshCore): where it was heard from, for the
             # copied-name check to learn from later. At most once every 30 minutes per companion.
             t = time.time()
@@ -4420,8 +4635,10 @@ class SpamGuard:
                 path = parse_path(p.get("original_path"))
                 self.ev({"type": "advert", "ts": round(float(p.get("timestamp") or t), 2), "name": adv["name"],
                          "key": adv["key"][:8], "adv_time": adv.get("time"), "path": path, "hops": len(path)})
+                self.adv_ev_mark = max(self.adv_ev_mark, pts)
         if adv and adv["type"] in (2, 3) and re.fullmatch(r"[0-9A-F]{64}", adv["key"] or "") and adv["lat"] is not None \
-                and self.evidence is not None and (adv["lat"] or adv["lon"]) and abs(adv["lat"]) <= 90 and abs(adv["lon"]) <= 180:
+                and self.evidence is not None and (adv["lat"] or adv["lon"]) and abs(adv["lat"]) <= 90 and abs(adv["lon"]) <= 180 \
+                and fresh:
             # A repeater's (or room server's) advert, with the location it gives out publicly and the route it took,
             # so a replay of the evidence log can work out the map as the repeater did. Once a day per route.
             path = parse_path(p.get("original_path"))
@@ -4434,6 +4651,7 @@ class SpamGuard:
                 self.ev({"type": "advert", "node": "repeater" if adv["type"] == 2 else "room",
                          "ts": round(float(p.get("timestamp") or t), 2), "name": adv["name"], "key": adv["key"][:12],
                          "lat": round(adv["lat"], 3), "lon": round(adv["lon"], 3), "path": path, "hops": len(path)})
+                self.adv_ev_mark = max(self.adv_ev_mark, pts)
         if adv and adv["type"] in (2, 3) and re.fullmatch(r"[0-9A-F]{64}", adv["key"] or ""):
             try:
                 ts = float(p.get("timestamp") or time.time())
@@ -5017,7 +5235,7 @@ class SpamGuard:
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction", "garbage")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -5050,7 +5268,7 @@ class SpamGuard:
         """One list of channel messages, like a mail quarantine. Filters: status, words, route codes (where
         it entered the mesh), names (a repeat spammer), 1 or 7 days, and copies of one message grouped."""
         status = body.get("status") or "all"
-        if status not in ("all", "review", "reviewed") + self.Q_STATUSES:
+        if status not in ("all", "review", "reviewed", "matched") + self.Q_STATUSES:
             raise ValueError("Unknown filter")
         packets = {str(x) for x in (body.get("packets") or [])[:500] if x}
         days = 7 if int(body.get("days") or 1) >= 7 else 1
@@ -5061,7 +5279,8 @@ class SpamGuard:
         limit = max(20, min(500, int(body.get("limit") or 100)))
         raw, source = self._q_rows(days)
         counts = {k: 0 for k in self.Q_STATUSES}
-        counts["review"] = counts["reviewed"] = 0
+        counts["review"] = counts["reviewed"] = counts["matched"] = 0
+        ask_missed = bool(self.cfg.get("review_missed"))
         picked = []
         # What you have already answered: a message and its copies leave "To review" once any one of them is marked
         lab_of = lambda m: (self.labels.get(str(m.get("packet") or ""))   # noqa: E731
@@ -5099,20 +5318,40 @@ class SpamGuard:
             if q and q not in (str(m.get("sender")) + " " + str(m.get("text"))).lower():
                 continue
             # Once you have answered a message it is listed under Answered only, so nothing is shown to you twice
+            # SpamGuard matching it to one of your answers is kept apart from your own answers
             like = same(m) not in answered and st in ("held", "letthrough") and bool(spam_like) and like_spam(m)
-            done = same(m) in answered or like
-            todo = not done and st in ("held", "letthrough")
+            done = same(m) in answered
+            # To review: held messages (someone genuine may be caught), and of those that went out only the
+            # garbled ones and links. Messages already sent can't be called back, and most of the rest turn out to
+            # be ordinary chat, so they wait under Missed spam unless you ask to review them too
+            todo = not done and not like and (st == "held" or (st == "letthrough" and
+                                                               bool(ask_missed or m.get("garbage") or m.get("obfuscated")
+                                                                    or URL.search(str(m.get("text") or "")))))
             counts["reviewed"] += done
+            counts["matched"] += like
             counts["review"] += todo
-            counts[st] += not done
+            counts[st] += not (done or like)
             if status == "reviewed":
                 if not done:
                     continue
-            elif done or (status == "review" and not todo) or (status not in ("all", "review") and st != status):
+            elif status == "matched":
+                if not like:
+                    continue
+            elif done or like or (status == "review" and not todo) or (status not in ("all", "review") and st != status):
                 continue
             picked.append((m, st, why, like))
         picked.sort(key=lambda t: -(t[0].get("ts") or 0))
         rows, index = [], {}
+        groups: list = []   # (channel, shingles, group number): similar messages in this list share a number
+
+        def group_of(m) -> int:
+            n = normalise(str(m.get("text") or ""))
+            sh = shingles(n)
+            for ch, gsh, gid in groups:
+                if ch == m.get("channel") and (gsh == sh or (len(n) >= 8 and self._similar(sh, gsh, 0.6))):
+                    return gid
+            groups.append((m.get("channel"), sh, len(groups)))
+            return len(groups) - 1
         for m, st, why, like in picked:
             text = str(m.get("text") or "")
             key = (st, m.get("channel"), normalise(text)[:120]) if grouped else id(m)
@@ -5129,7 +5368,7 @@ class SpamGuard:
                               "path": ">".join(path) or "direct", "first_hop": path[0] if path else None,
                               "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
                               "route": self.route_history(path, who=m.get("sender") or "") if self.cfg.get("spoof_check") else None,
-                              "copies": 1, "_names": {m.get("sender")},
+                              "copies": 1, "_names": {m.get("sender")}, "group": group_of(m),
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
                               "machine": m.get("machine"), "identity": m.get("identity"), "like": "spam" if like else None,
                               "copy": self._copy_row(m.get("copy")),
@@ -5139,7 +5378,16 @@ class SpamGuard:
             rows.append(r)
         for r in rows:
             r["senders"] = len(r.pop("_names"))
-        return {"source": source, "days": days, "counts": counts, "total": sum(counts[k] for k in self.Q_STATUSES),
+        # similar messages side by side, so a group can be answered together; newest group first
+        newest: dict = {}
+        for r in rows:
+            newest[r["group"]] = max(newest.get(r["group"], 0), r["ts"] or 0)
+        rows.sort(key=lambda r: (-newest[r["group"]], r["group"], -(r["ts"] or 0)))
+        size = collections.Counter(r["group"] for r in rows)
+        for r in rows:
+            r["group_size"] = size[r["group"]]
+        msgs = sum(r["copies"] for r in rows)
+        return {"source": source, "days": days, "counts": counts, "groups": len({r["group"] for r in rows}), "messages": msgs, "total": sum(counts[k] for k in self.Q_STATUSES),
                 "shown": len(picked), "rows": rows, "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]}
 
     def to_review(self) -> int:
@@ -5148,8 +5396,11 @@ class SpamGuard:
         if time.time() - at > 60:
             try:
                 n = self.quarantine({"status": "review", "limit": 20})["counts"]["review"]
-            except Exception:
-                n = 0
+                self._review_count_failed = None
+            except Exception as e:   # keep the last good count, and say it couldn't be refreshed
+                if not getattr(self, "_review_count_failed", None):
+                    log.warning("Couldn't count the messages to review: %s", e)
+                self._review_count_failed = time.time()
             self._review_count = (time.time(), n)
         return n
 
@@ -9257,7 +9508,7 @@ class SpamGuard:
 
         changed = self._expire_blocks(now) or changed
         changed = self.review_watch(a["long"], now) or changed
-        self._save_state(force=self._important)
+        self._save_state(force=self._important and time.time() - self._last_save >= self.SAVE_URGENT_GAP)
         return changed
 
     KEEP_SOURCES = ("hop", "rotation", "slowrepeat", "repeat", "campaign", "links", "linkhost", "budget")
@@ -10330,7 +10581,7 @@ class SpamGuard:
                 self._stage_failed("Spam detection", e)
                 if self._expire_blocks(time.time()):
                     self.sync_pending = True
-                self._save_state(force=self._important)
+                self._save_state(force=self._important and time.time() - self._last_save >= self.SAVE_URGENT_GAP)
             try:
                 if self.fg_decide():
                     self.sync_pending = True
@@ -10362,9 +10613,9 @@ class SpamGuard:
             # Once a minute make sure openHop still has exactly our rules (e.g. after an openHop
             # restart, a restore, or someone editing policies) and put them back if not.
             self.sync_policy()
-        if self._important:
+        if self._important and (forced or time.time() - self._last_save >= self.SAVE_URGENT_GAP):
             with self.lock:
-                self._save_state(force=True)   # a change made on the page, saved here rather than while the page waits
+                self._save_state(force=True)   # a change made on the page at once; the loop's own at most every 30 s
         if time.time() - self.last_verify > 60:
             self.last_verify = time.time()
         self.write_runtime()
@@ -11251,7 +11502,7 @@ class SpamGuard:
                 "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
                 "kind": install_kind(), "last_sync": self.last_sync, "last_save": self._last_save or None,
                 "status_ms": getattr(self, "status_ms", None), "evidence_mb": self._evidence_mb(),
-                "save_failures": getattr(self, "_save_failures", 0), "restored_from_backup": bool(getattr(self, "_restored_from_backup", False)),
+                "save_failures": getattr(self, "_save_failures", 0), "state_bytes": getattr(self, "state_bytes", None), "restored_from_backup": bool(getattr(self, "_restored_from_backup", False)),
                 "jobs_failing": sorted(k for k, f in (getattr(self, "task_fails", None) or {}).items() if f["n"] >= 5),
                 "released_week": sum(1 for k, v in self.labels.items() if v == "not_spam" and float(self.label_at.get(k) or 0) > now - 7 * 86400),
                 "can_apply_fix": install_kind() == "normal"
@@ -11586,7 +11837,9 @@ class SpamGuard:
         if got and time.time() - got[0] < 86400:
             return got[1]
         try:
-            trust = fetch_sigstore_root()
+            trust, keep = fetch_sigstore_root(seen=self.sigstore_seen)
+            self.sigstore_seen = keep   # so older files can't be passed off later
+            self._important = True
         except Exception as e:
             log.warning("Couldn't read Sigstore's published keys: %s", e)
             trust = None
@@ -12010,7 +12263,7 @@ class SpamGuard:
                 "metrics": self._section("metrics", self.metrics),
                 "held_summary": self._section("held_summary", self.held_summary),
                 "trust_review": self._trust_review_rows(),
-                "to_review": self.to_review(),
+                "to_review": self.to_review(), "to_review_stale": bool(getattr(self, "_review_count_failed", None)),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
                          if h["ts"] > max(since, self.view_marks.get("held", 0)) and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],

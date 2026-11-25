@@ -42,7 +42,7 @@ d0=g.daily[g._day_key(hr)]
 check(d0["c"]==4 and d0["fc"]==3 and d0.get("seeded")==1, f"seeded from the hourly history: {d0}")
 g._day_seed(); check(g.daily[g._day_key(hr)]["c"]==4, "and not twice")
 g._save_state(force=True)
-st=json.load(open(g.cfg["state_file"])) if os.path.exists(g.cfg["state_file"]) else {}
+st=read_state(g.cfg["state_file"]) if os.path.exists(g.cfg["state_file"]+".gz") else {}
 check("daily" in st and st["daily"], "saved with the rest of the state")
 body=json.dumps(g.held_summary())
 check(not any(k in body.lower() for k in ("sender","name","text","hilltop")), "the summary holds counts only")
