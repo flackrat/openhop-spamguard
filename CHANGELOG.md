@@ -21,6 +21,7 @@ The detail is below, newest first. In short:
 - **No duplicate adverts in the evidence log** after a restart.
 - **Sigstore's key list checked in full.** When Sigstore changes its keys, its published list is now checked the way TUF requires, including signatures, expiry and protection against old files being replayed.
 - Listen-before-talk readings now follow each packet's own outcome.
+- The People warmth bar runs cool to warm in every colour style, like the protection slider.
 
 ## v6.50.0
 
