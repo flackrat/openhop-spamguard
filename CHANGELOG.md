@@ -15,6 +15,13 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.50.0
+
+- **Update checks, done properly.** The build record for each update is now checked the way Sigstore's own tools do: certificate from Sigstore's authority, issued to exactly this project's release workflow, and recorded in Sigstore's public log while it was valid. If Sigstore changes its keys, its published list is used instead.
+- **Campaign links** group only on strong evidence. A weaker sign, such as a shared repeater, now shows separately as "possibly related". Groups can be hidden for 7 days, with an undo.
+- **Runs better unattended.** A failed save is kept and tried again, and Health says so. Health also shows a start from the backup copy, and background jobs that keep failing. The page says when SpamGuard is still starting rather than waiting.
+- **Display:** the protection slider follows each colour style from cool to warm, clearer chart colours in Amber and Matrix, two smaller text sizes, and more room around the graph channel picker.
+
 ## v6.49.0
 
 - **A simpler page.** Fewer menu entries, with related pages as tabs; shorter Overview and FloodGuard pages; charts you can tap into for detail; one Change button per block; tables that keep their labels on a phone.

@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.49.0"
+VERSION = "6.50.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -1411,44 +1411,311 @@ def bot_shaped(text: str) -> bool:
                for op, vals in PUBLIC_BOT_SHAPES)
 
 
-def attestation_ok(got: dict, digest: str, repo: str, workflow: str) -> bool:
-    """One of GitHub's attestations for a file is a build provenance naming its sha256, made by this repository's
-    release workflow, signed with the certificate it carries, and that certificate names the same workflow."""
+# Sigstore's public keys, from its published trusted root: the authority that issues signing certificates
+# (its intermediate and root, in that order) and the public logs that record each signing. When Sigstore
+# changes them, the updater reads its published list instead (fetch_sigstore_root), so updates carry on.
+SIGSTORE_PINNED = {
+    "certificateAuthorities": [{"validFor": {"start": "2022-04-13T20:06:15Z"}, "certChain": {"certificates": [
+        {"rawBytes": ("MIICGjCCAaGgAwIBAgIUALnViVfnU0brJasmRkHrn/UnfaQwCgYIKoZIzj0EAwMwKjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MREw"
+                      "DwYDVQQDEwhzaWdzdG9yZTAeFw0yMjA0MTMyMDA2MTVaFw0zMTEwMDUxMzU2NThaMDcxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjEe"
+                      "MBwGA1UEAxMVc2lnc3RvcmUtaW50ZXJtZWRpYXRlMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE8RVS/ysH+NOvuDZyPIZtilgUF9Nl"
+                      "arYpAd9HP1vBBH1U5CV77LSS7s0ZiH4nE7Hv7ptS6LvvR/STk798LVgMzLlJ4HeIfF3tHSaexLcYpSASr1kS0N/RgBJz/9jWCiXn"
+                      "o3sweTAOBgNVHQ8BAf8EBAMCAQYwEwYDVR0lBAwwCgYIKwYBBQUHAwMwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHQ4EFgQU39Pp"
+                      "z1YkEZb5qNjpKFWixi4YZD8wHwYDVR0jBBgwFoAUWMAeX5FFpWapesyQoZMi0CrFxfowCgYIKoZIzj0EAwMDZwAwZAIwPCsQK4DY"
+                      "iZYDPIaDi5HFKnfxXx6ASSVmERfsynYBiX2X6SJRnZU84/9DZdnFvvxmAjBOt6QpBlc4J/0DxvkTCqpclvziL6BCCPnjdlIB3Pu3"
+                      "BxsPmygUY7Ii2zbdCdliiow=")},
+        {"rawBytes": ("MIIB9zCCAXygAwIBAgIUALZNAPFdxHPwjeDloDwyYChAO/4wCgYIKoZIzj0EAwMwKjEVMBMGA1UEChMMc2lnc3RvcmUuZGV2MREw"
+                      "DwYDVQQDEwhzaWdzdG9yZTAeFw0yMTEwMDcxMzU2NTlaFw0zMTEwMDUxMzU2NThaMCoxFTATBgNVBAoTDHNpZ3N0b3JlLmRldjER"
+                      "MA8GA1UEAxMIc2lnc3RvcmUwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAT7XeFT4rb3PQGwS4IajtLk3/OlnpgangaBclYpsYBr5i+4"
+                      "ynB07ceb3LP0OIOZdxexX69c5iVuyJRQ+Hz05yi+UF3uBWAlHpiS5sh0+H2GHE7SXrk1EC5m1Tr19L9gg92jYzBhMA4GA1UdDwEB"
+                      "/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRYwB5fkUWlZql6zJChkyLQKsXF+jAfBgNVHSMEGDAWgBRYwB5fkUWl"
+                      "Zql6zJChkyLQKsXF+jAKBggqhkjOPQQDAwNpADBmAjEAj1nHeXZp+13NWBNa+EDsDP8G1WWg1tCMWP/WHPqpaVo0jhsweNFZgSs0"
+                      "eE7wYI4qAjEA2WB9ot98sIkoF3vZYdd3/VtWB5b9TNMea7Ix/stJ5TfcLLeABLE4BNJOsQ4vnBHJ")},
+    ]}}],
+    "tlogs": [
+        {"logId": {"keyId": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0="}, "publicKey": {"validFor": {"start": "2021-01-12T11:53:27Z"},
+         "rawBytes": ("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2G2Y+2tabdTV5BcGiBIx0a9fAFwrkBbmLSGtks4L3qX6yYY0zufBnhC8Ur/iy55G"
+                      "hWP/9A/bY2LhC30M9+RYtw==")}},
+        {"logId": {"keyId": "zxGZFVvd0FEmjR8WrFwMdcAJ9vtaY/QXf44Y1wUeP6A="}, "publicKey": {"validFor": {"start": "2025-09-23T00:00:00Z"},
+         "rawBytes": ("MCowBQYDK2VwAyEAt8rlp1knGwjfbcXAYPYAkn0XiLz1x8O4t0YkEhie244=")}},
+    ]}
+
+
+SIGSTORE_ISSUER = "https://token.actions.githubusercontent.com"
+SIGSTORE_TUF = "https://tuf-repo-cdn.sigstore.dev"
+
+
+def _der(b: bytes, i: int = 0) -> tuple:
+    """The DER item starting at i: (tag, where its content starts, where it ends)."""
+    tag, n, j = b[i], b[i + 1], i + 2
+    if n & 0x80:
+        k = n & 0x7F
+        if not 0 < k <= 4:
+            raise ValueError("bad DER length")
+        n, j = int.from_bytes(b[j:j + k], "big"), j + k
+    if j + n > len(b):
+        raise ValueError("short DER item")
+    return tag, j, j + n
+
+
+def _der_items(b: bytes, start: int, end: int) -> list:
+    """The items inside a DER container: (tag, content start, end, item start) each."""
+    out, i = [], start
+    while i < end:
+        t, s, e = _der(b, i)
+        out.append((t, s, e, i))
+        i = e
+    return out
+
+
+def _oid(b: bytes) -> str:
+    v, x = [b[0] // 40, b[0] % 40], 0
+    for c in b[1:]:
+        x = (x << 7) | (c & 0x7F)
+        if not c & 0x80:
+            v.append(x)
+            x = 0
+    return ".".join(map(str, v))
+
+
+def _der_time(tag: int, s: bytes) -> float:
+    f = "%y%m%d%H%M%SZ" if tag == 0x17 else "%Y%m%d%H%M%SZ"
+    return datetime.datetime.strptime(s.decode(), f).replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
+def x509_parts(der: bytes) -> dict:
+    """The parts of an X.509 certificate that the build check needs, read straight from its DER bytes."""
+    _, s, e = _der(der)
+    top = _der_items(der, s, e)
+    tbs, sig = top[0], top[2]
+    f = _der_items(der, tbs[1], tbs[2])
+    k = 1 if f[0][0] == 0xA0 else 0
+    issuer, validity, subject, spki = f[k + 2], f[k + 3], f[k + 4], f[k + 5]
+    nb, na = _der_items(der, validity[1], validity[2])[:2]
+    exts = {}
+    for x in f[k + 6:]:
+        if x[0] != 0xA3:
+            continue
+        seq = _der_items(der, x[1], x[2])[0]
+        for ext in _der_items(der, seq[1], seq[2]):
+            it = _der_items(der, ext[1], ext[2])
+            exts[_oid(der[it[0][1]:it[0][2]])] = der[it[-1][1]:it[-1][2]]
+    return {"tbs": der[tbs[3]:tbs[2]], "sig": der[sig[1] + 1:sig[2]],
+            "issuer": der[issuer[3]:issuer[2]], "subject": der[subject[3]:subject[2]], "spki": der[spki[3]:spki[2]],
+            "not_before": _der_time(der[nb[3]], der[nb[1]:nb[2]]), "not_after": _der_time(der[na[3]], der[na[1]:na[2]]),
+            "exts": exts}
+
+
+def _sig_ok(spki: bytes, data: bytes, sig: bytes) -> bool:
+    """A signature by the key in spki (ECDSA P-256/384 or Ed25519), checked with pycryptodome."""
     try:
-        from Crypto.Hash import SHA256 as _H  # nosec B413 (pycryptodome, maintained)
+        from Crypto.Hash import SHA256 as _H256, SHA384 as _H384, SHA512 as _H512  # nosec B413 (pycryptodome, maintained)
         from Crypto.PublicKey import ECC as _ECC  # nosec B413
-        from Crypto.Signature import DSS as _DSS  # nosec B413
-    except ImportError:
+        from Crypto.Signature import DSS as _DSS, eddsa as _ed  # nosec B413
+        key = _ECC.import_key(spki)
+        if str(key.curve).lower().startswith("ed"):
+            _ed.new(key, "rfc8032").verify(data, sig)
+        else:
+            h = {256: _H256, 384: _H384, 521: _H512}[key.pointQ.size_in_bits()]
+            _DSS.new(key, "fips-186-3", encoding="der").verify(h.new(data), sig)
+        return True
+    except (ImportError, ValueError, TypeError, KeyError, IndexError):
         return False
-    who = f"https://github.com/{repo}/{workflow}@".encode()
+
+
+def _iso_ts(v) -> Optional[float]:
+    try:
+        return datetime.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp() if v else None
+    except ValueError:
+        return None
+
+
+def sigstore_trust(root: dict) -> dict:
+    """Sigstore's trusted root (its published JSON form) as the keys the build check uses."""
+    cas, logs = [], {}
+    for ca in root.get("certificateAuthorities") or []:
+        certs = [base64.b64decode(c["rawBytes"]) for c in ca["certChain"]["certificates"]]
+        vf = ca.get("validFor") or {}
+        cas.append({"certs": certs, "start": _iso_ts(vf.get("start")) or 0, "end": _iso_ts(vf.get("end"))})
+    for t in root.get("tlogs") or []:
+        vf = t["publicKey"].get("validFor") or {}
+        logs[base64.b64decode(t["logId"]["keyId"])] = {"key": base64.b64decode(t["publicKey"]["rawBytes"]),
+                                                       "start": _iso_ts(vf.get("start")) or 0, "end": _iso_ts(vf.get("end"))}
+    return {"cas": cas, "logs": logs}
+
+
+def fetch_sigstore_root(get=None) -> dict:
+    """Sigstore's published trusted root, read from its own update repository (not GitHub) and checked against the
+    checksum Sigstore lists for it. Used only when a build record was signed with keys SpamGuard doesn't carry."""
+    def _get(url):
+        req = urllib.request.Request(url, headers={"User-Agent": f"openhop-spamguard/{VERSION}"})
+        with urllib.request.urlopen(req, timeout=15) as r:  # nosec B310 (fixed https address)
+            return r.read(2 * 1024 * 1024)
+    get = get or _get
+    ts = json.loads(get(SIGSTORE_TUF + "/timestamp.json"))["signed"]
+    if (_iso_ts(ts.get("expires")) or 0) < time.time():
+        raise ValueError("Sigstore's published list has expired")
+    sn = json.loads(get(f"{SIGSTORE_TUF}/{int(ts['meta']['snapshot.json']['version'])}.snapshot.json"))["signed"]
+    tg = json.loads(get(f"{SIGSTORE_TUF}/{int(sn['meta']['targets.json']['version'])}.targets.json"))["signed"]
+    want = str(tg["targets"]["trusted_root.json"]["hashes"]["sha256"])
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        raise ValueError("Sigstore's list has no checksum")
+    raw = get(f"{SIGSTORE_TUF}/targets/{want}.trusted_root.json")
+    if hashlib.sha256(raw).hexdigest() != want:
+        raise ValueError("Sigstore's list didn't match its checksum")
+    return sigstore_trust(json.loads(raw))
+
+
+def _merkle_ok(idx: int, size: int, leaf: bytes, path: list, root: bytes) -> bool:
+    """An inclusion proof in a transparency log (RFC 9162, 2.1.3.2)."""
+    if not 0 <= idx < size:
+        return False
+    fn, sn, r = idx, size - 1, leaf
+    for p in path:
+        if sn == 0:
+            return False
+        if fn & 1 or fn == sn:
+            r = hashlib.sha256(b"\x01" + p + r).digest()
+            while fn and not fn & 1:
+                fn, sn = fn >> 1, sn >> 1
+        else:
+            r = hashlib.sha256(b"\x01" + r + p).digest()
+        fn, sn = fn >> 1, sn >> 1
+    return sn == 0 and r == root
+
+
+def _tlog_ok(entry: dict, key: bytes) -> bool:
+    """The log vouches for this entry: its signed promise to include it, or a proof that it did, against a root the
+    log signed."""
+    body = entry["canonicalizedBody"]
+    prom = (entry.get("inclusionPromise") or {}).get("signedEntryTimestamp")
+    if prom:
+        msg = json.dumps({"body": body, "integratedTime": int(entry["integratedTime"]),
+                          "logID": base64.b64decode(entry["logId"]["keyId"]).hex(), "logIndex": int(entry["logIndex"])},
+                         sort_keys=True, separators=(",", ":")).encode()
+        if _sig_ok(key, msg, base64.b64decode(prom)):
+            return True
+    pr = entry.get("inclusionProof")
+    if not pr:
+        return False
+    root, size = base64.b64decode(pr["rootHash"]), int(pr["treeSize"])
+    leaf = hashlib.sha256(b"\x00" + base64.b64decode(body)).digest()
+    if not _merkle_ok(int(pr["logIndex"]), size, leaf, [base64.b64decode(h) for h in pr.get("hashes") or []], root):
+        return False
+    text, _, sigs = str((pr.get("checkpoint") or {}).get("envelope") or "").partition("\n\n")
+    lines = text.split("\n")
+    if len(lines) < 3 or lines[1] != str(size) or base64.b64decode(lines[2]) != root:
+        return False
+    for line in sigs.splitlines():
+        if line.startswith("— "):
+            raw = base64.b64decode(line.rsplit(" ", 1)[-1])
+            if len(raw) > 4 and _sig_ok(key, (text + "\n").encode(), raw[4:]):
+                return True
+    return False
+
+
+def _pem_der(b64pem: str) -> bytes:
+    pem = base64.b64decode(b64pem).decode("ascii", "replace")
+    return base64.b64decode("".join(x for x in pem.splitlines() if x and not x.startswith("-----")))
+
+
+def _bundle_ok(b: dict, digest: str, repo: str, workflow: str, trust: dict) -> Optional[bool]:
+    """One Sigstore bundle: True if it proves this file was built by this project's release workflow, False if not,
+    None if it was signed with keys not in trust (so Sigstore's published list is worth a look)."""
+    env = b["dsseEnvelope"]
+    payload = base64.b64decode(env["payload"])
+    st = json.loads(payload)
+    if st.get("predicateType") != "https://slsa.dev/provenance/v1":
+        return False
+    if not any((x.get("digest") or {}).get("sha256") == digest for x in st.get("subject") or []):
+        return False
+    wf = st["predicate"]["buildDefinition"]["externalParameters"]["workflow"]
+    if wf.get("repository") != f"https://github.com/{repo}" or wf.get("path") != workflow:
+        return False
+    vm = b["verificationMaterial"]
+    der = base64.b64decode((vm.get("certificate") or {}).get("rawBytes")
+                           or vm["x509CertificateChain"]["certificates"][0]["rawBytes"])
+    leaf = x509_parts(der)
+    # the certificate's own facts: issued for GitHub's sign-in, to exactly this workflow, for signing code
+    ex = leaf["exts"]
+    who = ex.get("1.3.6.1.4.1.57264.1.8")
+    if who is not None:
+        _, s, e = _der(who)
+        who = who[s:e]
+    else:
+        who = ex.get("1.3.6.1.4.1.57264.1.1")
+    if who != SIGSTORE_ISSUER.encode():
+        return False
+    san = ex.get("2.5.29.17") or b""
+    _, s, e = _der(san) if san else (0, 0, 0)
+    uris = [san[x[1]:x[2]].decode("utf-8", "replace") for x in _der_items(san, s, e) if x[0] == 0x86] if san else []
+    base = f"https://github.com/{repo}/{workflow}@"
+    if not any(u == base + "refs/heads/main" or re.fullmatch(re.escape(base) + r"refs/tags/v\d+(\.\d+){1,3}", u) for u in uris):
+        return False
+    eku = ex.get("2.5.29.37") or b""
+    if eku:
+        _, s, e = _der(eku)
+        if "1.3.6.1.5.5.7.3.3" not in [_oid(eku[x[1]:x[2]]) for x in _der_items(eku, s, e)]:
+            return False
+    # the signature over the build record
+    ptype = env["payloadType"].encode()
+    pae = b"DSSEv1 %d %s %d %s" % (len(ptype), ptype, len(payload), payload)
+    sigs = [base64.b64decode(sg["sig"]) for sg in env.get("signatures") or []]
+    if not any(_sig_ok(leaf["spki"], pae, sg) for sg in sigs):
+        return False
+    # the public log recorded this signing, while the certificate was valid
+    entries = [t for t in vm.get("tlogEntries") or [] if t.get("integratedTime")]
+    if not entries:
+        return False
+    unknown = False
+    for t in entries:
+        when = int(t["integratedTime"])
+        if not leaf["not_before"] <= when <= leaf["not_after"]:
+            continue
+        body = json.loads(base64.b64decode(t["canonicalizedBody"]))
+        spec = body.get("spec") or {}
+        if body.get("kind") != "dsse" or (spec.get("payloadHash") or {}).get("value") != hashlib.sha256(payload).hexdigest():
+            continue
+        if not any(base64.b64decode(x.get("signature") or "") in sigs and _pem_der(x.get("verifier") or "") == der
+                   for x in spec.get("signatures") or []):
+            continue
+        lg = trust["logs"].get(base64.b64decode(t["logId"]["keyId"]))
+        if lg is None:
+            unknown = True
+            continue
+        if when < lg["start"] or (lg["end"] and when > lg["end"]) or not _tlog_ok(t, lg["key"]):
+            continue
+        # and the certificate came from Sigstore's certificate authority, valid at that time
+        for ca in trust["cas"]:
+            if when < ca["start"] or (ca["end"] and when > ca["end"]) or not ca["certs"]:
+                continue
+            chain = [x509_parts(c) for c in ca["certs"]]
+            if chain[0]["subject"] != leaf["issuer"] or not _sig_ok(chain[0]["spki"], leaf["tbs"], leaf["sig"]):
+                continue
+            if all(chain[i]["not_before"] <= when <= chain[i]["not_after"] and
+                   _sig_ok(chain[i + 1]["spki"] if i + 1 < len(chain) else chain[i]["spki"], chain[i]["tbs"], chain[i]["sig"])
+                   for i in range(len(chain))):
+                return True
+        unknown = True
+    return None if unknown else False
+
+
+def attestation_ok(got: dict, digest: str, repo: str, workflow: str, trust: Optional[dict] = None, more=None) -> bool:
+    """GitHub's records for a file include a build provenance that Sigstore's checks accept: it names the file's
+    sha256 and this project's release workflow; its certificate was issued by Sigstore's certificate authority, for
+    GitHub's own sign-in, to exactly that workflow; and Sigstore's public log recorded the signing while the
+    certificate was valid. trust: Sigstore's keys (those built in unless given). more: called when a record was made
+    with keys not built in, to read Sigstore's published list (or None)."""
+    trust = trust or sigstore_trust(SIGSTORE_PINNED)
     for a in (got or {}).get("attestations") or []:
         try:
-            b = a["bundle"]
-            env = b["dsseEnvelope"]
-            payload = base64.b64decode(env["payload"])
-            st = json.loads(payload)
-            if st.get("predicateType") != "https://slsa.dev/provenance/v1":
-                continue
-            if not any((x.get("digest") or {}).get("sha256") == digest for x in st.get("subject") or []):
-                continue
-            wf = st["predicate"]["buildDefinition"]["externalParameters"]["workflow"]
-            if wf.get("repository") != f"https://github.com/{repo}" or wf.get("path") != workflow:
-                continue
-            vm = b["verificationMaterial"]
-            der = base64.b64decode((vm.get("certificate") or {}).get("rawBytes")
-                                   or vm["x509CertificateChain"]["certificates"][0]["rawBytes"])
-            if who not in der:
-                continue
-            ptype = env["payloadType"].encode()
-            pae = b"DSSEv1 %d %s %d %s" % (len(ptype), ptype, len(payload), payload)
-            key = _ECC.import_key(der)
-            for sg in env.get("signatures") or []:
-                try:
-                    _DSS.new(key, "fips-186-3", encoding="der").verify(_H.new(pae), base64.b64decode(sg["sig"]))
-                    return True
-                except ValueError:
-                    pass
-        except (KeyError, ValueError, TypeError, IndexError):
+            r = _bundle_ok(a["bundle"], digest, repo, workflow, trust)
+            if r is None and more is not None:
+                t2 = more()
+                r = bool(t2) and _bundle_ok(a["bundle"], digest, repo, workflow, t2)
+            if r:
+                return True
+        except (KeyError, ValueError, TypeError, IndexError, UnicodeDecodeError, AttributeError):
             continue
     return False
 
@@ -2672,16 +2939,17 @@ class SpamGuard:
             if "id" not in b:
                 b["id"] = self._new_id()
 
-    def _save_state(self, force=False):
+    def _save_state(self, force=False, final=False):
         """Written straight away for important changes, otherwise at most every 5 minutes, to spare
         the SD card. Short-lived duplicate rules don't count: losing them in a power cut is harmless.
         A clean stop (restart, update) always saves."""
         now = time.time()
         if not force and now - self._last_save < 300:
             return
-        self._last_save = now
-        self._important = False
+        if not final and now - getattr(self, "_save_failed_at", 0) < 30:
+            return   # failed a moment ago (card full or read-only?): try again shortly rather than on every check
         path = self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])
+        important = self._important
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tmp = path + ".tmp"
@@ -2695,8 +2963,23 @@ class SpamGuard:
             if os.path.exists(path):
                 os.replace(path, path + ".bak")   # the last good copy, in case this one is ever damaged
             os.replace(tmp, path)
+            try:   # and the rename itself on the card, so a power cut straight after can't undo it
+                dfd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
+                try:
+                    os.fsync(dfd)
+                finally:
+                    os.close(dfd)
+            except OSError:
+                pass
         except Exception as e:
             log.warning("Could not save state: %s", e)
+            self._important = self._important or important   # still to be saved: try again soon
+            self._save_failed_at, self._save_error = now, str(e)[:200]
+            self._save_failures = getattr(self, "_save_failures", 0) + 1
+            return
+        self._last_save = now
+        self._important = False
+        self._save_failures, self._save_error = 0, None
 
     def state_dict(self) -> dict:
         """Everything SpamGuard has learnt, as saved to its state file (and handed to the plugin when moving)."""
@@ -7936,7 +8219,9 @@ class SpamGuard:
         """How spam campaigns link up, for reading only: nothing here ever holds or blocks anything. Two campaigns
         are linked when they share names (strong if two or more), when one name took over another's repeats or two
         names came from one device (strong), or when most of their copies came in through the same repeater (weak).
-        Each group says why, and can be set aside for a week."""
+        Groups are built from strong links only, so one strong pair never lends its confidence to a campaign joined
+        by a weak link; a weak link is shown on its own, as possibly related. Each says why, and can be hidden
+        for 7 days."""
         cs = [(cid, cc) for cid, cc in camps.items() if cc.get("senders")][:40]
         if not cs:
             return []
@@ -7957,9 +8242,10 @@ class SpamGuard:
         why: dict = {}
 
         def link(i, j, text, strong):
-            ri, rj = find(i), find(j)
-            if ri != rj:
-                parent[ri] = rj
+            if strong:
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
             why.setdefault((min(i, j), max(i, j)), []).append((text, strong))
         top = [(cc["hops"].most_common(1)[0] if cc.get("hops") else (None, 0)) for _c, cc in cs]
         for i in range(len(cs)):
@@ -7981,13 +8267,23 @@ class SpamGuard:
         groups: dict = {}
         for i in range(len(cs)):
             groups.setdefault(find(i), []).append(i)
+        sets = [(sorted(m), True) for m in groups.values() if len(m) >= 2]
+        # weak links that join two separate strong groups (or lone campaigns): each pair on its own
+        pairs: dict = {}
+        for (i, j), rs in why.items():
+            if find(i) != find(j) and rs:
+                pairs.setdefault(tuple(sorted((find(i), find(j)))), set())
+        for ri, rj in pairs:
+            sets.append((sorted(groups[ri] + groups[rj]), False))
         out = []
-        for members in groups.values():
-            if len(members) < 2:
-                continue
-            reasons = [r for (a, b), rs in why.items() if a in members and b in members for r in rs]
+        for members, strong in sets:
+            mset = set(members)
+            if strong:
+                reasons = [r for (a, b), rs in why.items() if a in mset and b in mset for r in rs]
+            else:   # only the links between the two sides
+                reasons = [r for (a, b), rs in why.items() if a in mset and b in mset and find(a) != find(b) for r in rs]
             texts = sorted(cs[i][1]["events"][-1].text[:60] for i in members)
-            gid = hashlib.sha1("|".join(texts).encode(), usedforsecurity=False).hexdigest()[:10]
+            gid = hashlib.sha1(("" if strong else "weak|").encode() + "|".join(texts).encode(), usedforsecurity=False).hexdigest()[:10]
             if self.links_dismissed.get(gid, 0) > time.time() - 7 * 86400:
                 continue
             names = collections.Counter()
@@ -8003,7 +8299,7 @@ class SpamGuard:
                     seen.add(t)
                     rs.append({"text": t, "strong": st})
             tot = sum(hops.values()) or 1
-            out.append({"id": gid, "strong": any(r["strong"] for r in rs), "reasons": rs[:6],
+            out.append({"id": gid, "strong": strong, "reasons": rs[:6],
                         "campaigns": [{"example": cs[i][1]["events"][-1].text[:80], "copies": len(cs[i][1]["events"]),
                                        "names": len(cs[i][1]["senders"])} for i in members][:8],
                         "names": [n for n, _c in names.most_common(8)], "name_count": len(names),
@@ -9996,10 +10292,15 @@ class SpamGuard:
     def poll_once(self):
         for task in (self.refresh_openhop_info, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
                      self.refresh_level_preview, self.backfill_adverts, self.fetch_noise):
+            fails = self.__dict__.setdefault("task_fails", {})
             try:
                 task()
+                fails.pop(task.__name__, None)
             except Exception as e:
-                log.debug("%s failed: %s", task.__name__, e)
+                f = fails.setdefault(task.__name__, {"since": time.time(), "n": 0})
+                f["n"] += 1
+                f["error"] = str(e)[:160]
+                (log.warning if f["n"] in (5, 100) else log.debug)("%s failed: %s", task.__name__, e)
         if getattr(self, "retired", False):
             return
         if getattr(self, "standby", None):
@@ -10784,6 +11085,21 @@ class SpamGuard:
         if getattr(self, "_state_unreadable", False):
             warnings.append("SpamGuard's saved data could not be read, so it started afresh. The unreadable files "
                             "were kept next to it, ending in .unreadable.")
+        if getattr(self, "_restored_from_backup", False) and now - self.started < 7 * 86400:
+            warnings.append("SpamGuard's saved data was damaged when it started (often a power cut), so it carried on "
+                            "from the last good copy. Changes from the last few minutes before that may be missing: "
+                            + ("it has saved a fresh copy since." if self._last_save else "it hasn't saved a fresh copy yet."))
+        if getattr(self, "_save_failures", 0):
+            warnings.append(f"SpamGuard couldn't save its data ({self._save_error}). It keeps trying; until it works, a "
+                            "restart would lose recent changes. A full or read-only SD card is the usual cause.")
+        jobs = {"refresh_openhop_info": "reading openHop's settings", "refresh_neighbours": "reading the neighbour list",
+                "refresh_own_identities": "reading this repeater's own identities", "refresh_public_map": "reading the public map",
+                "fetch_noise": "reading the radio's noise level", "backfill_adverts": "reading adverts",
+                "refresh_level_preview": "working out the level preview"}
+        for name, f in sorted((getattr(self, "task_fails", None) or {}).items()):
+            if f["n"] >= 5 and now - f["since"] > 300:
+                warnings.append(f"Part of SpamGuard's background work ({jobs.get(name, name)}) has been failing for "
+                                f"{self.fmt_secs(now - f['since'])}. The rest keeps working. Details are in the log.")
         if getattr(self, "engine_off", False):
             problems.append("openHop's rule engine is switched off, so SpamGuard is not blocking anything. "
                             "Switch it on again here or in openHop's policy settings.")
@@ -10914,6 +11230,8 @@ class SpamGuard:
                 "openhop_speed_fix": fix, "openhop_rulecheck_fix": rfix, "openhop_fixed_in": OPENHOP_FIXED_IN,
                 "kind": install_kind(), "last_sync": self.last_sync, "last_save": self._last_save or None,
                 "status_ms": getattr(self, "status_ms", None), "evidence_mb": self._evidence_mb(),
+                "save_failures": getattr(self, "_save_failures", 0), "restored_from_backup": bool(getattr(self, "_restored_from_backup", False)),
+                "jobs_failing": sorted(k for k, f in (getattr(self, "task_fails", None) or {}).items() if f["n"] >= 5),
                 "released_week": sum(1 for k, v in self.labels.items() if v == "not_spam" and float(self.label_at.get(k) or 0) > now - 7 * 86400),
                 "can_apply_fix": install_kind() == "normal"
                 and os.path.exists("/etc/systemd/system/openhop-spamguard-update.path"), **sysr}
@@ -11240,12 +11558,25 @@ class SpamGuard:
 
     RELEASE_WORKFLOW = ".github/workflows/release.yml"
 
+    def _sigstore_root(self) -> Optional[dict]:
+        """Sigstore's published keys, for a build record signed with keys newer than those built in. Read at most
+        once a day; None if Sigstore can't be reached."""
+        got = getattr(self, "_sigstore_cache", None)
+        if got and time.time() - got[0] < 86400:
+            return got[1]
+        try:
+            trust = fetch_sigstore_root()
+        except Exception as e:
+            log.warning("Couldn't read Sigstore's published keys: %s", e)
+            trust = None
+        self._sigstore_cache = (time.time(), trust)
+        return trust
+
     def _check_build_attestation(self, name: str, data: bytes) -> None:
         """Before installing, ask GitHub for the build attestation of this exact file and check it: a provenance
-        record naming the file's checksum, made by this project's release workflow, whose signature matches the
-        certificate it carries. A file someone uploaded by hand, or changed, has none and isn't installed. This
-        isn't full offline Sigstore verification (that needs libraries too heavy for a small Pi); the record
-        comes from GitHub over a checked connection."""
+        record naming the file's checksum and this project's release workflow, signed with a certificate from
+        Sigstore's certificate authority and recorded in its public log (attestation_ok). A file someone uploaded
+        by hand, or changed, has none and isn't installed."""
         digest = hashlib.sha256(data).hexdigest()
         repo = self._repo()
         url = f"https://api.github.com/repos/{repo}/attestations/sha256:{digest}"
@@ -11259,7 +11590,7 @@ class SpamGuard:
             raise ValueError(f"Couldn't check the build record with GitHub (HTTP {e.code}); it is tried again later") from None
         except Exception as e:
             raise ValueError(f"Couldn't check the build record with GitHub ({e}); it is tried again later") from None
-        if attestation_ok(got, digest, repo, self.RELEASE_WORKFLOW):
+        if attestation_ok(got, digest, repo, self.RELEASE_WORKFLOW, more=self._sigstore_root):
             return
         raise ValueError(f"The build record for {name} didn't check out, so it wasn't installed")
 
@@ -11492,14 +11823,17 @@ class SpamGuard:
         return f"{round(s)} seconds" if s < 90 else f"{round(s / 60)} minutes"
 
     # ---- status for the web page ----
-    def status_now(self, wait: float = 2.0) -> dict:
+    STATUS_START_WAIT = 15.0
+
+    def status_now(self, wait: float = 2.0) -> Optional[dict]:
         """What the page shows. If SpamGuard is busy (waiting on openHop, say), the page gets the last picture it
         had, marked as waiting, instead of hanging until SpamGuard is free."""
         if not self.lock.acquire(timeout=wait):
             last = getattr(self, "_last_status", None)
             if last is not None:
                 return dict(last, busy=True)
-            self.lock.acquire()
+            if not self.lock.acquire(timeout=self.STATUS_START_WAIT):
+                return None   # still starting up and nothing to show yet: the page says so and asks again
         try:
             self._last_status = self.status()
             return self._last_status
@@ -11642,7 +11976,7 @@ class SpamGuard:
                                        "messages": v["messages"], "minutes": ROUTE_SURGE_SECONDS // 60,
                                        "ttl": int(c.get("route_surge_ttl", 7200))}
                                       for k, v in sorted(self.route_suggest.items(), key=lambda kv: -kv[1]["names"])],
-                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "campaign_links": campaign_links, "recent": recent,
+                "blocks": blocks, "hops": hops[:40], "campaigns": campaigns[:15], "campaign_links": campaign_links, "links_hidden": sorted(k for k, v in self.links_dismissed.items() if v > now - 7 * 86400), "recent": recent,
                 "evidence": dict(self.evidence.summary(), enabled=True) if self.evidence else
                             {"enabled": False, **EvidenceLog(c["evidence_dir"]).summary()},
                 "own": self.own_summary(),
@@ -12418,9 +12752,13 @@ class SpamGuard:
                 gid = str(body.get("id") or "")
                 if not re.fullmatch(r"[0-9a-f]{10}", gid):
                     raise ValueError("Unknown link group.")
-                self.links_dismissed[gid] = time.time()
+                if body.get("undo"):
+                    self.links_dismissed.pop(gid, None)
+                    msg = "Shown again."
+                else:
+                    self.links_dismissed[gid] = time.time()
+                    msg = "Hidden for 7 days."
                 self._save_state(force=True)
-                msg = "Set aside for a week."
             elif op == "oh_advert_limit":
                 on = bool(body.get("on"))
                 r = self._api("POST", "/api/update_advert_rate_limit_config", {"rate_limit_enabled": on}, timeout=20)
@@ -12772,6 +13110,8 @@ def make_handler(guard: SpamGuard):
                 t0 = time.monotonic()
                 out = guard.status_now()
                 guard.status_ms = round((time.monotonic() - t0) * 1000)
+                if out is None:
+                    return self._send(503, {"error": "starting", "starting": True})
                 return self._send(200, out)
             if path == "/rules":
                 with guard.lock:
@@ -13047,7 +13387,7 @@ def main():
         stop.set()
         if guard.evidence is not None:
             guard.evidence.flush(force=True, keep_days=guard.cfg["evidence_days"])
-        guard._save_state(force=True)
+        guard._save_state(force=True, final=True)
         if IN_PLUGIN:
             guard.release_on_stop()
         for srv in servers:
