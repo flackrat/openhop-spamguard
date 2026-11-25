@@ -19,6 +19,11 @@ The detail is below, newest first. In short:
 
 - **Much less writing to the SD card.** Saved data is compressed (about a sixth of the size), routine saves happen every 15 minutes rather than 5, and urgent saves during a spam storm at most every 30 seconds. Changes you make are still saved at once. The file older versions used is left in place, so rolling back still works.
 - **No duplicate adverts in the evidence log** after a restart.
+- **Less to review.** To review now holds messages that were held, plus any that went out with a link or garbled text. Other messages that looked like spam but went out are still listed under Missed spam. On this repeater's logs that is about two thirds less to answer. A setting brings back the old behaviour.
+- **Similar messages are grouped**, with a button to select a group and answer it at once.
+- Messages SpamGuard matched to one you marked as spam have their own tab, kept apart from your own answers.
+- The To review count keeps its last number if it can't refresh, rather than showing 0.
+- Clearer wording on what Not spam does.
 - **Sigstore's key list checked in full.** When Sigstore changes its keys, its published list is now checked the way TUF requires, including signatures, expiry and protection against old files being replayed.
 - Listen-before-talk readings now follow each packet's own outcome.
 - The People warmth bar runs cool to warm in every colour style, like the protection slider.

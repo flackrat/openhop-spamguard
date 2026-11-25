@@ -111,6 +111,7 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .q-list .q-open:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 .q-line{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .q-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.q-grp{font-size:.8125rem;min-height:32px;padding:0 10px}
 .q-badge{font-size:0.75rem;font-weight:650;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .q-stopped{background:var(--signal-tint);color:var(--signal-text)}
 .q-held{background:var(--amber-tint);color:var(--amber-text)}
@@ -1834,17 +1835,17 @@ function qWhen(ts){ return new Date(ts*1000).toLocaleString([],Q.days>1?{weekday
 function qRender(){
   const d=Q.data; if(!d) return;
   const c=d.counts||{}, all=d.total||0;
-  $("#qChips").innerHTML=[["review","To review",c.review||0,"var(--amber)"],["all","All",all,"var(--ink)"]].concat(Object.keys(QLOOK).map(k=>[k,QLOOK[k][0],c[k]||0,QLOOK[k][1]])).concat([["reviewed","Answered",c.reviewed||0,"var(--field)"]])
+  $("#qChips").innerHTML=[["review","To review",c.review||0,"var(--amber)"],["all","All",all,"var(--ink)"]].concat(Object.keys(QLOOK).map(k=>[k,QLOOK[k][0],c[k]||0,QLOOK[k][1]])).concat([["reviewed","Answered",c.reviewed||0,"var(--field)"]]).concat(c.matched?[["matched","Matched your answers",c.matched,"var(--soft)"]]:[])
     .map(([k,l,n,col])=>`<button type="button" class="quiet" data-q="${k}" aria-pressed="${Q.status===k}"><i style="background:${col}" aria-hidden="true"></i>${esc(l)} <b>${fmtN(n)}</b></button>`).join("");
   const fl=Q.codes.length||Q.names.length||Q.packets.length?`<span class="chip">${esc(Q.title||"Filtered")} <button type="button" class="quiet" id="qClear" aria-label="Remove this filter">✕</button></span>`:"";
   $("#qFilters").innerHTML=fl;
-  const what={review:"messages waiting for your answer",reviewed:"messages you have answered",all:"messages you haven't answered",stopped:"messages SpamGuard stopped",held:"messages held, waiting for your answer",letthrough:"spam that got through",genuine:"messages delivered as normal"}[Q.status];
-  $("#qShowing").textContent=`${fmtN(d.shown)} ${what}, last ${d.days===1?"24 hours":"7 days"}${Q.group&&d.rows.length<d.shown?`, ${d.rows.length} after grouping copies`:""}`;
+  const what={review:"messages waiting for your answer",reviewed:"messages you have answered",matched:"messages SpamGuard matched to one you said was spam (you can still answer them)",all:"messages you haven't answered",stopped:"messages SpamGuard stopped",held:"messages held, waiting for your answer",letthrough:"messages that looked like spam but went out (already sent, so answering only teaches SpamGuard)",genuine:"messages delivered as normal"}[Q.status];
+  $("#qShowing").textContent=`${fmtN(d.shown)} ${what}, last ${d.days===1?"24 hours":"7 days"}${Q.group&&d.rows.length<d.shown?`, ${d.rows.length} after grouping copies`:""}${d.groups&&d.groups<d.rows.length?`, in ${d.groups} group${d.groups===1?"":"s"} of similar messages`:""}`;
   const rows=d.rows;
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
     <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b>${copyTag(r.copy)}<span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
       <span class="q-txt">${r.reaction?`<span class="explain">Reacted ${esc(r.reaction.emoji)} to ${esc(r.reaction.to)}</span>`:esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
-    <span class="q-line" style="justify-content:flex-end">${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
+    <span class="q-line" style="justify-content:flex-end">${r.group_size>1&&(i===0||rows[i-1].group!==r.group)?`<button type="button" class="quiet q-grp" data-qg="${r.group}">Select these ${r.group_size}</button>`:""}${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
     :`<li><p class="empty">${Q.q||fl?"Nothing matches.":Q.status==="review"?"Nothing is waiting for your answer.":"Nothing here for the last "+(d.days===1?"24 hours":"7 days")+"."}</p></li>`;
   $("#qMore").innerHTML=d.rows.length>=Q.limit?`<button type="button" class="quiet" id="qMoreBtn">Show more</button>`:"";
   qBulk();
@@ -1891,7 +1892,7 @@ function qDetail(){
     <p class="q-line" style="gap:8px" role="group" aria-label="Your answer">${acts}</p>
     ${routeBtn||(r.label==="spam"&&r.sender&&r.sender!=="?")?`<details class="q-more"><summary>More options</summary><p class="q-line" style="gap:8px;margin:8px 0 0">${routeBtn}${r.label==="spam"&&r.sender&&r.sender!=="?"?(()=>{ const every=((S||{}).channels||[]).length>1, ch=every?"*":r.channel; return `<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on ${every?"every channel":esc(r.channel||"Public")} for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:ch,days:7}))}" onclick="act(this)">Mute this name for 7 days</button>`; })():""}${r.label==="spam"&&r.sender&&r.sender!=="?"&&r.path&&r.path.length?`<button type="button" class="quiet" data-confirm="Hold ${esc(r.sender)} only when it comes through repeater ${esc(r.path[0])}, for 7 days? The real person still gets through from anywhere else." data-p="/hold_name_hop" data-b="${esc(JSON.stringify({sender:r.sender,channel:((S||{}).channels||[]).length>1?"*":r.channel,hop:r.path[0]}))}" onclick="act(this)">Hold this name from ${esc(r.path[0])}</button>`:""}</p></details>`:""}
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
-    <p class="explain" style="margin:8px 0 0">${!r.label&&r.like?"This is a reworded copy of a message you said was spam, so it counts as answered. You can still answer it yourself.":!r.label&&knownName&&r.sender!=="?"?"Spam means this person sent it. Spoofed means someone is using their name: only that name coming through this repeater is held, and the real person still gets through.":r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam lets it through and trusts the sender from now on.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. SpamGuard never blocks a person for one answer.":"Your answer helps SpamGuard check itself."}</p>`;
+    <p class="explain" style="margin:8px 0 0">${!r.label&&r.like?"This is a reworded copy of a message you said was spam, so it counts as answered. You can still answer it yourself.":!r.label&&knownName&&r.sender!=="?"?"Spam means this person sent it. Spoofed means someone is using their name: only that name coming through this repeater is held, and the real person still gets through.":r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam trusts this name on this channel from now on. This message can't be sent again: it was already stopped.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. SpamGuard never blocks a person for one answer.":"Your answer helps SpamGuard check itself."}</p>`;
 }
 $("#qChips").addEventListener("click",e=>{ const b=e.target.closest("[data-q]"); if(!b) return; Q.status=b.dataset.q; Q.sel=-1; Q.ticks={}; Q.limit=100; qLoad(); });
 $("#qFilters").addEventListener("click",e=>{ if(e.target.id==="qClear"){ Q.codes=[]; Q.names=[]; Q.packets=[]; Q.title=""; Q.sel=-1; qLoad(); } });
@@ -1906,6 +1907,8 @@ $("#qList").addEventListener("click",e=>{ const t=e.target.closest("[data-qt]");
   const i=+t.dataset.qt;
   if(e.shiftKey&&Q.last!=null){ const a=Math.min(Q.last,i), z=Math.max(Q.last,i); for(let k=a;k<=z;k++){ Q.ticks[k]=t.checked; const x=document.querySelector(`#qList [data-qt="${k}"]`); if(x) x.checked=t.checked; } }
   Q.last=i; });
+$("#qList").addEventListener("click",e=>{ const b=e.target.closest("[data-qg]"); if(!b) return; const gid=+b.dataset.qg;
+  (Q.data.rows||[]).forEach((r,i)=>{ if(r.group===gid){ Q.ticks[i]=true; const x=document.querySelector(`#qList [data-qt="${i}"]`); if(x) x.checked=true; } }); qBulk(); });
 $("#qList").addEventListener("change",e=>{ const t=e.target.closest("[data-qt]"); if(!t) return; Q.ticks[+t.dataset.qt]=t.checked; qBulk(); });
 
 $("#qBulk").addEventListener("change",e=>{ if(!e.target.matches("[data-qall]")) return; (Q.data.rows||[]).forEach((r,i)=>{ Q.ticks[i]=e.target.checked; }); document.querySelectorAll("#qList [data-qt]").forEach(x=>x.checked=e.target.checked); qBulk(); });
@@ -2065,7 +2068,7 @@ function route(keepMenu){
   if(p==="people"){ PPL.t=Date.now(); pplLoad(); }
   if(p==="messages"){
     const f=(location.hash.match(/[?&]f=([a-z]+)/)||[])[1];
-    if(f&&(f==="all"||f==="review"||f==="reviewed"||QLOOK[f])){ Q.status=f; Q.auto=false; Q.packets=[]; Q.codes=[]; Q.names=[]; Q.title=""; Q.sel=-1; Q.ticks={}; }
+    if(f&&(f==="all"||f==="review"||f==="reviewed"||f==="matched"||QLOOK[f])){ Q.status=f; Q.auto=false; Q.packets=[]; Q.codes=[]; Q.names=[]; Q.title=""; Q.sel=-1; Q.ticks={}; }
     qLoad();
   }
   if(S){ if(p==="overview") renderOverview(S); if(p==="sources") renderSources(S); if(p==="floodguard"){ renderFloodPage(S); renderJam(S); } }
@@ -2410,7 +2413,7 @@ function renderOverview(d){
     tile("Spam missed, 24 h",fmtN(a.x),a.stop_rate==null?"no spam yet":`${a.stop_rate}% of spam stopped`,"","letthrough")+
     tile("Spam share of channel traffic",a.spam_share==null?"–":a.spam_share+"%",`${fmtN(a.spam)} of ${fmtN(a.m)} messages, 24 h`,"","all")+
     tile("Airtime saved, 24 h",m.radio_known?fmtAir(a.a):"–",m.radio_known?`${fmtAir(w.a)} in 7 days`:"needs openHop's radio settings")+
-    tile("To review",fmtN(d.to_review||0),d.to_review?"spam or not?":"nothing waiting","","review")+
+    tile("To review",fmtN(d.to_review||0),d.to_review_stale?"couldn't refresh, last count shown":d.to_review?"spam or not?":"nothing waiting","","review")+
     tile("Known people",fmtN((d.known||{}).count),(d.known||{}).learning?`getting to know ${d.known.learning} more`:"let through blocks","adv-tile","","#/people")+
     tile("Active blocks",fmtN(d.summary.active_blocks),`${d.summary.rules_written} rules in openHop`,"","","#/blocks")+
     ((m.floodguard||{}).enabled?tile("Flood packets stopped, 24 h",fmtN(a.fc||0),m.radio_known&&a.fs?`${fmtAir(a.fs)} of airtime saved`:`${fmtN(w.fc||0)} in 7 days`,"adv-tile","","#/floodguard"):"");

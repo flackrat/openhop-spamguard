@@ -253,6 +253,10 @@ SETTINGS_META: list[dict] = [
      "risk": "Longer = more history for tuning, but more of people's messages kept on the Pi (about 1-3 MB per busy day).",
      "label": "Keep the evidence log for",
      "help": "Older days are deleted automatically."},
+    {"key": "review_missed", "group": "Evidence log", "type": "bool",
+     "risk": "On: more to answer, most of it ordinary chat. Off: those messages are still listed under Missed spam.",
+     "label": "Ask me about messages that looked like spam but went out",
+     "help": "Messages already sent on can't be called back, so answering them only teaches SpamGuard. Off by default: they stay under Missed spam for a glance, and To review keeps held messages plus any with a link or garbled text."},
     {"key": "level_preview", "group": "Evidence log", "type": "bool",
      "risk": "Uses a few minutes of the Pi's spare time each day.",
      "label": "Work out what each protection level would have held",
@@ -635,6 +639,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "wardrive_block": False,
     "drop_damaged": False,
     "evidence_log": False,
+    "review_missed": False,
     "evidence_days": 7,
     "level_preview": True,
     "evidence_dir": "/var/lib/openhop_spamguard/evidence",
@@ -5230,7 +5235,7 @@ class SpamGuard:
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction", "garbage")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -5263,7 +5268,7 @@ class SpamGuard:
         """One list of channel messages, like a mail quarantine. Filters: status, words, route codes (where
         it entered the mesh), names (a repeat spammer), 1 or 7 days, and copies of one message grouped."""
         status = body.get("status") or "all"
-        if status not in ("all", "review", "reviewed") + self.Q_STATUSES:
+        if status not in ("all", "review", "reviewed", "matched") + self.Q_STATUSES:
             raise ValueError("Unknown filter")
         packets = {str(x) for x in (body.get("packets") or [])[:500] if x}
         days = 7 if int(body.get("days") or 1) >= 7 else 1
@@ -5274,7 +5279,8 @@ class SpamGuard:
         limit = max(20, min(500, int(body.get("limit") or 100)))
         raw, source = self._q_rows(days)
         counts = {k: 0 for k in self.Q_STATUSES}
-        counts["review"] = counts["reviewed"] = 0
+        counts["review"] = counts["reviewed"] = counts["matched"] = 0
+        ask_missed = bool(self.cfg.get("review_missed"))
         picked = []
         # What you have already answered: a message and its copies leave "To review" once any one of them is marked
         lab_of = lambda m: (self.labels.get(str(m.get("packet") or ""))   # noqa: E731
@@ -5312,20 +5318,40 @@ class SpamGuard:
             if q and q not in (str(m.get("sender")) + " " + str(m.get("text"))).lower():
                 continue
             # Once you have answered a message it is listed under Answered only, so nothing is shown to you twice
+            # SpamGuard matching it to one of your answers is kept apart from your own answers
             like = same(m) not in answered and st in ("held", "letthrough") and bool(spam_like) and like_spam(m)
-            done = same(m) in answered or like
-            todo = not done and st in ("held", "letthrough")
+            done = same(m) in answered
+            # To review: held messages (someone genuine may be caught), and of those that went out only the
+            # garbled ones and links. Messages already sent can't be called back, and most of the rest turn out to
+            # be ordinary chat, so they wait under Missed spam unless you ask to review them too
+            todo = not done and not like and (st == "held" or (st == "letthrough" and
+                                                               bool(ask_missed or m.get("garbage") or m.get("obfuscated")
+                                                                    or URL.search(str(m.get("text") or "")))))
             counts["reviewed"] += done
+            counts["matched"] += like
             counts["review"] += todo
-            counts[st] += not done
+            counts[st] += not (done or like)
             if status == "reviewed":
                 if not done:
                     continue
-            elif done or (status == "review" and not todo) or (status not in ("all", "review") and st != status):
+            elif status == "matched":
+                if not like:
+                    continue
+            elif done or like or (status == "review" and not todo) or (status not in ("all", "review") and st != status):
                 continue
             picked.append((m, st, why, like))
         picked.sort(key=lambda t: -(t[0].get("ts") or 0))
         rows, index = [], {}
+        groups: list = []   # (channel, shingles, group number): similar messages in this list share a number
+
+        def group_of(m) -> int:
+            n = normalise(str(m.get("text") or ""))
+            sh = shingles(n)
+            for ch, gsh, gid in groups:
+                if ch == m.get("channel") and (gsh == sh or (len(n) >= 8 and self._similar(sh, gsh, 0.6))):
+                    return gid
+            groups.append((m.get("channel"), sh, len(groups)))
+            return len(groups) - 1
         for m, st, why, like in picked:
             text = str(m.get("text") or "")
             key = (st, m.get("channel"), normalise(text)[:120]) if grouped else id(m)
@@ -5342,7 +5368,7 @@ class SpamGuard:
                               "path": ">".join(path) or "direct", "first_hop": path[0] if path else None,
                               "status": st, "why": why, "matched": m.get("caught_by"), "packet": m.get("packet"),
                               "route": self.route_history(path, who=m.get("sender") or "") if self.cfg.get("spoof_check") else None,
-                              "copies": 1, "_names": {m.get("sender")},
+                              "copies": 1, "_names": {m.get("sender")}, "group": group_of(m),
                               "known": bool(m.get("known")), "spammer": self.repeat_spammer(m.get("sender") or ""),
                               "machine": m.get("machine"), "identity": m.get("identity"), "like": "spam" if like else None,
                               "copy": self._copy_row(m.get("copy")),
@@ -5352,7 +5378,16 @@ class SpamGuard:
             rows.append(r)
         for r in rows:
             r["senders"] = len(r.pop("_names"))
-        return {"source": source, "days": days, "counts": counts, "total": sum(counts[k] for k in self.Q_STATUSES),
+        # similar messages side by side, so a group can be answered together; newest group first
+        newest: dict = {}
+        for r in rows:
+            newest[r["group"]] = max(newest.get(r["group"], 0), r["ts"] or 0)
+        rows.sort(key=lambda r: (-newest[r["group"]], r["group"], -(r["ts"] or 0)))
+        size = collections.Counter(r["group"] for r in rows)
+        for r in rows:
+            r["group_size"] = size[r["group"]]
+        msgs = sum(r["copies"] for r in rows)
+        return {"source": source, "days": days, "counts": counts, "groups": len({r["group"] for r in rows}), "messages": msgs, "total": sum(counts[k] for k in self.Q_STATUSES),
                 "shown": len(picked), "rows": rows, "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]}
 
     def to_review(self) -> int:
@@ -5361,8 +5396,11 @@ class SpamGuard:
         if time.time() - at > 60:
             try:
                 n = self.quarantine({"status": "review", "limit": 20})["counts"]["review"]
-            except Exception:
-                n = 0
+                self._review_count_failed = None
+            except Exception as e:   # keep the last good count, and say it couldn't be refreshed
+                if not getattr(self, "_review_count_failed", None):
+                    log.warning("Couldn't count the messages to review: %s", e)
+                self._review_count_failed = time.time()
             self._review_count = (time.time(), n)
         return n
 
@@ -12225,7 +12263,7 @@ class SpamGuard:
                 "metrics": self._section("metrics", self.metrics),
                 "held_summary": self._section("held_summary", self.held_summary),
                 "trust_review": self._trust_review_rows(),
-                "to_review": self.to_review(),
+                "to_review": self.to_review(), "to_review_stale": bool(getattr(self, "_review_count_failed", None)),
                 "held": [dict(h, time=time.strftime("%H:%M", time.localtime(h["ts"])))
                          for h in reversed(self.held)
                          if h["ts"] > max(since, self.view_marks.get("held", 0)) and h["sender"] not in self.allow_senders and not self.is_known(h["sender"])][:20],
