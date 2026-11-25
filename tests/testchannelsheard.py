@@ -9,18 +9,8 @@ def check(c,msg):
     global ok,fail
     if c: ok+=1
     else: fail+=1; print("FAIL",msg)
-try:
-    from Crypto.Cipher import AES
-except ImportError:
-    print("pycryptodome missing: skipped"); sys.exit(0)
-import hmac
 def group_payload(secret_hex, sender, text, ts=None):
-    key=bytes.fromhex(secret_hex)+b"\x00"*16
-    pt=int(ts or time.time()).to_bytes(4,"little")+b"\x00"+f"{sender}: {text}".encode()
-    pt+=b"\x00"*((-len(pt))%16)
-    ct=AES.new(key[:16],AES.MODE_ECB).encrypt(pt)
-    mac=hmac.new(key,ct,hashlib.sha256).digest()[:2]
-    return bytes([sg.channel_hash_byte(secret_hex)])+mac+ct
+    return bytes.fromhex(enc(sender, text, key=secret_hex, sent=ts))   # the shared helper builds radio packets
 g=guard(mock()); now=time.time()
 pub=g.cfg["channels"]["Public"]
 # Public, read: someone mentions a channel
