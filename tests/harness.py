@@ -42,6 +42,8 @@ class Mock:
                     d={"success":True,"data":rows}
                 elif "neighbor_links" in u.path:
                     d={"success":True,"data":{"links":m.links,"count":len(m.links)}} if m.links is not None else {"success":False}
+                elif u.path=="/api/stats" and getattr(m,"oh_mode",None):
+                    d={"success":True,"data":{"config":{"repeater":{"mode":m.oh_mode}}}}
                 elif "recent_packets" in u.path:
                     m.recent_calls+=1
                     d={"success":True,"data":sorted(m.packets,key=lambda p:-p["timestamp"])[:int(q.get("limit",100))]}

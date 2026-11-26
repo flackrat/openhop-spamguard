@@ -291,6 +291,8 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
 .health-head h2{margin:0}
+.ch-ctl label.ch-un{display:inline-flex;align-items:center;gap:8px;width:auto;font-weight:inherit}
+.ch-ctl label.ch-un input{width:auto;min-width:0;height:auto;flex:none;margin:0;accent-color:var(--signal)}
 .prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:8px 0 0}
 .prot-parts dt{font-size:0.78125rem;color:var(--soft)}
 .prot-parts dd{margin:2px 0 0;font-weight:600}
@@ -674,6 +676,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
       <button data-v="monitor">Monitor</button><button data-v="protect">Protect</button><button data-v="pause">Pause</button>
     </div>
     <p class="explain" id="modeExplain"></p>
+    <div class="callout" id="ohModeNote" hidden></div>
     <div class="callout" id="modeConfirm" role="group" aria-labelledby="modeConfirmTxt" hidden><span id="modeConfirmTxt"></span>
       <div class="acts"><button type="button" class="go" id="modeConfirmStay">Stay in Protect</button><button type="button" class="quiet" id="modeConfirmGo"></button></div></div>
     <hr class="soft">
@@ -989,7 +992,9 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="inline-form ch-ctl"><label for="chTop">Show</label><select id="chTop"><option value="5">top 5</option><option value="10">top 10</option><option value="20">top 20</option><option value="50">top 50</option><option value="all">all</option></select>
     <label for="chSort">Sort by</label><select id="chSort"><option value="d7">Busiest this week</option><option value="d30">Busiest over 30 days</option><option value="names">Most names</option><option value="last">Heard most recently</option><option value="name">Name</option></select>
     <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
+    <label class="ch-un"><input type="checkbox" id="chUnnamed"> Show unnamed</label>
     <span class="explain" id="chTopNote"></span></div>
+  <p class="explain" id="chUnnamedNote" hidden>Unnamed channels are private: their name only shows if it's mentioned as a #hashtag in a channel SpamGuard reads, or you add the channel below.</p>
   <ul class="rows ch-heard" id="chHeard"></ul>
 </section><section>
   <h2>Channels SpamGuard can read</h2>
@@ -1223,7 +1228,11 @@ function renderTop(d){
     b+=`<div class="banner info dismissable ov-only" id="senseHint"><div><b>Learning from your spam marks is off.</b>It notices a name sending reworded versions of spam you marked, and can be set to record-only. Nothing leaves this device. <a href="#/settings" onclick="store.set('sgDismissSense','1');return openSettings('reworded')">Take a look</a></div><button type="button" class="quiet" onclick="store.set('sgDismissSense','1');this.closest('.banner').remove()" aria-label="Dismiss this notice">Dismiss</button></div>`;
   $("#banners").innerHTML=b;
 
-  const m=d.paused?"pause":d.mode;
+  const m=d.paused?"pause":d.mode, ohm={monitor:"Monitor",no_tx:"No TX"}[d.openhop_mode], ohn=$("#ohModeNote");
+  ohn.hidden=!ohm;
+  if(ohm) ohn.innerHTML=`<div><b>openHop is set to ${ohm}, so this repeater isn't passing anything on.</b>${m==="protect"
+    ?" Protect has nothing to stop until openHop is back on Repeater."
+    :" SpamGuard's mode only matters once openHop is back on Repeater."} SpamGuard keeps counting and learning meanwhile.</div>`;
   document.querySelectorAll("#modeSeg button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===m)));
   $("#modeExplain").innerHTML={
     monitor:"<strong>Monitor</strong> spots spam and shows it here, but nothing is blocked. Start here.",
@@ -1399,7 +1408,7 @@ function fallbackCopy(t,done){ const a=document.createElement("textarea"); a.val
 function renderProtection(d){
   const p=d.protection, sec=$("#protSec"); sec.hidden=!p; if(!p) return;
   const pill={ok:"<span class='tag ok'>✓ Protected</span>",watch:"<span class='tag would'>Watching only</span>",
-    partly:"<span class='tag would'>! Check</span>",bad:"<span class='tag stop'>✕ Not protected</span>"}[p.state]||"";
+    partly:"<span class='tag would'>! Check</span>",idle:"<span class='tag would'>Not repeating</span>",bad:"<span class='tag stop'>✕ Not protected</span>"}[p.state]||"";
   $("#protPill").innerHTML=pill;
   const w=$("#protWhy"); const line=p.state==="ok"?"":p.line+(p.why?". "+p.why+".":"."); w.hidden=!line; w.textContent=line;
   const mark={ok:"",warn:"! ",bad:"✕ ",off:"",none:""};
@@ -1572,12 +1581,16 @@ function renderChHeard(d){
   sec.hidden=!all.length; if(!all.length) return;
   const pick=store.get("sgChTop")||"10", sort=store.get("sgChSort")||"d7", kind=store.get("sgChKind")||"all";
   $("#chTop").value=pick; $("#chSort").value=sort; $("#chKind").value=kind;
-  const want=all.filter(r=>kind==="all"||(kind==="bots"?!!r.bots:r.kind===kind));
+  const showUn=store.get("sgChUnnamed")==="1"||kind==="unnamed"; $("#chUnnamed").checked=showUn; $("#chUnnamed").disabled=kind==="unnamed";
+  const want=all.filter(r=>(kind==="all"||(kind==="bots"?!!r.bots:r.kind===kind))&&(showUn||r.kind!=="unnamed"));
+  const unHid=showUn?0:all.filter(r=>r.kind==="unnamed"&&(kind==="all"||(kind==="bots"&&r.bots))).length;
+  $("#chUnnamedNote").hidden=!showUn;
   const by={d7:(a,b)=>b.d7-a.d7||b.d30-a.d30,d30:(a,b)=>b.d30-a.d30||b.d7-a.d7,names:(a,b)=>b.names_day-a.names_day||b.d7-a.d7,
     last:(a,b)=>b.last-a.last,name:(a,b)=>a.name.localeCompare(b.name)}[sort]||((a,b)=>b.d7-a.d7);
   want.sort(by);
   const n=pick==="all"?want.length:Math.min(want.length,+pick||10), rows=want.slice(0,n), top=Math.max(1,...all.map(r=>r.d7));
-  $("#chTopNote").textContent=want.length?`Showing ${n} of ${want.length}${kind==="all"?"":" ("+all.length+" in all)"}`:"None of these";
+  $("#chTopNote").textContent=(want.length?`Showing ${n} of ${want.length}${kind==="all"&&!unHid?"":" ("+all.length+" in all)"}`:"None of these")
+    +(unHid?`, ${unHid} unnamed hidden`:"");
   const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
     return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
@@ -1869,6 +1882,7 @@ $("#chShowAll").addEventListener("click",()=>{ chAll=!chAll; if(S) renderChannel
 $("#chTop").addEventListener("change",e=>{ store.set("sgChTop",e.target.value); if(S) renderChHeard(S); });
 $("#chSort").addEventListener("change",e=>{ store.set("sgChSort",e.target.value); if(S) renderChHeard(S); });
 $("#chKind").addEventListener("change",e=>{ store.set("sgChKind",e.target.value); if(S) renderChHeard(S); });
+$("#chUnnamed").addEventListener("change",e=>{ store.set("sgChUnnamed",e.target.checked?"1":"0"); if(S) renderChHeard(S); });
 $("#chHeard").addEventListener("click",e=>{ const b=e.target.closest("[data-chprotect]"); if(b) post("/add_channel",{name:b.dataset.chprotect,key:""}); });
 $("#chAddShown").addEventListener("click",()=>{ const n=JSON.parse($("#chAddShown").dataset.names||"[]"); if(n.length) post("/add_openhop_channel",{names:n}); });
 $("#chBtn").onclick=()=>post("/add_channel",{name:$("#chName").value.trim(),key:$("#chKey").value.trim()}).then(()=>{$("#chName").value="";$("#chKey").value="";});

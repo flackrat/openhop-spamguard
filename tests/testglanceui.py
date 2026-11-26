@@ -21,6 +21,11 @@ async def main():
         check("Protected" in await pg.text_content("#protPill"),"it says Protected: %s"%await pg.text_content("#protPill"))
         parts=await pg.eval_on_selector_all("#protParts dt","els=>els.map(e=>e.textContent)")
         check({"Mode","openHop","Checking","Rules in openHop","FloodGuard"}<=set(parts),"each part is shown: %s"%parts)
+        check(await pg.is_hidden("#ohModeNote"),"no openHop mode note while it repeats")
+        g.oh_mode="no_tx"; await pg.wait_for_timeout(9000)
+        t=await pg.text_content("#ohModeNote"); check(await pg.is_visible("#ohModeNote") and "No TX" in t and "nothing to stop" in t,"openHop on No TX is pointed out by the mode: %s"%t)
+        check("Not repeating" in await pg.text_content("#protPill"),"and the panel says not repeating")
+        g.oh_mode="forward"
         g.apply_settings({"paused":True}); await pg.wait_for_timeout(9000)
         t=await pg.text_content("#protPill"); check("✕" in t and "Not protected" in t,"paused shows not protected, with a symbol: %s"%t)
         check(await pg.is_visible("#protWhy"),"and a line saying why")

@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.52.0"
+VERSION = "6.53.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -2654,6 +2654,8 @@ class SpamGuard:
         self.settings_history: collections.deque[dict] = collections.deque(maxlen=SETTINGS_HISTORY_MAX)
         self._hist_last: Optional[dict] = None   # the values last recorded, to spot what changed
         self.neighbours_ok: Optional[float] = None   # when openHop's neighbour list was last read
+        self.oh_mode: Optional[str] = None   # openHop's own mode: forward (repeating), monitor or no_tx
+        self.oh_mode_ts = 0.0
         self.next_rule_id = RULE_ID_BASE
         self.activity: collections.deque[dict] = collections.deque(maxlen=300)
         self.catches: collections.deque[float] = collections.deque(maxlen=50000)
@@ -6087,6 +6089,23 @@ class SpamGuard:
             log.debug("openHop advert statistics not available: %s", e)
         self.oh_adverts = out
 
+    def _note_oh_mode(self, rp: dict):
+        m = str((rp or {}).get("mode") or "").strip().lower()
+        self.oh_mode = m if m in ("forward", "monitor", "no_tx") else None
+        self.oh_mode_ts = time.time()
+
+    def refresh_oh_mode(self):
+        """openHop's own mode, every two minutes: when it isn't repeating, SpamGuard's blocks have nothing to stop."""
+        if time.time() - self.oh_mode_ts < 120:
+            return
+        self.oh_mode_ts = time.time()
+        try:
+            st = self._api("GET", "/api/stats")
+            st = st.get("data", st) if isinstance(st, dict) else {}
+            self._note_oh_mode((st.get("config") or {}).get("repeater") or {})
+        except Exception as e:
+            log.debug("openHop mode not available: %s", e)
+
     def refresh_openhop_info(self, force: bool = False):
         """Radio settings (for airtime) and the repeater directory (for the map), at most every 30 min."""
         now = time.time()
@@ -6099,6 +6118,7 @@ class SpamGuard:
             conf = st.get("config") or {}
             self.radio = dict(conf.get("radio") or {})
             rp = conf.get("repeater") or {}
+            self._note_oh_mode(rp)
             self.me = {"name": conf.get("node_name") or rp.get("node_name") or st.get("site_name") or "", "hash": str(st.get("local_hash") or "").upper(),
                        "lat": rp.get("latitude"), "lon": rp.get("longitude")}
             self._note_oh_adverts(rp)
@@ -10757,7 +10777,7 @@ class SpamGuard:
         threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self):
-        for task in (self.refresh_openhop_info, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
+        for task in (self.refresh_openhop_info, self.refresh_oh_mode, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
                      self.refresh_level_preview, self.backfill_adverts, self.fetch_noise):
             fails = self.__dict__.setdefault("task_fails", {})
             try:
@@ -11893,6 +11913,10 @@ class SpamGuard:
                       "Being put back" if rules_ok is False else "Not checked yet")},
             {"part": "sync", "label": "Last written", "ts": self.last_sync, "state": "ok" if self.last_sync else "none",
              "text": "" if self.last_sync else "Not yet"},
+            {"part": "repeating", "label": "openHop repeating",
+             "state": {"forward": "ok", "monitor": "warn", "no_tx": "warn"}.get(self.oh_mode or "", "none"),
+             "text": {"forward": "Yes", "monitor": "No, openHop is on Monitor", "no_tx": "No, openHop is on No TX"}
+             .get(self.oh_mode or "", "Not known yet")},
             {"part": "floodguard", "label": "FloodGuard",
              "state": ("off" if not fg["enabled"] else "info" if fg["learning"] else "ok" if fg["acting"] else "info"),
              "text": ("Off" if not fg["enabled"] else "Learning, counting only" if fg["learning"] else
@@ -11901,6 +11925,8 @@ class SpamGuard:
         if any(p["state"] == "bad" for p in parts if p["part"] in ("openhop", "check")) or c.get("paused") \
                 or getattr(self, "engine_off", False):
             state, line = "bad", "Not protected right now"
+        elif self.oh_mode in ("monitor", "no_tx"):
+            state, line = "idle", "openHop isn't repeating, so there's nothing to stop"
         elif c["mode"] != "protect":
             state, line = "watch", "Watching only: spam is marked but not stopped"
         elif rules_ok is False:
@@ -12610,6 +12636,7 @@ class SpamGuard:
                 "advisor": self.advisor(),
                 "service": svc,
                 "protection": self.protection(svc),
+                "openhop_mode": self.oh_mode,
                 "settings_history": list(self.settings_history)[:100],
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
