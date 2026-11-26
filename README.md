@@ -65,7 +65,7 @@ Most MeshCore spam tools either hide spam on your own phone, while the mesh stil
 - **Automatic updates** (optional).
 
 **Principles**
-- **Spam, not opinions:** it stops how spam is sent, never what people say.
+- **Spam, not opinions:** it stops how spam is sent, never what people say. [Our principles](docs/principles.md).
 - **Wardriving privacy** (optional), **settings profiles**, self-repair and one-press updates.
 - **Light on small Pis and SD cards:** the page answers at once, and saved data is compressed and written sparingly.
 - **Checked updates:** an update is only installed if Sigstore confirms it was built by this project's own release workflow.
