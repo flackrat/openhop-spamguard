@@ -34,11 +34,12 @@ check(a and b and set(a).isdisjoint(b),"the same name gets different codes on di
 key1=g.chan_key["key"]; codes_today=list(a)
 g._save_state(force=True); raw=gzip.decompress(open(g.cfg["state_file"]+".gz","rb").read()).decode()
 check("Quarry Ann" not in raw.split('"chan_heard"')[1][:5000] if '"chan_heard"' in raw else True,"no sender name kept in the channel counts")
-tomorrow=now+86400; note(pub,"Quarry Ann",tomorrow)
-day2=time.strftime("%Y-%m-%d",time.localtime(tomorrow))
-check(g.chan_key["key"]!=key1 and g.chan_key["day"]==day2,"a new key each day")
-check(g.chan_heard["n:Public"]["days"][day][2]==[] and g.chan_heard["n:Public"]["days"][day][1]==1,"yesterday keeps its count, its codes are deleted")
-check(set(g.chan_heard["n:Public"]["days"][day2][2]).isdisjoint(codes_today),"the same name gets a different code the next day")
+yday=time.strftime("%Y-%m-%d",time.localtime(now-86400)); dd=g.chan_heard["n:Public"]["days"]
+dd[yday]=dd.pop(day); g.chan_key["day"]=yday; g.chan_rotate()   # the day changes
+check(dd[yday][2]==[] and dd[yday][1]==1,"yesterday keeps its count, its codes are deleted")
+note(pub,"Quarry Ann",now)
+check(g.chan_key["key"]!=key1 and g.chan_key["day"]==day,"a new key each day")
+check(set(dd[day][2]).isdisjoint(codes_today),"the same name gets a different code the next day")
 # --- protection only with recently confirmed rules
 m=mock(); g2=guard(m); g2.apply_settings({"mode":"protect"}); g2.poll_once(); g2.last_sync=0; g2.sync_pending=True; g2.poll_once(); g2.loop_beat=time.time()
 check(g2.protection()["state"]=="ok","rules just confirmed: protected")

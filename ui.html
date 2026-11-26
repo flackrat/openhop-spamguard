@@ -83,6 +83,8 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 section > h2{font-size:1rem;font-weight:650;margin:0 0 4px}
 section > .lead{color:var(--soft);margin:0 0 12px;font-size:0.875rem;max-width:70ch}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* With "Looks after itself" hidden, Mode and level take the full width like every other box on the page */
+.controls:has(> #careSec[hidden]){grid-template-columns:minmax(0,1fr)}
 @media (max-width:720px){.controls{grid-template-columns:1fr}}
 .controls section{margin:0}
 
@@ -297,7 +299,7 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 #qSec .health-head #qShowing{flex:1 1 220px}
 .ch-ctl label.ch-un{display:inline-flex;align-items:center;gap:8px;width:auto;font-weight:inherit}
 .ch-ctl label.ch-un input{width:auto;min-width:0;height:auto;flex:none;margin:0;accent-color:var(--signal)}
-.prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:8px 0 0}
+.prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px 16px;margin:8px 0 0}
 .prot-parts dt{font-size:0.78125rem;color:var(--soft)}
 .prot-parts dd{margin:2px 0 0;font-weight:600}
 .prot-parts .st-bad{color:var(--stop)}
@@ -996,11 +998,11 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="explain">Every channel this repeater hears in the last 30 days. Found channels are only counted, never logged or blocked, until you protect them. Bot and test channels get bot-safe protection.</p>
   <div class="inline-form ch-ctl"><label for="chTop">Show</label><select id="chTop"><option value="5">top 5</option><option value="10">top 10</option><option value="20">top 20</option><option value="50">top 50</option><option value="all">all</option></select>
     <label for="chSort">Sort by</label><select id="chSort"><option value="d7">Busiest this week</option><option value="d30">Busiest over 30 days</option><option value="names">Most names</option><option value="last">Heard most recently</option><option value="name">Name</option></select>
-    <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
-    <label class="ch-un"><input type="checkbox" id="chUnnamed"> Show unnamed</label>
+    <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Private channels</option><option value="bots">Bots and tests</option></select>
+    <label class="ch-un"><input type="checkbox" id="chUnnamed"> Show private channels</label>
     <span class="explain" id="chTopNote"></span></div>
   <p class="explain adv" id="chDiag" hidden></p>
-  <p class="explain" id="chUnnamedNote" hidden>Unnamed channels are private: their name only shows if it's mentioned as a #hashtag in a channel SpamGuard reads, or you add the channel below.</p>
+  <p class="explain" id="chUnnamedNote" hidden>Private channels have their own key, so SpamGuard can count them but not read them. Each is shown by its tag, a short code on every message; several can share one tag. Add one below with its key to read it.</p>
   <ul class="rows ch-heard" id="chHeard"></ul>
 </section><section>
   <h2>Channels SpamGuard can read</h2>
@@ -1067,6 +1069,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h2>Diagnostic export</h2>
   <p class="explain">For someone helping you. It holds versions, settings, health and recent setting changes, and leaves out names, messages, keys, channel names, routes and locations. Check it before you share it.</p>
   <p><button type="button" class="quiet" id="diagShow">Preview</button> <button type="button" class="go" id="diagSave" hidden>Save to a file</button></p>
+  <p class="explain" id="diagWarn" hidden>It does include system and configuration details, such as settings, versions and how busy the Pi is. The file saved is exactly the preview shown.</p>
   <pre class="diag-pre" id="diagPre" hidden tabindex="0" aria-label="Diagnostic export preview"></pre>
 </section></div>
 <div class="page" data-page="updates"><section id="updSec">
@@ -1438,7 +1441,7 @@ function renderHistory(d){
 let DIAG=null;
 $("#diagShow").addEventListener("click",async()=>{ try{
   const r=await fetch("/diagnostics",{headers:{"X-API-Key":store.get("sgkey")||""}}); if(!r.ok) throw new Error(r.status);
-  DIAG=JSON.stringify(await r.json(),null,2); $("#diagPre").textContent=DIAG; $("#diagPre").hidden=false; $("#diagSave").hidden=false; $("#diagShow").textContent="Refresh preview";
+  DIAG=JSON.stringify(await r.json(),null,2); $("#diagPre").textContent=DIAG; $("#diagPre").hidden=false; $("#diagSave").hidden=false; $("#diagWarn").hidden=false; $("#diagShow").textContent="Refresh preview";
   }catch(e){ toast("Couldn't make the export just now"); } });
 $("#diagSave").addEventListener("click",()=>{ if(!DIAG) return; const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([DIAG],{type:"application/json"})); a.download=`spamguard-diagnostics-${new Date().toISOString().slice(0,10)}.json`;
@@ -1612,12 +1615,12 @@ function renderChHeard(d){
   want.sort(by);
   const n=pick==="all"?want.length:Math.min(want.length,+pick||10), rows=want.slice(0,n), top=Math.max(1,...all.map(r=>r.d7));
   $("#chTopNote").textContent=(want.length?`Showing ${n} of ${want.length}${kind==="all"&&!unHid?"":" ("+all.length+" in all)"}`:"None of these")
-    +(unHid?`, ${unHid} unnamed hidden`:"");
-  const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
+    +(unHid?`, ${unHid} private hidden`:"");
+  const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Private, can't be read","plain"]};
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
-    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
+    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${r.kind==="unnamed"?`Private channel <span class="explain">tag ${esc((r.name.match(/\(([0-9A-F]{2})\)/)||[])[1]||"?")}</span>`:esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would">${r.bots_by==="traffic"?"looks automated?":"bot channel"}</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
       <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${r.d7?Math.max(2,Math.round(100*r.d7/top)):0}%"></i></div>
-      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"&&r.last?`. Last heard ${esc(ago(r.last))}`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
@@ -2051,6 +2054,7 @@ $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-
     const nl=[...names], texts=[...new Set(sel.map(r=>r.text))];
     n.innerHTML=`<p>This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check them, then press ${esc(b.textContent.trim())} again to confirm.</p>`
       +`<p><b>Names:</b> ${nl.slice(0,8).map(esc).join(", ")}${nl.length>8?` and ${nl.length-8} more`:""}</p>`
+      +`<p><b>What it covers:</b> ${b.dataset.qb==="spam"?"these messages and copies of them from any name":"these names only; copies from other names stay as they are"}.</p>`
       +`<p><b>${texts.length===1?"Text":`${texts.length} different texts, for example`}:</b></p><ul class="q-prev">${texts.slice(0,3).map(t=>`<li>${esc(t.length>120?t.slice(0,117)+"...":t)}</li>`).join("")}</ul>`;
     $("#qBulk").appendChild(n); return; }
   Q.armed=null;
