@@ -22,6 +22,7 @@ The detail is below, newest first. In short:
 - **Service words in channel names** count only at the end of a word (#ukweather, not #weathered).
 - **Why it got through** uses the channel's protection when the message arrived.
 - **Private channels** say they may be more than one channel sharing a tag. Health shows when openHop's mode was last read.
+- **Private channels are personal data.** Their names are hidden like people's in the scrambled evidence download and never in the diagnostic export; their keys never leave the Pi. The project's own checks refuse any channel key in its code.
 
 ## v6.54.0
 

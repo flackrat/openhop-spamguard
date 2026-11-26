@@ -247,7 +247,7 @@ SETTINGS_META: list[dict] = [
      "label": "Don't repeat wardriving pings",
      "help": "Wardriving apps like MeshMapper map repeaters by logging which ones echo their GPS pings. On, this repeater still hears the pings but doesn't repeat them. Nothing else is affected."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
-     "risk": "Stores names and text on the Pi for the days below. Use the scrambled download when sharing.",
+     "risk": "Stores names and text on the Pi for the days below. Use the scrambled download when sharing: it hides people's names and private channels' names. Channel keys are never in either download.",
      "label": "Keep an evidence log",
      "help": "Records every channel message SpamGuard reads, what it did and your labels, for review or replaying against other settings."},
     {"key": "evidence_days", "group": "Evidence log", "type": "int", "min": 1, "max": 30, "unit": "days",
@@ -2447,8 +2447,9 @@ class EvidenceLog:
                         r[k] = round(r[k], 1)
         return r
 
-    def export(self, days: int, scramble: bool, places: Optional[str] = None) -> str:
-        """places: repeater locations, "exact", "round" or "drop"; by default rounded in a scrambled file."""
+    def export(self, days: int, scramble: bool, places: Optional[str] = None, private: tuple = ()) -> str:
+        """places: repeater locations, "exact", "round" or "drop"; by default rounded in a scrambled file.
+        private: names of private channels (your own key), treated like people's names in a scrambled file."""
         places = places if places in self.PLACES else ("round" if scramble else "exact")
         self.flush(force=True)
         cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
@@ -2487,6 +2488,22 @@ class EvidenceLog:
             if r.get("type") == "advert" and isinstance(r.get("name"), str) and r["name"]:
                 code(r["name"])
         known = sorted(names, key=len, reverse=True)
+        pcodes = {n: "C-" + hashlib.sha256((salt + "\nchannel\n" + n).encode()).hexdigest()[:6] for n in private if n}
+        pnames = sorted(pcodes, key=len, reverse=True)
+
+        def hide_channels(v):   # every text field, at any depth: private channel names never leave readable
+            if isinstance(v, str):
+                if v in pcodes:
+                    return pcodes[v]
+                for n in pnames:
+                    if len(n) >= 3 and n in v:
+                        v = v.replace(n, pcodes[n])
+                return v
+            if isinstance(v, list):
+                return [hide_channels(x) for x in v]
+            if isinstance(v, dict):
+                return {(pcodes.get(k, k) if isinstance(k, str) else k): hide_channels(x) for k, x in v.items()}
+            return v
         out = []
         for r in recs:
             for k in name_fields:
@@ -2504,6 +2521,8 @@ class EvidenceLog:
                         if len(n) >= 3:
                             t = t.replace(n, names[n])
                     r[k] = t
+            if pcodes:
+                r = hide_channels(r)
             out.append(json.dumps(self._places(r, places), ensure_ascii=False))
         return "\n".join(out) + ("\n" if out else "")
 
@@ -11613,6 +11632,20 @@ class SpamGuard:
                 self.chan_ok.pop(n, None)
                 self._chan_by_hash = None
 
+    def private_channels(self) -> list:
+        """Channels read with their own key rather than a hashtag's: their names are private, like people's names,
+        and their keys never leave the Pi."""
+        out = []
+        for n, k in self.cfg["channels"].items():
+            if n == "Public":
+                continue
+            try:
+                if str(k).lower() != hashtag_secret(n).lower():
+                    out.append(n)
+            except Exception:
+                out.append(n)
+        return sorted(out)
+
     def bot_name(self, name: str) -> Optional[str]:
         """Why a channel's name says it is a bot, test or service channel, or None. Only this sets bot-safe by itself
         or asks before full blocking: traffic alone is a hint, never proof."""
@@ -12050,7 +12083,8 @@ class SpamGuard:
                 "mode": c["mode"], "paused": bool(c.get("paused")), "level": c.get("level"),
                 "openhop_mode": self.oh_mode_now(),
                 "settings": {m["key"]: val(m["key"], c.get(m["key"])) for m in SETTINGS_META},
-                "counts": {"channels_read": len(c["channels"]), "channels_count_only": len(self.watch_channels),
+                "counts": {"channels_read": len(c["channels"]), "channels_private": len(self.private_channels()),
+                           "channels_count_only": len(self.watch_channels),
                            "channels_bot_safe": len(self.botsafe_channels), "blocks": len(self.blocks),
                            "known_people": len(self.known_list()), "messages_in_memory": len(self.events),
                            "channels_heard": len(self.chan_heard)},
@@ -14097,7 +14131,8 @@ def make_handler(guard: SpamGuard):
                 scramble = (q.get("scramble") or ["1"])[0] != "0"
                 places = (q.get("places") or [""])[0]
                 folder = guard.cfg["evidence_dir"]
-                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, places).encode("utf-8")
+                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, places,
+                                                                      private=tuple(guard.private_channels())).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
                 self.send_header("Content-Disposition",
