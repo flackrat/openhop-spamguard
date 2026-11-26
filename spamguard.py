@@ -899,6 +899,9 @@ BOT_CHANNEL_RE = re.compile(r"(?<![a-z])(?:bots?|tests?|testing|ping|pong|news|a
                             r"|weather|telemetry|aprs|wardriv|(?<=[a-z])(?:bots?|news)(?![a-z])", re.I)
 HASHTAG_RE = re.compile(r"(?<![\w#])#[a-z0-9][a-z0-9_-]{1,30}(?![\w-])", re.I)
 CHANNEL_KEEP_DAYS = 30
+DIAG_SCHEMA = 1              # diagnostic export layout; bump when fields change meaning
+STATE_SCHEMA = 1             # saved state layout, separate from the version that wrote it
+OH_MODE_DUE = 600            # openHop's own mode is read every 2 minutes; older than this, it isn't treated as known
 RULES_CONFIRM_DUE = 600      # openHop's rules are read back every few minutes; this long without is worth a look
 SETTINGS_HISTORY_MAX = 200   # setting changes kept on the Pi, newest first
 _HIST_WHO = threading.local()   # who is changing settings on this thread (the page, auto level...)
@@ -2355,6 +2358,9 @@ def state_order(path: str) -> list:
             continue
     have = [p for p in cands if p in seqs]
     there = [p for p in cands if os.path.exists(p)]
+    def num(v):
+        return isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 2 ** 53
+    seqs = {p: (v if num(v) else None) for p, v in seqs.items()}
     if not have or there[0] != have[0] or not isinstance(seqs[have[0]], int):
         return cands   # newest file damaged (the usual recovery handles and reports it), or written without a number
     best = max((p for p in have if isinstance(seqs[p], int)), key=lambda p: (seqs[p], -cands.index(p)))
@@ -2509,7 +2515,7 @@ class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
                  "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr",
-                 "direction", "copy", "reaction", "mode_then")
+                 "direction", "copy", "reaction", "mode_then", "trust_then")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -2529,6 +2535,7 @@ class Event:
         self.matched: Optional[str] = None
         self.known_then: Optional[bool] = None   # was the sender known when the message arrived?
         self.mode_then: Optional[str] = None     # SpamGuard's mode then: protect, monitor or pause
+        self.trust_then: Optional[str] = None    # how the sender was trusted then: everywhere, channel or none
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
@@ -2964,9 +2971,10 @@ class SpamGuard:
         ch = e.channel or "Public"
         if ch in self.watch_channels:
             return f"It got through because {ch} is set to Count only. Choose Block spam for that channel to stop spam there."
-        if e.sender in self.allow_senders or ch in (self.trust_on.get(e.sender) or {}):
-            return "It got through because that name is trusted" + (" on this channel" if e.sender not in self.allow_senders
-                                                                   else "") + "."
+        trust = e.trust_then or ("everywhere" if e.sender in self.allow_senders else
+                                  "channel" if ch in (self.trust_on.get(e.sender) or {}) else "none")
+        if trust != "none":
+            return "It got through because that name was trusted" + (" on this channel" if trust == "channel" else "") + "."
         if e.exempt:
             return ("It got through because something you let through covers it: an allowed phrase, a trusted key or "
                     "this repeater's own messages.")
@@ -3127,7 +3135,8 @@ class SpamGuard:
         self.settings_history = collections.deque(
             [h for h in st.get("settings_history") or [] if isinstance(h, dict) and isinstance(h.get("ts"), (int, float))
              and isinstance(h.get("label"), str)][:SETTINGS_HISTORY_MAX], maxlen=SETTINGS_HISTORY_MAX)
-        self.save_seq = st.get("save_seq") if isinstance(st.get("save_seq"), int) else 0
+        sq = st.get("save_seq")
+        self.save_seq = sq if isinstance(sq, int) and not isinstance(sq, bool) and 0 <= sq < 2 ** 53 else 0
         ck = st.get("chan_key")
         self.chan_key = ck if isinstance(ck, dict) and isinstance(ck.get("key"), str) else None
         hl = st.get("hist_last")
@@ -3401,6 +3410,7 @@ class SpamGuard:
         now = time.time()
         return {
                     "version": VERSION,
+                    "state_schema": STATE_SCHEMA,
                     "save_seq": self.__dict__.get("save_seq", 0),
                     "chan_key": self.__dict__.get("chan_key"),
                     "blocks": self.blocks,
@@ -6131,7 +6141,11 @@ class SpamGuard:
     def _note_oh_mode(self, rp: dict):
         m = str((rp or {}).get("mode") or "").strip().lower()
         self.oh_mode = m if m in ("forward", "monitor", "no_tx") else None
-        self.oh_mode_ts = time.time()
+        self.oh_mode_ts = self.oh_mode_ok = time.time()
+
+    def oh_mode_now(self) -> Optional[str]:
+        """openHop's mode if read in the last few minutes; an old reading isn't treated as current."""
+        return self.oh_mode if time.time() - (getattr(self, "oh_mode_ok", None) or 0) <= OH_MODE_DUE else None
 
     def refresh_oh_mode(self):
         """openHop's own mode, every two minutes: when it isn't repeating, SpamGuard's blocks have nothing to stop."""
@@ -6971,6 +6985,9 @@ class SpamGuard:
                 e.known_then = self.is_known(e.sender)
             if e.mode_then is None:
                 e.mode_then = "pause" if self.cfg.get("paused") else self.cfg["mode"]
+            if e.trust_then is None:
+                e.trust_then = ("everywhere" if e.sender in self.allow_senders else
+                                "channel" if (e.channel or "Public") in (self.trust_on.get(e.sender) or {}) else "none")
             if not e.replay and not e.local:
                 self._note_slow_send(e)
             self._match_event(e, count=not again)
@@ -10824,7 +10841,7 @@ class SpamGuard:
         threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self):
-        for task in (self.refresh_openhop_info, self.refresh_oh_mode, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
+        for task in (self.refresh_openhop_info, self.refresh_oh_mode, self.chan_rotate, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
                      self.refresh_level_preview, self.backfill_adverts, self.fetch_noise):
             fails = self.__dict__.setdefault("task_fails", {})
             try:
@@ -11523,8 +11540,9 @@ class SpamGuard:
         day = time.strftime("%Y-%m-%d", time.localtime(ts))
         d = e["days"].setdefault(day, [0, 0, []])
         d[0] += 1
-        if sender:
-            sh = self._chan_code(k, sender, day)
+        today = time.strftime("%Y-%m-%d")
+        if sender and day == today:   # a late packet from another day is counted, but its sender isn't coded
+            sh = self._chan_code(k, sender, today)
             if sh not in d[2] and len(d[2]) < 500:
                 d[2].append(sh)
                 d[1] += 1
@@ -11532,15 +11550,25 @@ class SpamGuard:
     def _chan_code(self, chan: str, sender: str, day: str) -> str:
         """A short code for counting different senders on one channel today. Keyed with a random key that is
         replaced every day, so codes can't be matched across channels or days; earlier days keep only the count."""
-        key = self.__dict__.get("chan_key") or {}
-        if key.get("day") != day:
+        self.chan_rotate(day)
+        key = self.__dict__.get("chan_key")
+        if not key:
             key = self.chan_key = {"day": day, "key": os.urandom(16).hex()}
-            for e in self.chan_heard.values():
-                for dd, v in e["days"].items():
-                    if dd != day and len(v) > 2 and v[2]:
-                        v[2] = []
         return hmac.new(bytes.fromhex(key["key"]), f"{chan}\n{sender}".encode("utf-8", "replace"),
                         hashlib.sha256).hexdigest()[:8]
+
+    def chan_rotate(self, today: Optional[str] = None) -> None:
+        """Once the day changes, by the Pi's clock: drop the key and every earlier day's sender codes, keeping the
+        counts. Runs with the regular checks, so it happens even when no channel message arrives after midnight."""
+        today = today or time.strftime("%Y-%m-%d")
+        key = self.__dict__.get("chan_key")
+        if key and key.get("day") == today:
+            return
+        self.chan_key = None
+        for e in self.chan_heard.values():
+            for dd, v in e["days"].items():
+                if dd != today and len(v) > 2 and v[2]:
+                    v[2] = []
 
     def _chan_tidy(self, now: float) -> None:
         """Channels not heard for 30 days are retired (the ones SpamGuard reads stay); days older than 30 go."""
@@ -11557,14 +11585,24 @@ class SpamGuard:
                 self.chan_ok.pop(n, None)
                 self._chan_by_hash = None
 
-    def bot_channel(self, name: str) -> Optional[str]:
-        """Why a channel looks like it carries mostly bots, tests or automatic services, or None. From its name, or
-        from its traffic: a busy channel where each name sends a lot (bots repeat, people chat)."""
+    def bot_name(self, name: str) -> Optional[str]:
+        """Why a channel's name says it is a bot, test or service channel, or None. Only this sets bot-safe by itself
+        or asks before full blocking: traffic alone is a hint, never proof."""
         if not name or name == "Public":
             return None
         m = BOT_CHANNEL_RE.search(name.lstrip("#"))
         if m:
             return f"its name has '{m.group(0).lower()}' in it, which suggests bots, tests or an automatic service"
+        return None
+
+    def bot_channel(self, name: str) -> Optional[str]:
+        """Why a channel looks like it carries mostly bots, tests or automatic services, or None. From its name, or
+        from its traffic: a busy channel where each name sends a lot (bots repeat, people chat)."""
+        if not name or name == "Public":
+            return None
+        why = self.bot_name(name)
+        if why:
+            return why
         e = self.chan_heard.get(f"n:{name}")
         if e:
             recent = sorted(e["days"].items())[-7:]
@@ -11577,13 +11615,13 @@ class SpamGuard:
         """Channels just added that look like bot channels get bot-safe protection, unless the guard is off."""
         if self.cfg.get("bot_channel_guard", "ask") == "off":
             return ""
-        bots = [n for n in names if self.bot_channel(n)]
+        bots = [n for n in names if self.bot_name(n)]
         for n in bots:
             self.botsafe_channels.add(n)
             self.watch_channels.discard(n)
         if not bots:
             return ""
-        why = self.bot_channel(bots[0]) or ""
+        why = self.bot_name(bots[0]) or ""
         return (f". {', '.join(bots[:3])}{' and others' if len(bots) > 3 else ''} looks like a bot or test channel ({why}), "
                 "so it gets bot-safe protection: spam like links, junk and copied names is blocked, and bots are left "
                 "alone. If it's an ordinary channel, choose Block spam for it below")
@@ -11613,6 +11651,7 @@ class SpamGuard:
                         "last": round(e["last"]), "spark": spark,
                         "shares": known.get(e["hash"]) if kind == "unnamed" else None,
                         "bots": self.bot_channel(name) if name else None,
+                        "bots_by": ("name" if self.bot_name(name) else "traffic") if name and self.bot_channel(name) else None,
                         "watch": name in self.watch_channels if kind == "read" else None,
                         "botsafe": name in self.botsafe_channels if kind == "read" else None})
         listed = {r["name"] for r in out}
@@ -11620,6 +11659,7 @@ class SpamGuard:
             if name not in listed:
                 out.append({"name": name, "kind": "read", "d7": 0, "d30": 0, "names_day": 0, "last": None,
                             "spark": [0] * 14, "shares": None, "bots": self.bot_channel(name),
+                            "bots_by": "name" if self.bot_name(name) else None,
                             "watch": name in self.watch_channels, "botsafe": name in self.botsafe_channels})
         out.sort(key=lambda r: (-r["d7"], -r["d30"], r["name"]))
         return out
@@ -11971,11 +12011,12 @@ class SpamGuard:
                 hist.append({"ts": h.get("ts"), "setting": h.get("label"), "by": h.get("by") if not str(h.get("by", "")).startswith("Profile")
                              else "A profile", "old": h.get("old") if plain else "(changed)", "new": h.get("new") if plain else "(changed)"})
             return {
+                "schema": DIAG_SCHEMA,
                 "made": time.strftime("%Y-%m-%d %H:%M:%S %Z", time.localtime(now)),
                 "spamguard": VERSION, "floodguard": FLOODGUARD_VERSION, "install": install_kind(),
                 "python": sys.version.split()[0], "machine": platform.machine(),
                 "mode": c["mode"], "paused": bool(c.get("paused")), "level": c.get("level"),
-                "openhop_mode": self.oh_mode,
+                "openhop_mode": self.oh_mode_now(),
                 "settings": {m["key"]: val(m["key"], c.get(m["key"])) for m in SETTINGS_META},
                 "counts": {"channels_read": len(c["channels"]), "channels_count_only": len(self.watch_channels),
                            "channels_bot_safe": len(self.botsafe_channels), "blocks": len(self.blocks),
@@ -12019,6 +12060,7 @@ class SpamGuard:
         oh_ok = bool(svc.get("openhop_ok")) and not (self.openhop_down_since and now - self.openhop_down_since > 120)
         rules_ok = None if self.rules_expected is None or self.rules_seen is None else self.rules_seen == self.rules_expected
         conf = getattr(self, "rules_confirmed", None)
+        ohm = self.oh_mode_now()
         overdue = rules_ok is True and (conf is None or now - conf > RULES_CONFIRM_DUE)
         parts = [
             {"part": "mode", "label": "Mode",
@@ -12038,10 +12080,10 @@ class SpamGuard:
                       "Being put back" if rules_ok is False else "Not checked yet")},
             {"part": "sync", "label": "Last written", "ts": self.last_sync, "state": "ok" if self.last_sync else "none",
              "text": "" if self.last_sync else "Not yet"},
-            {"part": "repeating", "label": "openHop repeating",
-             "state": {"forward": "ok", "monitor": "warn", "no_tx": "warn"}.get(self.oh_mode or "", "none"),
+            {"part": "repeating", "label": "openHop repeating", "ts": getattr(self, "oh_mode_ok", None),
+             "state": {"forward": "ok", "monitor": "warn", "no_tx": "warn"}.get(ohm or "", "none"),
              "text": {"forward": "Yes", "monitor": "No, openHop is on Monitor", "no_tx": "No, openHop is on No TX"}
-             .get(self.oh_mode or "", "Not known yet")},
+             .get(ohm or "", "Not known lately" if self.oh_mode else "Not known yet")},
             {"part": "floodguard", "label": "FloodGuard",
              "state": ("off" if not fg["enabled"] else "info" if fg["learning"] else "ok" if fg["acting"] else "info"),
              "text": ("Off" if not fg["enabled"] else "Learning, counting only" if fg["learning"] else
@@ -12050,7 +12092,7 @@ class SpamGuard:
         if any(p["state"] == "bad" for p in parts if p["part"] in ("openhop", "check")) or c.get("paused") \
                 or getattr(self, "engine_off", False):
             state, line = "bad", "Not protected right now"
-        elif self.oh_mode in ("monitor", "no_tx"):
+        elif ohm in ("monitor", "no_tx"):
             state, line = "idle", "openHop isn't repeating, so there's nothing to stop"
         elif c["mode"] != "protect":
             state, line = "watch", "Watching only: spam is marked but not stopped"
@@ -12762,7 +12804,7 @@ class SpamGuard:
                 "advisor": self.advisor(),
                 "service": svc,
                 "protection": self.protection(svc),
-                "openhop_mode": self.oh_mode,
+                "openhop_mode": self.oh_mode_now(),
                 "settings_history": list(self.settings_history)[:100],
                 "health": {"ok": self.last_error is None and self.last_poll_ok is not None,
                            "error": self.last_error, "last_poll": self.last_poll_ok, "last_sync": self.last_sync},
@@ -13534,7 +13576,7 @@ class SpamGuard:
                 mode = str(body.get("mode") or ("full" if body.get("on") else "watch"))
                 if mode not in ("full", "botsafe", "watch"):
                     raise ValueError("Unknown channel setting")
-                why = self.bot_channel(name) if mode == "full" else None
+                why = self.bot_name(name) if mode == "full" else None
                 guard = self.cfg.get("bot_channel_guard", "ask")
                 if why and guard == "never":
                     raise ValueError(f"Full blocking is off on {name}: {why}. Bot-safe protection is available; to allow "

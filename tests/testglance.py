@@ -68,7 +68,7 @@ check("first sighting" in r["message"],"and the answer says so: %s"%r["message"]
 g3.watch_channels.add("Public")
 check("Count only" in (g3.why_through({"packet":e.packet}) or ""),"a Count only channel is the reason when it applies")
 g3.watch_channels.discard("Public")
-g3.allow_senders.add("Quarry Newbie")
+g3.allow_senders.add("Quarry Newbie"); e.trust_then=None   # as for a message from before trust was recorded
 check("trusted" in (g3.why_through({"packet":e.packet}) or ""),"a trusted name is the reason when it applies")
 g3.allow_senders.discard("Quarry Newbie")
 e.mode_then="pause"; check("paused" in g3.why_through({"packet":e.packet}),"paused then says so")

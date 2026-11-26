@@ -1069,6 +1069,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <h2>Diagnostic export</h2>
   <p class="explain">For someone helping you. It holds versions, settings, health and recent setting changes, and leaves out names, messages, keys, channel names, routes and locations. Check it before you share it.</p>
   <p><button type="button" class="quiet" id="diagShow">Preview</button> <button type="button" class="go" id="diagSave" hidden>Save to a file</button></p>
+  <p class="explain" id="diagWarn" hidden>It does include system and configuration details, such as settings, versions and how busy the Pi is. The file saved is exactly the preview shown.</p>
   <pre class="diag-pre" id="diagPre" hidden tabindex="0" aria-label="Diagnostic export preview"></pre>
 </section></div>
 <div class="page" data-page="updates"><section id="updSec">
@@ -1440,7 +1441,7 @@ function renderHistory(d){
 let DIAG=null;
 $("#diagShow").addEventListener("click",async()=>{ try{
   const r=await fetch("/diagnostics",{headers:{"X-API-Key":store.get("sgkey")||""}}); if(!r.ok) throw new Error(r.status);
-  DIAG=JSON.stringify(await r.json(),null,2); $("#diagPre").textContent=DIAG; $("#diagPre").hidden=false; $("#diagSave").hidden=false; $("#diagShow").textContent="Refresh preview";
+  DIAG=JSON.stringify(await r.json(),null,2); $("#diagPre").textContent=DIAG; $("#diagPre").hidden=false; $("#diagSave").hidden=false; $("#diagWarn").hidden=false; $("#diagShow").textContent="Refresh preview";
   }catch(e){ toast("Couldn't make the export just now"); } });
 $("#diagSave").addEventListener("click",()=>{ if(!DIAG) return; const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([DIAG],{type:"application/json"})); a.download=`spamguard-diagnostics-${new Date().toISOString().slice(0,10)}.json`;
@@ -1617,9 +1618,9 @@ function renderChHeard(d){
     +(unHid?`, ${unHid} private hidden`:"");
   const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Private, can't be read","plain"]};
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
-    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${r.kind==="unnamed"?`Private channel <span class="explain">tag ${esc((r.name.match(/\(([0-9A-F]{2})\)/)||[])[1]||"?")}</span>`:esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
+    return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${r.kind==="unnamed"?`Private channel <span class="explain">tag ${esc((r.name.match(/\(([0-9A-F]{2})\)/)||[])[1]||"?")}</span>`:esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would">${r.bots_by==="traffic"?"looks automated?":"bot channel"}</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
       <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${r.d7?Math.max(2,Math.round(100*r.d7/top)):0}%"></i></div>
-      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"&&r.last?`. Last heard ${esc(ago(r.last))}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"&&r.last?`. Last heard ${esc(ago(r.last))}`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
@@ -2053,6 +2054,7 @@ $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-
     const nl=[...names], texts=[...new Set(sel.map(r=>r.text))];
     n.innerHTML=`<p>This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check them, then press ${esc(b.textContent.trim())} again to confirm.</p>`
       +`<p><b>Names:</b> ${nl.slice(0,8).map(esc).join(", ")}${nl.length>8?` and ${nl.length-8} more`:""}</p>`
+      +`<p><b>What it covers:</b> ${b.dataset.qb==="spam"?"these messages and copies of them from any name":"these names only; copies from other names stay as they are"}.</p>`
       +`<p><b>${texts.length===1?"Text":`${texts.length} different texts, for example`}:</b></p><ul class="q-prev">${texts.slice(0,3).map(t=>`<li>${esc(t.length>120?t.slice(0,117)+"...":t)}</li>`).join("")}</ul>`;
     $("#qBulk").appendChild(n); return; }
   Q.armed=null;

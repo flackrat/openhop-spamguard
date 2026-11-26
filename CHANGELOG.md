@@ -19,6 +19,12 @@ The detail is below, newest first. In short:
 
 - **Private channels.** Channels SpamGuard can't read are called private channels, shown by their tag with when they were last heard.
 - **Overview layout.** Mode and Protection level use the full width when nothing sits beside them.
+- **Bot channels by name only.** A channel is made bot-safe, or asks before full blocking, only when its name says so. Busy traffic from few names is shown as a hint ("looks automated?"), with the reason in the list.
+- **Daily codes dropped on time.** Channel counting drops yesterday's codes when the day changes, even if nothing is heard after midnight.
+- **Why it got through** uses whether the name was trusted when the message arrived.
+- **openHop's mode** is only used while it is recent; an old reading shows "Not known lately".
+- **Diagnostic export** says it holds system and configuration details, saves exactly the preview, and carries a layout number. Saved state does too.
+- **Answering several names** says what the answer covers: copies from any name for Spam, only these names for Not spam.
 
 ## v6.53.0
 
