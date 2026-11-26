@@ -19,6 +19,16 @@ The detail is below, newest first. In short:
 
 - **openHop not repeating.** When openHop is set to Monitor or No TX, the Mode card and the protection panel say so, since there is nothing for Protect to stop.
 - **Unnamed channels hidden.** The busiest channels list hides channels whose name isn't known, with a tick box to show them.
+- **Channels you read are always listed** in the busiest channels, even before their first message.
+- **Bot channels by whole words.** #latest, #contest and #botany are no longer taken for bot channels. Adding one that is says why, and how to change it.
+- **Fewer details kept when counting channels.** Names are counted with a code that changes daily, can't be matched across channels, and is deleted when the day ends.
+- **"Protected" needs recently confirmed rules.** The Overview no longer says Protected if openHop's rules haven't been confirmed for a while.
+- **Why it got through** uses the mode at the time and says "probably" where the reason is worked out.
+- **Settings changes** also show changes found at start-up and those made by a profile.
+- **Answering several names** shows the names and texts before you confirm.
+- **Campaign links** show when each group was first and last seen, names in more than one campaign, and when a link rests only on a shared repeater.
+- **Diagnostic export** on the Health page: versions, settings and health for someone helping you, with no names, messages, keys, channels or routes. Preview it before saving.
+- **Safer recovery:** each save is numbered, so the newest is found even if file dates change.
 
 ## v6.52.0
 

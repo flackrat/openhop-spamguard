@@ -31,8 +31,8 @@ st=g.status(); check("protection" in st and st["protection"]["state"]=="ok","the
 f={x["part"]:x for x in g.health()["fresh"]}
 check(set(f)>={"packets","check","neighbours","radio","rules","sync","save"},"every part has a freshness line")
 check(f["check"]["state"]=="ok" and f["rules"]["state"]=="ok","checks and rules are fresh")
-g.rules_checked=time.time()-3600; f={x["part"]:x for x in g.health()["fresh"]}
-check(f["rules"]["state"]=="late","an hour since rules were checked is late")
+g.rules_confirmed=time.time()-3600; f={x["part"]:x for x in g.health()["fresh"]}
+check(f["rules"]["state"]=="late","an hour since rules were confirmed is late")
 # --- settings history
 g.settings_history.clear(); g._hist_last=None; g.rebuild_cfg()
 check(not g.settings_history,"the first look only sets the starting point")
@@ -71,11 +71,10 @@ g3.watch_channels.discard("Public")
 g3.allow_senders.add("Quarry Newbie")
 check("trusted" in (g3.why_through({"packet":e.packet}) or ""),"a trusted name is the reason when it applies")
 g3.allow_senders.discard("Quarry Newbie")
-g3.apply_settings({"paused":True}); check("paused" in g3.why_through({"packet":e.packet}),"paused says so")
-g3.apply_settings({"paused":False})
-e.matched="text:x"; g3.apply_settings({"mode":"monitor"})
-check("Monitor only" in g3.why_through({"packet":e.packet}),"spotted but on Monitor says Protect would stop it")
-g3.apply_settings({"mode":"protect"})
+e.mode_then="pause"; check("paused" in g3.why_through({"packet":e.packet}),"paused then says so")
+e.matched="text:x"; e.mode_then="monitor"
+check("Monitor only" in g3.why_through({"packet":e.packet}),"spotted but on Monitor then says Protect would stop it")
+e.mode_then="protect"
 check(g3.why_through({"packet":e.packet}) is None,"nothing to explain when it was stopped")
 check(g3.why_through({"packet":"nope"}) is None,"nothing said about a message it no longer has")
 # --- openHop's own mode

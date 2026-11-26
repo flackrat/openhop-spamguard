@@ -15,6 +15,7 @@ g=guard(m); g.poll_once()
 base=g.cfg["state_file"]
 # an older version's plain file is there from before the update
 old=dict(read_state(base) if os.path.exists(base+".gz") else g.state_dict(), version="6.50.0")
+old.pop("save_seq",None); old.pop("chan_key",None); old.pop("hist_last",None)   # an older version doesn't write these
 old["allow_hops"]=["7Q"]
 json.dump(old,open(base,"w")); os.utime(base,(time.time()-600,time.time()-600))
 g._save_state(force=True)

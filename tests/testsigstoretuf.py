@@ -72,6 +72,9 @@ check(isinstance(F(repo(sn_hash=True)),str),"a snapshot that doesn't match its l
 check(isinstance(F(repo(trusted=TRUSTED+b" ")),str),"a key list that doesn't match its signed checksum is refused")
 check(isinstance(F(repo(ts_exp=PAST)),str),"an expired timestamp is refused")
 r=F(repo(ts_spec="2.0")); check(isinstance(r,str) and "format" in r,"a file in a TUF format this version doesn't know is refused")
+for bad in ("1.x","1.","1","01.0","1.0.0.1"," 1.0",""):
+    r=F(repo(ts_spec=bad)); check(isinstance(r,str) and "format" in r,"a malformed TUF format version is refused: %r"%bad)
+r=F(repo(ts_spec="1.0.31")); check(not isinstance(r,str),"a full TUF version such as 1.0.31 is accepted: %r"%(r,))
 # rollback
 r=F(repo(ts_v=7),seen={"timestamp":9,"snapshot":5,"targets":3}); check(isinstance(r,str) and "older" in r,"an older timestamp than seen before is refused")
 r=F(repo(sn_v=4,ts_v=10),seen={"timestamp":9,"snapshot":5,"targets":3}); check(isinstance(r,str),"an older snapshot than seen before is refused")

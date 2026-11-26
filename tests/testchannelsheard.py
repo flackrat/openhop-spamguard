@@ -92,19 +92,19 @@ check([x for x in gb.channels_heard(now) if x["name"]=="#weather"][0]["bots"],"t
 # bot-safe in action: bots repeating themselves aren't blocked there, spam with links still is
 from harness import mock as _mock
 m2=_mock(); g5=guard(m2); g5.apply_settings({"mode":"protect"})
-g5.action("add_channel",{"name":"#pingquarry","key":""})
-check("#pingquarry" in g5.botsafe_channels,"a ping channel is bot-safe")
+g5.action("add_channel",{"name":"#ping-quarry","key":""})
+check("#ping-quarry" in g5.botsafe_channels,"a ping channel is bot-safe")
 blocks_before=set(g5.blocks)
 want_res=[]
-g5._add_block("rep:x","text","pong from quarry bot","made-up","repeat","#pingquarry",3600,None)
-g5._add_block("lnk:x","links",["qspam.example"],"made-up","links","#pingquarry",3600,None)
+g5._add_block("rep:x","text","pong from quarry bot","made-up","repeat","#ping-quarry",3600,None)
+g5._add_block("lnk:x","links",["qspam.example"],"made-up","links","#ping-quarry",3600,None)
 bs={k:b for k,b in g5.blocks.items() if k in ("rep:x","lnk:x")}
 check(g5._block_channels(bs["rep:x"])==[] ,"a repeat block on a bot-safe channel covers no channels")
-check(g5._block_channels(bs["lnk:x"])==["#pingquarry"],"a link block there still applies")
+check(g5._block_channels(bs["lnk:x"])==["#ping-quarry"],"a link block there still applies")
 # through openHop's real rule engine: the bot's repeated reply goes out, the link spam doesn't
 g5._add_block("rep:all","text","pong from quarry bot","made-up","repeat",sg.ALL_CHANNELS,3600,None)
 g5.last_sync=0; g5.sync_pending=True; g5.poll_once()
-PQ=sg.hashtag_secret("#pingquarry")
+PQ=sg.hashtag_secret("#ping-quarry")
 check(m2.decide("Quarry Bot","pong from quarry bot",["4C"],key=PQ)!="drop","the bot's reply still goes out on the bot-safe channel, even under an every-channel repeat block")
 check(m2.decide("Quarry Ann","pong from quarry bot",["4C"])=="drop","the same repeat block still stops it on Public")
 check(m2.decide("QX7ZP9","deals at qspam.example now",["4C"],key=PQ)=="drop","link spam is still stopped on the bot-safe channel")

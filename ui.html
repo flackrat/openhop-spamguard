@@ -112,6 +112,8 @@ ul.q-list>li.sel{background:var(--signal-tint)}
 .q-line{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 .q-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .q-grp{font-size:.8125rem;min-height:32px;padding:0 10px}
+#qBulkWarn p{margin:4px 0}
+.q-prev{margin:4px 0;padding-left:18px}
 .rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr) 84px;align-items:center;gap:4px 12px}
 @media (max-width:600px){.rows li.ch-row{grid-template-columns:1.8em minmax(0,1fr)}.rows li.ch-row .ch-spark{grid-column:2}}
 .ch-rank{color:var(--soft);font-variant-numeric:tabular-nums;text-align:right;align-self:start;padding-top:2px}
@@ -291,6 +293,8 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 .route{overflow-wrap:anywhere}
 .health-head{display:flex;align-items:center;gap:10px}
 .health-head h2{margin:0}
+.health-head{flex-wrap:wrap}
+#qSec .health-head #qShowing{flex:1 1 220px}
 .ch-ctl label.ch-un{display:inline-flex;align-items:center;gap:8px;width:auto;font-weight:inherit}
 .ch-ctl label.ch-un input{width:auto;min-width:0;height:auto;flex:none;margin:0;accent-color:var(--signal)}
 .prot-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 16px;margin:8px 0 0}
@@ -304,6 +308,7 @@ dialog#rulesDlg::backdrop{background:rgba(0,0,0,.45)}
 .fresh{list-style:none;margin:8px 0 0;padding:0}
 .fresh li{display:flex;gap:10px;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
 .fresh li.late{color:var(--amber-text)}
+.diag-pre{max-height:320px;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:0.75rem;white-space:pre-wrap;word-break:break-word}
 .hist{list-style:none;margin:8px 0 0;padding:0}
 .hist li{display:flex;flex-wrap:wrap;gap:4px 10px;padding:5px 0;border-bottom:1px solid var(--line)}
 .hist .what{font-weight:600}
@@ -994,6 +999,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
     <label for="chKind">Which</label><select id="chKind"><option value="all">All channels</option><option value="read">Read by SpamGuard</option><option value="found">Found, not read</option><option value="unnamed">Name not known</option><option value="bots">Bots and tests</option></select>
     <label class="ch-un"><input type="checkbox" id="chUnnamed"> Show unnamed</label>
     <span class="explain" id="chTopNote"></span></div>
+  <p class="explain adv" id="chDiag" hidden></p>
   <p class="explain" id="chUnnamedNote" hidden>Unnamed channels are private: their name only shows if it's mentioned as a #hashtag in a channel SpamGuard reads, or you add the channel below.</p>
   <ul class="rows ch-heard" id="chHeard"></ul>
 </section><section>
@@ -1056,6 +1062,12 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="explain">The latest changes, by you on this page or by SpamGuard itself. Kept on the Pi only.</p>
   <ul class="hist" id="histList"></ul>
   <p><button type="button" class="quiet" id="histMore" hidden>Show all</button></p>
+</section>
+<section id="diagSec">
+  <h2>Diagnostic export</h2>
+  <p class="explain">For someone helping you. It holds versions, settings, health and recent setting changes, and leaves out names, messages, keys, channel names, routes and locations. Check it before you share it.</p>
+  <p><button type="button" class="quiet" id="diagShow">Preview</button> <button type="button" class="go" id="diagSave" hidden>Save to a file</button></p>
+  <pre class="diag-pre" id="diagPre" hidden tabindex="0" aria-label="Diagnostic export preview"></pre>
 </section></div>
 <div class="page" data-page="updates"><section id="updSec">
   <div class="health-head"><h2>Updates</h2><span id="uPill"></span></div>
@@ -1423,6 +1435,14 @@ function renderHistory(d){
     <span class="what">${esc(r.label)}</span><span>${r.old!=null?esc(r.old)+" → ":""}${esc(r.new)}</span><span class="explain">${esc(r.by)}</span></li>`).join("");
   more.hidden=rows.length<=10; more.textContent=HIST_ALL?"Show fewer":`Show all ${rows.length}`;
 }
+let DIAG=null;
+$("#diagShow").addEventListener("click",async()=>{ try{
+  const r=await fetch("/diagnostics",{headers:{"X-API-Key":store.get("sgkey")||""}}); if(!r.ok) throw new Error(r.status);
+  DIAG=JSON.stringify(await r.json(),null,2); $("#diagPre").textContent=DIAG; $("#diagPre").hidden=false; $("#diagSave").hidden=false; $("#diagShow").textContent="Refresh preview";
+  }catch(e){ toast("Couldn't make the export just now"); } });
+$("#diagSave").addEventListener("click",()=>{ if(!DIAG) return; const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([DIAG],{type:"application/json"})); a.download=`spamguard-diagnostics-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); });
 $("#histMore").addEventListener("click",()=>{ HIST_ALL=!HIST_ALL; if(typeof S!=="undefined"&&S) renderHistory(S); });
 function renderFresh(h){
   const rows=h.fresh||[];
@@ -1585,6 +1605,8 @@ function renderChHeard(d){
   const want=all.filter(r=>(kind==="all"||(kind==="bots"?!!r.bots:r.kind===kind))&&(showUn||r.kind!=="unnamed"));
   const unHid=showUn?0:all.filter(r=>r.kind==="unnamed"&&(kind==="all"||(kind==="bots"&&r.bots))).length;
   $("#chUnnamedNote").hidden=!showUn;
+  const dg=d.channels_diag; $("#chDiag").hidden=!dg;
+  if(dg) $("#chDiag").textContent=`Since the last restart: ${fmtN(dg.tries)} name guesses tried, ${fmtN(dg.found)} channel${dg.found===1?"":"s"} named${dg.skipped?`, ${fmtN(dg.skipped)} guesses skipped (too many names share a tag)`:""}.`;
   const by={d7:(a,b)=>b.d7-a.d7||b.d30-a.d30,d30:(a,b)=>b.d30-a.d30||b.d7-a.d7,names:(a,b)=>b.names_day-a.names_day||b.d7-a.d7,
     last:(a,b)=>b.last-a.last,name:(a,b)=>a.name.localeCompare(b.name)}[sort]||((a,b)=>b.d7-a.d7);
   want.sort(by);
@@ -1594,8 +1616,8 @@ function renderChHeard(d){
   const TAG={read:["Read and protected","stop"],found:["Found, counted only","plain"],unnamed:["Name not known","plain"]};
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
     return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would" title="${esc(r.bots)}">mostly bots?</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
-      <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${Math.max(2,Math.round(100*r.d7/top))}%"></i></div>
-      <span class="explain">${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+      <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${r.d7?Math.max(2,Math.round(100*r.d7/top)):0}%"></i></div>
+      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
@@ -2024,8 +2046,12 @@ $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-
   const names=new Set(sel.map(r=>r.sender)), msgs=sel.reduce((a,r)=>a+(r.copies||1),0), kinds=new Set(sel.map(r=>r.status));
   const key=v+"|"+sel.map(r=>r.packet).join(",");
   if(names.size>1&&Q.armed!==key){ Q.armed=key;
-    const n=$("#qBulkWarn")||Object.assign(document.createElement("p"),{id:"qBulkWarn",className:"explain"}); n.setAttribute("role","status");
-    n.textContent=`This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check the list, then press ${b.textContent.trim()} again to confirm.`;
+    const n=$("#qBulkWarn")||Object.assign(document.createElement("div"),{id:"qBulkWarn",className:"explain"}); n.setAttribute("role","status");
+    // a preview of who and what, so it is clear the group really belongs together
+    const nl=[...names], texts=[...new Set(sel.map(r=>r.text))];
+    n.innerHTML=`<p>This answers ${fmtN(msgs)} messages from ${names.size} different names${kinds.size>1?", and SpamGuard treated them differently":""}. Check them, then press ${esc(b.textContent.trim())} again to confirm.</p>`
+      +`<p><b>Names:</b> ${nl.slice(0,8).map(esc).join(", ")}${nl.length>8?` and ${nl.length-8} more`:""}</p>`
+      +`<p><b>${texts.length===1?"Text":`${texts.length} different texts, for example`}:</b></p><ul class="q-prev">${texts.slice(0,3).map(t=>`<li>${esc(t.length>120?t.slice(0,117)+"...":t)}</li>`).join("")}</ul>`;
     $("#qBulk").appendChild(n); return; }
   Q.armed=null;
   sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
@@ -2425,7 +2451,9 @@ function renderLinks(d){
   el.innerHTML=undo+gs.map(g=>`<article class="linkgrp">
     <div class="lg-head"><h3>${g.campaigns.length} campaigns, ${fmtN(g.name_count)} name${g.name_count===1?"":"s"}</h3>${g.strong?"<span class='tag stop'>strongly linked</span>":"<span class='tag plain'>possibly related</span>"}
       <button type="button" class="quiet" onclick="post('/dismiss_link',{id:'${esc(g.id)}'})" aria-label="Hide this group for 7 days">Hide for 7 days</button></div>
+    <p class="explain">${g.first?`First seen ${esc(ago(g.first))}, last ${esc(ago(g.last))}.`:""}${g.overlap&&g.overlap.length?` Names in more than one: ${g.overlap.map(esc).join(", ")}.`:""}</p>
     <ul class="lg-why">${g.reasons.map(r=>`<li><span class="tag ${r.strong?"stop":"plain"}">${r.strong?"strong":"weak"}</span> ${esc(r.text)}</li>`).join("")}</ul>
+    ${g.repeater_only?`<p class="explain">This rests only on a shared repeater. Busy repeaters carry many people's messages, so it is not proof the campaigns are related.</p>`:""}
     <details><summary>The campaigns, names and repeaters</summary>
       <ul class="lg-list">${g.campaigns.map(c=>`<li>“${esc(c.example)}” <span class="explain">${fmtN(c.copies)} copies from ${fmtN(c.names)} name${c.names===1?"":"s"}</span></li>`).join("")}</ul>
       <p class="explain">Names: ${g.names.map(esc).join(", ")}${g.name_count>g.names.length?`, and ${g.name_count-g.names.length} more`:""}.</p>

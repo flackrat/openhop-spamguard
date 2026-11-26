@@ -145,7 +145,7 @@ How well does it work, and what does it get wrong? See the [test results](docs/p
 | See who SpamGuard knows, trust or doubt someone | Open **People**: search, filter, then **Trust**, **Put on watch** or **Forget** |
 | Read a channel without blocking on it | **Channels**: choose **Count only** (or **Bot-safe**) |
 | Check you're protected | **Protection right now** on the Overview |
-| See who changed a setting | **Health**: **Settings changes** |
+| See setting changes, or send diagnostics | **Health** |
 | Copy your decisions to another SpamGuard | Advanced > Settings: **Export** on one, **Import** on the other |
 | Ride out a heavy attack | Press **Lockdown** at the bottom of Blocks (30 min to 2 hours, ends by itself) |
 | See where spam comes from | Open **Spam sources** in the menu |
