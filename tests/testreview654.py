@@ -1,4 +1,4 @@
-# Points from the 6.53 review: traffic alone never makes a channel bot-safe; sender codes dropped when the day
+# Points from the 6.53 review: traffic alone never sets bot-safe; sender codes dropped when the day
 # changes by the Pi's clock, even with no messages, and late packets from another day aren't coded; trust as it was
 # when a message arrived; an old reading of openHop's mode isn't treated as current; schema numbers on the export
 # and saved state; save numbers checked strictly. Made-up names and messages only.
@@ -16,7 +16,7 @@ g=guard(mock())
 g.chan_heard["n:#quarrylounge"]={"name":"#quarrylounge","hash":1,"first":now-86400,"last":now,"days":{today:[300,3,[]]}}
 check(g.bot_channel("#quarrylounge") and not g.bot_name("#quarrylounge"),"busy with few names looks automated, but the name doesn't say so")
 r=g.action("add_channel",{"name":"#quarrylounge","key":""})
-check("#quarrylounge" not in g.botsafe_channels,"traffic alone doesn't make a channel bot-safe")
+check("#quarrylounge" not in g.botsafe_channels,"traffic alone never sets bot-safe")
 r=g.action("channel_blocking",{"name":"#quarrylounge","mode":"full"})
 check(r.get("ok",True) is not False,"and full blocking there needs no extra confirmation")
 g._chh_cache=None; row={x["name"]:x for x in g.channels_heard(now)}["#quarrylounge"]
