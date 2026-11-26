@@ -32,6 +32,7 @@ async def main():
         check(pressed=="review" and "Trail Runner 7" in rows_t and "Trail Runner 7" in rows_h and "FREE PRIZE" not in rows_h, f"already filtered to what was clicked: {pressed}")
         chips=await pg.text_content("#qChips")
         check("Stopped 5" in chips.replace("\xa0"," ") or "Stopped5" in chips.replace(" ",""), f"every filter shows its count: {chips}")
+        await pg.check("#qTrust"); await pg.wait_for_timeout(100)   # 6.55: Not spam trusts the name only when you tick this
         await pg.click("#qList [data-qi='0']"); await pg.wait_for_timeout(400)
         det=await pg.text_content("#qDetail")
         check("burst of made-up names" in det and "Not spam" in det and "Label as" not in det, "a message opens with why, and two answers")

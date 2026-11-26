@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.54.0"
+VERSION = "6.55.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -247,7 +247,7 @@ SETTINGS_META: list[dict] = [
      "label": "Don't repeat wardriving pings",
      "help": "Wardriving apps like MeshMapper map repeaters by logging which ones echo their GPS pings. On, this repeater still hears the pings but doesn't repeat them. Nothing else is affected."},
     {"key": "evidence_log", "group": "Evidence log", "type": "bool",
-     "risk": "Stores names and text on the Pi for the days below. Use the scrambled download when sharing.",
+     "risk": "Stores names and text on the Pi for the days below. Use the scrambled download when sharing: it hides people's names and private channels' names. Channel keys are never in either download.",
      "label": "Keep an evidence log",
      "help": "Records every channel message SpamGuard reads, what it did and your labels, for review or replaying against other settings."},
     {"key": "evidence_days", "group": "Evidence log", "type": "int", "min": 1, "max": 30, "unit": "days",
@@ -521,6 +521,14 @@ SETTINGS_META: list[dict] = [
      "risk": "A newcomer who uses such an app with its text packing switched on is held on Public until SpamGuard knows them.",
      "label": "Hold app-packed text on Public from names it doesn't know (experimental)",
      "help": "Some companion apps can pack a message into symbols only the same app can read. SpamGuard can't read or count those, so spam can hide in them. High level only: it is off by default, it only looks at Public and at names SpamGuard doesn't know (known names always pass), and every hold shows its reason."},
+    {"key": "route_checks", "group": "Experimental", "type": "bool",
+     "risk": "Your repeater transmits a few small trace packets at night, using a little airtime. Other operators may see them in their logs.",
+     "label": "Check where spam comes from with route traces (experimental, transmits)",
+     "help": "When spam's first repeater code is shared or looks made up, a trace sent out along the spam's route to one exact repeater and back shows whether it really sits where the spam entered. Only from 1 to 6 am with the radio quiet, a few an hour, each repeater once a week. Needs route traces in openHop; until then nothing is sent."},
+    {"key": "route_checks_per_hour", "group": "Experimental", "type": "int", "min": 1, "max": 6,
+     "risk": "More checks use more airtime. Each is a few small packets.",
+     "label": "Route checks per hour, at most",
+     "help": "How many route traces SpamGuard may send in an hour, within the quiet night hours."},
     {"key": "machine_block", "group": "Experimental", "type": "choice",
      "choices": [["off", "Off: count them only"], ["public", "Stop them on Public"], ["all", "Stop them on every channel"]],
      "risk": "A bridge or program you want on that channel (a Reticulum link, say) is stopped too. Choose Public only, or Off, to let one through on other channels.",
@@ -649,6 +657,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "wardrive_block": False,
     "drop_damaged": False,
     "evidence_log": False,
+    "route_checks": False,
+    "route_checks_per_hour": 2,
     "review_missed": False,
     "channel_discovery": True,
     "bot_channel_guard": "ask",
@@ -891,12 +901,14 @@ CHANNEL_STARTERS = ("#test", "#testing", "#ping", "#bot", "#wardriving", "#mc-ra
 # many messages from one name, bursts of new names). On bot-safe channels these aren't made or applied; the rest
 # (links, junk, copied and spoofed names, replays, routes, floods and your own blocks) still are.
 BOT_TRIP_SOURCES = frozenset({"repeat", "slowrepeat", "sense", "dedupe", "campaign", "budget", "hop", "pubbot", "template",
-                              "machine", "burst"})
+                              "machine", "burst", "botmark"})
 # Channels mostly used by bots, test pings and automatic services: blocking spam there can stop the service itself
 # Whole words, split by '-', '_', '.' or digits, so #latest, #contest, #botany and #newspaper are ordinary channels,
-# and a few words that only ever mean a service, anywhere in the name (#ukweather, #newsbot, #aprsnet).
+# and a few service words at the end of a word (#ukweather, #newsbot, #weather-alerts), or for aprs and wardriving
+# at either edge (#aprsnet), never inside a longer ordinary word (#weathered, #weatherproof).
 BOT_CHANNEL_RE = re.compile(r"(?<![a-z])(?:bots?|tests?|testing|ping|pong|news|alerts?|radar|sensors?|beacons?|wx)(?![a-z])"
-                            r"|weather|telemetry|aprs|wardriv|(?<=[a-z])(?:bots?|news)(?![a-z])", re.I)
+                            r"|(?:weather|telemetry|aprs)(?![a-z])|(?<![a-z])(?:aprs|wardriv)"
+                            r"|(?<=[a-z])(?:bots?|news)(?![a-z])", re.I)
 HASHTAG_RE = re.compile(r"(?<![\w#])#[a-z0-9][a-z0-9_-]{1,30}(?![\w-])", re.I)
 CHANNEL_KEEP_DAYS = 30
 DIAG_SCHEMA = 1              # diagnostic export layout; bump when fields change meaning
@@ -2445,8 +2457,9 @@ class EvidenceLog:
                         r[k] = round(r[k], 1)
         return r
 
-    def export(self, days: int, scramble: bool, places: Optional[str] = None) -> str:
-        """places: repeater locations, "exact", "round" or "drop"; by default rounded in a scrambled file."""
+    def export(self, days: int, scramble: bool, places: Optional[str] = None, private: tuple = ()) -> str:
+        """places: repeater locations, "exact", "round" or "drop"; by default rounded in a scrambled file.
+        private: names of private channels (your own key), treated like people's names in a scrambled file."""
         places = places if places in self.PLACES else ("round" if scramble else "exact")
         self.flush(force=True)
         cutoff = time.strftime("%Y-%m-%d", time.localtime(time.time() - (days - 1) * 86400))
@@ -2485,6 +2498,22 @@ class EvidenceLog:
             if r.get("type") == "advert" and isinstance(r.get("name"), str) and r["name"]:
                 code(r["name"])
         known = sorted(names, key=len, reverse=True)
+        pcodes = {n: "C-" + hashlib.sha256((salt + "\nchannel\n" + n).encode()).hexdigest()[:6] for n in private if n}
+        pnames = sorted(pcodes, key=len, reverse=True)
+
+        def hide_channels(v):   # every text field, at any depth: private channel names never leave readable
+            if isinstance(v, str):
+                if v in pcodes:
+                    return pcodes[v]
+                for n in pnames:
+                    if len(n) >= 3 and n in v:
+                        v = v.replace(n, pcodes[n])
+                return v
+            if isinstance(v, list):
+                return [hide_channels(x) for x in v]
+            if isinstance(v, dict):
+                return {(pcodes.get(k, k) if isinstance(k, str) else k): hide_channels(x) for k, x in v.items()}
+            return v
         out = []
         for r in recs:
             for k in name_fields:
@@ -2502,6 +2531,8 @@ class EvidenceLog:
                         if len(n) >= 3:
                             t = t.replace(n, names[n])
                     r[k] = t
+            if pcodes:
+                r = hide_channels(r)
             out.append(json.dumps(self._places(r, places), ensure_ascii=False))
         return "\n".join(out) + ("\n" if out else "")
 
@@ -2515,7 +2546,7 @@ class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
                  "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr",
-                 "direction", "copy", "reaction", "mode_then", "trust_then")
+                 "direction", "copy", "reaction", "mode_then", "trust_then", "chan_then")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -2536,6 +2567,7 @@ class Event:
         self.known_then: Optional[bool] = None   # was the sender known when the message arrived?
         self.mode_then: Optional[str] = None     # SpamGuard's mode then: protect, monitor or pause
         self.trust_then: Optional[str] = None    # how the sender was trusted then: everywhere, channel or none
+        self.chan_then: Optional[str] = None     # the channel's protection then: full, botsafe or watch
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
@@ -2969,8 +3001,9 @@ class SpamGuard:
         if e.matched:
             return None
         ch = e.channel or "Public"
-        if ch in self.watch_channels:
-            return f"It got through because {ch} is set to Count only. Choose Block spam for that channel to stop spam there."
+        cm = e.chan_then or ("watch" if ch in self.watch_channels else "botsafe" if ch in self.botsafe_channels else "full")
+        if cm == "watch":
+            return f"It got through because {ch} was set to Count only. Choose Block spam for that channel to stop spam there."
         trust = e.trust_then or ("everywhere" if e.sender in self.allow_senders else
                                   "channel" if ch in (self.trust_on.get(e.sender) or {}) else "none")
         if trust != "none":
@@ -2986,8 +3019,8 @@ class SpamGuard:
         if not earlier and not same:
             return ("It probably got through because it was the first sighting: a new name, and nothing like it had "
                     "been heard yet.")
-        if same and ch in self.botsafe_channels:
-            return (f"It probably got through because {ch} is bot-safe, so repeated messages aren't stopped there. "
+        if same and cm == "botsafe":
+            return (f"It probably got through because {ch} was bot-safe, so repeated messages aren't stopped there. "
                     "Choose Block spam for that channel if it has no bots.")
         if same:
             return "It probably got through because it hadn't been repeated enough yet to look like spam."
@@ -3075,7 +3108,17 @@ class SpamGuard:
         for p in state_order(path):
             try:
                 st = read_state_file(p)
+                sch = st.get("state_schema", 0)   # 0: saved before 6.54, which had no number; read as usual
+                if not isinstance(sch, int) or isinstance(sch, bool) or sch < 0:
+                    raise ValueError(f"unknown saved-data layout {sch!r}")
+                if sch > STATE_SCHEMA:
+                    # Saved by a newer SpamGuard (a rollback). Read what this version knows, but keep the file as
+                    # it was, once, so going forward again loses nothing.
+                    keep = f"{p}.layout{sch}.keep"
+                    if not os.path.exists(keep):
+                        shutil.copy2(p, keep)
                 self._apply_state(st)
+                self._state_newer = sch if sch > STATE_SCHEMA else None
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -3132,6 +3175,17 @@ class SpamGuard:
         self.extra_channels = dict(st.get("extra_channels", {}))
         self.watch_channels = {str(c) for c in st.get("watch_channels") or [] if isinstance(c, str)}
         self.botsafe_channels = {str(c) for c in st.get("botsafe_channels") or [] if isinstance(c, str)}
+        pr = st.get("probe_results")
+        self.probe_results = {str(k): v for k, v in pr.items() if isinstance(v, dict)} if isinstance(pr, dict) else {}
+        bw = st.get("botsafe_why")
+        self.botsafe_why = {str(k): str(v) for k, v in bw.items() if k in self.botsafe_channels} if isinstance(bw, dict) else {}
+        br = st.get("botsafe_review")
+        if isinstance(br, list):
+            self.botsafe_review = {str(c) for c in br if c in self.botsafe_channels}
+        else:
+            # Saved before 6.55: an earlier version could switch on bot-safe from traffic alone. Those it
+            # can't tell from your own choices, so they are listed for you to look at; nothing is changed by itself.
+            self.botsafe_review = {c for c in self.botsafe_channels if not BOT_CHANNEL_RE.search(c.lstrip("#"))}
         self.settings_history = collections.deque(
             [h for h in st.get("settings_history") or [] if isinstance(h, dict) and isinstance(h.get("ts"), (int, float))
              and isinstance(h.get("label"), str)][:SETTINGS_HISTORY_MAX], maxlen=SETTINGS_HISTORY_MAX)
@@ -3428,6 +3482,9 @@ class SpamGuard:
                     "extra_channels": self.extra_channels,
                     "watch_channels": sorted(getattr(self, "watch_channels", ())),
                     "botsafe_channels": sorted(getattr(self, "botsafe_channels", ())),
+                    "botsafe_why": self.__dict__.get("botsafe_why") or {},
+                    "probe_results": self.__dict__.get("probe_results") or {},
+                    "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
                     "settings_history": list(getattr(self, "settings_history", ())),
                     "hist_last": self.__dict__.get("_hist_last"),
                     "settings": self.settings,
@@ -4743,7 +4800,7 @@ class SpamGuard:
                 "sources": top, "flood_sources": flood_sources, "most_held": self.most_held(now),
                 "entries": entries, "unplaced": ent["unplaced"],
                 "senders": ent.get("senders") or [], "senders_unplaced": ent.get("senders_unplaced") or 0,
-                "copies": ent.get("copies") or [],
+                "copies": ent.get("copies") or [], "advertised": ent.get("advertised") or [],
                 "learned": ent.get("learned", 0), "advert_routes": ent.get("advert_routes", 0),
                 "map_working": bool(ent.get("working")),
                 "rulecheck_fix": self.openhop_rulecheck_fix(),
@@ -5220,6 +5277,200 @@ class SpamGuard:
             c = (sx / sw, sy / sw)
         return c
 
+    ROUTE_CHECK_HOURS = (1, 6)     # local time, night: the mesh is quiet
+    ROUTE_CHECK_BUSY = 10.0        # never while the radio is busy for this percent of the time or more
+    ROUTE_CHECK_AGAIN = 7 * 86400  # each repeater and neighbour pair is checked at most once a week
+
+    def route_check_plan(self) -> list:
+        """Traces worth sending: for spam areas whose first code is shared or looks made up, each repeater using
+        that code (heard here) against each repeater the spam was handed to. The trace follows the spam's own route
+        out from here, names the one repeater to test by 4 bytes of its key (so repeaters sharing a code can't
+        answer for it), and comes back the same way. Only routes whose every repeater is known can be checked."""
+        ent = (self.__dict__.get("_geo") or {}).get("ent") or {}
+        learned = self._learned()
+        done = self.__dict__.get("probe_results") or {}
+        now = time.time()
+        plan = []
+        for e in ent.get("entries") or []:
+            cc = e.get("code_check") or {}
+            if e.get("kind") != "area" or not cc or cc.get("verdict") == "next":
+                continue
+            code = str(e.get("code") or "").upper()
+            keys = sorted({k.upper() for k, t in list(self.node_ids.items()) if t > now - self.NODE_ID_WINDOW and k.upper().startswith(code)}
+                          | {k.partition("|")[0].upper() for k in self.adv_routes if k.upper().startswith(code)})
+            for rt in e.get("routes") or []:
+                path = [h.upper() for h in str(rt.get("path") or "").split(">")]
+                if len(path) < 2:
+                    continue
+                back = []
+                for i in range(1, len(path)):
+                    r = learned.get((path[i], path[i + 1] if i + 1 < len(path) else "ME"))
+                    if not r:
+                        back = None
+                        break
+                    back.append(str(r["key"]).upper())
+                if not back:
+                    continue
+                out = list(reversed(back))          # from this repeater's neighbour out to the second repeater
+                for k in keys:
+                    if len(k) < 8:
+                        continue
+                    pair = f"{k[:8]}>{path[1]}"
+                    if pair in done and now - done[pair].get("ts", 0) < self.ROUTE_CHECK_AGAIN:
+                        continue
+                    plan.append({"pair": pair, "key": k, "next": path[1], "code": code,
+                                 "path": [h[:8] for h in out + [k] + back]})
+        seen, uniq = set(), []
+        for p in plan:
+            if p["pair"] not in seen:
+                seen.add(p["pair"])
+                uniq.append(p)
+        return uniq[:20]
+
+    def route_check_step(self, now: Optional[float] = None) -> Optional[dict]:
+        """Send at most one route trace, if switched on, at night, with the radio quiet and under the hourly limit.
+        Needs openHop's route trace (POST /api/trace); until openHop offers it, nothing is sent."""
+        c = self.cfg
+        if not c.get("route_checks"):
+            return None
+        now = now or time.time()
+        st = self.__dict__.setdefault("route_check_state", {"api": None, "api_ts": 0.0, "sent": []})
+        if st.get("api") is False and now - st.get("api_ts", 0) < 86400:
+            return None
+        hour = time.localtime(now).tm_hour
+        if not (self.ROUTE_CHECK_HOURS[0] <= hour < self.ROUTE_CHECK_HOURS[1]):
+            return None
+        busy = self.fg.get("busy_now")
+        if busy is None or float(busy) >= self.ROUTE_CHECK_BUSY or self.fg.get("limit"):
+            return None
+        st["sent"] = [t for t in st.get("sent") or [] if now - t < 3600]
+        if len(st["sent"]) >= int(c.get("route_checks_per_hour") or 2):
+            return None
+        plan = self.route_check_plan()
+        if not plan:
+            return None
+        p = plan[0]
+        st["sent"].append(now)
+        res = {"key": p["key"], "next": p["next"], "code": p["code"], "ts": now, "ok": False}
+        try:
+            got = self._api("POST", "/api/trace", {"path": p["path"], "hash_bytes": 4, "timeout": 30}, timeout=40)
+            data = (got.get("data") if isinstance(got, dict) else None) or {}
+            st["api"], st["api_ts"] = True, now
+            res["ok"] = bool(data.get("complete", True))
+            res["snr"] = [s2 for s2 in (data.get("snr") or data.get("snrs") or []) if isinstance(s2, (int, float))][:16]
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 405, 501):
+                st["api"], st["api_ts"] = False, now   # openHop doesn't offer route traces yet: ask again tomorrow
+                st["sent"].pop()
+                return None
+            res["error"] = f"openHop answered {e.code}"
+        except Exception as e:
+            res["error"] = str(e)[:80]   # no answer: that repeater didn't pass it on, or the route has changed
+        self.__dict__.setdefault("probe_results", {})[p["pair"]] = res
+        while len(self.probe_results) > 200:
+            self.probe_results.pop(min(self.probe_results, key=lambda k2: self.probe_results[k2].get("ts", 0)))
+        self.ev({"type": "route_check", "key": p["key"][:8], "next": p["next"], "ok": res["ok"], "snr": res.get("snr")})
+        self.dirty = True
+        return res
+
+    def route_check_status(self) -> dict:
+        st = self.__dict__.get("route_check_state") or {}
+        pr = self.__dict__.get("probe_results") or {}
+        return {"on": bool(self.cfg.get("route_checks")), "api": st.get("api"),
+                "recent": sorted(({"key": v["key"][:8], "next": v["next"], "code": v.get("code"), "ok": v.get("ok"),
+                                   "ts": v.get("ts"), "error": v.get("error")} for v in pr.values()),
+                                 key=lambda r: -(r["ts"] or 0))[:12],
+                "waiting": len(self.route_check_plan()) if self.cfg.get("route_checks") else 0}
+
+    def overlap_area(self, pts: list, share: float = 0.8) -> Optional[tuple]:
+        """Where a sender can be heard by the repeaters it reached first: the part of the map inside the hearing
+        circles of repeaters carrying at least `share` of its messages (a stray route or two is allowed). pts are
+        (lat, lon, hearing km, messages). Returns (lat, lon, radius km) of that overlap, or None when there's no
+        overlap or fewer than two repeaters."""
+        pts = [p for p in pts if p[3] > 0]
+        if len(pts) < 2:
+            return None
+        tot = sum(p[3] for p in pts)
+        lat0 = sum(p[0] * p[3] for p in pts) / tot
+        lon0 = sum(p[1] * p[3] for p in pts) / tot
+        span = max(p[2] for p in pts) + max(self._km((lat0, lon0), (p[0], p[1])) for p in pts)
+        step = max(1.0, span / 30)
+        kx = 111.2 * math.cos(math.radians(lat0))
+        inside = []
+        n = int(span / step)
+        for i in range(-n, n + 1):
+            for j in range(-n, n + 1):
+                q = (lat0 + i * step / 111.2, lon0 + j * step / kx)
+                if sum(p[3] for p in pts if self._km(q, (p[0], p[1])) <= p[2]) >= share * tot:
+                    inside.append(q)
+        if not inside:
+            return None
+        c = (sum(q[0] for q in inside) / len(inside), sum(q[1] for q in inside) / len(inside))
+        return c[0], c[1], max(self._km(c, q) for q in inside) + step
+
+    def adv_neighbours(self) -> dict:
+        """From repeater adverts: each repeater's key -> the codes of the repeaters that first passed its adverts on
+        (its neighbours), and every pair of codes seen next to each other on an advert route."""
+        got = self.__dict__.get("_advnb")
+        if got and got[0] == self._adv_stamp:
+            return got[1]
+        nb: dict = {}
+        pairs: set = set()
+        for rk in list(self.adv_routes):
+            key, _, ps = rk.partition("|")
+            path = [h.upper() for h in ps.split(">")] if ps else []
+            if path:
+                nb.setdefault(key.upper(), set()).add(path[0])
+                full = [key[:len(path[0])].upper()] + path
+                pairs.update(zip(full, full[1:]))
+        out = {"nb": nb, "pairs": pairs}
+        self._advnb = (self._adv_stamp, out)
+        return out
+
+    def code_check(self, code: str, seconds: list) -> dict:
+        """Which of the repeaters using a first code could really have handed spam to the second repeaters. A code
+        none of them has ever been next to (in adverts or route checks) was most likely made up, or belongs to a
+        repeater that has never advertised here."""
+        code = (code or "").upper()
+        if not code or code == "DIRECT":
+            return {}
+        an = self.adv_neighbours()
+        now = time.time()
+        keys = {k for k, t in list(self.node_ids.items()) if t > now - self.NODE_ID_WINDOW and k.upper().startswith(code)}
+        keys |= {k.partition("|")[0] for k in self.adv_routes if k.upper().startswith(code)}
+        names = {}
+        for rk, v in list(self.adv_routes.items()):
+            names.setdefault(rk.partition("|")[0].upper(), v[4] if len(v) > 4 else "")
+        sec = {c.upper() for c in seconds if c}
+        probed = self.__dict__.get("probe_results") or {}
+        nextto = []
+        for k in sorted(keys):
+            ku = k.upper()
+            seen = an["nb"].get(ku, set()) & sec
+            conf = [r for r in probed.values() if r.get("key", "").upper() == ku and r.get("ok") and r.get("next", "").upper() in sec]
+            if seen or conf:
+                nextto.append({"name": names.get(ku) or ku[:8], "confirmed": bool(conf)})
+        relayed = any((code, c) in an["pairs"] for c in sec)
+        verdict = "next" if nextto else "unlisted" if relayed else "made_up" if keys else "unknown"
+        return {"code": code, "same": len(keys), "names": [names.get(k.upper()) or k[:8] for k in sorted(keys)][:6],
+                "next_to": nextto[:4], "verdict": verdict}
+
+    def route_points(self, path: list) -> list:
+        """A route drawn on the map, from where it entered to this repeater: [lat, lon, known] per hop that could be
+        placed (known: learnt from adverts in this context; otherwise placed by distance only)."""
+        me = self.me or {}
+        if me.get("lat") is None or not path or len(path) > 24:
+            return []
+        learned = self._learned()
+        fixed = {i: learned[(path[i], path[i + 1] if i + 1 < len(path) else "ME")] for i in range(len(path))
+                 if (path[i], path[i + 1] if i + 1 < len(path) else "ME") in learned}
+        try:
+            _, placed = self._fit_chain(path, fixed=fixed)
+        except Exception:
+            return []
+        pts = [[round(r["lat"], 4), round(r["lon"], 4), i in fixed] for i, r in sorted(placed, key=lambda t: t[0])]
+        return pts + [[round(float(me["lat"]), 4), round(float(me["lon"]), 4), True]]
+
     ID_AREA_KM = 45      # a learnt first repeater further than this from where its code's spam is handed on isn't believed
     AREA_KM = 40         # neighbours of one source further apart than this are treated as separate sources
     SURE_SPREAD_KM = 35  # an area is sure when 2+ known neighbours sit within this of its centre
@@ -5307,7 +5558,10 @@ class SpamGuard:
                     continue
                 if r["kind"] == "next":
                     nb = nexts.setdefault(path[0], {}).setdefault(r["key"], [r["lat"], r["lon"], 0, 0, 0, r["name"], collections.Counter(),
-                                                                           set(), set()])
+                                                                           set(), set(), collections.Counter(), collections.Counter()])
+                    if len(path) > 1:
+                        nb[9][path[1]] += n
+                    nb[10][ps] += n
                     nb[2] += n
                     nb[3] += n if recent else 0
                     nb[4] = max(nb[4], t)
@@ -5350,7 +5604,18 @@ class SpamGuard:
                 claims = collections.Counter()
                 for p in g:
                     claims.update(p[1][6])
+                seconds = collections.Counter()
+                routes = collections.Counter()
+                for p in g:
+                    seconds.update(p[1][9])
+                    routes.update(p[1][10])
+                # narrower than the circle around the middle: where every repeater it reached could hear it
+                ov = self.overlap_area([(p[1][0], p[1][1], self.reach_km(p[0]), p[1][2]) for p in g])
+                cc = self.code_check(code, list(seconds))
                 entries[k] = {"key": k, "name": "", "lat": c[0], "lon": c[1], "code": code, "d1": d1, "d7": d7,
+                              "code_check": cc, "seconds": [s2 for s2, _ in seconds.most_common(6)],
+                              "routes": [{"path": rp, "n": rn, "pts": self.route_points(rp.split(">"))}
+                                         for rp, rn in routes.most_common(3)] if d7 >= 3 else [],
                               "_s7": set().union(*[p[1][7] for p in g]), "_s1": set().union(*[p[1][8] for p in g]),
                               "exact": d7 if sure else 0, "before": collections.Counter(), "codes": collections.Counter({code: d7}),
                               "last": max(p[1][4] for p in g), "kind": "area",
@@ -5358,6 +5623,12 @@ class SpamGuard:
                               "claims": [n for n, _ in claims.most_common(2)], "spread_km": round(spread),
                               # the sender is within hearing of the repeaters it handed spam to
                               "radius_km": round(max(spread, min(self.reach_km(p[0]) for p in g)))}
+                if ov:   # tested: halves how far the middle is from the sender; the circle stays no bigger
+                    entries[k].update({"lat": ov[0], "lon": ov[1], "radius_km": max(3, min(round(ov[2]), entries[k]["radius_km"])),
+                                       "overlap": len(g),
+                                       "wide_km": entries[k]["radius_km"], "wide_at": [c[0], c[1]]})
+                if cc.get("verdict") in ("made_up", "unlisted"):
+                    entries[k]["claims"] = []   # don't name a repeater the code can't have been
                 by_code.setdefault(code, collections.Counter())[k] += d7
         out = []
         for e in sorted(entries.values(), key=lambda e: -e["d7"])[:25]:
@@ -5384,7 +5655,18 @@ class SpamGuard:
                 likely[code] = {"name": e["name"] or (e["near"][0] if e["near"] else ""), "key": k,
                                 "exact": e["kind"] == "id" and e["code"] == code}
         senders, senders_unplaced = self.spam_senders(spammers or {}, links or {}, cut24, cut7, distrust)
-        return {"entries": out, "unplaced": unplaced, "likely": likely, "senders": senders,
+        # spam names that have also sent an advert: where that advert says it is, and its route. Names can be copied,
+        # so this is a clue, never proof.
+        advertised = []
+        spam_names = set(spammers or {})
+        if spam_names:
+            for rk, v in list(self.adv_routes.items()):
+                if len(v) > 4 and v[4] in spam_names and v[1] >= cut7 and v[2] is not None and v[3] is not None \
+                        and len(advertised) < 12:
+                    route = rk.partition("|")[2]
+                    advertised.append({"name": v[4], "lat": v[2], "lon": v[3], "last": v[1], "route": route,
+                                       "pts": self.route_points(route.split(">")) if route else []})
+        return {"entries": out, "advertised": advertised, "unplaced": unplaced, "likely": likely, "senders": senders,
                 "senders_unplaced": senders_unplaced,
                 "learned": len(self._learned()), "advert_routes": len(self.adv_routes)}
 
@@ -5392,6 +5674,7 @@ class SpamGuard:
 
     # ---- the quarantine: every channel message in one list, with what SpamGuard did and why ----
     Q_REASON = {"repeat": "The same message again and again from this name",
+                "botmark": "You marked this name as a bot",
                 "slowrepeat": "The same message many times today from this name",
                 "sense": "Several messages from this name that read like spam you marked",
                 "replay": "An old message sent again by another device",
@@ -5630,8 +5913,10 @@ class SpamGuard:
     def give_verdict(self, body: dict) -> dict:
         """Your answer on one message: spam, not spam, or take the answer back. You give the answer and SpamGuard
         chooses what to do about it, and says what it did."""
-        if not isinstance(body, dict) or body.get("verdict") not in ("spam", "not_spam", "spoofed", "none"):
+        if not isinstance(body, dict) or body.get("verdict") not in ("spam", "not_spam", "spoofed", "bot", "none"):
             raise ValueError("Say whether the message is spam or not")
+        if body.get("verdict") == "not_spam" and body.get("trust") not in (None, "none", "channel", "everywhere"):
+            raise ValueError("Trust the name nowhere, on this channel, or everywhere")
         v, status = body["verdict"], body.get("status")
         sender, text = str(body.get("sender") or ""), str(body.get("text") or "")
         item = {k: body.get(k) for k in ("sender", "text", "path", "packet", "channel")}
@@ -5646,13 +5931,15 @@ class SpamGuard:
         key = str(body.get("packet") or "") or f"{sender}|{text}"
         self._review_count = (0, 0)
         did = self.verdict_done.pop(key, None) or {}
-        if did.get("block") and (self.blocks.get(did["block"]) or {}).get("source") == "manual":
+        if did.get("block") and (self.blocks.get(did["block"]) or {}).get("source") in ("manual", "botmark"):
             self.action("unblock", {"key": did["block"]})
         if did.get("let_in"):
             self.action("unallow_sender", {"sender": did["let_in"]})
         if v == "none":
             self.action("label", dict(item, label="none"))
             return {"ok": True, "message": "Answer taken back" + (", and what it did was undone." if did else ".")}
+        if v == "bot":
+            return self._bot_verdict(item, key)
         if v == "spoofed":
             b2 = dict(item)
             msg = self.action("spoofed", b2).get("message", "")
@@ -5700,8 +5987,15 @@ class SpamGuard:
                 pass
         elif v == "not_spam" and status in ("held", "stopped") and sender:
             self._day_bump(time.time(), "rl")   # you let a held message's sender in
-            fresh = sender not in self.allow_senders
-            msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"))).get("message", "")
+            fresh = sender not in self.allow_senders and not self.trusted_here(sender, body.get("channel") or "Public")
+            trust = body.get("trust") or "channel"
+            msg += ". " + self.action("not_spam", dict(item, matched=body.get("matched"), trust=trust)).get("message", "")
+            msg += " That message was already stopped, so it can't be sent again."
+            if fresh and trust != "none":
+                did["let_in"] = sender
+        elif v == "not_spam" and sender and body.get("trust") in ("channel", "everywhere"):
+            fresh = sender not in self.allow_senders and not self.trusted_here(sender, body.get("channel") or "Public")
+            msg += ". " + self._grant_trust(sender, body.get("channel"), body["trust"])
             if fresh:
                 did["let_in"] = sender
         if did:
@@ -5709,6 +6003,42 @@ class SpamGuard:
             while len(self.verdict_done) > 200:
                 self.verdict_done.pop(next(iter(self.verdict_done)))
         return {"ok": True, "message": msg.rstrip(".") + ".", "undo": True}
+
+    def _grant_trust(self, sender: str, channel: Optional[str], how: str) -> str:
+        """Let a name through: on one channel, or everywhere. A separate choice from saying a message was fine."""
+        ch = channel if channel in self.cfg["channels"] else None
+        if how == "everywhere" or not ch:
+            self.allow_senders.add(sender)
+            return f"'{sender}' is now trusted everywhere."
+        self.trust_on.setdefault(sender, {})[ch] = time.time()
+        return f"'{sender}' is now trusted on {ch}."
+
+    BOT_MARK_DAYS = 7
+
+    def _bot_verdict(self, item: dict, key: str) -> dict:
+        """Your answer: this name is a bot. Not spam, so its words aren't blocked from anyone else and it doesn't
+        teach the spam checks. On a channel that blocks spam, that one name is held there for a week; bot-safe and
+        Count only channels leave bots alone, so nothing else changes there."""
+        sender = str(item.get("sender") or "")
+        if not sender or sender in ("?", "Unknown"):
+            raise ValueError("Which name is the bot?")
+        ch = item.get("channel") if item.get("channel") in self.cfg["channels"] else "Public"
+        self.action("label", dict(item, label="bot"))
+        if ch in self.watch_channels or ch in self.botsafe_channels:
+            how = "Count only" if ch in self.watch_channels else "bot-safe"
+            return {"ok": True, "undo": True, "message": f"Marked '{sender}' as a bot. {ch} is {how}, so bots are left alone there."}
+        if (self.trust_on.get(sender) or {}).pop(ch, None) is not None and not self.trust_on.get(sender):
+            self.trust_on.pop(sender, None)
+        bk = "botmark:" + hashlib.sha1(f"{sender}|{ch}".encode(), usedforsecurity=False).hexdigest()[:10]
+        self.suppressed.pop(bk, None)
+        self._add_block(bk, "burst", sender, "You marked this name as a bot", "botmark", channel=ch,
+                        ttl=self.BOT_MARK_DAYS * 86400, from_ts=time.time())
+        self.verdict_done[key] = {"block": bk}
+        self._important = self.sync_pending = self._urgent_sync = True
+        self.note(f"'{sender[:24]}' marked as a bot: held on {ch} for a week")
+        return {"ok": True, "undo": True,
+                "message": f"Marked '{sender}' as a bot: it is held on {ch} for a week. Its words aren't blocked for anyone "
+                           f"else. To let bots through on {ch}, choose Bot-safe for it; to let this one through, trust it."}
 
     @staticmethod
     def _text_print(text: str) -> str:
@@ -5721,13 +6051,13 @@ class SpamGuard:
         if v == "not_spam":
             b = self.blocks.get(str(body.get("matched") or "")) or {}
             if text and self._text_print(text) in self.spam_texts:
-                return "You marked this same message as spam before. Mark it as not spam (and trust the name) anyway?"
+                return "You marked this same message as spam before. Mark it as not spam anyway?"
             if mc[0]:
                 return (f"You've marked {mc[0]} of {sender}'s messages as spam before. "
-                        "Mark this one as not spam and trust the name anyway?")
+                        "Mark this one as not spam anyway?")
             if b.get("source") in ("campaign", "linkhost") and b.get("kind") in ("text", "words", "links"):
                 return ("This message is part of a campaign SpamGuard saw from several names. "
-                        "Mark it as not spam and trust the name anyway?")
+                        "Mark it as not spam anyway?")
             if b.get("kind") == "imposter" and b.get("source") == "spoof":
                 return (f"SpamGuard thinks this was someone else using the name {sender}: it came from a direction "
                         "and a device they don't normally use. Mark it as not spam and trust the name anyway?")
@@ -6563,7 +6893,8 @@ class SpamGuard:
             return "known", heard + ". Let through blocks meant for strangers"
         return "learning", heard + ". Not yet let through blocks"
 
-    PEOPLE_SHOW = ("active", "worth", "copied", "check", "watch", "held", "marked", "mixed", "renames", "trusted", "known",
+    NEW_ARRIVAL_DAYS = 7
+    PEOPLE_SHOW = ("active", "new", "worth", "copied", "check", "watch", "held", "marked", "mixed", "renames", "trusted", "known",
                    "learning", "quiet", "all")
 
     def people(self, body: Optional[dict] = None) -> dict:
@@ -6605,6 +6936,8 @@ class SpamGuard:
                 groups.append("active")
             if n in copied:
                 groups.append("copied")
+            if v[0] and v[0] >= now - self.NEW_ARRIVAL_DAYS * 86400:
+                groups.append("new")   # first heard this week: new arrivals, kept apart from everyone else
             if n in checking:
                 groups.append("check")
             if n in renamed:
@@ -6629,6 +6962,8 @@ class SpamGuard:
             rows.sort(key=lambda r: -r[1][2])
         elif sort == "warmth":
             rows.sort(key=lambda r: (-r[4], 0 if r[0] in copied else 1, -(r[1][1] or 0)))   # most likely spam first
+        elif show == "new":
+            rows.sort(key=lambda r: -(r[1][0] or 0))   # newest arrivals first
         else:
             # copied names first, then on watch, then held, then most recently heard
             rows.sort(key=lambda r: (0 if r[0] in copied else {"watch": 1, "held": 2}.get(r[2], 3), -(r[1][1] or 0)))
@@ -6985,6 +7320,9 @@ class SpamGuard:
                 e.known_then = self.is_known(e.sender)
             if e.mode_then is None:
                 e.mode_then = "pause" if self.cfg.get("paused") else self.cfg["mode"]
+            if e.chan_then is None:
+                ch0 = e.channel or "Public"
+                e.chan_then = "watch" if ch0 in self.watch_channels else "botsafe" if ch0 in self.botsafe_channels else "full"
             if e.trust_then is None:
                 e.trust_then = ("everywhere" if e.sender in self.allow_senders else
                                 "channel" if (e.channel or "Public") in (self.trust_on.get(e.sender) or {}) else "none")
@@ -7658,8 +7996,9 @@ class SpamGuard:
         self._hist_bump(e.ts, "mt")
         today = time.strftime("%Y-%m-%d", time.localtime(e.ts))
         stop = e.channel in self.machine_channels()
-        if stop and e.sender and e.sender not in ("?", "Unknown") and not self.is_own(e) \
+        if stop and e.sender and e.sender not in ("?", "Unknown") and not self.is_own(e) and not self.is_known(e.sender) \
                 and e.sender not in self.allow_senders and not self.trusted_here(e.sender, e.channel):
+            # a name SpamGuard knows isn't held for a day over one odd-looking message (2 genuine marks, 26 Nov)
             key = "machine:" + hashlib.sha1(f"{e.sender}|{e.channel}".encode(), usedforsecurity=False).hexdigest()[:10]
             if self.suppressed.get(key, 0) <= time.time() and self._add_block(
                     key, "burst", e.sender, "Sends messages that look like a program, not chat", "machine",
@@ -10331,7 +10670,7 @@ class SpamGuard:
         return rules
 
     RULE_ORIGIN = {"manual": "yours", "dedupe": "duplicate", "repeat": "repeating", "slowrepeat": "repeating all day", "sense": "reads like marked spam", "replay": "replayed", "campaign": "campaign",
-                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto", "source-auto": "congestion", "pubbot": "bot on Public", "machine": "machine messages",
+                   "rotation": "changing identity", "hop": "auto", "type-auto": "auto", "source-auto": "congestion", "pubbot": "bot on Public", "botmark": "you marked a bot", "machine": "machine messages",
                    "auto-lockdown": "auto lockdown", "lockdown": "yours",
                    "budget": "too many", "linkhost": "link campaign", "imposter": "copied name?", "junk": "symbol junk", "spoof": "copied name"}
 
@@ -10841,7 +11180,7 @@ class SpamGuard:
         threading.Thread(target=work, daemon=True).start()
 
     def poll_once(self):
-        for task in (self.refresh_openhop_info, self.refresh_oh_mode, self.chan_rotate, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
+        for task in (self.refresh_openhop_info, self.refresh_oh_mode, self.chan_rotate, self.route_check_step, self.refresh_neighbours, self.refresh_own_identities, self.refresh_public_map,
                      self.refresh_level_preview, self.backfill_adverts, self.fetch_noise):
             fails = self.__dict__.setdefault("task_fails", {})
             try:
@@ -11585,6 +11924,20 @@ class SpamGuard:
                 self.chan_ok.pop(n, None)
                 self._chan_by_hash = None
 
+    def private_channels(self) -> list:
+        """Channels read with their own key rather than a hashtag's: their names are private, like people's names,
+        and their keys never leave the Pi."""
+        out = []
+        for n, k in self.cfg["channels"].items():
+            if n == "Public":
+                continue
+            try:
+                if str(k).lower() != hashtag_secret(n).lower():
+                    out.append(n)
+            except Exception:
+                out.append(n)
+        return sorted(out)
+
     def bot_name(self, name: str) -> Optional[str]:
         """Why a channel's name says it is a bot, test or service channel, or None. Only this sets bot-safe by itself
         or asks before full blocking: traffic alone is a hint, never proof."""
@@ -11619,6 +11972,7 @@ class SpamGuard:
         for n in bots:
             self.botsafe_channels.add(n)
             self.watch_channels.discard(n)
+            self.__dict__.setdefault("botsafe_why", {})[n] = "name"
         if not bots:
             return ""
         why = self.bot_name(bots[0]) or ""
@@ -11830,6 +12184,9 @@ class SpamGuard:
         if getattr(self, "_state_unreadable", False):
             warnings.append("SpamGuard's saved data could not be read, so it started afresh. The unreadable files "
                             "were kept next to it, ending in .unreadable.")
+        if getattr(self, "_state_newer", None):
+            warnings.append("SpamGuard's saved data was written by a newer version. This version read what it "
+                            "understands; the file as it was is kept next to it, ending in .keep.")
         if getattr(self, "_restored_from_backup", False) and now - self.started < 7 * 86400:
             warnings.append("SpamGuard's saved data was damaged when it started (often a power cut), so it carried on "
                             "from the last good copy. Changes from the last few minutes before that may be missing: "
@@ -11840,7 +12197,8 @@ class SpamGuard:
         jobs = {"refresh_openhop_info": "reading openHop's settings", "refresh_neighbours": "reading the neighbour list",
                 "refresh_own_identities": "reading this repeater's own identities", "refresh_public_map": "reading the public map",
                 "fetch_noise": "reading the radio's noise level", "backfill_adverts": "reading adverts",
-                "refresh_level_preview": "working out the level preview"}
+                "refresh_level_preview": "working out the level preview", "route_check_step": "route checks",
+                "refresh_oh_mode": "reading openHop's mode", "chan_rotate": "renewing the daily channel codes"}
         for name, f in sorted((getattr(self, "task_fails", None) or {}).items()):
             if f["n"] >= 5 and now - f["since"] > 300:
                 warnings.append(f"Part of SpamGuard's background work ({jobs.get(name, name)}) has been failing for "
@@ -12018,7 +12376,8 @@ class SpamGuard:
                 "mode": c["mode"], "paused": bool(c.get("paused")), "level": c.get("level"),
                 "openhop_mode": self.oh_mode_now(),
                 "settings": {m["key"]: val(m["key"], c.get(m["key"])) for m in SETTINGS_META},
-                "counts": {"channels_read": len(c["channels"]), "channels_count_only": len(self.watch_channels),
+                "counts": {"channels_read": len(c["channels"]), "channels_private": len(self.private_channels()),
+                           "channels_count_only": len(self.watch_channels),
                            "channels_bot_safe": len(self.botsafe_channels), "blocks": len(self.blocks),
                            "known_people": len(self.known_list()), "messages_in_memory": len(self.events),
                            "channels_heard": len(self.chan_heard)},
@@ -12040,6 +12399,7 @@ class SpamGuard:
                  ("neighbours", "Neighbour list", getattr(self, "neighbours_ok", None), 1800),
                  ("radio", "Radio noise reading", nf_last if c.get("interference_watch", True) else None, 900),
                  ("rules", "Rules confirmed in openHop", getattr(self, "rules_confirmed", None), RULES_CONFIRM_DUE),
+                 ("ohmode", "openHop's mode read", getattr(self, "oh_mode_ok", None), OH_MODE_DUE),
                  ("sync", "Rules last written", self.last_sync, None),
                  ("save", "Data saved to the SD card", self._last_save or None, self.SAVE_EVERY * 2 + 120)]
         out = []
@@ -12833,6 +13193,8 @@ class SpamGuard:
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "site": str(self.cfg.get("site_label") or (self.me or {}).get("name") or "")[:40],
                 "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels), "botsafe_channels": sorted(self.botsafe_channels),
+                "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
+                "route_checks": self.route_check_status(),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),
                 "profiles": {"list": [dict(v, name=k) for k, v in sorted(self.profiles.items())],
@@ -13278,8 +13640,8 @@ class SpamGuard:
                 msg = "Working out what each level would have held. It takes a few minutes"
             elif op == "label":
                 lab = body.get("label")
-                if lab not in ("spam", "not_spam", "none"):
-                    raise ValueError("Label a message as spam, fine, or clear the label")
+                if lab not in ("spam", "not_spam", "bot", "none"):
+                    raise ValueError("Label a message as spam, fine, a bot, or clear the label")
                 sender, text = str(body.get("sender") or ""), str(body.get("text") or "")
                 key = str(body.get("packet") or "") or f"{sender}|{text}"
                 if not key.strip("|"):
@@ -13307,7 +13669,8 @@ class SpamGuard:
                         self.label_at.pop(old, None)
                 self._sense_label(key, text, lab)
                 self._important = True
-                msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "none": "Label cleared"}[lab] + {
+                msg = {"spam": "Labelled as spam", "not_spam": "Labelled as fine", "bot": "Marked as a bot",
+                       "none": "Label cleared"}[lab] + {
                     "copy": f". It came through a repeater '{sender}' doesn't use, so that name is held from there for "
                             "7 days; the real person still gets through.",
                     "known": f". '{sender}' no longer counts as a known person, so the usual checks apply to them again.",
@@ -13363,16 +13726,21 @@ class SpamGuard:
                          "path": body.get("path"), "packet": body.get("packet"), "caught_by": body.get("matched"), **self._label_ref(body)})
                 sender = str(body.get("sender", ""))
                 ch = body.get("channel") if body.get("channel") in self.cfg["channels"] else None
-                if sender and sender not in self.allow_senders:
-                    # Trusted where the message was, not everywhere: one tap shouldn't give a name that anyone can
-                    # type a pass on every channel for good. Trust it everywhere from People if you mean that.
-                    if ch:
+                trust = body.get("trust") or "channel"
+                if trust not in ("none", "channel", "everywhere"):
+                    raise ValueError("Trust the name nowhere, on this channel, or everywhere")
+                if sender and sender not in self.allow_senders and trust != "none":
+                    # Trusted where the message was, not everywhere, unless you choose everywhere: one tap shouldn't
+                    # give a name that anyone can type a pass on every channel for good.
+                    if ch and trust == "channel":
                         self.trust_on.setdefault(sender, {})[ch] = now
                     else:
                         self.allow_senders.add(sender)
                 key = body.get("matched")
                 b = self.blocks.get(key) if key else None
-                msg = f"'{sender}' is now trusted" + (f" on {ch}." if ch and sender not in self.allow_senders else ".")
+                msg = ("Marked as fine; the name isn't trusted, so its next messages are checked as usual."
+                       if trust == "none" else
+                       f"'{sender}' is now trusted" + (f" on {ch}." if ch and sender not in self.allow_senders else "."))
                 if b and b["kind"] == "text":
                     self.blocks.pop(key)
                     self.suppressed[key] = now + 86400
@@ -13386,12 +13754,14 @@ class SpamGuard:
                         d["bad"] = [h for h in d["bad"] if h != b["value"]]
                         d["auto"] = [h for h in d["auto"] if h != b["value"]]
                     msg += f" The hold on that name through repeater {b['value']} was removed."
-                elif b and b["kind"] == "burst" and b.get("source") == "machine":
+                elif b and b["kind"] == "burst" and b.get("source") in ("machine", "botmark"):
                     self.blocks.pop(key)
                     self.suppressed[key] = now + 86400
                     msg += " Their machine messages now get through here."
-                elif b and b["kind"] == "hop" and self.gated(b):
+                elif b and b["kind"] == "hop" and self.gated(b) and trust != "none":
                     msg += f" Their messages now get through the block on repeater {b['value']}."
+                elif b and b["kind"] == "hop" and self.gated(b):
+                    msg += f" Their next messages through repeater {b['value']} may be held again unless you trust the name."
                 elif b and b["kind"] == "hop":
                     msg += (f" It came via blocked repeater {b['value']}; remove that block if this "
                             "repeater's traffic is genuine.")
@@ -13589,6 +13959,10 @@ class SpamGuard:
                 self._chh_cache = None
                 self.watch_channels.discard(name)
                 self.botsafe_channels.discard(name)
+                self.__dict__.setdefault("botsafe_why", {}).pop(name, None)
+                self.__dict__.setdefault("botsafe_review", set()).discard(name)   # you've chosen
+                if mode == "botsafe":
+                    self.botsafe_why[name] = "you"
                 if mode == "watch":
                     self.watch_channels.add(name)
                     msg = f"SpamGuard now only reads and counts {name}: nothing is blocked there"
@@ -13597,6 +13971,15 @@ class SpamGuard:
                     msg = f"Bot-safe protection on {name}: links, junk and copied names are blocked; bots are left alone"
                 else:
                     msg = f"Spam is blocked on {name} again"
+                self.note(msg)
+            elif op == "botsafe_keep":
+                name = str(body.get("name") or "")
+                if name not in self.botsafe_channels:
+                    raise ValueError("That channel isn't bot-safe")
+                self.__dict__.setdefault("botsafe_review", set()).discard(name)
+                self.__dict__.setdefault("botsafe_why", {})[name] = "you"
+                self.dirty = True
+                msg = f"{name} stays bot-safe"
                 self.note(msg)
             elif op == "remove_channel":
                 self.watch_channels.discard(str(body.get("name", "")))
@@ -13771,7 +14154,7 @@ def load_page() -> str:
 
 ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
-           "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
+           "unallow_text", "spoofed", "botsafe_keep", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source", "label", "preview_now"}
 
@@ -14050,7 +14433,8 @@ def make_handler(guard: SpamGuard):
                 scramble = (q.get("scramble") or ["1"])[0] != "0"
                 places = (q.get("places") or [""])[0]
                 folder = guard.cfg["evidence_dir"]
-                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, places).encode("utf-8")
+                body = (guard.evidence or EvidenceLog(folder)).export(days, scramble, places,
+                                                                      private=tuple(guard.private_channels())).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
                 self.send_header("Content-Disposition",

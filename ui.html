@@ -214,6 +214,7 @@ textarea{width:100%;min-height:60px;font-family:ui-monospace,Consolas,monospace;
 .ppl summary .what{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.ppl-body{padding:8px 0 4px;display:grid;gap:8px}
 .ppl-warn{background:var(--amber-tint);color:var(--amber-text);border-radius:6px;padding:6px 9px;font-size:.8125rem}
 .map-sq span{display:block;width:14px;height:14px;border:2px solid #fff;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.map-dia span{display:block;width:12px;height:12px;margin:2px;border:2px solid #fff;transform:rotate(45deg);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
 .map-h{margin:16px 0 6px;font-size:.95rem}
 .ppl-copy{background:var(--stop-tint);color:var(--ink);border-left:4px solid var(--stop)}
 .warm{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -842,6 +843,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div class="q-tools">
     <input type="search" id="qFind" aria-label="Search names or words" placeholder="Search names or words" autocomplete="off">
     <label class="switch"><input type="checkbox" id="qGroup" checked> Group copies of the same message</label>
+    <label class="switch"><input type="checkbox" id="qTrust"> Not spam also trusts the name on that channel</label>
     <span><label for="qDays">From</label> <select id="qDays"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option></select></span>
   </div>
   <div id="qFilters"></div>
@@ -863,6 +865,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <div id="mapBox" class="map"></div>
   <div id="mapKey" class="map-key" aria-label="Map key"></div>
   <p class="explain" id="mapNote"></p>
+  <div id="rcSec" hidden><h3>Route checks</h3><p class="explain" id="rcNote"></p><ul class="hist" id="rcList"></ul></div>
   <h3 class="map-h">Where spam entered</h3>
   <div class="scroll"><table id="entTable"></table></div>
   <div id="copyList"></div>
@@ -1009,6 +1012,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
   <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Bot-safe suits bot, weather and test channels; Count only blocks nothing. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
+  <div class="callout" id="bsReview" hidden></div>
   <ul class="rows" id="channels"></ul>
   <p style="margin:10px 0 0" id="crossRow" hidden><label class="switch"><input type="checkbox" id="crossCh"> Spam blocked on one channel is blocked on all of them</label> <span class="tag would">experimental</span><br><span class="explain">Off: SpamGuard's own holds stay on the channel where the spam was seen. On: they follow it to every channel. A different person using the same name on another channel would be held too.</span></p>
   <div id="chChoiceBox" hidden>
@@ -1420,6 +1424,12 @@ function copyCmd(el){
 function fallbackCopy(t,done){ const a=document.createElement("textarea"); a.value=t; a.setAttribute("readonly",""); a.style.position="fixed"; a.style.opacity="0";
   document.body.appendChild(a); a.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(e){} a.remove();
   if(ok) done(); else toast("Couldn't copy here: select the command and copy it by hand",true); }
+function renderRouteChecks(d){
+  const rc=d.route_checks||{}, sec=$("#rcSec"); sec.hidden=!rc.on; if(!rc.on) return;
+  $("#rcNote").textContent=rc.api===false?"openHop doesn't offer route traces yet, so nothing has been sent. SpamGuard asks again each day."
+    :`Traces are sent between 1 and 6 am while the radio is quiet. ${rc.waiting?`${rc.waiting} waiting.`:"Nothing waiting."}`;
+  $("#rcList").innerHTML=(rc.recent||[]).map(r=>`<li><span class="explain">${esc(ago(r.ts))}</span><span class="what">${r.ok?"✓":"✕"} ${esc(r.key)}</span><span>${r.ok?`is next to ${esc(r.next)}`:`didn't answer next to ${esc(r.next)}`} (code ${esc(r.code)})</span>${r.error?`<span class="explain">${esc(r.error)}</span>`:""}</li>`).join("");
+}
 function renderProtection(d){
   const p=d.protection, sec=$("#protSec"); sec.hidden=!p; if(!p) return;
   const pill={ok:"<span class='tag ok'>✓ Protected</span>",watch:"<span class='tag would'>Watching only</span>",
@@ -1446,6 +1456,7 @@ $("#diagShow").addEventListener("click",async()=>{ try{
 $("#diagSave").addEventListener("click",()=>{ if(!DIAG) return; const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([DIAG],{type:"application/json"})); a.download=`spamguard-diagnostics-${new Date().toISOString().slice(0,10)}.json`;
   document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); });
+{ const t=$("#qTrust"); if(t){ t.checked=store.get("sgQTrust")==="1"; t.addEventListener("change",()=>{ store.set("sgQTrust",t.checked?"1":"0"); if(typeof qDetail==="function") qDetail(); }); } }
 $("#histMore").addEventListener("click",()=>{ HIST_ALL=!HIST_ALL; if(typeof S!=="undefined"&&S) renderHistory(S); });
 function renderFresh(h){
   const rows=h.fresh||[];
@@ -1620,7 +1631,7 @@ function renderChHeard(d){
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
     return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${r.kind==="unnamed"?`Private channel <span class="explain">tag ${esc((r.name.match(/\(([0-9A-F]{2})\)/)||[])[1]||"?")}</span>`:esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would">${r.bots_by==="traffic"?"looks automated?":"bot channel"}</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
       <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${r.d7?Math.max(2,Math.round(100*r.d7/top)):0}%"></i></div>
-      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"&&r.last?`. Last heard ${esc(ago(r.last))}`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"?`${r.last?`. Last heard ${esc(ago(r.last))}`:""}. May be more than one channel sharing this tag`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
@@ -1628,7 +1639,10 @@ function renderChannels(d){
   $("#chFindRow").hidden=!many;
   const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
   $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
-  const watch=d.watch_channels||[], safe=d.botsafe_channels||[];
+  const watch=d.watch_channels||[], safe=d.botsafe_channels||[], rv=d.botsafe_review||[], bsr=$("#bsReview");
+  bsr.hidden=!rv.length;
+  if(rv.length) bsr.innerHTML=`<div><b>Please check: ${rv.map(esc).join(", ")} ${rv.length===1?"is":"are"} bot-safe.</b> An earlier version could switch on bot-safe just because a few names sent most of a channel's messages. Now only the name does that, so ${rv.length===1?"this one needs":"these need"} your choice. Bot-safe leaves bots alone; Block spam gives full protection.</div>
+    <div class="acts">${rv.map(c=>btn(`Keep ${esc(c)} bot-safe`,"/botsafe_keep",{name:c},"quiet")+btn(`Block spam on ${esc(c)}`,"/channel_blocking",{name:c,mode:"full",confirm:true},"go")).join("")}</div>`;
   const WHY={full:"Spam is blocked here",botsafe:"Bot-safe: links, junk and copied names are blocked; bots are left alone",watch:"Read and counted only: nothing is blocked here"};
   $("#channels").innerHTML=chShown.map(c=>{ const m=watch.includes(c)?"watch":safe.includes(c)?"botsafe":"full";
     return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${WHY[m]}</div></div>
@@ -1649,7 +1663,7 @@ function renderChannels(d){
 // People: searched, filtered and paged by SpamGuard, so the page never loads everyone
 let PPL={show:store.get("sgPplShow")||"active",sort:store.get("sgPplSort")||"recent",q:"",offset:0,rows:[],data:null,busy:false,t:0,open:""};
 // The chips a phone shows first; the rest fold under More (opened by itself when one of them is chosen).
-const PPL_MAIN=[["active","Active"],["worth","Worth a look"],["copied","Name copied"],["check","Check the route"],["held","Held"],["watch","On watch"]];
+const PPL_MAIN=[["active","Active"],["new","New arrivals"],["worth","Worth a look"],["copied","Name copied"],["check","Check the route"],["held","Held"],["watch","On watch"]];
 const PPL_MORE=[["marked","Marked spam by you"],["mixed","Marked both ways"],["renames","Changes name"],["trusted","Trusted"],["known","Known"],["learning","Learning"],["quiet","Not heard lately"]];
 const PPL_TAG={trusted:["Trusted by you","ok"],watch:["On watch","sus"],settled:["Long-standing","ok"],known:["Known","plain"],learning:["Learning","would"],held:["Held","stop"]};
 async function pplLoad(more,keep){
@@ -1686,7 +1700,8 @@ function pplRender(){
   if(!ix.hidden) ix.innerHTML=d.letters.map(([l,o])=>`<button type="button" class="quiet" data-pj="${o}" aria-label="Names starting ${esc(l)}">${esc(l)}</button>`).join("");
   const code=h=>`<code>${esc(h)}</code>`;
   $("#pplList").innerHTML=PPL.rows.map(p=>{ const [tt,tc]=p.trusted_on&&p.trusted_on.length&&!p.trusted?["Trusted on "+p.trusted_on.join(", "),"ok"]:(PPL_TAG[p.standing]||PPL_TAG.learning), w=p.watch;
-    const line=[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
+    const line=PPL.show==="new"?[p.first?"first heard "+ago(p.first):"", `${fmtN(p.msgs||0)} message${p.msgs===1?"":"s"}`, p.last_route?"came in via "+p.last_route.split(">").slice(0,2).map(code).join(">"):"", p.last?"last "+ago(p.last):""].filter(Boolean).join(" · ")
+      :[p.usual.length?"Usually via "+p.usual.map(code).join(", "):"", p.last?"heard "+ago(p.last):(p.trusted?"added by you":"")].filter(Boolean).join(" · ");
     return `<li><details ${PPL.open===p.name?"open":""} data-pn="${esc(p.name)}"><summary><span class="what">${esc(p.name)}<span class="tag ${tc}">${tt}</span>${p.copies&&p.copies.red?"<span class='tag stop'>Name copied</span>":""}${p.quiet?"<span class='tag plain'>not heard lately</span>":""}${p.device&&p.device.devices>1?"<span class='tag plain'>more than one device</span>":""}</span>
       <span class="why">${line}</span>
       ${p.route&&p.route.level!=="grey"&&p.route.level!=="green"?`<span class="ppl-warn" role="note"><b>${p.route.level==="red"?"Probably a copy":"Check the route"}.</b> ${esc(p.route.level==="red"?p.route.signs.join(". "):p.route.why)}.</span>`:""}
@@ -1990,8 +2005,9 @@ function qBulk(){
 }
 // What you said about a message, kept with it for as long as the message is listed.
 const qLabWhen=ts=>"on "+new Date(ts*1000).toLocaleString([],{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
-const qLab=r=>r.label==="spam"?"You marked this as spam":r.label==="not_spam"?"You marked this as not spam":"";
-const qLabTag=r=>!r.label&&r.like?`<span class="tag plain q-lab">Like one you said was spam</span>`:r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"You said spam":"You said not spam"}</span>`:"";
+const qLab=r=>r.label==="spam"?"You marked this as spam":r.label==="not_spam"?"You marked this as not spam":r.label==="bot"?"You marked this name as a bot":"";
+const qTrust=()=>store.get("sgQTrust")==="1"?"channel":"none";
+const qLabTag=r=>!r.label&&r.like?`<span class="tag plain q-lab">Like one you said was spam</span>`:r.label?`<span class="tag ${r.label==="spam"?"stop":"plain"} q-lab" title="${esc(qLab(r)+(r.label_at?" "+qLabWhen(r.label_at):""))}">${r.label==="spam"?"You said spam":r.label==="bot"?"You said bot":"You said not spam"}</span>`:"";
 // A message that may be someone else using the name: red is probably a copy, amber only came from somewhere new
 function copyTag(c){ return !c?"":c.level==="red"?" <span class='tag stop'>Probably a copy</span>":" <span class='tag plain'>New direction</span>"; }
 function qDetail(){
@@ -1999,9 +2015,9 @@ function qDetail(){
   if(!r){ box.innerHTML=`<p class="explain" style="margin:0">Choose a message to see why SpamGuard did what it did, and to change it.</p>`; return; }
   const who=r.spammer?"Has repeated messages held this week":r.known?"Someone SpamGuard knows from genuine messages":"A name SpamGuard doesn't know yet";
   const b=(label,path,body,cls)=>`<button type="button" class="${cls||"quiet"}" data-p="${path}" data-b="${esc(JSON.stringify(body))}" onclick="act(this)">${label}</button>`;
-  const vb=(v,t,cls)=>`<button type="button" class="${cls}" aria-pressed="${r.label===v}" data-p="/verdict" data-b="${esc(JSON.stringify({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status}))}" onclick="act(this)">${t}</button>`;
+  const vb=(v,t,cls)=>`<button type="button" class="${cls}" aria-pressed="${r.label===v}" data-p="/verdict" data-b="${esc(JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},v==="not_spam"?{trust:qTrust()}:{})))}" onclick="act(this)">${t}</button>`;
   const knownName=r.known||r.identity==="copied"||r.identity==="name";
-  const acts=r.label?vb("none","Take it back","quiet"):vb("spam","Spam","danger")+(knownName&&r.sender&&r.sender!=="?"?vb("spoofed","Spoofed","quiet"):"")+vb("not_spam","Not spam","go");
+  const acts=r.label?vb("none","Take it back","quiet"):vb("spam","Spam","danger")+(knownName&&r.sender&&r.sender!=="?"?vb("spoofed","Spoofed","quiet"):"")+(r.sender&&r.sender!=="?"?vb("bot","Bot","quiet"):"")+vb("not_spam","Not spam","go");
   const rh=r.route, rhTxt=!rh?"":(rh.spam+rh.spoof+rh.known===0?"Not seen before in the last week":
     `${rh.spam+rh.spoof?`Spam or spoofs from ${rh.spam+rh.spoof} other unknown name${rh.spam+rh.spoof===1?"":"s"}`:"No spam from unknown names"}${rh.known?`, and ${rh.known} known ${rh.known===1?"person":"people"} used it`:", no known people"}`);
   const hops=(r.path||"").split(">").filter(h=>/^[0-9A-F]{2,6}$/i.test(h));
@@ -2012,7 +2028,7 @@ function qDetail(){
     <h3 style="margin:10px 0 0;font-size:1rem">${esc(r.sender)}</h3>
     <div class="msg-text">${esc(r.text)}</div>
     ${r.reaction?`<p class="explain">An emoji reaction (${esc(r.reaction.emoji)}) to a message from ${esc(r.reaction.to)} heard here, so it isn't counted as a repeat.</p>`:""}
-    ${r.label?`<p class="q-labline"><span class="tag ${r.label==="spam"?"stop":"plain"}">${r.label==="spam"?"Spam":"Not spam"}</span> ${esc(qLab(r))}${r.label_at?" "+esc(qLabWhen(r.label_at)):""}. </p>`:""}
+    ${r.label?`<p class="q-labline"><span class="tag ${r.label==="spam"?"stop":"plain"}">${r.label==="spam"?"Spam":r.label==="bot"?"Bot":"Not spam"}</span> ${esc(qLab(r))}${r.label_at?" "+esc(qLabWhen(r.label_at)):""}. </p>`:""}
     <dl><dt>Why</dt><dd>${esc(r.why)}</dd>
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
@@ -2022,7 +2038,7 @@ function qDetail(){
     <p class="q-line" style="gap:8px" role="group" aria-label="Your answer">${acts}</p>
     ${routeBtn||(r.label==="spam"&&r.sender&&r.sender!=="?")?`<details class="q-more"><summary>More options</summary><p class="q-line" style="gap:8px;margin:8px 0 0">${routeBtn}${r.label==="spam"&&r.sender&&r.sender!=="?"?(()=>{ const every=((S||{}).channels||[]).length>1, ch=every?"*":r.channel; return `<button type="button" class="quiet" data-confirm="Hold everything from ${esc(r.sender)} on ${every?"every channel":esc(r.channel||"Public")} for 7 days? Anyone using that name is held, so only do this for a name that keeps sending spam." data-p="/mute" data-b="${esc(JSON.stringify({sender:r.sender,channel:ch,days:7}))}" onclick="act(this)">Mute this name for 7 days</button>`; })():""}${r.label==="spam"&&r.sender&&r.sender!=="?"&&r.path&&r.path.length?`<button type="button" class="quiet" data-confirm="Hold ${esc(r.sender)} only when it comes through repeater ${esc(r.path[0])}, for 7 days? The real person still gets through from anywhere else." data-p="/hold_name_hop" data-b="${esc(JSON.stringify({sender:r.sender,channel:((S||{}).channels||[]).length>1?"*":r.channel,hop:r.path[0]}))}" onclick="act(this)">Hold this name from ${esc(r.path[0])}</button>`:""}</p></details>`:""}
     ${r.spammer&&!Q.names.length?`<p style="margin:6px 0 0"><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[r.sender],title:"Everything from "+r.sender}))}">Everything from this name</button></p>`:""}
-    <p class="explain" style="margin:8px 0 0">${!r.label&&r.like?"This is a reworded copy of a message you said was spam, so it counts as answered. You can still answer it yourself.":!r.label&&knownName&&r.sender!=="?"?"Spam means this person sent it. Spoofed means someone is using their name: only that name coming through this repeater is held, and the real person still gets through.":r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam trusts this name on this channel from now on. This message can't be sent again: it was already stopped.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. SpamGuard never blocks a person for one answer.":"Your answer helps SpamGuard check itself."}</p>`;
+    <p class="explain" style="margin:8px 0 0">${!r.label&&r.like?"This is a reworded copy of a message you said was spam, so it counts as answered. You can still answer it yourself.":!r.label&&knownName&&r.sender!=="?"?"Spam means this person sent it. Spoofed means someone is using their name: only that name coming through this repeater is held, and the real person still gets through.":r.label?"It stays under Answered. Take it back to undo what your answer did.":r.status==="stopped"||r.status==="held"?"Not spam lifts what held it. It was already stopped, so it can't be sent again. Bot holds just that name here for a week.":r.status==="letthrough"||!r.known?"Spam stops more copies of it. Bot holds just that name here for a week, not its words.":"Your answer helps SpamGuard check itself. Bot holds just that name here for a week."}</p>`;
 }
 $("#qChips").addEventListener("click",e=>{ const b=e.target.closest("[data-q]"); if(!b) return; Q.status=b.dataset.q; Q.sel=-1; Q.ticks={}; Q.limit=100; qLoad(); });
 $("#qFilters").addEventListener("click",e=>{ if(e.target.id==="qClear"){ Q.codes=[]; Q.names=[]; Q.packets=[]; Q.title=""; Q.sel=-1; qLoad(); } });
@@ -2060,7 +2076,7 @@ $("#qBulk").addEventListener("click",async e=>{ const b=e.target.closest("[data-
   Q.armed=null;
   sel.forEach(r=>optLabel({label:v,sender:r.sender,text:r.text,packet:r.packet}));
   const send=(r,extra)=>fetch("/verdict",{method:"POST",headers:{"Content-Type":"application/json","X-API-Key":store.get("sgkey")||""},
-    body:JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},extra||{}))}).then(x=>x.json()).catch(()=>({}));
+    body:JSON.stringify(Object.assign({verdict:v,sender:r.sender,text:r.text,path:r.path,packet:r.packet,channel:r.channel,matched:r.matched,status:r.status},v==="not_spam"?{trust:qTrust()}:{},extra||{}))}).then(x=>x.json()).catch(()=>({}));
   const res=await Promise.all(sel.map(r=>send(r)));
   // Answers that go against strong evidence come back as a question: one prompt for all of them.
   const ask=sel.filter((r,i)=>res[i]&&res[i].confirm);
@@ -2156,7 +2172,7 @@ function render(d, editing){
   if(typeof d.site==="string"&&d.site!==SITE){ SITE=d.site; setTitle(); }
   // While a box or list is being edited, the sections holding form controls are left alone
   // (so typing isn't wiped), but the status, health and messages keep updating.
-  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderProtection(d); renderHistory(d); renderAdvisor(d);
+  renderHeldSummary(d); renderTrustReview(d); renderTop(d); renderProtection(d); renderHistory(d); renderRouteChecks(d); renderAdvisor(d);
   { const care=$("#careSec"); if(care) care.hidden=[...care.querySelectorAll(":scope>.care-part")].every(x=>x.hidden); } renderHeld(d); renderLockdown(d); renderHealth(d); renderUpdate(d); renderRecent(d);
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
@@ -2756,7 +2772,7 @@ function renderSources(d){
   $("#mapBox").style.display="";
   loadLeaflet().then(L=>{
     if(!MAP){ MAP=L.map("mapBox",{scrollWheelZoom:false,keyboard:true,zoomAnimation:!reduceMotion(),fadeAnimation:!reduceMotion(),markerZoomAnimation:!reduceMotion()}); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,referrerPolicy:"strict-origin-when-cross-origin",attribution:"© OpenStreetMap contributors"}).addTo(MAP); }
-    const sig=JSON.stringify([guesses,by,ents.map(e=>[e.key,e.d1,e.d7,e.s7,e.blocked,e.radius_km,(e.shared||{}).others||0,(e.shared||{}).unlocated||0]),snd.map(x=>[x.key,x.d7,x.radius_km]),cps.map(c=>[c.name,c.n]),meOk?[me.lat,me.lon]:0]);
+    const sig=JSON.stringify([guesses,by,ents.map(e=>[e.key,e.d1,e.d7,e.s7,e.blocked,e.radius_km,(e.shared||{}).others||0,(e.shared||{}).unlocated||0]),snd.map(x=>[x.key,x.d7,x.radius_km]),cps.map(c=>[c.name,c.n]),(m.advertised||[]).map(a=>[a.name,a.lat]),ents.map(e=>(e.code_check||{}).verdict),meOk?[me.lat,me.lon]:0]);
     setTimeout(()=>MAP.invalidateSize(),50);
     if(sig===MAPSIG) return; MAPSIG=sig;
     if(MAPLAYER) MAPLAYER.remove();
@@ -2781,20 +2797,38 @@ function renderSources(d){
         :e.kind==="area"?`The first repeater isn't on any list (often the spammer's own), but it handed the spam to ${near}. The sender is within about ${rk} km of here.${(e.near||[]).length>1?"":" Only one known repeater so far."}`
         :`Rough guess from distances alone: the codes on the route could belong to other repeaters.`;
       const sh=e.shared||{}, shN=sh.others||0, shU=sh.unlocated||0;
-      const share=shN?`<br><i>Code ${esc(e.code)} is also used by ${shN} other repeater${shN===1?"":"s"} heard here${shU?`, ${shU} with no location`:""}, so the spam may have come through ${shN===1?"that one":"one of them"} instead.</i>`
+      const cc=e.code_check||{}, secs=(e.seconds||[]).map(esc).join(", ");
+      const share=cc.verdict==="made_up"?`<br><i>None of the ${cc.same} repeater${cc.same===1?"":"s"} using code ${esc(e.code)} heard here has ever been next to the repeaters the spam was handed to (${secs}). The code is most likely made up by the sender.</i>`
+        :cc.verdict==="unlisted"?`<br><i>A repeater using code ${esc(e.code)} that has never advertised here passes adverts to ${secs}: possibly the sender's own repeater.</i>`
+        :cc.verdict==="next"?`<br><i>Of the repeaters using code ${esc(e.code)}, ${cc.next_to.map(x=>esc(x.name)+(x.confirmed?" (confirmed by a route check)":"")).join(", ")} ${cc.next_to.length===1?"has":"have"} been seen next to the repeaters it was handed to.</i>`
+        :shN?`<br><i>Code ${esc(e.code)} is also used by ${shN} other repeater${shN===1?"":"s"} heard here${shU?`, ${shU} with no location`:""}, so the spam may have come through ${shN===1?"that one":"one of them"} instead.</i>`
         :(e.kind!=="area"&&exact?"<br>No other repeater heard here uses this code.":"");
+      const ovl=e.overlap?`<br><i>Placed where all ${e.overlap} repeaters it reached can hear it.</i>`:"";
+      const rts=(e.routes||[]).filter(x=>(x.pts||[]).length>1);
       const claim=(e.claims||[]).length?`<br><i>Also advertises as “${(e.claims||[]).map(esc).join("”, “")}” with a location its neighbours contradict.</i>`:"";
       const rot=e.codes.length>=3?`<br><i>The first repeater's code keeps changing (${e.codes.map(esc).join(", ")}): probably one sender changing identity.</i>`:`<br>First repeater code${e.codes.length>1?"s":""}: ${e.codes.map(esc).join(", ")}`;
       const conf={certain:"Certain",likely:"Likely",guess:"Rough guess"}[lv];
       const others=(e.members||[]).slice(1), also=others.length?`<br><i>Shown together with ${others.map(x=>esc(x.name||(x.near||[])[0]||"code "+x.code)).join(", ")}, within a few km.</i>`:"";
-      const pop=`<b>${title}</b>${also}<br><span class="tag ${lv==="certain"?"ok":lv==="likely"?"plain":"would"}">${conf}</span> ${where}${share}${claim}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${e.s7!=null?`, from ${e.s7} sender${e.s7===1?"":"s"}`:""}${rot}<br>${e.blocked?"Blocked now":"Not blocked"}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({codes:[...new Set([e.code].concat(e.codes||[]))],title:"Spam that entered near "+(e.kind==="area"?"an unlisted repeater using code "+e.code:(e.name||"repeater "+e.code))}))}">Show these messages</button>`;
+      const pop=`<b>${title}</b>${also}<br><span class="tag ${lv==="certain"?"ok":lv==="likely"?"plain":"would"}">${conf}</span> ${where}${ovl}${share}${claim}${rts.length?`<br><i>Its main route${rts.length>1?"s are":" is"} drawn while this is open: solid where each repeater is known, dashed where a code is shared.</i>`:""}<br>Spam: ${e.d1} in 24 h, ${e.d7} in 7 days${e.s7!=null?`, from ${e.s7} sender${e.s7===1?"":"s"}`:""}${rot}<br>${e.blocked?"Blocked now":"Not blocked"}<br><button type="button" class="quiet" data-msgs="${esc(JSON.stringify({codes:[...new Set([e.code].concat(e.codes||[]))],title:"Spam that entered near "+(e.kind==="area"?"an unlisted repeater using code "+e.code:(e.name||"repeater "+e.code))}))}">Show these messages</button>`;
       // the area the sender can be in: what the map actually knows
       L.circle([e.lat,e.lon],{radius:rk*1000,color:col,weight:lv==="guess"?1.5:1,dashArray:lv==="guess"?"5 6":null,fillColor:col,fillOpacity:lv==="guess"?.04:.1,interactive:false}).addTo(MAPLAYER);
       const mk=L.circleMarker([e.lat,e.lon],{radius:r,color:exact?"#fff":col,weight:2,dashArray:lv==="guess"?"4 4":null,fillColor:col,fillOpacity:exact?.85:lv==="likely"?.55:.35}).bindPopup(pop).addTo(MAPLAYER);
+      if(rts.length){ let lines=null;
+        mk.on("popupopen",()=>{ lines=L.layerGroup().addTo(MAPLAYER);
+          rts.forEach(rt=>{ for(let i=0;i+1<rt.pts.length;i++){ const a=rt.pts[i], b=rt.pts[i+1];
+            L.polyline([[a[0],a[1]],[b[0],b[1]]],{color:col,weight:2.5,opacity:.9,dashArray:a[2]&&b[2]?null:"5 6",interactive:false}).addTo(lines); } }); });
+        mk.on("popupclose",()=>{ if(lines){ lines.remove(); lines=null; } }); }
       if(shN) L.circleMarker([e.lat,e.lon],{radius:r+5,color:org,weight:2,dashArray:"2 5",fill:false,interactive:false}).addTo(MAPLAYER);
       if(e.blocked) L.circleMarker([e.lat,e.lon],{radius:Math.max(3,r/3.2),stroke:false,fillColor:"#fff",fillOpacity:1,interactive:false}).addTo(MAPLAYER);
       keyMarker(mk,`${e.kind==="area"?"Area near "+(e.near||[""])[0]:(e.name||"Repeater "+e.code)}: ${conf.toLowerCase()}, sender within about ${rk} km, ${e.d7} spam in 7 days, ${e.blocked?"blocked":"not blocked"}${shN?`, code also used by ${shN} other repeater${shN===1?"":"s"} heard here`:""}`);
       bounds.push([e.lat,e.lon]);
+    });
+    // spam names that also sent an advert: where the advert says it is (names can be copied, so only a clue)
+    (m.advertised||[]).forEach(a=>{
+      const mk=L.marker([a.lat,a.lon],{icon:L.divIcon({className:"map-dia",html:`<span style="background:${pur}"></span>`,iconSize:[16,16]}),keyboard:true,title:`Spam name ${a.name} advertised here`})
+        .bindPopup(`<b>${esc(a.name)} advertised here</b><br>A name that sent spam also sent an advert from this place, last ${esc(ago(a.last))}. Names can be copied, so this is a clue, not proof.${(a.pts||[]).length>1?"<br>Its advert's route is drawn while this is open.":""}`).addTo(MAPLAYER);
+      if((a.pts||[]).length>1){ let ln=null; mk.on("popupopen",()=>{ ln=L.polyline([[a.lat,a.lon]].concat(a.pts.map(p=>[p[0],p[1]])),{color:pur,weight:2,dashArray:"4 5",interactive:false}).addTo(MAPLAYER); }); mk.on("popupclose",()=>{ if(ln){ ln.remove(); ln=null; } }); }
+      keyMarker(mk,`Spam name ${a.name} advertised here`); bounds.push([a.lat,a.lon]);
     });
     // copied names: where the copies came from, next to where the real person is usually heard
     const grn=dark?"#6cc070":"#2e7d32";

@@ -30,6 +30,9 @@ async def main():
         answer[0]="accept"; asked.clear()
         await pg.click("#qList [data-qi='0']") if await pg.query_selector("#qList [data-qi='0']") else None
         await pg.wait_for_timeout(300)
+        await pg.check("#qTrust"); await pg.wait_for_timeout(100)   # 6.55: trust is its own choice
+        await pg.click("#qList [data-qi='0']") if await pg.query_selector("#qList [data-qi='0']") else None
+        await pg.wait_for_timeout(300)
         await pg.click("#qDetail button.go"); await pg.wait_for_timeout(1500)
         check(asked and g.trusted_here("Trail Runner 7","#trailchat"), "confirmed: saved and trusted on that channel")
         check(not errs, f"no page errors: {errs}")

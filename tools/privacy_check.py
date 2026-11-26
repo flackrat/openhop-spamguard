@@ -39,7 +39,14 @@ GENERIC = {
     "phone number": re.compile(r"(?<!\w)(?:\+44\s?7\d{3}|07\d{3})\s?\d{3}\s?\d{3}(?!\w)"),
     # A British or Irish amateur radio callsign (made-up ones in tests start with Q, which is never issued).
     "radio callsign": re.compile(r"\b(?:2[DEIJMUW]|G[DIJMUW]?|M[DIJMUW]?|EI)\d[A-Z]{2,3}\b"),
+    # A MeshCore channel key: 16 bytes as 32 hex digits or as base64. A private channel's key is personal data;
+    # the published Public key and made-up test keys are allowed below.
+    "channel key": re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{32}(?![0-9A-Fa-f])|(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{22}==(?![A-Za-z0-9+/=])"),
 }
+# Channel keys that are fine: MeshCore's published Public key (hex and base64), keys made up for tests, and the end
+# of a published Sigstore key that happens to look like one.
+KEYS_ALLOWED = {"8b3387e9c5cdea6ac9e5edbaa115cd72", "izoh6cxn6mrj5e26orxncg==", "0123456789abcdef0123456789abcdef",
+                "a1b2c3d4e5f60718293a4b5c6d7e8f90", "hwp/9a/by2lhc30m9+rytw=="}
 # Any coordinate pair in Britain or Ireland, at any precision and however written. Test data uses made-up places
 # in the USA, so these are never allowed, not even through .privacy-allow.
 _NUM = r"-?\d{1,3}\.\d+"
@@ -190,6 +197,8 @@ def check_line(text: str, allowed: list[str], block) -> list[str]:
         for m in rx.finditer(text):
             s = m.group(0)
             if any(a.search(s) for a in ALWAYS_ALLOWED) or any(s in a or a in s for a in allowed if a):
+                continue
+            if name == "channel key" and s.lower() in KEYS_ALLOWED:
                 continue
             hits.append(name)
             break

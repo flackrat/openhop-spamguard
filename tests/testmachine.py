@@ -53,7 +53,7 @@ check(m.decide("Packet Pusher Q",b64(75),["4C","2F"])=="drop","its next ones are
 for i in range(6): m.add("Chatty Known Q",f"Evening all, update {i} from the hill",["4C","2F"],ago=150-i*10)
 cycle(g); check(g.is_known("Chatty Known Q"),"a known name")
 m.add("Chatty Known Q",b64(80),["4C","2F"],ago=30); cycle(g)
-check(m.decide("Chatty Known Q",b64(80),["4C","2F"])=="drop","known names are stopped too: you chose it")
+check(m.decide("Chatty Known Q",b64(80),["4C","2F"])!="drop","a known name isn't held for a day over a machine-looking message (6.55: two genuine people were)")
 g.allow_senders.add("Trusted Bridge Q")
 m.add("Trusted Bridge Q",b64(75),["4C","2F"],ago=20); cycle(g)
 check(not any(b.get("value")=="Trusted Bridge Q" for b in g.blocks.values()),"a name you trust from People is not held")

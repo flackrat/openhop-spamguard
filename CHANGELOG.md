@@ -15,6 +15,21 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.55.0
+
+- **Bot-safe channels to check.** Channels an earlier version made bot-safe without a bot-like name are listed on the Channels page to keep or switch to Block spam. Nothing changes by itself.
+- **Saved data from a newer version** is read as far as this version understands, kept as it was, and noted on Health.
+- **Service words in channel names** count only at the end of a word (#ukweather, not #weathered).
+- **Why it got through** uses the channel's protection when the message arrived.
+- **Private channels** say they may be more than one channel sharing a tag. Health shows when openHop's mode was last read.
+- **Private channels are personal data.** Their names are hidden like people's in the scrambled evidence download and never in the diagnostic export; their keys never leave the Pi. The project's own checks refuse any channel key in its code.
+- **Spam sources narrowed.** A sender heard by several repeaters is placed where all of them can hear it. A first repeater code that no repeater using it has been next to is called made up rather than pinned on one. Tap a place to draw its main routes. Spam names that also advertised are shown as a clue.
+- **Route checks (experimental, off, transmits).** At night and only when the radio is quiet, a few small traces an hour check which repeater really sits where spam entered. Needs route traces in openHop; until then nothing is sent.
+- **Bot answer.** Next to Spam and Not spam: holds just that name on that channel for a week, without blocking its words for anyone else or teaching the spam checks. Bot-safe and Count only channels leave bots alone.
+- **Not spam no longer trusts the name by itself.** It lifts what held the message; a tick box makes it trust the name on that channel too. A stopped message can't be sent again, and it says so.
+- **New arrivals** on People: names first heard this week, newest first, with how they came in.
+- **Machine messages** no longer hold a known name for a day.
+
 ## v6.54.0
 
 - **Private channels.** Channels SpamGuard can't read are called private channels, shown by their tag with when they were last heard.
