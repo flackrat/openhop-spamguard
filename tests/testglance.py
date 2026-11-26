@@ -31,8 +31,8 @@ st=g.status(); check("protection" in st and st["protection"]["state"]=="ok","the
 f={x["part"]:x for x in g.health()["fresh"]}
 check(set(f)>={"packets","check","neighbours","radio","rules","sync","save"},"every part has a freshness line")
 check(f["check"]["state"]=="ok" and f["rules"]["state"]=="ok","checks and rules are fresh")
-g.rules_checked=time.time()-3600; f={x["part"]:x for x in g.health()["fresh"]}
-check(f["rules"]["state"]=="late","an hour since rules were checked is late")
+g.rules_confirmed=time.time()-3600; f={x["part"]:x for x in g.health()["fresh"]}
+check(f["rules"]["state"]=="late","an hour since rules were confirmed is late")
 # --- settings history
 g.settings_history.clear(); g._hist_last=None; g.rebuild_cfg()
 check(not g.settings_history,"the first look only sets the starting point")
@@ -71,12 +71,24 @@ g3.watch_channels.discard("Public")
 g3.allow_senders.add("Quarry Newbie")
 check("trusted" in (g3.why_through({"packet":e.packet}) or ""),"a trusted name is the reason when it applies")
 g3.allow_senders.discard("Quarry Newbie")
-g3.apply_settings({"paused":True}); check("paused" in g3.why_through({"packet":e.packet}),"paused says so")
-g3.apply_settings({"paused":False})
-e.matched="text:x"; g3.apply_settings({"mode":"monitor"})
-check("Monitor only" in g3.why_through({"packet":e.packet}),"spotted but on Monitor says Protect would stop it")
-g3.apply_settings({"mode":"protect"})
+e.mode_then="pause"; check("paused" in g3.why_through({"packet":e.packet}),"paused then says so")
+e.matched="text:x"; e.mode_then="monitor"
+check("Monitor only" in g3.why_through({"packet":e.packet}),"spotted but on Monitor then says Protect would stop it")
+e.mode_then="protect"
 check(g3.why_through({"packet":e.packet}) is None,"nothing to explain when it was stopped")
 check(g3.why_through({"packet":"nope"}) is None,"nothing said about a message it no longer has")
+# --- openHop's own mode
+m4=mock(); g4=guard(m4); g4.apply_settings({"mode":"protect"}); g4.poll_once(); g4.loop_beat=time.time()
+check(g4.oh_mode is None and g4.protection()["state"]!="idle","openHop's mode not known: nothing said")
+m4.oh_mode="no_tx"; g4.oh_mode_ts=0; g4.refresh_oh_mode()
+p=g4.protection(); rp=next(x for x in p["parts"] if x["part"]=="repeating")
+check(g4.oh_mode=="no_tx" and p["state"]=="idle" and "isn't repeating" in p["line"],"openHop on No TX: nothing to stop: %s"%p["line"])
+check("No TX" in rp["text"] and rp["state"]=="warn","the part says No TX")
+check(g4.status()["openhop_mode"]=="no_tx","the page gets openHop's mode")
+m4.oh_mode="monitor"; g4.oh_mode_ts=time.time(); g4.refresh_oh_mode()
+check(g4.oh_mode=="no_tx","read at most every two minutes")
+g4.oh_mode_ts=0; g4.refresh_oh_mode(); check(g4.oh_mode=="monitor","then picks up the change")
+m4.oh_mode="forward"; g4.oh_mode_ts=0; g4.refresh_oh_mode()
+check(g4.protection()["state"]=="ok","back on Repeater: protected again")
 print(f"{ok}/{ok+fail} passed")
 sys.exit(1 if fail else 0)

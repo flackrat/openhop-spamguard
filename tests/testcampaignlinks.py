@@ -25,6 +25,8 @@ st=[x for x in L if x["strong"]]; wk=[x for x in L if not x["strong"]]
 check(len(st)==1 and any("2 names sent both" in r["text"] for r in st[0]["reasons"]),"shared names: strongly linked")
 check(len(wk)==1 and any("came in through C4" in r["text"] and not r["strong"] for r in wk[0]["reasons"]),"only the same repeater: possibly related")
 check(L[0]["strong"],"strong groups first")
+check(len(st[0]["overlap"])>=2 and not st[0]["repeater_only"],"names in more than one campaign are listed: %s"%st[0]["overlap"])
+check(wk[0]["repeater_only"],"a link resting only on a shared repeater says so")
 check(not any("Something else" in c["example"] for x in L for c in x["campaigns"]),"an unrelated campaign stays out")
 # names that took over each other's repeats link two campaigns strongly
 g.name_links={"Lo Five":{"after":["Lo Seven"],"ts":time.time()}}

@@ -15,6 +15,21 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.53.0
+
+- **openHop not repeating.** When openHop is set to Monitor or No TX, the Mode card and the protection panel say so, since there is nothing for Protect to stop.
+- **Unnamed channels hidden.** The busiest channels list hides channels whose name isn't known, with a tick box to show them.
+- **Channels you read are always listed** in the busiest channels, even before their first message.
+- **Bot channels by whole words.** #latest, #contest and #botany are no longer taken for bot channels. Adding one that is says why, and how to change it.
+- **Fewer details kept when counting channels.** Names are counted with a code that changes daily, can't be matched across channels, and is deleted when the day ends.
+- **"Protected" needs recently confirmed rules.** The Overview no longer says Protected if openHop's rules haven't been confirmed for a while.
+- **Why it got through** uses the mode at the time and says "probably" where the reason is worked out.
+- **Settings changes** also show changes found at start-up and those made by a profile.
+- **Answering several names** shows the names and texts before you confirm.
+- **Campaign links** show when each group was first and last seen, names in more than one campaign, and when a link rests only on a shared repeater.
+- **Diagnostic export** on the Health page: versions, settings and health for someone helping you, with no names, messages, keys, channels or routes. Preview it before saving.
+- **Safer recovery:** each save is numbered, so the newest is found even if file dates change.
+
 ## v6.52.0
 
 - **Safer recovery after a power cut.** If power is lost in the middle of a save, SpamGuard now starts from the newest copy of its data, whichever kind it is.
