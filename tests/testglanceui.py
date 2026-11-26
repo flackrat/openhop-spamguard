@@ -32,7 +32,7 @@ async def main():
         g.apply_settings({"paused":False})
         await pg.goto("http://127.0.0.1:18171/#/health"); await pg.wait_for_timeout(2000)
         rows=await pg.eval_on_selector_all("#hFresh li","els=>els.map(e=>e.textContent)")
-        check(len(rows)==7 and any("Rules confirmed" in r for r in rows),"Health lists when each part last worked: %s"%rows[:3])
+        check(len(rows)==8 and any("Rules confirmed" in r for r in rows) and any("mode read" in r for r in rows),"Health lists when each part last worked: %s"%rows[:3])
         h=await pg.eval_on_selector_all("#histList li","els=>els.map(e=>e.textContent)")
         check(any("Pause" in x for x in h) and any("You, on the page" in x for x in h),"the change history shows what changed and who: %s"%h[:2])
         for i in range(14): g.apply_settings({"level":40+i})

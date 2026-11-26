@@ -65,7 +65,7 @@ w=g3.why_through({"packet":e.packet,"sender":e.sender,"text":e.text})
 check(w and "first sighting" in w,"a first message from a new name: %s"%w)
 r=g3.action("label",{"packet":e.packet,"sender":e.sender,"text":e.text,"label":"spam"})
 check("first sighting" in r["message"],"and the answer says so: %s"%r["message"])
-g3.watch_channels.add("Public")
+g3.watch_channels.add("Public"); e.chan_then=None   # as for a message from before this was recorded
 check("Count only" in (g3.why_through({"packet":e.packet}) or ""),"a Count only channel is the reason when it applies")
 g3.watch_channels.discard("Public")
 g3.allow_senders.add("Quarry Newbie"); e.trust_then=None   # as for a message from before trust was recorded

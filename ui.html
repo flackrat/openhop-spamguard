@@ -1009,6 +1009,7 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <p class="explain">Spam on channels SpamGuard can't read is not detected. Hashtag channels only need the name, and you can paste several at once (e.g. <code>#chat #test #amsterdam</code>).</p>
   <div class="inline-form" id="chFindRow" hidden><input id="chFind" type="search" aria-label="Search channels" placeholder="Search channels" autocomplete="off"><button id="chShowAll" class="quiet" type="button" aria-expanded="false">Show all</button><span class="explain" id="chCount"></span></div>
   <p class="explain" style="margin:6px 0 0"><b>Reading now</b>. Bot-safe suits bot, weather and test channels; Count only blocks nothing. Blocks you add yourself cover every channel that has it on, unless you choose one.</p>
+  <div class="callout" id="bsReview" hidden></div>
   <ul class="rows" id="channels"></ul>
   <p style="margin:10px 0 0" id="crossRow" hidden><label class="switch"><input type="checkbox" id="crossCh"> Spam blocked on one channel is blocked on all of them</label> <span class="tag would">experimental</span><br><span class="explain">Off: SpamGuard's own holds stay on the channel where the spam was seen. On: they follow it to every channel. A different person using the same name on another channel would be held too.</span></p>
   <div id="chChoiceBox" hidden>
@@ -1620,7 +1621,7 @@ function renderChHeard(d){
   $("#chHeard").innerHTML=rows.map((r,i)=>{ const t=r.kind==="read"&&r.watch?["Read, counted only","plain"]:r.kind==="read"&&r.botsafe?["Bot-safe","plain"]:TAG[r.kind];
     return `<li class="ch-row"><span class="ch-rank">${i+1}</span><div class="ch-main"><div class="ch-line"><b>${r.kind==="unnamed"?`Private channel <span class="explain">tag ${esc((r.name.match(/\(([0-9A-F]{2})\)/)||[])[1]||"?")}</span>`:esc(r.name)}</b><span class="tag ${t[1]}">${t[0]}</span>${r.bots?`<span class="tag would">${r.bots_by==="traffic"?"looks automated?":"bot channel"}</span>`:""}${r.kind==="found"?`<button type="button" class="quiet ch-prot" data-chprotect="${esc(r.name)}">${r.bots?"Protect, bot-safe":"Protect"}</button>`:""}</div>
       <div class="ch-bar" role="img" aria-label="${fmtN(r.d7)} messages in the last 7 days"><i style="width:${r.d7?Math.max(2,Math.round(100*r.d7/top)):0}%"></i></div>
-      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"&&r.last?`. Last heard ${esc(ago(r.last))}`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
+      <span class="explain">${!r.d30?"Nothing heard since counting started":`${fmtN(r.d7)} this week, ${fmtN(r.d30)} in 30 days`}${r.names_day?`, up to ${fmtN(r.names_day)} names a day`:""}${r.shares?`. Shares its tag with ${esc(r.shares)}, so some may be that channel's`:""}${r.kind==="unnamed"?`${r.last?`. Last heard ${esc(ago(r.last))}`:""}. May be more than one channel sharing this tag`:""}${r.bots?`. ${r.bots_by==="traffic"?"Looks automated, but that's only a hint":"Bot channel"}: ${esc(r.bots)}`:""}</span></div>${chSpark(r.spark)}</li>`; }).join("");
 }
 function renderChannels(d){
   const choices=d.channel_choices||[], q=($("#chFind").value||"").trim().toLowerCase();
@@ -1628,7 +1629,10 @@ function renderChannels(d){
   $("#chFindRow").hidden=!many;
   const chShown=d.channels.filter(hit).slice(0,many&&!q&&!chAll?15:1000);
   $("#chCount").textContent=many?(q?`${d.channels.filter(hit).length} read, ${choices.filter(hit).length} not read yet match`:`${d.channels.length} read now, ${choices.length} more in openHop`):"";
-  const watch=d.watch_channels||[], safe=d.botsafe_channels||[];
+  const watch=d.watch_channels||[], safe=d.botsafe_channels||[], rv=d.botsafe_review||[], bsr=$("#bsReview");
+  bsr.hidden=!rv.length;
+  if(rv.length) bsr.innerHTML=`<div><b>Please check: ${rv.map(esc).join(", ")} ${rv.length===1?"is":"are"} bot-safe.</b> An earlier version could switch on bot-safe just because a few names sent most of a channel's messages. Now only the name does that, so ${rv.length===1?"this one needs":"these need"} your choice. Bot-safe leaves bots alone; Block spam gives full protection.</div>
+    <div class="acts">${rv.map(c=>btn(`Keep ${esc(c)} bot-safe`,"/botsafe_keep",{name:c},"quiet")+btn(`Block spam on ${esc(c)}`,"/channel_blocking",{name:c,mode:"full",confirm:true},"go")).join("")}</div>`;
   const WHY={full:"Spam is blocked here",botsafe:"Bot-safe: links, junk and copied names are blocked; bots are left alone",watch:"Read and counted only: nothing is blocked here"};
   $("#channels").innerHTML=chShown.map(c=>{ const m=watch.includes(c)?"watch":safe.includes(c)?"botsafe":"full";
     return `<li><div><div class="what">${esc(c)}${c==="Public"?" <span class='explain'>(the main channel, always read)</span>":""}</div><div class="why">${WHY[m]}</div></div>

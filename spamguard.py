@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.54.0"
+VERSION = "6.55.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -894,9 +894,11 @@ BOT_TRIP_SOURCES = frozenset({"repeat", "slowrepeat", "sense", "dedupe", "campai
                               "machine", "burst"})
 # Channels mostly used by bots, test pings and automatic services: blocking spam there can stop the service itself
 # Whole words, split by '-', '_', '.' or digits, so #latest, #contest, #botany and #newspaper are ordinary channels,
-# and a few words that only ever mean a service, anywhere in the name (#ukweather, #newsbot, #aprsnet).
+# and a few service words at the end of a word (#ukweather, #newsbot, #weather-alerts), or for aprs and wardriving
+# at either edge (#aprsnet), never inside a longer ordinary word (#weathered, #weatherproof).
 BOT_CHANNEL_RE = re.compile(r"(?<![a-z])(?:bots?|tests?|testing|ping|pong|news|alerts?|radar|sensors?|beacons?|wx)(?![a-z])"
-                            r"|weather|telemetry|aprs|wardriv|(?<=[a-z])(?:bots?|news)(?![a-z])", re.I)
+                            r"|(?:weather|telemetry|aprs)(?![a-z])|(?<![a-z])(?:aprs|wardriv)"
+                            r"|(?<=[a-z])(?:bots?|news)(?![a-z])", re.I)
 HASHTAG_RE = re.compile(r"(?<![\w#])#[a-z0-9][a-z0-9_-]{1,30}(?![\w-])", re.I)
 CHANNEL_KEEP_DAYS = 30
 DIAG_SCHEMA = 1              # diagnostic export layout; bump when fields change meaning
@@ -2515,7 +2517,7 @@ class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
                  "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr",
-                 "direction", "copy", "reaction", "mode_then", "trust_then")
+                 "direction", "copy", "reaction", "mode_then", "trust_then", "chan_then")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -2536,6 +2538,7 @@ class Event:
         self.known_then: Optional[bool] = None   # was the sender known when the message arrived?
         self.mode_then: Optional[str] = None     # SpamGuard's mode then: protect, monitor or pause
         self.trust_then: Optional[str] = None    # how the sender was trusted then: everywhere, channel or none
+        self.chan_then: Optional[str] = None     # the channel's protection then: full, botsafe or watch
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
@@ -2969,8 +2972,9 @@ class SpamGuard:
         if e.matched:
             return None
         ch = e.channel or "Public"
-        if ch in self.watch_channels:
-            return f"It got through because {ch} is set to Count only. Choose Block spam for that channel to stop spam there."
+        cm = e.chan_then or ("watch" if ch in self.watch_channels else "botsafe" if ch in self.botsafe_channels else "full")
+        if cm == "watch":
+            return f"It got through because {ch} was set to Count only. Choose Block spam for that channel to stop spam there."
         trust = e.trust_then or ("everywhere" if e.sender in self.allow_senders else
                                   "channel" if ch in (self.trust_on.get(e.sender) or {}) else "none")
         if trust != "none":
@@ -2986,8 +2990,8 @@ class SpamGuard:
         if not earlier and not same:
             return ("It probably got through because it was the first sighting: a new name, and nothing like it had "
                     "been heard yet.")
-        if same and ch in self.botsafe_channels:
-            return (f"It probably got through because {ch} is bot-safe, so repeated messages aren't stopped there. "
+        if same and cm == "botsafe":
+            return (f"It probably got through because {ch} was bot-safe, so repeated messages aren't stopped there. "
                     "Choose Block spam for that channel if it has no bots.")
         if same:
             return "It probably got through because it hadn't been repeated enough yet to look like spam."
@@ -3075,7 +3079,17 @@ class SpamGuard:
         for p in state_order(path):
             try:
                 st = read_state_file(p)
+                sch = st.get("state_schema", 0)   # 0: saved before 6.54, which had no number; read as usual
+                if not isinstance(sch, int) or isinstance(sch, bool) or sch < 0:
+                    raise ValueError(f"unknown saved-data layout {sch!r}")
+                if sch > STATE_SCHEMA:
+                    # Saved by a newer SpamGuard (a rollback). Read what this version knows, but keep the file as
+                    # it was, once, so going forward again loses nothing.
+                    keep = f"{p}.layout{sch}.keep"
+                    if not os.path.exists(keep):
+                        shutil.copy2(p, keep)
                 self._apply_state(st)
+                self._state_newer = sch if sch > STATE_SCHEMA else None
             except FileNotFoundError:
                 continue
             except Exception as e:
@@ -3132,6 +3146,15 @@ class SpamGuard:
         self.extra_channels = dict(st.get("extra_channels", {}))
         self.watch_channels = {str(c) for c in st.get("watch_channels") or [] if isinstance(c, str)}
         self.botsafe_channels = {str(c) for c in st.get("botsafe_channels") or [] if isinstance(c, str)}
+        bw = st.get("botsafe_why")
+        self.botsafe_why = {str(k): str(v) for k, v in bw.items() if k in self.botsafe_channels} if isinstance(bw, dict) else {}
+        br = st.get("botsafe_review")
+        if isinstance(br, list):
+            self.botsafe_review = {str(c) for c in br if c in self.botsafe_channels}
+        else:
+            # Saved before 6.55: an earlier version could switch on bot-safe from traffic alone. Those it
+            # can't tell from your own choices, so they are listed for you to look at; nothing is changed by itself.
+            self.botsafe_review = {c for c in self.botsafe_channels if not BOT_CHANNEL_RE.search(c.lstrip("#"))}
         self.settings_history = collections.deque(
             [h for h in st.get("settings_history") or [] if isinstance(h, dict) and isinstance(h.get("ts"), (int, float))
              and isinstance(h.get("label"), str)][:SETTINGS_HISTORY_MAX], maxlen=SETTINGS_HISTORY_MAX)
@@ -3428,6 +3451,8 @@ class SpamGuard:
                     "extra_channels": self.extra_channels,
                     "watch_channels": sorted(getattr(self, "watch_channels", ())),
                     "botsafe_channels": sorted(getattr(self, "botsafe_channels", ())),
+                    "botsafe_why": self.__dict__.get("botsafe_why") or {},
+                    "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
                     "settings_history": list(getattr(self, "settings_history", ())),
                     "hist_last": self.__dict__.get("_hist_last"),
                     "settings": self.settings,
@@ -6985,6 +7010,9 @@ class SpamGuard:
                 e.known_then = self.is_known(e.sender)
             if e.mode_then is None:
                 e.mode_then = "pause" if self.cfg.get("paused") else self.cfg["mode"]
+            if e.chan_then is None:
+                ch0 = e.channel or "Public"
+                e.chan_then = "watch" if ch0 in self.watch_channels else "botsafe" if ch0 in self.botsafe_channels else "full"
             if e.trust_then is None:
                 e.trust_then = ("everywhere" if e.sender in self.allow_senders else
                                 "channel" if (e.channel or "Public") in (self.trust_on.get(e.sender) or {}) else "none")
@@ -11619,6 +11647,7 @@ class SpamGuard:
         for n in bots:
             self.botsafe_channels.add(n)
             self.watch_channels.discard(n)
+            self.__dict__.setdefault("botsafe_why", {})[n] = "name"
         if not bots:
             return ""
         why = self.bot_name(bots[0]) or ""
@@ -11830,6 +11859,9 @@ class SpamGuard:
         if getattr(self, "_state_unreadable", False):
             warnings.append("SpamGuard's saved data could not be read, so it started afresh. The unreadable files "
                             "were kept next to it, ending in .unreadable.")
+        if getattr(self, "_state_newer", None):
+            warnings.append("SpamGuard's saved data was written by a newer version. This version read what it "
+                            "understands; the file as it was is kept next to it, ending in .keep.")
         if getattr(self, "_restored_from_backup", False) and now - self.started < 7 * 86400:
             warnings.append("SpamGuard's saved data was damaged when it started (often a power cut), so it carried on "
                             "from the last good copy. Changes from the last few minutes before that may be missing: "
@@ -12040,6 +12072,7 @@ class SpamGuard:
                  ("neighbours", "Neighbour list", getattr(self, "neighbours_ok", None), 1800),
                  ("radio", "Radio noise reading", nf_last if c.get("interference_watch", True) else None, 900),
                  ("rules", "Rules confirmed in openHop", getattr(self, "rules_confirmed", None), RULES_CONFIRM_DUE),
+                 ("ohmode", "openHop's mode read", getattr(self, "oh_mode_ok", None), OH_MODE_DUE),
                  ("sync", "Rules last written", self.last_sync, None),
                  ("save", "Data saved to the SD card", self._last_save or None, self.SAVE_EVERY * 2 + 120)]
         out = []
@@ -12833,6 +12866,7 @@ class SpamGuard:
                 "overridden": sorted(k for k in self.settings if k in META_BY_KEY),
                 "site": str(self.cfg.get("site_label") or (self.me or {}).get("name") or "")[:40],
                 "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels), "botsafe_channels": sorted(self.botsafe_channels),
+                "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),
                 "profiles": {"list": [dict(v, name=k) for k, v in sorted(self.profiles.items())],
@@ -13589,6 +13623,10 @@ class SpamGuard:
                 self._chh_cache = None
                 self.watch_channels.discard(name)
                 self.botsafe_channels.discard(name)
+                self.__dict__.setdefault("botsafe_why", {}).pop(name, None)
+                self.__dict__.setdefault("botsafe_review", set()).discard(name)   # you've chosen
+                if mode == "botsafe":
+                    self.botsafe_why[name] = "you"
                 if mode == "watch":
                     self.watch_channels.add(name)
                     msg = f"SpamGuard now only reads and counts {name}: nothing is blocked there"
@@ -13597,6 +13635,15 @@ class SpamGuard:
                     msg = f"Bot-safe protection on {name}: links, junk and copied names are blocked; bots are left alone"
                 else:
                     msg = f"Spam is blocked on {name} again"
+                self.note(msg)
+            elif op == "botsafe_keep":
+                name = str(body.get("name") or "")
+                if name not in self.botsafe_channels:
+                    raise ValueError("That channel isn't bot-safe")
+                self.__dict__.setdefault("botsafe_review", set()).discard(name)
+                self.__dict__.setdefault("botsafe_why", {})[name] = "you"
+                self.dirty = True
+                msg = f"{name} stays bot-safe"
                 self.note(msg)
             elif op == "remove_channel":
                 self.watch_channels.discard(str(body.get("name", "")))
@@ -13771,7 +13818,7 @@ def load_page() -> str:
 
 ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
-           "unallow_text", "spoofed", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
+           "unallow_text", "spoofed", "botsafe_keep", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
            "hide_source", "label", "preview_now"}
 
