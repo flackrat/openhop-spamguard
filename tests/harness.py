@@ -51,6 +51,11 @@ class Mock:
                     d={"success":True,"data":m.policy}
                 b=json.dumps(d).encode(); self.send_response(200); self.end_headers(); self.wfile.write(b)
             def do_POST(self):
+                if self.path.startswith("/api/trace"):
+                    body=json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                    m.traces=getattr(m,"traces",[])+[body]
+                    if not getattr(m,"trace",None): self.send_response(404); self.end_headers(); return
+                    b=json.dumps(m.trace(body)).encode(); self.send_response(200); self.end_headers(); self.wfile.write(b); return
                 if self.path.startswith("/api/plugins"):
                     if not m.plugins: self.send_response(404); self.end_headers(); return
                     return m.plugins(self, "POST", self.path.split("?")[0], {})

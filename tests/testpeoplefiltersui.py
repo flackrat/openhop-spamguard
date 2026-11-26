@@ -19,7 +19,7 @@ async def main():
         b=await p.chromium.launch(); ctx=await b.new_context(viewport={"width":360,"height":800}); pg=await ctx.new_page()
         await pg.goto("http://127.0.0.1:18202/#/people"); await pg.wait_for_timeout(2500)
         main_chips=[await x.inner_text() for x in await pg.locator("#pplChips > button.q-chip").all()]
-        check(len(main_chips)==6 and any("Worth a look" in t for t in main_chips) and any("Check the route" in t for t in main_chips),"six main chips: %s"%main_chips)
+        check(len(main_chips)==7 and any("New arrivals" in t for t in main_chips) and any("Worth a look" in t for t in main_chips) and any("Check the route" in t for t in main_chips),"seven main chips, with New arrivals: %s"%main_chips)
         check(all(any(ch.isdigit() for ch in t) for t in main_chips),"each with its count")
         more=pg.locator("#pplMoreChips")
         check(not await more.evaluate("e=>e.open"),"the rarer ones are folded under More")

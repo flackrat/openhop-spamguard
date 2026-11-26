@@ -23,6 +23,12 @@ The detail is below, newest first. In short:
 - **Why it got through** uses the channel's protection when the message arrived.
 - **Private channels** say they may be more than one channel sharing a tag. Health shows when openHop's mode was last read.
 - **Private channels are personal data.** Their names are hidden like people's in the scrambled evidence download and never in the diagnostic export; their keys never leave the Pi. The project's own checks refuse any channel key in its code.
+- **Spam sources narrowed.** A sender heard by several repeaters is placed where all of them can hear it. A first repeater code that no repeater using it has been next to is called made up rather than pinned on one. Tap a place to draw its main routes. Spam names that also advertised are shown as a clue.
+- **Route checks (experimental, off, transmits).** At night and only when the radio is quiet, a few small traces an hour check which repeater really sits where spam entered. Needs route traces in openHop; until then nothing is sent.
+- **Bot answer.** Next to Spam and Not spam: holds just that name on that channel for a week, without blocking its words for anyone else or teaching the spam checks. Bot-safe and Count only channels leave bots alone.
+- **Not spam no longer trusts the name by itself.** It lifts what held the message; a tick box makes it trust the name on that channel too. A stopped message can't be sent again, and it says so.
+- **New arrivals** on People: names first heard this week, newest first, with how they came in.
+- **Machine messages** no longer hold a known name for a day.
 
 ## v6.54.0
 
