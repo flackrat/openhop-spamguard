@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover
     except ImportError:
         _eddsa = None
 
-VERSION = "6.55.0"
+VERSION = "6.56.0"
 # FloodGuard's own version: it ships inside SpamGuard (one plugin, one release number for installs and updates),
 # but has its own history in the changelog. It only goes up when FloodGuard itself changes.
 FLOODGUARD_VERSION = "1.5.0"
@@ -539,6 +539,22 @@ SETTINGS_META: list[dict] = [
      "risk": "A genuine app polling through that repeater during a flood waits until the hold ends. Channel messages, direct messages and control traffic are never held.",
      "label": "Hold the kind of packet one repeater floods in while the radio is congested (experimental)",
      "help": "While the radio is congested, a repeater sending far more than its share of one kind of packet (requests, anonymous requests or group data) has that kind held for ten minutes, at most three at a time. Each hold ends by itself and is explained under Blocks. Watch only notes what it would hold."},
+    {"key": "punct_names", "group": "Experimental", "type": "bool",
+     "risk": "Someone who really does name their node with symbols like that counts as a made-up name until SpamGuard knows them.",
+     "label": "Count short names of capitals, digits and symbols as made-up (experimental)",
+     "help": "Some spam campaigns use a fresh name of capital letters, digits and symbols for every message. When on, those names count as made-up, so a repeater sending several of them is noticed sooner. Callsign-style names are left alone."},
+    {"key": "newcomer_quiet", "group": "Experimental", "type": "bool",
+     "risk": "A spam message from a single new name on a busy, familiar route is no longer listed under Missed spam. It was not held either way.",
+     "label": "Don't list ordinary messages from new arrivals under Missed spam (experimental)",
+     "help": "A new name's message that only looks unusual (a common greeting, or a name that looks made up) is left off Missed spam when it came in the way people SpamGuard knows come in, and no other new names arrived that way in the hour. It still shows in Messages and under New arrivals. Nothing is held or let through differently."},
+    {"key": "replay_watch", "group": "Experimental", "type": "bool",
+     "risk": "It only flags and counts. A flag can be wrong, for example a message that came very late over a long route.",
+     "label": "Flag old packets sent again (replay watch, experimental)",
+     "help": "Flags a packet heard again long after it first passed, a signed message copied the same way, and an advert older than one already heard from that node. Shown on Overview and in Messages, and kept in the evidence log. Nothing is held because of it."},
+    {"key": "renew_holds", "group": "Experimental", "type": "bool",
+     "risk": "A hold that is still catching lasts longer, up to a week in all. If it was catching something genuine, release it under Blocks.",
+     "label": "Keep a hold going while it is still catching (experimental)",
+     "help": "A hold that has caught something in the last few hours is renewed when it would end, instead of lapsing and letting the next copy through. Holds that have gone quiet still end as before."},
     {"key": "spoof_check", "group": "Experimental", "type": "bool",
      "risk": "It only shows a coloured note, it holds nothing. A note can be wrong, for example when someone really does arrive by a new route.",
      "label": "Show how real a route looks (experimental)",
@@ -681,6 +697,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "cross_channel_blocks": False,
     "show_experimental": False,
     "spoof_check": False,
+    "punct_names": False,
+    "newcomer_quiet": False,
+    "replay_watch": False,
+    "renew_holds": False,
     "remember_sentences": True,
     "quick_resend_seconds": 45,
     "name_budget": True,
@@ -1372,6 +1392,8 @@ RANDOM_TOKEN = re.compile(r"(?<![A-Za-z0-9/.=:_@#-])(?=[A-Za-z0-9]*\d)(?=[A-Za-z
 
 
 URL = re.compile(r"https?://[^\s<>\"')\]]+|\b(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|uk|io|ly|xyz|info|me|co|app|link|site|online|shop|top|ru|cn|gg|to|tk)/[^\s<>\"')\]]+", re.I)
+# A bare web address with no path ("example.co.uk"): only used to keep such messages in front of you, never to hold.
+WEB_ADDRESS = re.compile(r"\b(?:www\.)?[a-z0-9][a-z0-9-]*\.(?:co\.uk|org\.uk|com|net|org|uk|io|info|app|xyz|site|online|shop)\b", re.I)
 # Pieces of text that mark a link for the links hold (openHop can only match plain text): a scheme or www., the
 # common endings followed by a path, and "dot com" spellings.
 LINK_MARKS = ["http", "www.", ".com/", ".co.uk/", ".net/", ".org/", ".io/", ".ly/", ".xyz/", " dot com", "(dot)", "[.]"]
@@ -2023,12 +2045,20 @@ def noise_name(name: str) -> bool:
         and re.search(r"[^A-Z0-9\-_./]", p) is not None
 
 
-def name_score(name: str, patterns: list) -> int:
+# Experimental: eight keyboard characters with no lower case, a digit and punctuation people rarely put in a
+# name. Callsign-style names ("Q1ABC-V4", "Q0XYZ/P") are left alone: hyphens, underscores, dots and slashes don't count.
+PUNCT_NAME = re.compile(r"(?=.*\d)(?=.*[!-,:-@\[-\^`{-~])[!-`{-~]{8}")
+
+
+def name_score(name: str, patterns: list, punct: bool = False) -> int:
     """0-6: how machine-generated a sender name looks. Emoji are ignored, so adding one
-    ("UD6DWREK🔥") doesn't hide a random name, and emoji in a genuine name don't count against it."""
+    ("UD6DWREK🔥") doesn't hide a random name, and emoji in a genuine name don't count against it.
+    punct: also score the punctuation-name shape (experimental)."""
     score = 0
     raw = name.strip()
     plain = strip_emoji(raw).strip()
+    if punct and raw == plain and PUNCT_NAME.fullmatch(plain):
+        return 4
     if raw and not plain:
         # Emoji-only names: unusual, and a mix of 3+ different emoji looks generated.
         return 3 if len(set(emoji_tokens(raw))) >= 3 else 1
@@ -2546,7 +2576,8 @@ class Event:
     __slots__ = ("ts", "path", "first_hop", "sender", "text", "channel", "norm", "shingles", "garbage",
                  "name_score", "random", "obfuscated", "matched", "campaign", "exempt", "recorded", "logged", "packet", "seen_at",
                  "length", "leaked", "known_then", "in_passing", "local", "sent_ts", "replay", "unverified", "keyed", "machine", "rssi", "snr",
-                 "direction", "copy", "reaction", "mode_then", "trust_then", "chan_then")
+                 "direction", "copy", "reaction", "mode_then", "trust_then", "chan_then", "way_known", "new_via",
+                 "replay_watch")
 
     def __init__(self, ts, path, sender, text, channel):
         self.ts = ts
@@ -2568,6 +2599,9 @@ class Event:
         self.mode_then: Optional[str] = None     # SpamGuard's mode then: protect, monitor or pause
         self.trust_then: Optional[str] = None    # how the sender was trusted then: everywhere, channel or none
         self.chan_then: Optional[str] = None     # the channel's protection then: full, botsafe or watch
+        self.way_known: Optional[int] = None     # known names that came in by the same first repeater this week
+        self.new_via: Optional[int] = None       # new names that came in that way in the last hour
+        self.replay_watch: Optional[dict] = None  # replay watch: this packet looks like an old one sent again
         self.in_passing = False                   # held only for passing THROUGH a blocked repeater
         self.campaign: Optional[int] = None
         self.exempt = False
@@ -2713,6 +2747,8 @@ class SpamGuard:
         self.extra_channels: dict[str, str] = {}
         self.watch_channels: set[str] = set()   # channels you read without blocking anything on them
         self.botsafe_channels: set[str] = set()   # channels where only spam bots don't trip is blocked
+        self.way_names: dict[str, dict] = {}   # first repeater -> known names that came in that way, with when (a week)
+        self.way_new: dict[str, list] = {}     # first repeater -> when new names first came in that way (an hour)
         self.openhop_channels: dict[str, str] = {}
         self.settings: dict[str, Any] = {}  # changes made on the web page
         self.settings_history: collections.deque[dict] = collections.deque(maxlen=SETTINGS_HISTORY_MAX)
@@ -2779,6 +2815,13 @@ class SpamGuard:
         self.pubbots: collections.deque = collections.deque(maxlen=2000)   # (time, airtime ms) of bot-shaped messages on Public
         self.resend_new: list = []   # resends not yet turned into a short hold
         self.replays: collections.deque = collections.deque(maxlen=5000)   # when replays were heard
+        # Replay watch (experimental): when each packet was first heard, kept far longer than openHop's own
+        # duplicate memory, and what was flagged. Flags only; nothing is held because of them.
+        self.rw_seen: collections.OrderedDict[bytes, int] = collections.OrderedDict()
+        self.rw_adv: dict[str, int] = {}     # node key -> newest advert time heard
+        self.rw_flags: collections.deque = collections.deque(maxlen=300)
+        self._rw_saved = 0.0
+        self._rw_loaded = False
         self.air: collections.deque = collections.deque()
         self._dmg_share = 0.0   # damaged copies' share of the airtime in the last five minutes
         self._pulses: collections.deque = collections.deque()
@@ -2836,7 +2879,7 @@ class SpamGuard:
             # last day that don't look made-up, so people aren't all strangers after an update.
             for name, h in self.sender_history.items():
                 if name and name != "?" and not is_obfuscated(name, name=True) \
-                        and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
+                        and name_score(name, self.name_res, bool(self.cfg.get("punct_names"))) < self.cfg["name_score_threshold"]:
                     self.known[name] = [h["first"], h["first"], h["count"]]
 
     def current_level(self) -> int:
@@ -3075,6 +3118,7 @@ class SpamGuard:
                      "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
                      "openhop_forwarded": (self.verdict.get(e.packet) or [None, None])[0],
                      "openhop_policy_dropped": (self.verdict.get(e.packet) or [None, None])[1],
+                     "openhop_dropped_by": (list(self.verdict.get(e.packet) or []) + [None, None, None])[2],
                      "caught_source": b.get("source") if b else None,
                      "spoofed": (b.get("spoof") or {}).get("of") if b else None,
                      "sent_offset_s": round(e.ts - e.sent_ts, 1) if e.sent_ts else None,
@@ -3082,6 +3126,7 @@ class SpamGuard:
                      "rssi": e.rssi, "snr": e.snr, "neighbour": self.last_hop_neighbour(e.path),
                      "route_stem": self.route_key(e.path),
                      "direction": e.direction, "copy": e.copy, "reaction": e.reaction,
+                     "way_known": e.way_known, "new_via": e.new_via, "replay_watch": e.replay_watch,
                      "mode": "paused" if self.cfg.get("paused") else self.cfg["mode"]})
 
     def snapshot_settings(self, why: str):
@@ -3179,6 +3224,16 @@ class SpamGuard:
         self.probe_results = {str(k): v for k, v in pr.items() if isinstance(v, dict)} if isinstance(pr, dict) else {}
         bw = st.get("botsafe_why")
         self.botsafe_why = {str(k): str(v) for k, v in bw.items() if k in self.botsafe_channels} if isinstance(bw, dict) else {}
+        rf = st.get("rw_flags")
+        if isinstance(rf, list):
+            self.rw_flags.extend(f for f in rf[-300:] if isinstance(f, dict) and isinstance(f.get("ts"), (int, float)))
+        ra = st.get("rw_adv")
+        if isinstance(ra, dict):
+            self.rw_adv = {str(k): int(v) for k, v in ra.items() if isinstance(v, (int, float))}
+        wn = st.get("way_names")
+        if isinstance(wn, dict):
+            self.way_names = {str(k): {str(n): float(t) for n, t in v.items() if isinstance(t, (int, float))}
+                              for k, v in wn.items() if isinstance(v, dict)}
         br = st.get("botsafe_review")
         if isinstance(br, list):
             self.botsafe_review = {str(c) for c in br if c in self.botsafe_channels}
@@ -3418,6 +3473,8 @@ class SpamGuard:
         the SD card. Short-lived duplicate rules don't count: losing them in a power cut is harmless.
         A clean stop (restart, update) always saves."""
         now = time.time()
+        if final and self.cfg.get("replay_watch") and self.rw_seen:
+            self._rw_save()
         if not force and now - self._last_save < self.SAVE_EVERY:
             return
         if not final and now - getattr(self, "_save_failed_at", 0) < 30:
@@ -3485,6 +3542,8 @@ class SpamGuard:
                     "botsafe_why": self.__dict__.get("botsafe_why") or {},
                     "probe_results": self.__dict__.get("probe_results") or {},
                     "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
+                    "way_names": {k: {n: round(t) for n, t in v.items()} for k, v in list(self.way_names.items())[-300:]},
+                    "rw_flags": list(self.rw_flags), "rw_adv": dict(list(self.rw_adv.items())[-5000:]),
                     "settings_history": list(getattr(self, "settings_history", ())),
                     "hist_last": self.__dict__.get("_hist_last"),
                     "settings": self.settings,
@@ -3600,7 +3659,7 @@ class SpamGuard:
         self.known = {}
         for name, h in self.sender_history.items():
             if name and name != "?" and not is_obfuscated(name, name=True) \
-                    and name_score(name, self.name_res) < self.cfg["name_score_threshold"]:
+                    and name_score(name, self.name_res, bool(self.cfg.get("punct_names"))) < self.cfg["name_score_threshold"]:
                 self.known[name] = [h["first"], h["first"], h["count"]]
         self.note(f"Started again from scratch: {n} block{'' if n == 1 else 's'}, all settings and exceptions "
                   f"cleared ({'Protect' if mode == 'protect' else 'Monitor'} mode kept)")
@@ -5706,6 +5765,13 @@ class SpamGuard:
                 return "held", (self.Q_REASON.get(src) if src in ("junk", "spoof") else None) or self.Q_REASON.get(kind) \
                     or self.Q_REASON.get(src) or "Held by a block meant for spam"
             return "stopped", self.Q_REASON.get(src) or self.Q_REASON.get(kind) or "Matched a spam block"
+        if spammy and not m.get("known") and not m.get("obfuscated"):
+            text = str(m.get("text") or "")
+            if (m.get("channel") or "Public") in self.botsafe_channels:
+                return "genuine", "On a Bot-safe channel, where many names sending the same words is normal. Passed on as normal"
+            if self.cfg.get("newcomer_quiet") and int(m.get("way_known") or 0) >= 1 and int(m.get("new_via") or 99) < 2 \
+                    and not URL.search(text) and not WEB_ADDRESS.search(text):
+                return "genuine", "A new arrival that came in the way people SpamGuard knows come in. Passed on as normal"
         if spammy and not m.get("known"):
             why = ("Hidden or look-alike characters in the name" if m.get("obfuscated")
                    else "The same message as other names" if (m.get("campaign_senders") or 0) >= 2
@@ -5733,13 +5799,17 @@ class SpamGuard:
                                  "identity": self.identity_of(e),
                                  "caught_by": e.matched, "caught_kind": b["kind"] if b else None,
                                  "caught_source": b.get("source") if b else None, "own": self.is_own(e), "machine": e.machine,
-                                 "copy": e.copy, "reaction": e.reaction})
+                                 "copy": e.copy, "reaction": e.reaction, "way_known": e.way_known, "new_via": e.new_via,
+                                 "replay_watch": e.replay_watch,
+                                 "openhop_policy_dropped": (self.verdict.get(e.packet) or [None, None])[1],
+                                 "openhop_dropped_by": (list(self.verdict.get(e.packet) or []) + [None, None, None])[2]})
             return rows, "memory"
         self.evidence.flush(force=True)
         cache = self.__dict__.setdefault("_q_cache", {})
         first = time.strftime("%Y-%m-%d", time.localtime(cut))
         keep = ("ts", "packet", "sender", "text", "path", "channel", "random", "obfuscated", "known", "campaign_senders",
-                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction", "garbage")
+                "caught_by", "caught_kind", "caught_source", "own", "machine", "identity", "copy", "reaction", "garbage",
+                "way_known", "new_via", "replay_watch", "openhop_policy_dropped", "openhop_dropped_by")
         rows = []
         files = [f for f in self.evidence.files() if os.path.basename(f)[:10] >= first]
         for f in files:
@@ -5808,6 +5878,7 @@ class SpamGuard:
         # copies of a message one name kept repeating that went out before the limit was reached
         repeated = {(m.get("sender"), normalise(str(m.get("text") or ""))) for m in raw
                     if m.get("caught_source") in ("repeat", "slowrepeat", "replay", "sense")}
+        rw_by = {f["packet"]: f for f in self.rw_flags if f.get("packet")} if self.cfg.get("replay_watch") else {}
         for m in raw:
             if m.get("own") or not m.get("text"):
                 continue
@@ -5879,6 +5950,8 @@ class SpamGuard:
                               "machine": m.get("machine"), "identity": m.get("identity"), "like": "spam" if like else None,
                               "copy": self._copy_row(m.get("copy")),
                               "reaction": m.get("reaction") if isinstance(m.get("reaction"), dict) else None,
+                              "replay_watch": rw_by.get(str(m.get("packet") or "")) or (m.get("replay_watch") if isinstance(m.get("replay_watch"), dict) else None),
+                              "not_passed": (m.get("openhop_dropped_by") or "rule") if m.get("openhop_policy_dropped") and not m.get("caught_by") else None,
                               "label": self.labels.get(str(m.get("packet") or "")) or self.labels.get(f"{m.get('sender')}|{text}"),
                               "label_at": self.label_at.get(str(m.get("packet") or "")) or self.label_at.get(f"{m.get('sender')}|{text}")}
             rows.append(r)
@@ -7005,6 +7078,7 @@ class SpamGuard:
                         "warmth": self.warmth(n, st2, now),
                         "device": self.device_names(n, now),
                         "spam": self.spam_record(n, now) if st == "held" else None,
+                        "lookalikes": self.lookalike_names(n, now) if w else None,
                         "watch": ({"since": w["since"], "need": int(w.get("need", self.WATCH_DAYS)),
                                    "days": max(0, min(int(w.get("need", self.WATCH_DAYS)), int((now - w["clean_from"]) // 86400))),
                                    "ok": int(w.get("ok", 0)), "min_msgs": self.WATCH_MIN_MSGS, "times": int(w.get("times", 1)),
@@ -7022,6 +7096,32 @@ class SpamGuard:
             out.append({"name": n, "known": self.is_known(n), "msgs": int(k[2]) if k else 0,
                         "last": float(k[1]) if k and k[1] else None, "spam_marks": mc[0]})
         return out
+
+    LOOKALIKE_DAYS = 7
+    LOOKALIKE_RATIO = 0.7
+
+    @staticmethod
+    def _lookalike_key(name: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", strip_emoji(name).lower())
+
+    def lookalike_names(self, name: str, now: Optional[float] = None, limit: int = 10) -> list:
+        """Other names heard this week that look like this one (the same words with a symbol or letter changed),
+        not trusted and not already on watch: offered so a family of lookalike names can be watched in one go.
+        A suggestion only; nothing changes until you choose it."""
+        now = now or time.time()
+        key = self._lookalike_key(name)
+        if len(key) < 6:
+            return []
+        out = []
+        for n, v in self.known.items():
+            if n == name or n in self.on_watch or n in self.allow_senders or n in (getattr(self, "own_names", None) or {}):
+                continue
+            if not v[1] or now - float(v[1]) > self.LOOKALIKE_DAYS * 86400:
+                continue
+            k2 = self._lookalike_key(n)
+            if len(k2) >= 6 and difflib.SequenceMatcher(None, key, k2).ratio() >= self.LOOKALIKE_RATIO:
+                out.append((float(v[1]), n))
+        return [n for _, n in sorted(out, reverse=True)[:limit]]
 
     def _copied_names(self, now: float) -> set:
         """Names someone else has probably used (red) in the last week."""
@@ -7146,6 +7246,145 @@ class SpamGuard:
     REPLAY_MEMORY = 86400        # how long messages are remembered
     REPLAY_CLOCK_OFF = 6 * 3600  # a device clock this far out counts as wrong
 
+    RW_GAP = 600            # heard again at least ten minutes after it first passed
+    RW_KEEP = 40000         # packets remembered (about a day or more on a busy repeater)
+    RW_SAVE_EVERY = 6 * 3600
+    RW_ADV_SLACK = 120      # an advert this much older than the newest one heard from that node
+
+    def _rw_file(self) -> str:
+        return (self.cfg.get("state_file") or self.file_cfg.get("state_file", DEFAULT_CONFIG["state_file"])) + ".replays"
+
+    def _rw_load(self) -> None:
+        """The packet memory from the last run, so a packet replayed after a restart is still recognised."""
+        self._rw_loaded = True
+        try:
+            with open(self._rw_file(), "rb") as f:
+                data = f.read(self.RW_KEEP * 10 + 16)
+        except OSError:
+            return
+        for i in range(0, len(data) - 9, 10):
+            self.rw_seen[data[i:i + 6]] = struct.unpack("<I", data[i + 6:i + 10])[0]
+        while len(self.rw_seen) > self.RW_KEEP:
+            self.rw_seen.popitem(last=False)
+
+    def _rw_save(self) -> None:
+        """Six bytes of each packet's id and when it was first heard: written every few hours and on a clean stop
+        (about 400 KB at most), so it adds little to SD card wear."""
+        self._rw_saved = time.time()
+        path = self._rw_file()
+        try:
+            data = b"".join(k + struct.pack("<I", max(0, min(int(t), 2 ** 32 - 1))) for k, t in self.rw_seen.items())
+            tmp = path + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)
+        except OSError as ex:
+            log.debug("couldn't save the replay memory: %s", ex)
+
+    def _rw_flag(self, kind: str, p: dict, gap: float, **extra) -> dict:
+        path = parse_path(p.get("original_path"))
+        f = {"ts": round(float(p.get("timestamp") or time.time()), 1), "kind": kind, "gap": int(gap),
+             "packet": str(p.get("packet_hash") or ""), "hop": path[0] if path else "DIRECT", **extra}
+        self.rw_flags.append(f)
+        self.ev(dict({"type": "replay", "path": path}, **f))
+        return f
+
+    def _rw_packet(self, p: dict, ptype: int) -> None:
+        """Replay watch: the same packet heard again long after it first passed (openHop forgets packets after an
+        hour or 1,000 packets, then passes a replayed one on as new), or an advert older than one already heard from
+        that node. Flagged and counted only."""
+        if not self._rw_loaded:
+            self._rw_load()
+        h = str(p.get("packet_hash") or "")
+        try:
+            k = bytes.fromhex(h[:12])
+            ts = float(p.get("timestamp") or 0)
+        except (ValueError, TypeError):
+            return
+        if len(k) < 6 or not ts:
+            return
+        first = self.rw_seen.get(k)
+        if first is None:
+            self.rw_seen[k] = int(ts)
+            while len(self.rw_seen) > self.RW_KEEP:
+                self.rw_seen.popitem(last=False)
+        elif ts - first >= self.RW_GAP and not p.get("is_duplicate") and not any(x["packet"] == h for x in self.rw_flags):
+            extra = {}
+            if ptype == PAYLOAD_TYPE_GRP_TXT:
+                try:
+                    dec = decrypt_group_text(bytes.fromhex(p.get("payload") or ""), self.cfg["channels"])
+                except ValueError:
+                    dec = None
+                if dec:
+                    extra = {"sender": dec.get("sender") or "?", "channel": dec.get("channel")}
+                    if dec.get("signed"):
+                        self._rw_flag("signed", p, ts - first, **extra)
+                        return
+            elif ptype == PAYLOAD_TYPE_ADVERT:
+                adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
+                if adv:
+                    extra = {"sender": adv.get("name") or adv["key"][:8]}
+            self._rw_flag("packet", p, ts - first, **extra)
+            return
+        if ptype == PAYLOAD_TYPE_ADVERT and first is None:
+            adv = self.parse_advert(bytes.fromhex(p.get("payload") or ""))
+            at = int((adv or {}).get("time") or 0)
+            if adv and at and adv.get("key"):
+                newest = self.rw_adv.get(adv["key"])
+                if newest is not None and at < newest - self.RW_ADV_SLACK:
+                    self._rw_flag("advert", p, newest - at, sender=adv.get("name") or adv["key"][:8])
+                elif newest is None or at > newest:
+                    self.rw_adv[adv["key"]] = at
+                    while len(self.rw_adv) > 5000:
+                        self.rw_adv.pop(next(iter(self.rw_adv)))
+        if time.time() - self._rw_saved >= self.RW_SAVE_EVERY and self._rw_saved:
+            self._rw_save()
+        elif not self._rw_saved:
+            self._rw_saved = time.time()
+
+    def replay_watch_status(self) -> Optional[dict]:
+        if not self.cfg.get("replay_watch"):
+            return None
+        now = time.time()
+        week = [f for f in self.rw_flags if now - f["ts"] < 7 * 86400]
+        days = [0] * 7
+        for f in week:
+            days[6 - min(6, max(0, int((now - f["ts"]) // 86400)))] += 1
+        return {"on": True, "packet": sum(1 for f in week if f["kind"] == "packet"),
+                "signed": sum(1 for f in week if f["kind"] == "signed"),
+                "advert": sum(1 for f in week if f["kind"] == "advert"), "days": days,
+                "latest": [{k: f.get(k) for k in ("ts", "kind", "gap", "sender", "channel", "hop")} for f in reversed(week)][:5],
+                "remembered": len(self.rw_seen)}
+
+    WAY_DAYS = 7
+    WAY_NAMES_MAX = 40
+
+    def _note_way(self, e: Event, first: bool) -> None:
+        """How familiar this message's way in is: how many names SpamGuard knows came in by the same first repeater
+        this week, and how many new names came in that way in the last hour (campaigns arrive as bursts of new names)."""
+        fh, ts = e.first_hop or "DIRECT", e.ts
+        wn = self.way_names.get(fh) or {}
+        e.way_known = sum(1 for n, t in wn.items() if n != e.sender and ts - t < self.WAY_DAYS * 86400)
+        wl = self.way_new.setdefault(fh, [])
+        if first:
+            wl.append(ts)
+        wl[:] = [t for t in wl if ts - t < 3600][-50:]
+        e.new_via = len(wl)
+        if self.is_known(e.sender) and e.sender not in ("?", "Unknown"):
+            wn = self.way_names.setdefault(fh, {})
+            wn.pop(e.sender, None)
+            wn[e.sender] = ts
+            for n in [n for n, t in wn.items() if ts - t >= self.WAY_DAYS * 86400]:
+                del wn[n]
+            while len(wn) > self.WAY_NAMES_MAX:
+                wn.pop(next(iter(wn)))
+            self.way_names.pop(fh, None)
+            self.way_names[fh] = wn   # most recently used last
+            while len(self.way_names) > 300:
+                self.way_names.pop(next(iter(self.way_names)))
+        while len(self.way_new) > 300:
+            self.way_new.pop(next(iter(self.way_new)))
+
     def replay_of(self, e: Event) -> bool:
         """Is this an old message sent again by another device? It must match a message first heard at
         least half a minute earlier (same channel, same text) from the same name or a cut-short copy of it,
@@ -7232,6 +7471,11 @@ class SpamGuard:
             self._type_note(p, ptype)
             self._kind_note(p, ptype)
             self._note_hash_size(p)
+            if self.cfg.get("replay_watch"):
+                try:
+                    self._rw_packet(p, ptype)
+                except Exception as ex:   # watching must never stop a packet being checked
+                    log.debug("replay watch failed: %s", ex)
             if ptype == PAYLOAD_TYPE_ADVERT:
                 if self.cfg.get("signed_watch"):
                     self._note_signer_key(p)
@@ -7241,9 +7485,14 @@ class SpamGuard:
                 continue
             key = str(p.get("packet_hash") or p.get("id"))
             if "transmitted" in p or "drop_reason" in p:
-                v = self.verdict.setdefault(key, [False, False])
+                v = self.verdict.setdefault(key, [False, False, None])
                 v[0] = v[0] or bool(p.get("transmitted"))
                 v[1] = v[1] or str(p.get("drop_reason") or "").startswith("Policy blocked")
+                if len(v) < 3:
+                    v.append(None)
+                fm = self.FG_RULE_RE.match(str(p.get("drop_reason") or ""))
+                if fm and not v[2]:
+                    v[2] = "floodguard" if int(fm.group(1)) in self.fg_rule_ids() else "rule"
                 while len(self.verdict) > 5000:
                     self.verdict.popitem(last=False)
             if key in self.seen_packets:
@@ -7289,7 +7538,7 @@ class SpamGuard:
                 and e.sender.casefold() in {v.casefold() for v in self.signer_bind.values()}
             e.replay = bool(self.cfg.get("replay_guard", True)) and not e.local and not e.exempt and self.replay_of(e)
             trusted = e.sender in self.allow_senders or self.trusted_here(e.sender, e.channel)
-            e.name_score = name_score(e.sender, self.name_res)
+            e.name_score = name_score(e.sender, self.name_res, bool(self.cfg.get("punct_names")))
             # Unreadable text only counts from names SpamGuard doesn't know: a regular whose radio sends
             # one garbled message is not a spammer.
             e.garbage = e.garbage and bool(self.cfg.get("detect_garbage", True)) and not trusted \
@@ -7297,6 +7546,8 @@ class SpamGuard:
             e.random = not trusted and (e.name_score >= self.cfg["name_score_threshold"] or e.obfuscated or e.garbage)
             h = self.sender_history.setdefault(e.sender, {"first": ts, "count": 0, "hops": set()})
             h["last"] = max(float(h.get("last") or 0), ts)
+            if e.way_known is None and not e.local:
+                self._note_way(e, first=not h["count"] and not self.is_known(e.sender))
             if e.random and not e.local:
                 self.note_forged(e, ts)
             if trusted and e.first_hop not in h["hops"] and h["hops"] and not any(
@@ -10120,6 +10371,9 @@ class SpamGuard:
     KEEP_RECENT = 1800   # caught spam in the last half hour
     KEEP_STEP = 3600     # kept another hour each time
     KEEP_MAX = 86400     # a day from when it was made, at most
+    RENEW_RECENT = 6 * 3600     # renew_holds: caught spam within the last six hours
+    RENEW_STEP_MAX = 12 * 3600  # renewed for its own length, half a day at most each time
+    RENEW_MAX = 7 * 86400       # never more than a week from when it was made
 
     def _expire_blocks(self, now: float) -> bool:
         """Remove blocks whose time is up (also when detection itself failed this round)."""
@@ -10135,6 +10389,18 @@ class SpamGuard:
             if b["expires"] <= now and b.get("source") in self.KEEP_SOURCES and b["kind"] in self.KEEP_KINDS \
                     and float(b.get("last_spam") or 0) >= now - self.KEEP_RECENT and now < float(b.get("created") or now) + self.KEEP_MAX:
                 b["expires"] = min(now + self.KEEP_STEP, float(b.get("created") or now) + self.KEEP_MAX)
+        # Experimental: a hold that caught spam in the last few hours is renewed for its own length again when it
+        # ends, up to a week from when it was made, so a campaign that pauses for a few hours doesn't find it gone.
+        if self.cfg.get("renew_holds"):
+            for b in self.blocks.values():
+                made = float(b.get("created") or now)
+                if b["expires"] <= now and b.get("source") in self.KEEP_SOURCES and b["kind"] in self.KEEP_KINDS \
+                        and float(b.get("last_spam") or 0) >= now - self.RENEW_RECENT and now < made + self.RENEW_MAX:
+                    life = max(self.KEEP_STEP, min(self.RENEW_STEP_MAX, float(b.get("ttl") or (b["expires"] - made))))
+                    b["expires"] = min(now + life, made + self.RENEW_MAX)
+                    b["renewed"] = int(b.get("renewed") or 0) + 1
+                    if b["renewed"] == 1:
+                        self.note(f"Kept blocking {self.describe(b)}: it is still catching spam, so it was renewed")
         # A sentence hold that has caught nothing for two days is let go instead of waiting out its fortnight. It comes
         # back if the sentence is sent again. One that another rule already covers is not judged: it catches nothing
         # only because the other rule gets there first.
@@ -13195,6 +13461,7 @@ class SpamGuard:
                 "channels": sorted(c["channels"]), "watch_channels": sorted(self.watch_channels), "botsafe_channels": sorted(self.botsafe_channels),
                 "botsafe_review": sorted(self.__dict__.get("botsafe_review") or ()),
                 "route_checks": self.route_check_status(),
+                "replay_watch": self.replay_watch_status(),
                 "cross_channel_blocks": bool(c.get("cross_channel_blocks")),
                 "rule_summary": getattr(self, "rule_summary", None),
                 "profiles": {"list": [dict(v, name=k) for k, v in sorted(self.profiles.items())],
@@ -13850,11 +14117,23 @@ class SpamGuard:
                     self.put_on_watch(name, "Put on watch by you", now)
                     msg = (f"'{name}' is on watch. They are treated as a stranger, so the ordinary checks apply to them, "
                            "and they come off watch by themselves once their messages have looked normal for a while.")
+                    fam = self.lookalike_names(name, now)
+                    if fam:
+                        msg += (f" {len(fam)} name{'s' if len(fam) != 1 else ''} like it {'were' if len(fam) != 1 else 'was'} heard this week:"
+                                " you can watch them too from its row on People.")
                 else:
                     if self.on_watch.pop(name, None) is None:
                         raise ValueError("That name isn't on watch")
                     self.note(f"'{name}' taken off watch by you")
                     msg = f"'{name}' is off watch and counts as before."
+            elif op == "watch_many":
+                names = [str(n).strip() for n in (body.get("names") or [])[:20] if str(n).strip() not in ("", "?", "Unknown")]
+                if not names:
+                    raise ValueError("Which names?")
+                for name in names:
+                    self.allow_senders.discard(name)
+                    self.put_on_watch(name, "Put on watch by you (looks like a name you watched)", now)
+                msg = f"{len(names)} lookalike name{'s are' if len(names) != 1 else ' is'} on watch."
             elif op == "forget_known":
                 name = str(body.get("name", ""))
                 was = self.known.pop(name, None) is not None or self.on_watch.pop(name, None) is not None
@@ -14152,7 +14431,7 @@ def load_page() -> str:
     return "<h1>SpamGuard</h1><p>ui.html is missing - reinstall SpamGuard.</p>"
 
 
-ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
+ACTIONS = {"dismiss_link", "oh_advert_limit", "trust_review", "accept_signer", "dismiss_signer", "unbind_signer", "unblock", "block_hop", "block_route", "mute", "hold_name_hop", "block_channel", "engine_on", "channel_blocking", "watch", "watch_many", "accept_route", "dismiss_route", "accept_type", "dismiss_type", "block_text", "mark_spam", "not_spam", "extend", "rule_action", "hop_mode",
            "forget_path", "allow_hop", "unallow_hop", "allow_sender", "unallow_sender", "forget_known", "allow_text",
            "unallow_text", "spoofed", "botsafe_keep", "add_channel", "add_openhop_channel", "profile_save", "profile_import", "profile_apply", "profile_delete", "remove_channel", "clear_auto", "clear_suppressed", "fg_start_now", "fg_auto", "fg_relearn",
            "allow_origin", "unallow_origin", "lockdown", "reset_all", "clear_history", "clear_held", "clear_recent",
