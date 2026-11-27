@@ -15,6 +15,17 @@ The detail is below, newest first. In short:
 | **6.8 to 6.19** | A **protection level slider** that shows what each level would have held on your own traffic, a plainer page, a **Messages** list that works like a mail quarantine, repeat spammers shown as one sender on the map, updates that won't leave a small Pi without SpamGuard, blocking just the route spam starts on, spotting a route that suddenly carries lots of new names, a flood of requests or group data from one repeater, floods spread over a few repeaters, optional counting and checking of signed messages, counting damaged copies of messages, and defences against the usual ways round a spam filter. |
 | **6.20 to 6.27** | Limits that vary by repeater, harder-to-borrow trust, a signed parts list with each release, and counting accidental double sends. An **Experimental** section, hidden until asked for, holds newer ideas that count before they act (keeping bots off Public, stopping repeat sends, spotting reworded spam from your marks). A **settings advisor** suggests changes once it has seen enough traffic, several messages can be labelled at once, and made-up names are spotted better. |
 
+## v6.56.0
+
+- **Bot-safe channels** no longer list copied greetings and test messages under Missed spam.
+- **Not passed on by FloodGuard.** A message your repeater didn't pass on because of FloodGuard's distance limit says so in Messages, so it isn't mistaken for a spam catch.
+- **Lookalike names.** After putting a name on watch, its row on People offers to watch names like it heard this week, in one tap. Nothing changes until you choose it.
+- **Experimental, all off by default:**
+  - New arrivals on a familiar way in stay off Missed spam. Nothing is held or let through differently.
+  - Replay watch: flags old packets and adverts heard again, on Overview and in Messages. Flags only.
+  - Short names of capitals, digits and symbols count as made up.
+  - A hold still catching spam is renewed instead of lapsing, up to a week.
+
 ## v6.55.0
 
 - **Bot-safe channels to check.** Channels an earlier version made bot-safe without a bot-like name are listed on the Channels page to keep or switch to Block spam. Nothing changes by itself.

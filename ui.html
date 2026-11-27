@@ -763,6 +763,14 @@ html[data-palette=aaa] :focus-visible,html[data-palette=yellow] :focus-visible{o
   <ul class="rows" id="signedSug"></ul>
   <ul class="rows" id="signedTrusted"></ul>
 </section>
+<section id="rwSec" hidden>
+  <div class="health-head"><h2>Replay watch</h2><span class="tag would">Experimental: flagged only, nothing is held</span></div>
+  <p class="lead">Old packets heard again, last 7 days.</p>
+  <dl class="kpis" id="rwKpis"></dl>
+  <div class="chart short" id="chartRw" role="img"></div>
+  <ul class="rows" id="rwList"></ul>
+  <p class="explain">Very slow routes and wrong clocks can look like this, so nothing is stopped.</p>
+</section>
 <section id="heldSumSec" hidden>
   <h2>Held messages summary</h2>
   <p class="explain" id="heldSumSub">Stays on this repeater. Counts only: no names, no message text.</p>
@@ -1592,6 +1600,19 @@ function renderSigned(d){
     <div class="acts">${btn("Stop trusting","/unbind_signer",{kid:x.kid},"quiet")}</div></li>`).join("");
 }
 
+/* ---------- replay watch (experimental, flags only) ---------- */
+function renderReplayWatch(d){
+  const r=d.replay_watch, sec=$("#rwSec"); sec.hidden=!(r&&r.on); if(!r||!r.on) return;
+  const t=(k,v)=>`<div><dt>${esc(k)}</dt><dd>${fmtN(v)}</dd></div>`;
+  $("#rwKpis").innerHTML=t("Same packet, later",r.packet)+t("Signed message copied",r.signed)+t("Old advert played back",r.advert);
+  $("#rwKpis").style.setProperty("--n","3");
+  const now=Date.now()/1000, days=(r.days||[]).map((n,i)=>{ const when=new Date((now-(6-i)*86400)*1000); const full=when.toLocaleDateString([],{weekday:"long",day:"numeric",month:"short"}); return {x:n,label:when.toLocaleDateString([],{weekday:"short"}),full,tip:`${full}: ${n} flagged`}; });
+  columns($("#chartRw"),days,{every:1,col:"Day",cols:[["x","Flagged"]],segs:["x"]});
+  $("#chartRw").setAttribute("aria-label",`Packets flagged as possible replays each day, last 7 days: ${(r.days||[]).join(", ")}.`);
+  const kind={packet:"heard again",signed:"signed message heard again",advert:"advert older than one already heard"};
+  $("#rwList").innerHTML=(r.latest||[]).map(x=>`<li><span class="what">${esc(x.sender||"Unknown")}${x.channel?`, ${esc(x.channel)}`:""}: ${esc(kind[x.kind]||x.kind)}</span><span class="why">${ago(x.ts)}${x.kind==="advert"?"":`, ${x.gap>=3600?Math.round(x.gap/3600)+" h":Math.max(1,Math.round(x.gap/60))+" min"} after it first passed`}, came in via <span class="route">${esc(x.hop||"?")}</span></span></li>`).join("");
+}
+
 /* ---------- most held, last 7 days ---------- */
 function renderMostHeld(d){
   const list=((d.metrics||{}).most_held)||[];
@@ -1726,7 +1747,7 @@ function pplRender(){
         ${p.route?`<dt>Route check</dt><dd><span class="tag ${({green:"ok",amber:"sus",red:"stop",grey:"plain"})[p.route.level]}">${({green:"Looks real",amber:"Worth a look",red:"Probably a copy",grey:"Can't tell yet"})[p.route.level]}</span> <span class="explain">${esc(p.route.why)}</span></dd>`:""}
         ${w?`<dt>Off watch</dt><dd>${new Date(w.due*1000).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})} if nothing else of theirs is held${w.times>1?` (on watch ${w.times} times)`:""}</dd>`:""}
         ${p.forget_at&&!p.trusted&&!w?`<dt>Forgotten</dt><dd>in ${left(Math.max(0,p.forget_at-Date.now()/1000)).replace(" left","")}, unless heard again</dd>`:""}</dl>
-      <div class="acts" style="justify-content:flex-start">${p.trusted||(p.trusted_on&&p.trusted_on.length)?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):""}${p.trusted?"":btn(p.trusted_on&&p.trusted_on.length?"Trust everywhere":"Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
+      ${w&&p.lookalikes&&p.lookalikes.length?`<p class="explain">Names like this one heard this week: ${p.lookalikes.map(esc).join(", ")}</p>`:""}<div class="acts" style="justify-content:flex-start">${p.trusted||(p.trusted_on&&p.trusted_on.length)?btn("Stop trusting","/unallow_sender",{sender:p.name},"quiet"):""}${p.trusted?"":btn(p.trusted_on&&p.trusted_on.length?"Trust everywhere":"Trust","/allow_sender",{sender:p.name},"quiet")}${w?btn("Take off watch","/watch",{name:p.name,on:false},"quiet"):btn("Put on watch","/watch",{name:p.name,on:true},"quiet")}${w&&p.lookalikes&&p.lookalikes.length?btn(`Watch ${p.lookalikes.length} lookalike${p.lookalikes.length===1?"":"s"} too`,"/watch_many",{names:p.lookalikes},"quiet"):""}<button type="button" class="quiet" data-msgs="${esc(JSON.stringify({names:[p.name],title:"Messages from "+p.name}))}">Their messages</button>${p.spam?`<button class="quiet" data-p="/mute" data-b="${esc(JSON.stringify({sender:p.name,days:7}))}" data-confirm="Hold everything from ${esc(p.name)} on Public for 7 days? Anyone using that name is held." onclick="act(this)">Mute for 7 days</button>`:""}${btn("Forget","/forget_known",{name:p.name},"quiet danger")}</div></div></details></li>`; }).join("")
     ||`<li><p class="empty">${PPL.q?"No name matches.":PPL.show==="watch"?"Nobody is on watch.":PPL.show==="held"?"No name is held for spam.":PPL.show==="active"?"SpamGuard doesn't know anyone yet.":PPL.show==="worth"?"Nobody looks like a spammer right now.":PPL.show==="check"?"No name has come from a new direction this week.":PPL.show==="marked"?"You haven't marked anyone's message as spam.":PPL.show==="mixed"?"No name has marks both ways.":PPL.show==="renames"?"No device has changed its name in the last month.":"Nobody here."}</p></li>`;
   const leftN=d.total-d.offset-PPL.rows.length;
   $("#pplMore").innerHTML=(leftN>0?`<button type="button" class="quiet" id="pplMoreBtn">Show ${Math.min(20,leftN)} more</button> <span class="explain">${fmtN(leftN)} more</span>`:"")+(d.offset>0?` <button type="button" class="quiet" id="pplTop">Back to the start</button>`:"");
@@ -1977,6 +1998,9 @@ async function qLoad(){
   if(Q.again){ Q.again=false; qLoad(); }   /* a label was applied while this was loading: load again so it shows */
 }
 function qWhen(ts){ return new Date(ts*1000).toLocaleString([],Q.days>1?{weekday:"short",hour:"2-digit",minute:"2-digit"}:{hour:"2-digit",minute:"2-digit"}); }
+const NOT_PASSED={floodguard:"Not passed on by FloodGuard: it had come a long way while the radio was busy, nothing to do with spam",rule:"Not passed on by another of openHop's own rules"};
+function rwTag(r){ return r.replay_watch?` <span class="tag sus">Possible replay</span>`:""; }
+function rwWhy(w){ if(!w) return ""; const g=w.gap>=3600?Math.round(w.gap/3600)+" h":Math.max(1,Math.round(w.gap/60))+" min"; return w.kind==="advert"?"An advert older than one already heard from this node":`The same packet${w.kind==="signed"?" (a signed message)":""} first passed ${g} earlier. Flagged only, passed on as normal`; }
 function qRender(){
   const d=Q.data; if(!d) return;
   const c=d.counts||{}, all=d.total||0;
@@ -1988,8 +2012,8 @@ function qRender(){
   $("#qShowing").textContent=`${fmtN(d.shown)} ${what}, last ${d.days===1?"24 hours":"7 days"}${Q.group&&d.rows.length<d.shown?`, ${d.rows.length} after grouping copies`:""}${d.groups&&d.groups<d.rows.length?`, in ${d.groups} group${d.groups===1?"":"s"} of similar messages`:""}`;
   const rows=d.rows;
   $("#qList").innerHTML=rows.length?rows.map((r,i)=>`<li class="${i===Q.sel?"sel":""}"><input type="checkbox" data-qt="${i}" ${Q.ticks[i]?"checked":""} aria-label="Select the message from ${esc(r.sender)}">
-    <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b>${copyTag(r.copy)}<span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
-      <span class="q-txt">${r.reaction?`<span class="explain">Reacted ${esc(r.reaction.emoji)} to ${esc(r.reaction.to)}</span>`:esc(r.text)}</span><span class="explain">${esc(r.why)}</span></button>
+    <button type="button" class="q-open" data-qi="${i}" aria-label="Open the message from ${esc(r.sender)}"><span class="q-line"><b>${esc(r.sender)}</b>${copyTag(r.copy)}${rwTag(r)}<span class="explain">${qWhen(r.ts)}${r.channel&&r.channel!=="Public"?", "+esc(r.channel):""}</span></span>
+      <span class="q-txt">${r.reaction?`<span class="explain">Reacted ${esc(r.reaction.emoji)} to ${esc(r.reaction.to)}</span>`:esc(r.text)}</span><span class="explain">${esc(r.why)}${r.not_passed?". "+esc(NOT_PASSED[r.not_passed]||NOT_PASSED.rule):""}</span></button>
     <span class="q-line" style="justify-content:flex-end">${r.group_size>1&&(i===0||rows[i-1].group!==r.group)?`<button type="button" class="quiet q-grp" data-qg="${r.group}">Select these ${r.group_size}</button>`:""}${qLabTag(r)}${r.copies>1?`<span class="q-badge q-genuine" title="${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}">×${r.copies}</span>`:""}<span class="q-badge q-${r.status}">${esc(r.status==="stopped"&&d.mode!=="protect"?"Would be stopped":QLOOK[r.status][0])}</span></span></li>`).join("")
     :`<li><p class="empty">${Q.q||fl?"Nothing matches.":Q.status==="review"?"Nothing is waiting for your answer.":"Nothing here for the last "+(d.days===1?"24 hours":"7 days")+"."}</p></li>`;
   $("#qMore").innerHTML=d.rows.length>=Q.limit?`<button type="button" class="quiet" id="qMoreBtn">Show more</button>`:"";
@@ -2029,6 +2053,8 @@ function qDetail(){
     <div class="msg-text">${esc(r.text)}</div>
     ${r.reaction?`<p class="explain">An emoji reaction (${esc(r.reaction.emoji)}) to a message from ${esc(r.reaction.to)} heard here, so it isn't counted as a repeat.</p>`:""}
     ${r.label?`<p class="q-labline"><span class="tag ${r.label==="spam"?"stop":"plain"}">${r.label==="spam"?"Spam":r.label==="bot"?"Bot":"Not spam"}</span> ${esc(qLab(r))}${r.label_at?" "+esc(qLabWhen(r.label_at)):""}. </p>`:""}
+    ${r.not_passed?`<p class="explain">${esc(NOT_PASSED[r.not_passed]||NOT_PASSED.rule)}.</p>`:""}
+    ${r.replay_watch?`<p class="explain"><span class="tag sus">Possible replay</span> ${esc(rwWhy(r.replay_watch))}.</p>`:""}
     <dl><dt>Why</dt><dd>${esc(r.why)}</dd>
       <dt>Copies</dt><dd>${r.copies>1?`${r.copies} copies from ${r.senders} name${r.senders===1?"":"s"}`:"Just this one"}</dd>
       <dt>Came in via</dt><dd><span class="route">${esc(r.path)}</span></dd>
@@ -2177,6 +2203,7 @@ function render(d, editing){
   renderNav(d); renderFloodNav(d); renderFloodPage(d); renderWardrive(d); renderJam(d); if(PAGE==="overview") renderOverview(d); if(PAGE==="sources") renderSources(d);
   renderMostHeld(d);
   renderSigned(d);
+  renderReplayWatch(d);
   renderKnown(d);
   if(!editing){ renderBlocks(d); renderChannels(d); renderChHeard(d); if(document.body.classList.contains("advanced")){ renderAdvanced(d); renderProfiles(d); } else if(!Object.keys(dirty).length) renderSettings(d); }
   $("#ver").textContent="v"+d.version; $("#footVer").textContent="v"+d.version+(d.floodguard_version?" with FloodGuard v"+d.floodguard_version:"");

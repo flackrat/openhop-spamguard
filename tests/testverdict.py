@@ -22,8 +22,8 @@ h1=add(rname(),True,None); h2=add(rname(),False,"Policy blocked packet (rule 910
 # a duplicate row of h2 that was forwarded later
 m.packets.append({"id":len(m.packets)+1,"timestamp":time.time()-198,"type":5,"payload":m.packets[-1]["payload"],"packet_hash":h2,"original_path":json.dumps(["98","71","04"]),"transmitted":True,"drop_reason":None})
 g.poll_once(); g.poll_once()
-check(g.verdict.get(h1)==[True,False],"verdict h1 "+str(g.verdict.get(h1)))
-check(g.verdict.get(h2)==[True,True],"verdict h2 dup forwarded "+str(g.verdict.get(h2)))
+check(g.verdict.get(h1)[:2]==[True,False],"verdict h1 "+str(g.verdict.get(h1)))
+check(g.verdict.get(h2)[:2]==[True,True],"verdict h2 dup forwarded "+str(g.verdict.get(h2)))
 mt=g.metrics(); print("d1",{k:mt["d1"][k] for k in ("c","x","l","spam")})
 check(mt["d1"]["l"]==2,"both counted as leaks")
 st=g.status(); check(st["metrics"]["d1"]["l"]==2,"status carries leaks")
